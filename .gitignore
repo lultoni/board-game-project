@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Claude Code local settings (contains personal permission overrides)
+.claude/settings.local.json
+
+# Editor
+.vscode/
+*.swp
+*.swo

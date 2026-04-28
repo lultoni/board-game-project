@@ -1,0 +1,364 @@
+# OPEN QUESTIONS
+
+*Living document — update as questions arise or get resolved.*
+
+---
+
+## Resolved / Partially Resolved
+
+### OQ-1: Board Size — PARTIALLY RESOLVED
+**10x10 confirmed as viable.** Both players said size was generally right. Early game still has too much empty space (first contact at ~Round 7). 12x12 likely worse. Hex untested.
+- **Remaining question**: Would 8x8 be better? Deferred to Layer 5 testing.
+- **Status**: 10x10 is the baseline for Layers 1-3. Board size change is Layer 5.
+
+### OQ-3: Movement-Action Link — PARTIALLY RESOLVED
+**Unlinked works and is liked.** May be superseded by Unified AP system (Layer 4), which merges the concept entirely.
+- **Status**: Unlinked is the baseline. AP system is a Layer 4 test.
+
+### OQ-5: Skill Path Blockage — RESOLVED
+**Blocked by all pieces.** Both players confirmed.
+
+### OQ-9: Starting Piece Placement — RESOLVED
+**Current placement is balanced.** Both players confirmed.
+- **Note**: Becomes important again if piece count or board size changes (Layer 5). On 8x8 with fewer pieces, placement matters a lot more — will need re-evaluation.
+
+### OQ-13: First Player Advantage — PARTIALLY RESOLVED
+**No strong advantage observed** in Playtest 1. Low priority.
+
+### OQ-19: Endgame Acceleration — ESCALATED (concrete trigger)
+- YINSH-inspired capture penalty **withdrawn** — creates unfair asymmetry when one player has no Guards left.
+- Damage escalation after Round X **deferred** — feels arbitrary.
+- **Playtest 2 update**: Game ran 4+ hours; natural finish estimated ~R40. Layers 1–3 have not fixed game length. This is now more urgent. The problem appears to be piece durability (first kill at R26) + long think times + positional deadlock, not just Rune speed.
+- **Leading candidate**: Checkmate-style win condition (game ends when lethal setup is inescapable — see `docs/backpocket.md`).
+- **Re-entry trigger**: After Layer 2 playtest — if first Champion kill is still past R20, endgame acceleration becomes Priority 1. If first kill moves earlier, deprioritize.
+- **Status**: Escalated. Concrete trigger: Layer 2 kill timing data.
+
+### OQ-25: Economy Skills as Skill Slots — CLOSED (Session 8)
+- With only 2 skill slots per Champion, equipping an economy skill makes that piece a "one-trick pony" — sacrifices combat versatility entirely.
+- **Session 8 verdict**: Closed permanently. 2-slot scarcity makes this unworkable; performance-based economy is also closed. The core idea (ultra-defense → late-game payoff strategy) is interesting as a post-v1 expansion variant, not a core system change.
+- **Status**: Closed. Could become an expansion variant once core game is perfected.
+
+---
+
+## Critical (blocks next playtest)
+
+### OQ-17: Rune Start Rate — RESOLVED (Layer 1, Playtest 2, 24.04.2026)
+**Start with 6 Runes, +2 gain/turn, scaling +1 every 5 rounds. ACCEPTED.**
+- Both players used skills from Round 1. Dead opening eliminated.
+- Skill Slots became the action limiter in early game — as intended.
+- Economy is fast enough without being overwhelming.
+- **Status**: Accepted. Carry forward into all future layers.
+
+### OQ-18: Health System — SCRAPPED (Layer 2 topic TBD)
+**3 HP for Champions/King was the proposed test, but it has been scrapped before testing.**
+- Reason: 3 HP would make the game even longer (first kill was already at R26 with 2 HP). Guards at 2 HP with Champions at 3 HP creates an artificial rank — Guards become "easy kills" by design, which doesn't match the design intent.
+- The underlying problem (combat too coarse, Injured state bypassed by standard attacks) needs a different solution.
+- **Status**: Scrapped. Layer 2 topic needs rethinking. See NEXT_STEPS.md.
+
+### OQ-20: Shadow Shift Balance — PARTIALLY RESOLVED
+**Shadow Shift now uses default Range 2** (not a special fixed cap). No separate range exception needed.
+- The prior "Range 3" fix was a misunderstanding — Shadow Shift simply uses the default Skill Range (2), which is now explicitly defined in the rules.
+- Side-note alternative (Range+1) not needed: default Range 2 is correct and consistent.
+- **Status**: Resolved as Range 2 (default). Carry forward into all layers. Watch whether Range 2 feels limiting in practice.
+
+### OQ-21: Bodyguard Rule — READY TO TEST (Layer 3)
+**Adjacent to defender only.** Guard takes the damage (this is already the baseline rule — only the adjacency requirement changes in Layer 3).
+- Full standalone rule sheet: `docs/test-scenarios/layer-3-bodyguard-fix/layer-3-bodyguard-fix.typ`
+- **Hypothesis**: Bodyguard triggers more frequently. Guards become genuinely useful as screens.
+- **P2 update**: Bodyguard triggered 2x in Playtest 2 under baseline adjacency rule. Layer 3 still worth testing.
+- **Attacker movement on intercept**: RULED — attacker moves 1 tile toward target (stops before Guard). Applied to baseline.
+- **Contingent variant (Session 8)**: If "defender-only" overshoots (triggers too often / breaks positioning), test "attacker-only" adjacency as a middle ground between "both" (too restrictive) and "defender-only" (possibly too permissive). This skipped variant was identified as implicitly closed; add to Layer 3 evaluation criteria.
+
+---
+
+## New (from Playtest 2, 24.04.2026)
+
+### OQ-29: Move Slots per Piece — RESOLVED (applied to baseline)
+**Each piece may only be moved once per Movement Phase.** Ruled mid-game Playtest 2. Now explicit in all rule sheets.
+
+### OQ-30: Default Skill Range — RESOLVED (applied to baseline)
+**Default Skill Range = 2.** Range 0 = self, Range 1 = adjacent, Range 2 = 2 tiles along Skill Path. Now defined in all rule sheets.
+- Adjacent-while-injured edge case: **resolved** — minimum Range is 0 (self). A piece at Range 0 may always target itself.
+
+### OQ-31: Focus Strike / Blade Call Scope — RESOLVED (applied to baseline)
+**Focus Strike buffs the *next* skill used by any of your pieces that turn. Blade Call buffs any *one* Strike skill used by any of your pieces that turn (before or after).** This is the key timing distinction: Focus Strike must come first, Blade Call can be declared retroactively. Each Blade Call activation boosts exactly one Strike, then is spent.
+
+### OQ-32: Movement-via-Skills Damage — RESOLVED (applied to baseline)
+**Skills that move pieces do NOT deal damage.** General rule now in Skill System section of baseline.
+
+### OQ-33: Blade Tempest Self-Affect — RESOLVED (applied to baseline)
+**Blade Tempest does NOT affect the caster.** Only the target takes 1 DMG; only pieces adjacent to the *target* are pushed. Now in skill text.
+
+### OQ-34: Rune Theft Balance — MONITORING
+**Rune Theft (3 Rune cost: 1 DMG + steal 1 Rune) may be too strong with Layer 1 economy.**
+- Elias flagged it as a dominant tool — creates "Rune races" and tempo swings.
+- With +2/turn income, stealing 1 Rune is a meaningful ~50% of a turn's income.
+- **Hypothesis**: Raise cost to 4 Runes, or reduce effect (no damage, just theft).
+- **Evaluation criteria (Session 8)**: Add indirect playtest question: "Did any skill feel too dominant or like a must-pick?" Don't lead with Rune Theft specifically — let players name it organically.
+- **Status**: Monitor in Layer 2. If still dominant, test a nerfed version.
+
+### OQ-35: Skill Pool Draft Variant — DEFERRED (concrete trigger)
+**Alternative draft: each player drafts a pool of N skills first, then assigns skills to Champions.**
+- Proposed by Elias. Potentially reduces "accidental" synergies from round-by-round assignment and increases strategic intent.
+- Might make the draft feel more like deck-building and increase replayability.
+- **Re-entry trigger**: Test after Layer 3 is accepted. Independent of combat/economy changes — can be the first non-combat test layer.
+- **Status**: Deferred. Re-entry: post-Layer-3 acceptance.
+
+### OQ-36: Flexible Piece Placement — DEFERRED (concrete trigger, bundled with OQ-48)
+**Alternative: players choose starting positions within constraints** (e.g., back 2 rows) rather than fixed `--GGGGGG-- / --CCKCCC--` formation.
+- Proposed by Elias. Could increase strategic variety and personalise openings.
+- Risk: increases setup time and cognitive load pre-game. Also risk of infinite counter-positioning (player A places, player B reacts, repeat).
+- **Session 8 note**: The first shuffling turns serve as an on-ramp for new players (learn mechanics before being punished). Removing them removes that buffer. Explore **reveal-style simultaneous pick** (both commit, then reveal) to avoid reactive loops. See backpocket.
+- **Re-entry trigger**: Test after Layer 3 accepted, bundled with OQ-48. Independent of combat changes.
+- **Status**: Deferred. Re-entry: post-Layer-3, bundled with OQ-48.
+
+---
+
+## High Priority (affects system interactions)
+
+### OQ-2: Rune Economy Model
+**Automatic confirmed.** Layer 1 accepted — automatic faster economy works well. Performance-based is still in the backlog but not needed now.
+
+### OQ-4: Skills Per Piece Per Turn
+**Uncapped for now.** Blade Call burst is a skill-specific balance issue, not a structural one.
+
+### OQ-6: Skill Slot Cost (Small vs Big)
+*(Unchanged — not directly tested.)*
+
+### OQ-8: Rune Cap
+**No cap initially.** Players naturally spent down in Playtest 2 as well. Not a problem yet. Re-evaluate after Layer 2.
+
+### OQ-22: Defensive Skill Viability
+**Improved in Playtest 2.** Armorsmith, Rust Shield, Field Medic all used meaningfully. Injured state now relevant ("Often"). Layer 2 (3HP) should deepen this further. Re-evaluate after Layer 2.
+
+### OQ-23: Move Slot Count
+**May be superseded by AP system (Layer 4).** If staying with current turn structure, test 3 Move Slots. If moving to AP, this question dissolves.
+
+### OQ-26: AP System Piece Freedom — NEW (from ADR-002 feedback)
+**How many AP can one piece receive per turn?**
+With unified AP, a single piece could spend all 3 AP on movement and rush the King. Four constraint models proposed:
+- **Model A**: 1-skill-per-piece limit. Doesn't prevent movement rushing.
+- **Model B**: 1-AP-per-piece limit. Forces spreading across army. Most restrictive.
+- **Model C**: Uncapped normally, multi-AP unlocks when ≤2 pieces left (comeback mechanic).
+- **Model D**: Max 2 AP per piece, 3rd must go elsewhere. Hybrid.
+- **Status**: Test all models in Layer 4. Start with Model D as default, test others as variants.
+
+---
+
+## Medium Priority (balance and polish)
+
+### OQ-10: Injured Penalty Severity
+- **Speed penalty is Guard-only**: Champions/King are already Speed 1, so Injured's "Speed capped at 1" does nothing for them. The only Champion/King Injured effect is Range 2+ → Range 1.
+- Question: Is that range reduction punishing enough for Champions/King? Or do Injured Champions feel largely unaffected until they're killed?
+- Potential alternative effects: +1 Rune cost on all skills when Injured; −1 Skill Slot when Injured; or something else.
+- **Status**: Monitor in Layer 2 (whatever topic it becomes). Re-evaluate whether Champions feel meaningfully Injured in practice.
+
+### OQ-11: Armor Cap
+- Keep at 3. Re-evaluate after Layer 2.
+- **Evaluation criteria (Session 8)**: Track armor amounts during game — total armor granted, per player, per piece. Cross-reference with: damage dealt, economy spent on armor vs. offense, game length. This tells us whether armor is (a) too cheap relative to offense, (b) extending games by absorbing too much damage, or (c) well-balanced as a strategic choice.
+
+### OQ-12: Skill Catalogue Completeness
+*(Unchanged.)*
+
+### OQ-24: Skill Card/Rule Clarity
+**Review all skill descriptions for clarity before next playtest.**
+
+---
+
+## Low Priority / Future
+
+### OQ-14: Draw Conditions
+*(Unchanged.)*
+
+### OQ-15: Terrain System
+**Confirmed as overhead complexity.** Removed in A+ direction. Reversible — can return as "map variant" expansion if missed.
+
+### OQ-16: Skill Drafting Fairness
+- Fair but "decides a lot." Future question: is draft too deterministic?
+
+### OQ-27: Piece Count and Ratio — DEFERRED (concrete trigger)
+**What's the right number and ratio of Champions to Guards?**
+- Current: 5 Champions + 6 Guards + 1 King = 12 per player.
+- Proposed (Layer 5): 3 Champions + 3 Guards + 1 King = 7 per player. But is 3:3 (+ King as 4th skill-carrier) the right ratio?
+- Guards surviving into endgame should be viable and cool, not a forced-first-kill obligation.
+- **Session 8 note**: Bundle with board size (OQ-1). Both are "scale it down" changes. BUT: fewer pieces + smaller board automatically makes Runes worth more and skill slots more scarce — risks damaging game experience. Frame as "same feel, shorter games" — must preserve per-turn decision depth.
+- **Re-entry trigger**: After Layer 2/3 playtest — if first Champion kill is still past R15, piece count + board size becomes Priority 1. If first kill moves to R10–15, deprioritize to post-v1.
+- **Status**: Deferred. Re-entry: post-Layer-2/3 based on kill timing data.
+
+### OQ-28: Restricted vs. Free Movement — PARKED INDEFINITELY (v1 out of scope)
+**Should pieces move freely (any path ≤ speed) or in a straight line only (Skill Path model)?**
+- Current baseline: free pathing (any route up to speed, cannot pass through pieces).
+- Hypothesis: Restricting movement to straight-line-only would make Move skills meaningfully stronger.
+- **Session 8 verdict**: Parked. Not solving a real problem — no one has complained about movement feeling too free. Restriction punishes Guards (Speed 2 in a straight line is terrible for navigation) and is meaningless for Champions (Speed 1 = 1 tile in any direction regardless). Dissolves entirely if hex grid (OQ-42) is adopted (hex has no diagonal/orthogonal distinction).
+- **Status**: Parked indefinitely. v1 out of scope. Only revisit if Move skills feel weak AND hex is not adopted.
+
+---
+
+## New (from Session 7, 2026-04-27)
+
+### OQ-37: Standard Attack Damage — READY TO TEST (Layer 2)
+**Should standard attacks deal 1 DMG instead of 2?**
+- Current: standard attack (move onto enemy tile) = 2 DMG, 0 Runes. This is the most efficient damage source in the game, making skills structurally outperformed.
+- Proposed: standard attack = 1 DMG. Skills and attacks deal equal damage, but skills offer range/utility at a Rune cost. Makes skills worth their price.
+- **Risk**: Guards take twice as many hits to remove. May extend game length. Track rounds-to-first-Guard-kill and rounds-to-first-Champion-kill.
+- Rejected alternative: standard attacks cost 1 Rune (muddies attack/skill distinction — players perceive it as "another skill").
+- **Status**: Ready to test in Layer 2 (Game 1). See ADR-003.
+
+### OQ-38: Multi-Champion Combo Bonus — READY TO TEST (Layer 2, Game 2)
+**Should coordinated multi-Champion attacks on the same target get +1 DMG on the second+ hit?**
+- When 2+ different Champions use skills that target the same enemy piece in the same turn, each skill after the first deals +1 DMG.
+- Buff skills targeting your own pieces (Focus Strike, Blade Call, Rust Shield, etc.) do NOT count.
+- Incentivises "gang-ups" — multi-Champion coordination that is currently rare because single-Champion plays are easier.
+- Blade Call stacks with combo bonus (separate effects).
+- **Risk**: could make multi-Champion combos the only viable strategy. Mitigated by naturally high setup cost (LoS constraints on crowded board).
+- **Status**: Ready to test in Layer 2 (Game 2, on top of OQ-37 nerf). See ADR-003.
+
+### OQ-39: Shared-Puzzle Design Direction — OPEN
+**Should the game lean into "rewarding cleverness / mutual epistemic exploration" as a deliberate design direction?**
+- Playtest 2 emergent behaviour: both players collaboratively analysing board states felt more engaging than pure competition.
+- Research (`docs/research/cooperative-feel-competitive-games.md`) shows this is a known phenomenon in perfect-information games. Engineered deliberately in Onitama, Twilight Struggle, Go, Tak.
+- Key finding: the shared-puzzle feel comes from perfect information + depth, not from removing competition. Winning = "I found the better solution," not "I crushed you."
+- Not a mechanical commitment yet — more a framing/identity question that influences how rules are written, skills are named, and the experience is presented.
+- Design principles agreed (see ADR-003): expand viable strategies, reward cleverness visibly, let both players appreciate each other's plays.
+- **Status**: Open. Principles agreed, not yet a mechanical commitment. Revisit after Layer 2 data. See also OQ-51 (mechanical levers for rewarding clever plays).
+
+### OQ-40: Standoff / No-Man's-Land Problem — TRACKING (Layer 2)
+**How to dissolve the zone between formations that neither player wants to enter first?**
+- Both playtests showed this: a 2-3 tile gap where entering attack range risks instant death (2 DMG standard attack). First player to commit is at disadvantage.
+- Playtest 2: "two guards like pawns" blocking lanes at R14. Standoff with 2-3 spaces between formations. Rarely any close-quarter combat.
+- **Hypothesis**: Standard attack nerf (OQ-37) lowers entry risk (Injured, not dead). Combo bonus (OQ-38) raises coordination reward. Together these may dissolve the standoff.
+- **Status**: Track explicitly in Layer 2. Ask playtesters: "Did you feel reluctant to move pieces forward? When did first contact happen?"
+
+### OQ-41: Game Length vs. Damage Nerf Tradeoff — TRACKING (Layer 2)
+**If standard attacks deal 1 DMG, does the game get longer?**
+- Likely yes for Guard removal (twice as many hits needed). Unclear for Champions (combo bonus may speed up Champion kills).
+- Compensating mechanisms if game length increases: fewer pieces (Layer 5), smaller board (Layer 5), checkmate win condition (independent layer).
+- Note: Playtest 2's "only 1 Champion kill in 26 rounds" stat excludes Guards — Guards were dying throughout. The nerf specifically slows Guard clearing.
+- **Status**: Track in Layer 2. Compare rounds-to-first-Guard-kill and rounds-to-first-Champion-kill against Playtest 2 data.
+
+---
+
+## New (from Session 8, 2026-04-28 — migrated from baseline-rules/md-converted/Systems to Test.md)
+
+### OQ-42: Hex Grid Board — REOPENED
+`[System: Board/Spatial] [Affects: Skill System (push/pull/path geometry), Movement, Bodyguard]`
+
+**Should we evaluate a hexagonal grid as an alternative to the square 10x10?**
+- Listed as "Withdrawn" in mechanics-evaluated.md (Session 1, ADR-001), but the rejection was by omission — the ADR confirmed "grid over card-fighter," not "square over hex." Hex IS a grid.
+- **Potential upside**: Eliminates diagonal ambiguity in Skill Path (queen-moves are cleaner on a hex grid — all 6 directions are equidistant). Push/pull becomes geometrically unambiguous. Bodyguard adjacency clearer.
+- **Potential downside**: Completely changes spatial intuition. Piece counts, board size, and formation thinking all need reevaluation. All push/pull/range rules must be reimagined. High design risk.
+- **Research needed**: How do published tactical games (Hive, Summoner Wars hex variants, BattleCON) handle hex vs. square? What does hex do to combo geometry?
+- **Status**: Reopened. Add to backlog. Trigger `/research hex vs square grid in 2-player tactical board games` before any test layer is proposed.
+
+---
+
+### OQ-43: CR-Style Draft Picks — PARKED INDEFINITELY (v1 out of scope)
+`[System: Skill Drafting] [Affects: Skill System (combo visibility during draft)]`
+
+**Should skill drafting use "one for me, one for you" alternating pairs instead of the current alternating singles?**
+- Current: P1 picks 2 skills (assigns freely), then P2, repeating.
+- CR style: P1 picks 1, P2 picks 1, P1 picks 1, P2 picks 1 — stricter interleaving.
+- **Session 8 verdict**: Parked. Restricts free strategy picking — with a small catalogue, counter-picking leads to "correct" picks that reduce variety. Feels more like a tournament variant than the main game. Only relevant with a much larger catalogue (20+ skills).
+- **Status**: Parked indefinitely. v1 out of scope. Variant/expansion material.
+
+---
+
+### OQ-44: Ban Phase in Skill Draft — PARKED INDEFINITELY (v1 out of scope)
+`[System: Skill Drafting] [Affects: Skill System]`
+
+**Should players ban 1–2 skills each before picks begin?**
+- Original proposal from Systems to Test (pre-project).
+- **Session 8 verdict**: Parked. This is from an older game version with unique Champions that had fixed skills — players chose Champions from a pool. The current system (shared skills, free assignment) makes banning less meaningful. Needs 20+ skills AND a different draft model to be viable.
+- **Status**: Parked indefinitely. v1 out of scope.
+
+---
+
+### OQ-45: Starting Player Decision — PARKED INDEFINITELY
+`[System: Turn Structure] [Affects: Resource Economy (bid costs Runes)]`
+
+**How should the first player for the first round be determined?**
+- Current: mutual agreement / not specified.
+- Options: coin flip (contradicts no-luck), hidden Rune bid, mutual agreement.
+- **Session 8 verdict**: Parked. No first-player advantage observed in 2 playtests. If it ever surfaces over many games (accounting for skill level), the fix is Go-style komi (P1 starts with fewer Runes as compensation), not a bidding war.
+- **Status**: Parked indefinitely. Only revisit if consistent first-player win rate observed across many games.
+
+---
+
+### OQ-46: Rune Cap — MONITORING
+`[System: Resource Economy] [Affects: Skill System]`
+
+**Should there be a hard cap on Runes (e.g., 8)?**
+- Current: no cap. Players naturally spend down — hoarding not observed as a problem in P1 or P2.
+- As economy speeds up (Layer 1: +2/turn), a cap of 8 would rarely bind in practice.
+- **Evaluation criteria (Session 8)**: Ask playtesters: "Do you feel like players are hoarding Runes?" Distinguish between: (a) strategically saving for a big combo play, (b) saving because no viable spend exists, (c) accumulating without awareness. Only (b) and (c) are problems. Also: define desired Rune state — how many Runes should a player typically hold? This informs whether a cap is needed at all.
+- **Status**: Monitoring. Re-evaluate after Layer 2. If large pools accumulate without spending, test cap at 8.
+
+---
+
+### OQ-47: Performance-Based Rune Gain — CLOSED (Session 8)
+`[System: Resource Economy] [Affects: Combat, Progression]`
+
+**Should Rune gain be tied to board performance rather than (or in addition to) automatic time-based scaling?**
+- Options from Systems to Test: Capture bonus (+2 Runes), occupy centre tile 1 full round (+1 gain), King advanced 2 rows above start (+1 gain), per 2 pieces taken (+1 gain), max gain cap 5.
+- **Session 8 verdict**: Closed permanently. Performance-based income forces players toward whichever strategy earns Runes fastest, constraining creative expression and making every game feel the same ("you must play this way to gain Runes"). Auto-economy is strategy-neutral — supports aggro, control, and defensive archetypes equally. The combo bonus (Layer 2) is the correct lever: it rewards *cleverness of execution* (hard to set up, high coordination cost), not *which action you performed*. This avoids the KPI problem.
+- **Status**: Closed. Not revisiting.
+
+---
+
+### OQ-48: Piece Placement Order — DEFERRED (concrete trigger, bundled with OQ-36)
+`[System: Skill Drafting] [Affects: Movement, Combat]`
+
+**Should players place pieces on the board after the skill draft (informed by loadout) rather than before it?**
+- Current: fixed starting formation (Guards in front row, Champions + King in second row, middle of the board).
+- Proposed: after equipping a Champion with skills, place it on the board before picking the next Champion's skills. Or: equip all, then place freely within the starting zone.
+- Potential upside: Draft-informed placement. A Champion with ranged skills can start on a flank; a melee Champion can start centre.
+- Connects to OQ-36 (flexible piece placement — Elias suggestion) and OQ-9 (placement is "balanced" at current fixed positions).
+- **Session 8 note**: Bundled with OQ-36. Explore reveal-style simultaneous placement to avoid infinite counter-positioning. See `docs/backpocket.md`.
+- **Re-entry trigger**: Test after Layer 3 accepted, bundled with OQ-36. Independent of combat changes.
+- **Status**: Deferred. Re-entry: post-Layer-3, bundled with OQ-36.
+
+---
+
+### OQ-49: Skill Path Obstruction Model — DEFERRED (concrete trigger)
+`[System: Skill System] [Affects: Combat, Bodyguard]`
+
+**What should count as an obstruction to the Skill Path?**
+- Current (baseline): **all pieces** (ally and enemy) block the Skill Path.
+- **Idea 1**: Only opponent pieces block. Own pieces are transparent to your skills.
+  - Upside: Removes the need to reposition allies to clear LoS. More skills usable per turn.
+  - Risk: Enables "turtle" formation — cluster all pieces together, use skills from safety. Withdrawn in Session 7 for this reason.
+- **Idea 2**: Only opponent Guards block (not Champions/King, not own pieces).
+  - Upside: Guards become active LoS controllers. Defensive formation matters more.
+  - Risk: Creates "Guard wall" dominant strategy — stack Guards to block all enemy skill paths.
+- **Note**: Idea 1 was explicitly discussed and withdrawn in Session 7 (creates turtle meta). Idea 2 not yet evaluated.
+- **Re-entry trigger**: After Layer 2 — if own-piece LoS blockage is consistently frustrating (players repeatedly can't use skills because their own pieces are in the way), test Idea 2. Otherwise park.
+- **Status**: Deferred. Idea 1 withdrawn. Idea 2 conditional on Layer 2 frustration data.
+
+---
+
+### OQ-50: Minor/Major Skill Slot Cost — DEFERRED (concrete trigger)
+`[System: Skill System] [Affects: Resource Economy, Progression]`
+
+**Should skills cost different numbers of Skill Slots (minor = 1, major = 2) rather than all costing 1 slot?**
+- Current: all skills cost 1 Skill Slot + their Rune cost.
+- Proposed: "minor" skills (simple effects) cost 1 slot; "major" skills (complex/high-impact) cost 2 slots.
+- **Session 8 discussion**: With 2 slots/turn, 2-cost skills are traps (no one takes them). BUT — if we design intentionally powerful "ultimate" skills worth the commitment, the mechanic becomes interesting: one player strategically saves toward a single game-turning play. Could serve as endgame acceleration (powerful late-round plays that break deadlock). Must ensure that in later rounds (3+ slots), these don't become spammable.
+- **Re-entry trigger**: Design 2-3 candidate "ultimate" skills (2 slots + high Rune cost) that would make the mechanic worth testing. Only evaluate as part of Layer 4+ (when Skill Slots expand to 3/turn). Connected to endgame acceleration (OQ-19).
+- **Status**: Deferred. Pre-work needed: design ultimate skill candidates first.
+
+---
+
+### OQ-51: Mechanical Levers for Rewarding Clever Plays — OPEN
+`[System: Cross-system] [Affects: Combat, Skill System, Progression]`
+
+**Beyond the combo bonus, what other mechanical levers can reward clever play?**
+- The combo bonus (Layer 2) rewards multi-Champion coordination. But it's one lever. What else can the game use to make cleverness *mechanically* rewarded (not just aesthetically satisfying)?
+- **Existing levers**: Combo bonus (+1 DMG for coordination), Blade Call (+1 DMG for buff setup), Focus Strike (+1 Range for buff setup).
+- **Candidate levers to explore**:
+  - *Cascade trigger*: When a skill kills a piece, the attacking Champion gets +1 free Skill Slot this turn (chain reaction — setup the kill, keep going).
+  - *Positional payoff*: A Champion that hasn't moved for 2+ turns gains +1 Range (rewards patient positioning — "I put this piece here for a reason").
+  - *Coordinated movement bonus*: If 2+ pieces move toward the same zone in Movement Phase, the first skill targeting that zone costs −1 Rune (rewards reading the board and committing together).
+  - *Threat creation (checkmate-style)*: Creating an inescapable lethal position IS the reward — forcing a response is power. The game ends on the *setup*, not the execution.
+- **Design constraint**: Must reward *cleverness of execution* (hard to set up, requires multi-turn planning), not *outcomes* (easy to measure, creates snowball). The KPI principle from ADR-003 applies.
+- **Research needed**: How do comparable games (Go, Chess, Onitama, Hive) mechanically reward clever multi-turn setups beyond just "you win the piece exchange"?
+- **Status**: Open. Explore candidate levers. Connected to OQ-39 (shared-puzzle), OQ-19 (endgame acceleration via checkmate), OQ-50 (ultimate skills).
