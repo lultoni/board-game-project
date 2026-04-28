@@ -226,8 +226,8 @@ Results go in `playtest-results/<players>-<date>/` as photo scans. Run `/playtes
 
 `old-game-versions/` contains archived material from earlier iterations of the game going back to 2023. Three subfolders correspond to distinct eras:
 
-- `UPLOAD - Realm of Elements/` — the original concept with elemental mages on an 8×8 board (2023)
-- `Outdated ROE/` — Project ROE: a redesign with Champion classes, tile control, and a digital Java implementation (2023–2024)
-- `first-boardgame-oriented-concept/` — the first pure board game ruleset: 12×12 terrain board, Guards, Champions, King, Runes, Skills (2024–2025, pre-migration)
+- `v1-realm-of-elements/` — the original concept with elemental mages on an 8×8 board (2023)
+- `v2-project-roe/` — Project ROE: a redesign with Champion classes, tile control, and a digital Java implementation (2024)
+- `v3-first-board-game/` — the first pure board game ruleset: Guards, Champions, King, Runes, Skills (2025, pre-migration)
 
 See [`old-game-versions/README.md`](old-game-versions/README.md) for the full game history and a timeline of how the design evolved.
