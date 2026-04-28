@@ -68,7 +68,7 @@ The first version had five **elemental mages** — Fire, Water, Earth, Air, Spir
 
 A full Java/Swing desktop application ([`lultoni/realm-of-elements`](https://github.com/lultoni/realm-of-elements)) with all 15 element spells implemented in code, a turn state machine, guard prioritisation logic, an Elo rating system with SQLite persistence, and — because why not — a 65-track medieval music library scraped from Age of Empires and Crusader Kings soundtracks. The game was playable as local multiplayer. It had piece sprites, board rendering, move validation. It had *vibes*.
 
-A few games were played with Jonathan. It was fun. It was also clearly incomplete — the rules had holes, the balance was rough, and there was no AI to play against when friends weren't around.
+It also got played. A lot, actually — the SQLite database survived in the repo and still holds the records: **Elias Glauert, 20 games played, Elo 1054**. Jonathan Vierus: 6 games, Elo 1003. Jonathan Payk: 10 games, Elo 943. Mario Glauert even showed up for 4 games. The Test1/Test2 entries (22 games each, Elo ~1000) suggest someone was running balance experiments. In total, at least **62 games** of this version were played and tracked — probably more that were played without logging. That's not a prototype, that's a game people were genuinely playing.
 
 ---
 
