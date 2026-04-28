@@ -73,6 +73,15 @@ Update `HANDOVER.md`:
 - Keep everything else (instructions, key files table, design principles) unchanged.
 - Verify the file stays under 80 lines.
 
-## Step 4: Confirm
+## Step 4: Commit and Push
 
-Output a summary of what was updated, listing each file and what changed. Ask the user if they want to commit the changes.
+1. Run `git status --short` to see all changed files.
+2. Stage all changed files: `git add -A`
+3. Commit with a message in this format:
+   ```
+   Session N — <short title>
+   
+   <2-3 sentence summary of what changed>
+   ```
+4. Push to origin: `git push`
+5. Output a summary of what was updated (each file and what changed), and confirm the push succeeded with the commit hash.

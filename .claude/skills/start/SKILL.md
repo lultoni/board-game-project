@@ -8,6 +8,10 @@ disable-model-invocation: true
 
 Read the following files in order to build context, then present a concise status briefing.
 
+## Step 0: Sync with Remote
+
+Run `git pull` to fetch any changes pushed from another device. If there are conflicts, surface them to the user before proceeding.
+
 ## Step 1: Read Living Documents
 
 Read all of these files (in parallel where possible):
