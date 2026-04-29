@@ -1,6 +1,6 @@
 # CURRENT DESIGN - (GAME NAME)
 
-*Last updated: 2026-04-29 — Session 11 (4 research topics completed: clever-play levers, checkmate win conditions, forward positioning/sente, skill catalogue balance. 10 skill candidates staged. G8 guardrail added. Sente as primary standoff solution.)*
+*Last updated: 2026-04-29 — Session 12 (TESTING_PLAN.typ fully updated: stale stack descriptions fixed, entry conditions corrected, decision tree expanded to cover all 7 stacks as table format, priority sequence added. 3 new skill/mechanic ideas staged for discussion: terrain objects, laser beam, wave push/pull.)*
 
 ---
 

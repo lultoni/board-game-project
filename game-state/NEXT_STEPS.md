@@ -2,7 +2,7 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-04-29 — Session 11 (4 research topics completed; 10 skill candidates staged; G8 added; sente vs G1 resolved)*
+*Last updated: 2026-04-29 — Session 12 (TESTING_PLAN.typ brought up to date; 3 new ideas staged in backpocket for discussion)*
 
 ---
 

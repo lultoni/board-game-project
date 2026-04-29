@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-04-29 — end of Session 11.*
+*Last updated: 2026-04-29 — end of Session 12.*
 
 ---
 
@@ -31,13 +31,10 @@ You are my board game design co-creator and systems architect. We are working on
 5. Skim `docs/brainstorm/session-log.md` for the latest session entry to understand recent context.
 6. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 11 complete, 2026-04-29)
+### Where We Are (Session 12 complete, 2026-04-29)
 
-- **Playtest-response research complete**: 4 research topics finished (clever-play levers, checkmate, forward positioning, skill catalogue balance). Results in `docs/research/`.
-- **10 skill candidates staged**: Thorn Armor, Runic Ward, Bulwark, Bind, Energize, Skill Drain, Mini-Step, Swap Step, Ram, Gravity Well — all in `docs/backpocket.md` with sente analysis and conflict notes.
-- **Sente as primary standoff solution**: Design skills that create must-respond threats from forward positions. Confirmed G1/G8 compatible.
-- **G8 guardrail added**: "Players must always want to do more than they can execute." In CLAUDE.md + backpocket.
-- **Checkmate killed**: Replaced by King Lifetime HP + Armor Decay as Stack C candidates.
+- **TESTING_PLAN.typ fully overhauled**: All 7 stacks now have correct descriptions, entry conditions, and a complete table-based decision tree (replacing unreadable Mermaid diagrams). Priority sequence added.
+- **3 new ideas staged for discussion**: Terrain objects (placeable skill stations), Laser Beam (piercing line damage), Wave Push/Pull (mass displacement). All in `docs/backpocket.md` with `[TO DISCUSS]` tags.
 - **Stack A still ready to print and play** — unchanged from Session 9. This remains the immediate priority.
 
 ### Immediate Next Action
@@ -49,6 +46,8 @@ You are my board game design co-creator and systems architect. We are working on
 - `shared/game-tracking.pdf` — 1 per player per game
 
 After results: use `/playtest` skill to transcribe. Then consult `docs/backpocket.md` for pre-staged responses (sente skills, cascade trigger, skill candidates) based on what the data shows.
+
+When time allows: discuss 3 new `[TO DISCUSS]` ideas in backpocket (terrain objects, laser beam, wave push/pull).
 
 ### Key Design Principles (always follow)
 

@@ -522,6 +522,85 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ---
 
+## [TO DISCUSS] Terrain Objects — Placeable Skill Stations (Session 12 idea)
+
+**Concept**: Terrain "effects" are permanent objects placed on tiles with 1 HP (destructible). Pieces walk to them to use their effect. Unlike removed terrain (ADR-001), these are player-created via skills — not map features.
+
+**Example — Placeable Armorsmith**: A skill places a "forge" token on a tile. Any friendly piece that moves onto or through that tile can spend Runes to gain Armor (e.g., pay 2 Runes → +1 Armor). Alternatively: upfront investment model (pay 5 Runes to place; any ally on the tile gets +1 Armor for free, unlimited uses until destroyed).
+
+**Why interesting**:
+- Creates forward-positioning incentive — you MUST push toward (or protect) your station to benefit
+- Opponent must decide: ignore it (let them armor up) or destroy it (costs 1 attack action + positioning)
+- Sente property: a well-placed station forces the opponent to either contest the zone or concede the value
+- Solves standoff: places something worth fighting over in the middle of the board
+
+**Ownership model (design decision)**:
+- **Player-spawned**: A skill places the station (costs Runes + a Skill Slot action). Only your pieces benefit. Creates asymmetric board states — your station is your advantage to defend.
+- **Neutral / pre-placed**: Stations exist on fixed tiles from game start (or appear at set rounds). Both players can use them. Creates contested zones — whoever controls the tile gets the benefit.
+- Hybrid: neutral stations exist, but a skill lets you "claim" or "corrupt" one (flip it to your side / deny opponent access).
+
+**Open questions**:
+- Does this violate "no terrain" (ADR-001)? Or is it different because it's player-created/contestable, temporary, and destructible?
+- 1 HP = one hit to destroy. Too fragile? Or correct because placement itself cost Runes?
+- What other station types? (Healing font, Rune generator, speed boost tile, LoS blocker?)
+- How does this interact with G4 (tracking)? Token on tile = fine. But if effects are conditional (e.g., "first piece each turn"), overhead increases.
+- Does this change the game's identity too much toward territory control?
+
+**Trigger**: Discuss before testing. Potentially connects to OQ-40 (standoff dissolution) and Stack D (board feel). Could be its own mini-stack if the concept survives discussion.
+
+---
+
+## [TO DISCUSS] Laser Beam — Line Damage Skill (Session 12 idea)
+
+**Concept**: A high-cost Strike/Mystic skill that deals 1 DMG to ALL pieces (ally and enemy?) along the Skill Path line. Pierces through blockers — the line keeps going.
+
+**Possible design**: *Laser Beam (Strike, cost 5-6 Runes)*: Choose a direction from caster. Deal 1 DMG to every piece on that line until board edge. Does NOT stop at the first piece (unlike normal Skill Path).
+
+**Why interesting**:
+- Ultimate/expensive skill — high cost makes it a committed investment, not spammable
+- Anti-stalling tool: breaks through defensive walls and "hiding behind Guards" formations
+- Forces opponent to spread out rather than cluster (anti-deathball)
+- Punishes predictable linear formations — creates a new positional concern
+
+**Open questions**:
+- Hits own pieces too? (More interesting but harder to use — reward is positioning your pieces OFF the line)
+- Only enemies? (Safer design but less interesting positioning puzzle)
+- Does it ignore Skill Path blockage entirely? (If yes: unique mechanic. If no: it's just multi-target Lance Thrust.)
+- At 5-6 Runes: is it ever worth it vs. multiple cheaper targeted skills? Need to ensure there's a board state where it's the correct play.
+- Blade Call interaction: +1 DMG to ALL targets? (Probably no — Blade Call buffs exactly one Strike.)
+
+**Trigger**: Discuss as part of skill catalogue expansion (Stack F). Clearly an "ultimate" tier skill — connects to OQ-50 (major skill slot cost) if that's ever implemented.
+
+---
+
+## [TO DISCUSS] Wave Push — Line Displacement Skill (Session 12 idea)
+
+**Concept**: A Move skill that pushes ALL pieces on the Skill Path line 1 tile in the cast direction. Like a shockwave traveling down a corridor.
+
+**Possible design**: *Wave Push (Move, cost 3-4 Runes)*: Choose a direction from caster along Skill Path. All pieces (ally and enemy) on that line are pushed 1 tile away from caster.
+
+**Why interesting**:
+- Mass displacement — disrupts entire formations in one action
+- Creates chain reactions if pieces are pushed into each other (connects to collision damage concept / Ram skill)
+- Strategic depth: you might push your OWN pieces forward as a feature, not a bug
+- Anti-stalling: breaks apart defensive clusters, forces re-evaluation of positions
+
+**Mirror skill — Wave Pull**: Same mechanic, opposite direction. All pieces on the line are pulled 1 tile toward caster.
+- More dangerous to use (pulls enemies closer to you)
+- Enables: pull enemy piece into your combo kill zone
+- Creates interesting pair: draft Push for anti-stalling, draft Pull for aggressive combo setups
+
+**Open questions**:
+- Affects both ally and enemy? (More interesting, harder to use, higher skill ceiling)
+- What happens when a piece is pushed into the board edge? (Stays in place? Takes 1 DMG from wall slam?)
+- What happens when pushed into another piece? (Stop before it? Collision damage? See Ram / collision damage section.)
+- Connects to existing "Push Wave" in Previously Listed Ideas (line 218) — this is a more fleshed-out version.
+- Is Wave Pull too strong as a combo setup tool? (Pull 3 enemies into a cluster → Blade Tempest AoE?)
+
+**Trigger**: Discuss as part of skill catalogue expansion (Stack F). Supersedes the earlier "Push Wave" concept in Previously Listed Ideas.
+
+---
+
 ---
 
 ## Known Potential Issues

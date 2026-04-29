@@ -1,5 +1,38 @@
 # Session Log
 
+## Session 12 — 2026-04-29 — TESTING_PLAN Overhaul + New Ideas
+
+**Goal**: Audit whether all test stacks have up-to-date timelines/entry conditions in the TESTING_PLAN document; fix any staleness. Capture new design ideas.
+
+**What was done**:
+- Deep audit of TESTING_PLAN.typ revealed multiple stale entries from Sessions 10-11 decisions not being reflected.
+- Fixed Stack C description (removed killed checkmate, replaced with King Lifetime HP / Armor Decay).
+- Fixed Stack F description (replaced "Ultimate skills" with cascade trigger / Pin/Threatened / sente skills).
+- Fixed Stack D description (added piece count scenario).
+- Updated all entry conditions (Stack C, F corrected; Stack G added — was missing entirely).
+- Added "Current Priority Sequence" section (P1–P4 table mirroring NEXT_STEPS.md).
+- Replaced unreadable Mermaid diagrams with table-based decision tree covering all 7 stacks in two phases.
+- Added Session 11 context note-box summarising key design decisions.
+- Removed `mmdr` package dependency (Mermaid diagrams replaced by tables).
+- All 12 PDFs rebuilt cleanly.
+- Added 3 new `[TO DISCUSS]` ideas to backpocket.md: terrain objects/placeable skill stations, laser beam (piercing line damage), wave push/pull (mass line displacement).
+
+**Key findings**:
+- TESTING_PLAN.typ had been stale since Session 9 — Sessions 10-11 made material design decisions (checkmate killed, sente chosen, G8 added) that weren't reflected in the document.
+- Mermaid diagrams via `mmdr:0.2.1` render too small for complex flowcharts (~40 nodes). Table-based format is far more readable for printed reference.
+- Stack G had no entry condition documented anywhere in TESTING_PLAN — oversight since Session 9.
+
+**Decisions made**:
+- Decision tree format: tables over Mermaid diagrams for this document (readability for printed reference).
+- All stack descriptions and entry conditions now match CURRENT_DESIGN.md and NEXT_STEPS.md as single source of truth.
+
+**Open items for next session**:
+- **Print and play Stack A** — still the top priority (unchanged since Session 9).
+- Discuss 3 new `[TO DISCUSS]` ideas (terrain objects, laser beam, wave push/pull) when appropriate.
+- After Stack A results: use staged research in backpocket to respond quickly.
+
+---
+
 ## Session 11 — 2026-04-29 — Research & Brainstorm: Playtest Response Toolkit
 
 **Goal**: Pre-load design knowledge for rapid responses to upcoming Stack A/B playtest results. Research 4 topics via Perplexity, discuss findings, stage concrete candidates.
