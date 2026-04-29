@@ -184,13 +184,38 @@ Don't ban strategies — make more strategies viable. If one approach dominates,
 
 ## Rewarding Risky Positioning
 
-**Design question (not a fix)**: How to systematically reward putting pieces in exposed/forward positions without rewarding reckless "yolo" play where you sacrifice pieces for no gain.
+**Problem**: Both playtests showed a "standoff zone" — 2-3 tile gap between formations that neither player wants to cross first because entering attack range risks heavy damage. First player to commit is at a disadvantage because the opponent can react optimally (perfect information makes this worse than in games with randomness).
 
-**Context**: The standoff / no-man's-land problem from Playtests 1-2 shows players avoid committing pieces to forward positions. The standard attack nerf (Layer 2) lowers the risk of commitment. The combo bonus rewards coordination. But there may be a deeper structural incentive needed — some kind of positional advantage for holding forward ground.
+**Research findings (Session 11 — `docs/research/forward-positioning-incentives.md`)**:
+Five mechanical patterns identified: contested Rune generators (Advance Wars), one-time threshold bonuses, objective/VP scoring (Aristeia!/Kemet), sente skills (Go theory), and underdog bonuses. Key insight: the standoff is an incentive-intent gap — our game makes waiting strictly dominant. The attack nerf addresses entry risk but not the cost of passivity.
 
-**Ideas to explore**: Board-zone bonuses (more Runes/Range in centre), forward-deployment bonus (Champion in opponent's half gets +1 Range), "territory" scoring as alternative win condition component. All speculative — needs research and discussion.
+**Primary solution: Sente Skill Design (design principle, not a mechanic)**:
+Rather than adding territory-control mechanics that shift the game's identity, design skills that naturally create threats requiring immediate response from forward positions. The game dissolves standoffs through its OWN systems (skills/combos) rather than bolted-on spatial incentives.
 
-**Trigger**: After Layer 2 data, if the standoff problem persists despite the standard attack nerf and combo bonus.
+**What makes a skill "sente" (threat-forcing)**:
+- Creates a state the opponent MUST respond to or suffer consequences
+- Is more effective from forward/contested positions (rewards advancement implicitly)
+- Doesn't require a separate tracking system — the threat IS the skill effect
+
+**Current skills with sente properties**:
+- Rune Theft: forces economy response
+- Blade Tempest: pushes pieces out of formation, opponent must reposition
+- Combo bonus (Stack A): if 2 Champions are in range of a target, opponent MUST deal with one
+
+**Current skills WITHOUT sente properties** (opponent can ignore):
+- Armorsmith, Field Medic: self/ally buffs — no pressure on opponent
+- Focus Strike: setup for your own future action — opponent can wait
+
+**Implication for skill catalogue expansion**: Prioritize skills that create "must-respond" threats from mid-range positions. Skills that are purely self-buffing don't dissolve standoffs. See Topic 4 (skill gaps) for specific candidates.
+
+**Fallback hierarchy (if sente skills + attack nerf don't dissolve standoff)**:
+1. One-time midline crossing bonus (+1 Rune per Champion crossing rank 5 for first time) — small, non-compounding
+2. Contested Rune generators (2-3 midfield tiles producing Runes for controller) — shifts identity toward territory control, use only if desperate
+3. VP scoring track (parallel win condition for forward presence) — absolute last resort, conflicts with core fantasy
+
+**Anti-snowball safeguards (if generators ever deployed)**: Fixed-rate nodes, presence-required (piece must stay), recapturable (never locked in), "make winning cost resources."
+
+**Trigger**: Monitor in Stack A playtest. If standoff persists despite 1 DMG attack nerf, escalate. If standoff dissolves, deprioritize entire section.
 
 ---
 

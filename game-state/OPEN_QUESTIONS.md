@@ -225,12 +225,15 @@ With unified AP, a single piece could spend all 3 AP on movement and rush the Ki
 - Design principles agreed (see ADR-003): expand viable strategies, reward cleverness visibly, let both players appreciate each other's plays.
 - **Status**: Open. Principles agreed, not yet a mechanical commitment. Revisit after Layer 2 data. See also OQ-51 (mechanical levers for rewarding clever plays).
 
-### OQ-40: Standoff / No-Man's-Land Problem — TRACKING (Layer 2)
+### OQ-40: Standoff / No-Man's-Land Problem — RESEARCHED (Session 11, tracking in Stack A)
 **How to dissolve the zone between formations that neither player wants to enter first?**
 - Both playtests showed this: a 2-3 tile gap where entering attack range risks instant death (2 DMG standard attack). First player to commit is at disadvantage.
 - Playtest 2: "two guards like pawns" blocking lanes at R14. Standoff with 2-3 spaces between formations. Rarely any close-quarter combat.
-- **Hypothesis**: Standard attack nerf (OQ-37) lowers entry risk (Injured, not dead). Combo bonus (OQ-38) raises coordination reward. Together these may dissolve the standoff.
-- **Status**: Track explicitly in Layer 2. Ask playtesters: "Did you feel reluctant to move pieces forward? When did first contact happen?"
+- **Research findings** (`docs/research/forward-positioning-incentives.md`): Five mechanical patterns identified. Key insight — standoff is an incentive-intent gap; perfect information makes it worse (no informational advantage to committing first). XCOM postmortem confirms: reduced entry risk (our attack nerf) + moderate cost to passivity is the ideal combination.
+- **Primary solution chosen: Sente skill design principle** — design skills that create "must-respond" threats from forward/mid-range positions. The game dissolves standoffs through its own skill system, not bolted-on territory mechanics. Identity stays pure.
+- **Hypothesis (unchanged)**: Standard attack nerf (OQ-37) lowers entry risk. Combo bonus (OQ-38) raises coordination reward. Sente-property skills in future catalogue create implicit forward pressure. Together these should dissolve the standoff.
+- **Fallback hierarchy** (if primary approach fails): (1) one-time midline crossing bonus, (2) contested Rune generators, (3) VP scoring track. See `docs/backpocket.md` for details.
+- **Status**: Researched. Primary approach decided (sente skills). Track in Stack A. Ask playtesters: "Did you feel reluctant to move pieces forward? When did first contact happen?"
 
 ### OQ-41: Game Length vs. Damage Nerf Tradeoff — TRACKING (Layer 2)
 **If standard attacks deal 1 DMG, does the game get longer?**
