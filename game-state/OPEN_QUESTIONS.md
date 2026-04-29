@@ -160,8 +160,16 @@ With unified AP, a single piece could spend all 3 AP on movement and rush the Ki
 - Keep at 3. Re-evaluate after Layer 2.
 - **Evaluation criteria (Session 8)**: Track armor amounts during game — total armor granted, per player, per piece. Cross-reference with: damage dealt, economy spent on armor vs. offense, game length. This tells us whether armor is (a) too cheap relative to offense, (b) extending games by absorbing too much damage, or (c) well-balanced as a strategic choice.
 
-### OQ-12: Skill Catalogue Completeness
-*(Unchanged.)*
+### OQ-12: Skill Catalogue Completeness — RESEARCHED (Session 11)
+**Is the catalogue large enough and balanced enough across categories?**
+- Research (`docs/research/skill-catalogue-balance.md`): Minimum 25-35 skills needed for meaningful draft variety. At 15, most skills are picked by someone — no real draft tension.
+- Playtest 2 data shows: all 3 Shield skills heavily used (category exhausted in variety, not copies), Focus Strike is must-pick (Mystic monopoly), Blade Call never-picked in P2 meta.
+- **Real problem**: Too few distinct strategic identities within Shield (3 passive buffs) and Mystic (1 must-pick + 1 never-pick). Not a "nobody picks defense" problem.
+- **Design principle**: New skills must pass the sente test (create situations opponent must respond to). Passive-only skills don't create interesting decisions.
+- **10 new skill candidates staged** in `docs/backpocket.md`: Thorn Armor, Runic Ward, Bulwark (Shield); Bind, Energize, Skill Drain (Mystic); Mini-Step, Swap Step, Ram (Move); Gravity Well (Move, needs design work).
+- **Target**: ~25 skills total (current 15 + 10 new). Distribution: ~9 Strike / 6 Shield / 5 Move / 5 Mystic.
+- **Trigger for expansion**: Stack F or dedicated session after Stack A/B confirm combat balance is stable. Do not expand mid-combat-testing.
+- **Status**: Researched. Candidates staged. Expansion gated on Stack A/B results.
 
 ### OQ-24: Skill Card/Rule Clarity
 **Review all skill descriptions for clarity before next playtest.**

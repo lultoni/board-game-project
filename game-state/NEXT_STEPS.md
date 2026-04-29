@@ -79,7 +79,8 @@ Full reasoning: `docs/decisions/ADR-003-rewarding-cleverness.md`
 - **Run `/research` on hex vs. square grid** (OQ-42) — before any hex layer proposed
 - **Run `/research` on how board games track temporary effects on pieces** — blocks: Temp Armor, Shield duration, Active Guard-Bind (see triage "Needs Tracking Solution" section)
 - **Brainstorm session: Adjacency synergies / piece compatibility** — user excited (Session 10 feedback); connects OQ-51 (rewarding clever plays). Reward complex positioning setups.
-- **Skill catalogue expansion** (connects Stack F / Cleverness II) — staged candidates: attack-then-reposition, line pull (Strömungsruf), range empowerment expansion, speed boost, heal at range. Add gradually after core combat stacks resolve.
+- **Skill catalogue expansion** (connects Stack F / Cleverness II) — 10 new candidates staged in backpocket (Session 11): Thorn Armor, Runic Ward, Bulwark, Bind, Energize, Skill Drain, Mini-Step, Swap Step, Ram, Gravity Well. Target ~25 total skills. Gated on Stack A/B combat balance confirmation.
+- **Improve `/playtest` skill**: Add draft-pick extraction and analysis as standard step (parse which skills each player drafted, usage frequency, must-pick/never-pick patterns). Identified Session 11.
 - First-player advantage mitigation
 - In-game skill redraft (shop/auction/interval) — Layer 6+ candidate (see backpocket)
 - Armor timing asymmetry — discuss after Stack A

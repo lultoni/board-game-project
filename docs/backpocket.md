@@ -107,44 +107,137 @@ Don't ban strategies — make more strategies viable. If one approach dominates,
 
 ---
 
-## New Skill Ideas — Ultimate Heal/Shield
+## Skill Catalogue Expansion — Staged Candidates (Session 11)
 
-**Observation gap**: The Shield category currently has only 3 skills (Rust Shield, Field Medic, Armorsmith), all at cost 2–3 Runes. There is no high-cost / high-impact defensive skill.
+**Context**: Research (`docs/research/skill-catalogue-balance.md`) and Playtest 2 draft data show the catalogue's problem is not that defensive skills are underpicked — all 3 Shield skills are heavily used. The problem is **too few distinct strategic identities within Shield and Mystic categories**. All Shield skills are passive (add durability, no pressure). Mystic has a must-pick (Focus Strike) and a never-pick (Blade Call in P2 meta). Research recommends 25-35 skills minimum for meaningful draft variety; we're at 15.
 
-**Idea A — Ultimate Heal (cost 4)**: Heal *self* fully (restore to Normal regardless of damage taken). Comparable power to a 2-DMG standard attack reversed. High-cost self-sustain tool.
+**Design principle for new skills (from Session 11 research)**: Every new skill should pass the **sente test** — does it create a situation the opponent must respond to? Skills that are purely self-serving (passive buffs with no threat) don't dissolve standoffs or create interesting decisions. Dual-purpose skills (defend + create threat) are the ideal.
 
-**Idea B — Ultimate Shield (cost 5)**: Grant +2 Armor to an adjacent ally (or self at cost 4). Would require an Armor Breaker response to neutralise.
-
-**Note**: These are expensive by design — they should feel like a meaningful investment, not a free cycle. At cost 4–5 Runes, you're sacrificing multiple standard skills or a full turn's income.
-
-**Trigger**: When the Shield skill category feels thin relative to Strike. Candidate for Layer 3+ or skill catalogue expansion.
+**Expansion target**: ~25 skills (10 new). Distribute across categories to reach roughly 9 Strike / 6 Shield / 5 Move / 5 Mystic.
 
 ---
 
-## New Skill — Push Wave
+### Shield — New Candidates
 
-**Idea**: A new Mystic or Move skill. *Push Wave (cost 3)*: Push all pieces in a 3×1 line (along the Skill Path, centered on target) 1 tile directly away from caster. Differs from Blade Tempest (which pushes radially around a single target) — Push Wave affects a corridor.
+**Thorn Armor (Shield, cost 3-4 Runes)**
+Grant +1 Armor to target ally/self. If that armor is destroyed by an attack, deal 1 DMG to attacker.
 
-**Design note**: Creates area denial and formation disruption. Rewards positional thinking. Could be a natural counter to Guard screens (break through a line rather than going around).
+- **Sente**: YES — opponent must choose: attack the armored piece and take retaliatory damage, or avoid it entirely.
+- **Balancing needed**: As stated, this is strictly better than Armorsmith (same armor + free damage). Needs constraints:
+  - Higher cost (4 Runes?) so the economy trade is real
+  - Thorn only triggers when armor is FULLY broken (not on each hit)
+  - Armor Breaker could explicitly bypass the thorn effect (built-in counter)
+  - OR: thorn replaces existing armor rather than stacking (can't have Armorsmith + Thorn on same piece)
+- **Status**: Promising concept, needs balancing design before testing.
 
-**Trigger**: When the Move/Mystic category feels like it lacks area tools. Candidate for Layer 4+ or a dedicated skill expansion test.
+**Runic Ward (Shield, cost 3 Runes)**
+Grant +1 Armor to target ally/self. If that armor absorbs damage this round, gain +2 Runes at start of next turn.
+
+- **Sente**: YES — opponent attacks into it → fuels your economy. Opponent avoids it → your piece is safe. Either outcome benefits caster.
+- **Standoff connection**: Directly incentivises forward positioning — you WANT to be attacked because it's profitable. Walk forward, dare the opponent to hit you.
+- **Balancing**: Net cost = 1 Rune (pay 3, get 2 back IF hit). If never triggered, you paid 3 for +1 Armor (worse than Armorsmith at 3 for +1). Self-balancing: only good in aggressive/forward positions.
+- **Status**: Ready to test. Clean design, clear sente, self-balancing.
+
+**Bulwark (Shield, cost 2 Runes)**
+Grant +2 Armor to self. This piece cannot use skills for the rest of this turn.
+
+- **Sente**: No — this is a pure defensive commit. Trade: big armor but sacrifice your skill phase.
+- **Use case**: King protection when under pressure. "Hunker down" option when you can't afford to both defend and attack.
+- **Design note**: The self-restriction prevents it from being strictly better than Armorsmith. It's a strategic choice: maximum defense at the cost of offense.
+- **Status**: Ready to test. Simple design, clear trade-off.
 
 ---
 
-## Skill Gaps — Shield and Mystic Categories
+### Mystic — New Candidates
 
-**Observation**: The current skill catalogue is Strike/Move heavy. Known gaps:
+**Bind (Mystic, cost 3 Runes)**
+Target enemy piece within range: that piece cannot be moved during the next Movement Phase. It CAN still use its own skills.
 
-- **Shield**: No ranged defensive skill (current max range = adjacent). No "preemptive" or "conditional" defense (e.g., something like a reactive ward).
-- **Mystic**: Only 2 skills (Focus Strike, Blade Call). No movement-buffing Mystic, no positional Mystic, no debuff/crowd control Mystic.
+- **Sente**: YES — pinned piece must either accept reduced mobility (can't reposition) or burn a Move skill (Rune cost) to escape.
+- **Counterplay**: Move skills (Quick Dash, Shadow Shift) are the escape. Gives Move category a new defensive role.
+- **Connects to**: Pin/Threatened concept (Topic 1). Bind is the active/drafted version; Pin/Threatened (if ever implemented) would be the passive/positional version.
+- **Status**: Ready to test. Clear sente, clear counterplay.
 
-**Ideas worth exploring**:
-- *Deflect (Mystic, cost 2)*: Negate the next skill used against one of your pieces this turn.
-- *Warding Stone (Shield, cost 2)*: Place a 1-turn barrier on an adjacent empty tile (blocks Skill Path for one round).
-- *Speed Surge (Mystic, cost 2)*: One of your pieces gains +1 Speed this turn.
-- *Disrupt (Mystic, cost 3)*: Target opponent's piece loses 1 Skill Slot this turn.
+**Energize (Mystic, cost 2 Runes)**
+Target ally within range: that piece's next skill activation (this turn OR next turn) costs −2 Runes (minimum 0).
 
-**Trigger**: When the meta solidifies enough to see what archetype (control, aggro, combo) is missing a tool. Candidate for Layer 4+ or dedicated skill catalogue session.
+- **Sente**: Partial — enables a cheaper follow-up but opponent can ignore it.
+- **Use case**: Alternative to Focus Strike as an enabler. Focus gives +1 Range; Energize gives −2 Rune cost. Different build identity: "range extension" vs "economy enabler." Breaks Focus Strike's monopoly as the only buff Mystic.
+- **Key design**: Must carry over to next turn, otherwise it's "pay 2 now, save 2 later this turn" = net zero within a turn (pointless). Carry-over makes it a setup/investment tool.
+- **Tracking**: One token on the piece indicating "next skill discounted." Removed after use. Minimal overhead.
+- **Status**: Ready to test. Clear alternative to Focus Strike.
+
+**Skill Drain (Mystic, cost 3-4 Runes)**
+Target enemy Champion within range: their next skill activation this turn costs +2 Runes.
+
+- **Sente**: YES — directly taxes opponent's action economy. They must either pay more or change plans entirely.
+- **Mirror of Energize**: Energize helps allies, Skill Drain hurts enemies. Together they create an "economy manipulation" sub-category in Mystic.
+- **Risk**: Could feel oppressive / "unfun" (opponent's plans are disrupted without counterplay beyond "have more Runes"). Monitor carefully in testing.
+- **Balancing**: High cost (4 Runes) makes it an investment — you spend 4 to make them spend +2, net cost to you is 2 Runes for a tempo disruption. Only worthwhile against expensive skills.
+- **Status**: Promising but risky. Test with caution — monitor for "feels bad" feedback.
+
+---
+
+### Move — New Candidates
+
+**Mini-Step (Move, cost 1-2 Runes)**
+Move self 1 tile along Skill Path.
+
+- **Sente**: No — pure self-repositioning. But enables sente plays (adjust LoS for follow-up Strike).
+- **Use case**: Cheap LoS adjustment. Fills gap between free movement (Move Phase) and expensive Move skills (Quick Dash = 3 Runes). The "glue" skill that makes combos possible.
+- **Cost decision**: 1 Rune might be too spammable. 2 Runes makes it economy-comparable to other options. Test at 2, reduce to 1 if underused.
+- **Status**: Ready to test. Already in backpocket from Session 8.
+
+**Swap Step (Move, cost 2 Runes)**
+Swap positions of two of your adjacent allied pieces.
+
+- **Sente**: Partial — surprise LoS changes can create unexpected threats. Opponent must re-evaluate which pieces threaten what.
+- **Use case**: Formation rearrangement without burning Move Slots. Put your Strike Champion where your Guard was (and vice versa). Enables surprise combos.
+- **Status**: Ready to test. Simple, clear, enables creativity.
+
+**Ram (Move/Strike hybrid, cost 3 Runes)**
+Move self 1 tile toward target along Skill Path. Push target 1 tile in same direction. If pushed piece hits another piece, that stationary piece takes 1 DMG.
+
+- **Sente**: YES — displacement + potential collision damage. Opponent must consider clustering risk.
+- **Connects to**: Collision damage concept (Topic 1). This is the skill-specific version (opt-in via draft, not universal physics).
+- **Design note**: Dual-purpose — repositions you forward, pushes enemy back, AND punishes clusters. The ultimate "aggressive utility" skill.
+- **Status**: Ready to test. Collision damage as skill property (not universal rule).
+
+---
+
+### Previously Listed Ideas (retained, lower priority)
+
+The following ideas from earlier sessions remain in the pool but are lower priority than the above candidates:
+
+- **Ultimate Heal (Shield, cost 4)**: Heal self fully. High-cost sustain. Not sente (opponent ignores it). Lower priority.
+- **Ultimate Shield (Shield, cost 5)**: Grant +2 Armor. Not sente. Superseded by Runic Ward / Thorn Armor as more interesting designs.
+- **Push Wave (Move, cost 3)**: Push all pieces in a 3×1 corridor. Area denial. Needs more design work on targeting rules.
+- **Deflect (Shield/Mystic, cost 2)**: Negate next skill on target. Tracking problem (G4) — "which piece has deflect active?" Creates uncertainty that may not be fun.
+- **Warding Stone (Shield, cost 2)**: Place 1-turn barrier on tile. Temp effect tracking (G4 blocker — needs research from backlog).
+- **Speed Surge (Mystic, cost 2)**: +1 Speed this turn. Not sente. Functional but not exciting.
+- **Disrupt (Mystic, cost 3)**: Target loses 1 Skill Slot. Very powerful / potentially unfun. Superseded by Skill Drain as a gentler economy-tax version.
+- **Gravity Well (Move, cost 3)**: Pull all pieces within 2 tiles of target tile 1 tile toward it. Affects own pieces too. Sente (formation disruption). Needs more design work — edge cases around tie-breaking, targeting clarity. Move category, not Mystic.
+- **Line Pull / Strömungsruf**: Pull all enemies on a line toward midpoint. Needs elegant rule formulation.
+
+**Trigger for expansion**: Stack F (Cleverness II) or dedicated skill catalogue session after Stack A/B results confirm combat balance is stable. Do not expand mid-combat-testing — introduces confounding variable.
+
+---
+
+## ~~New Skill Ideas — Ultimate Heal/Shield~~
+
+*(Superseded by expanded candidate list above — see "Previously Listed Ideas")*
+
+---
+
+## ~~New Skill — Push Wave~~
+
+*(Superseded by expanded candidate list above — see "Previously Listed Ideas")*
+
+---
+
+## ~~Skill Gaps — Shield and Mystic Categories~~
+
+*(Superseded by expanded candidate list above — Session 11 research provides full analysis)*
 
 ---
 
