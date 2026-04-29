@@ -138,19 +138,19 @@ But the game still ran four hours, ending as a draw at Round 26. Only one Champi
 
 ---
 
-### April 28, 2026 — Sessions 8–9: Infrastructure Complete
+### April 28–29, 2026 — Sessions 8–12: Infrastructure Complete, Research Loaded
 
-Dynamic stack testing system built. Eight stacks defined (A through G, plus Accepted). Composable Typst section functions. `TESTING_PLAN.pdf` with a decision tree. All twelve PDFs building cleanly from source. Stack A — standard attack nerf + multi-Champion combo bonus — printed and ready to play.
+Dynamic stack testing system built. Eight stacks defined (A through G, plus Accepted). Composable Typst section functions. `TESTING_PLAN.pdf` with a full decision tree covering all stacks. All twelve PDFs building cleanly from source. Stack A — standard attack nerf + multi-Champion combo bonus — printed and ready to play. Four Perplexity research threads completed (clever-play levers, checkmate win conditions, forward positioning, skill catalogue balance). Ten new skill candidates staged. Sente skill design chosen as primary standoff solution. Checkmate win condition killed and replaced with King Lifetime HP concept.
 
 The game is no longer being designed. It's being refined.
 
 ---
 
-### Now — Session 10 onwards
+### Now — Session 12 onwards
 
-The core systems are stable. The rules are coherent. Two playtests have generated real data. The question is no longer "will this work?" — it's "how do we make it genuinely great?"
+The core systems are stable. The rules are coherent. Two playtests have generated real data. Four research threads have pre-loaded design knowledge for rapid response to playtest results. Ten new skill candidates are staged. The question is no longer "will this work?" — it's "how do we make it genuinely great?"
 
-Stack A tests whether nerfing the standard attack and rewarding coordinated Champions makes skill combos the dominant strategy. Stack B tests the Bodyguard fix. After those, the decision tree branches based on what the data shows.
+Stack A tests whether nerfing the standard attack and rewarding coordinated Champions makes skill combos the dominant strategy. Stack B tests the Bodyguard fix. After those, the decision tree (now a complete table-based routing system in `TESTING_PLAN.pdf`) branches based on what the data shows.
 
 ---
 

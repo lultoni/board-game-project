@@ -36,10 +36,17 @@ Update each of these files. Only modify sections that changed this session.
 - Update the "Last updated" timestamp.
 
 ### `docs/test-scenarios/TESTING_PLAN.typ`
-- Update the Mermaid decision tree if any stack results came in or entry conditions changed.
+- Update the decision tree tables if any stack results came in or entry conditions changed.
 - Update stack statuses in the Testing Stacks table (e.g., mark a layer as "Accepted").
 - Update the Accepted Layers table if a new layer was accepted.
+- Update the "Current Priority Sequence" table if priorities shifted.
 - After editing, run `zsh docs/test-scenarios/build-pdfs.sh` to rebuild TESTING_PLAN.pdf.
+
+### `README.md` and `old-game-versions/README.md`
+- Update "Current Status" table in `README.md` if any stack statuses or descriptions changed.
+- Update the session number in the "Current Status" heading.
+- Update the "Now — Session N onwards" section in `old-game-versions/README.md` if the project narrative changed meaningfully (new playtests, major milestones).
+- Keep changes minimal — only update what actually shifted this session.
 
 ### `docs/brainstorm/session-log.md`
 - Append a new session entry at the top (below the heading) using this format:

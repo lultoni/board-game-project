@@ -137,17 +137,17 @@ Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scen
 
 ---
 
-## Current Status (Session 10)
+## Current Status (Session 12)
 
 | Layer / Stack | Topic | Status |
 |---|---|---|
 | Layer 1 — Economy Fix | 6 start Runes, +2/turn | **ACCEPTED** (Playtest 2) |
 | **Stack A — Cleverness** | Attack nerf + combo bonus | **Ready to print and play** |
 | Stack B — Guards | Bodyguard adjacency fix | Ready to print and play |
-| Stack C — Pacing | Checkmate win condition | Not yet written |
-| Stack D — Board | 8×8 / hex | Not yet written |
+| Stack C — Pacing | King Lifetime HP · Armor Decay | Not yet written |
+| Stack D — Board | 8×8 · Piece count · Hex | Not yet written |
 | Stack E — Draft | Pool draft, placement order | Not yet written |
-| Stack F — Cleverness II | More combo levers | Not yet written |
+| Stack F — Cleverness II | Cascade trigger · Pin/Threatened · Sente skills | Not yet written |
 | Stack G — Structure | Unified AP framework | Draft written |
 
 **Immediate next action**: Print and play Stack A (files in `docs/test-scenarios/stack-a-cleverness/`).
