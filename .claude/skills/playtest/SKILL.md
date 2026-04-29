@@ -220,10 +220,40 @@ After writing the analysis, update the following living documents:
 ### `docs/brainstorm/session-log.md`
 - Add a sub-section under the current session entry noting the playtest analysis.
 
-## Step 5: Present Summary
+## Step 5: Decision Tree Routing
+
+Read `docs/test-scenarios/TESTING_PLAN.typ` — specifically the "Entry Conditions Per Stack" table and the "Decision Tree" tables (Phase 1 and Phase 2).
+
+Map the playtest metrics to the decision tree's branching criteria:
+
+1. **Champion kill round** — extract from Block A tracking data. Compare against thresholds: before R15 (strong), R15–R20 (partial), after R20 (pacing urgent → Stack C).
+2. **Standoff persistence** — extract from Block B behavioral patterns (first contact round, evidence of standoff, forward movement timing). If standoff persists → Stack F.
+3. **Bodyguard triggers** — extract from feedback form or game log. Compare: ≥3 (accepted), 1–2 (partial), 0 (broken).
+4. **Any other routing criteria** mentioned in the entry conditions table (combo ceiling, board feel, draft staleness).
+
+Write a routing block:
+
+```markdown
+## Decision Tree Routing
+
+**Key metrics for routing:**
+- First Champion kill: Round [N] → [before R15 / R15–R20 / after R20]
+- Standoff observed: [yes/no — describe]
+- Bodyguard triggers: [N]
+- Combo attempts: [N successful / N attempted]
+
+**Decision tree path:** [Stack X] → [result branch] → recommended next: **[Stack Y]**
+
+**Reasoning:** [1-2 sentences explaining why this branch applies based on the data]
+```
+
+Include this section in the analysis doc before the final summary.
+
+## Step 6: Present Summary
 
 Output a concise summary to the user:
 1. Top 3–5 findings (one sentence each, with source — self-reported or behavioral).
 2. Which OQ verdicts changed (resolved/updated).
 3. Key behavioral pattern not captured in any feedback form question.
-4. Recommended next step (accept layer / retest / escalate to priority).
+4. **Decision tree recommendation**: which stack to run next, citing the specific metric that drives the routing.
+5. Any pre-staged responses from `docs/backpocket.md` that are now triggered by the results.
