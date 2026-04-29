@@ -75,6 +75,7 @@ Mechanics that were explicitly ruled out, with reasons.
 | CR-style draft picks (strict interleaving) | Session 8 (OQ-43) | Restricts free strategy; counter-picking with small catalogue leads to "correct" picks that reduce variety. Variant material, not core game. |
 | Ban phase in draft | Session 8 (OQ-44) | From older game version with unique fixed-skill Champions. Needs 20+ skills and a different draft model. |
 | Starting player bid (hidden Rune auction) | Session 8 (OQ-45) | No first-player advantage observed. If it surfaces, use Go-style komi (fewer starting Runes) instead. |
+| Coordinated movement bonus (−1 Rune if pieces move to same zone) | Session 11 (OQ-51) | Too easy to trigger accidentally — rewards moving pieces in the same direction, which players do anyway. Doesn't actually require cleverness. |
 
 ---
 

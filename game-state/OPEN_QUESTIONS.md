@@ -348,17 +348,32 @@ With unified AP, a single piece could spend all 3 AP on movement and rush the Ki
 
 ---
 
-### OQ-51: Mechanical Levers for Rewarding Clever Plays — OPEN
+### OQ-51: Mechanical Levers for Rewarding Clever Plays — RESEARCHED (Session 11)
 `[System: Cross-system] [Affects: Combat, Skill System, Progression]`
 
 **Beyond the combo bonus, what other mechanical levers can reward clever play?**
 - The combo bonus (Layer 2) rewards multi-Champion coordination. But it's one lever. What else can the game use to make cleverness *mechanically* rewarded (not just aesthetically satisfying)?
 - **Existing levers**: Combo bonus (+1 DMG for coordination), Blade Call (+1 DMG for buff setup), Focus Strike (+1 Range for buff setup).
-- **Candidate levers to explore**:
-  - *Cascade trigger*: When a skill kills a piece, the attacking Champion gets +1 free Skill Slot this turn (chain reaction — setup the kill, keep going).
-  - *Positional payoff*: A Champion that hasn't moved for 2+ turns gains +1 Range (rewards patient positioning — "I put this piece here for a reason").
-  - *Coordinated movement bonus*: If 2+ pieces move toward the same zone in Movement Phase, the first skill targeting that zone costs −1 Rune (rewards reading the board and committing together).
-  - *Threat creation (checkmate-style)*: Creating an inescapable lethal position IS the reward — forcing a response is power. The game ends on the *setup*, not the execution.
-- **Design constraint**: Must reward *cleverness of execution* (hard to set up, requires multi-turn planning), not *outcomes* (easy to measure, creates snowball). The KPI principle from ADR-003 applies.
-- **Research needed**: How do comparable games (Go, Chess, Onitama, Hive) mechanically reward clever multi-turn setups beyond just "you win the piece exchange"?
-- **Status**: Open. Explore candidate levers. Connected to OQ-39 (shared-puzzle), OQ-19 (endgame acceleration via checkmate), OQ-50 (ultimate skills).
+
+**Research findings (Session 11 — `docs/research/mechanical-reward-clever-play.md`)**:
+Four mechanical patterns identified from published games:
+1. **Threat = reward (Hive, Chess)**: Creating an unavoidable threat forces opponent into reactive play, draining their action economy. Tempo gain without resource gain.
+2. **Environmental multiplier (Into the Breach)**: Board state amplifies your action (knockback into hazards = free damage). Situational, single-use, not compounding.
+3. **Restriction as reward (Hive pinning, Go territory)**: You don't gain stats — you remove opponent options. Positional "captures."
+4. **One-time action economy (anti-snowball principle)**: Give tempo advantages (extra actions THIS turn), not resource advantages (more Runes forever).
+
+**Evaluated candidates**:
+
+| Candidate | Verdict | Reasoning |
+|-----------|---------|-----------|
+| **Cascade trigger** (+1 Skill Slot on kill, any method) | **Staged in backpocket** | Anti-snowball (one-turn, still costs Runes). Rewards finishing setups. If too easy via standard attacks → restrict to skill-kills. If never used → remove. |
+| **Pin/Threatened** (2+ enemy LoS = can't move) | **Staged in backpocket** | Restriction-as-reward pattern. Risk: oppressive. Counterplay: Move skills as escape. Needs own test layer. |
+| **Collision damage — universal** (push into piece = 1 DMG) | **Backpocketed (conditional)** | Only test after standoff dissolved. Risk: amplifies keep-away if standoff persists. |
+| **Collision damage — skill-specific** ("Ram" skill) | **Skill catalogue candidate** | Opt-in via draft. Safer to test than universal rule. Design when catalogue expands. |
+| **Positional payoff** (forward deployment bonus) | **Deferred to OQ-40 / Topic 3** | Overlaps with "rewarding risky positioning." Explore there. |
+| Coordinated movement bonus (−1 Rune if pieces move same zone) | **Killed** | Too easy to trigger accidentally. Doesn't reward cleverness. |
+| Breakthrough bonus (+1 Slot on first Champion hit) | **Subsumed into cascade** | Arbitrary "first hit" trigger less elegant than general "on kill." |
+
+- **Design constraint**: Must reward *cleverness of execution* (hard to set up, requires multi-turn planning), not *outcomes* (easy to measure, creates snowball). The KPI principle from ADR-003 applies. Anti-snowball key: one-time tempo advantages, not permanent resource engines.
+- **Status**: Researched. Three promising candidates staged in backpocket. Next step: test cascade trigger in Stack F (or earlier if opportunity arises). Pin/Threatened needs its own layer. Collision damage gated on standoff resolution.
+- **Connected to**: OQ-39 (shared-puzzle), OQ-19 (endgame acceleration via checkmate), OQ-50 (ultimate skills), OQ-40 (standoff — positional payoff deferred there).

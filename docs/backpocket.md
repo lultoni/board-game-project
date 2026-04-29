@@ -244,6 +244,73 @@ Don't ban strategies — make more strategies viable. If one approach dominates,
 
 ---
 
+## Cascade Trigger — +1 Skill Slot on Kill
+
+**Idea**: When one of your pieces kills an enemy piece (by any method — standard attack or skill), you gain +1 Skill Slot for the remainder of that turn.
+
+**Why interesting**: Rewards finishing a setup. The bonus is tempo (one more action THIS turn) not resources (no extra Runes). Creates exciting follow-up moments: kill → reposition to safety, kill → chain into a second exposed target. Incentivises committing to an attack rather than poking safely.
+
+**Anti-snowball properties**:
+- One-turn-only (doesn't compound across rounds)
+- Still costs Runes to use the extra slot (early-game kills barely benefit because Runes are scarce)
+- Opponent lost a piece = fewer future threats anyway; the slot just lets the attacker capitalise immediately rather than waiting a turn
+
+**Backpocketed restriction (if too easy to exploit via standard attacks)**: Limit trigger to skill-kills only. Test this restriction if playtests show free standard-attack kills generating too much tempo.
+
+**Removal condition**: If playtests show the extra slot is never used (players don't have Runes to spend), remove entirely. No dead rules.
+
+**Trigger**: Stack F (Cleverness II) or earlier if a natural test opportunity arises.
+
+---
+
+## Pin / Threatened Status
+
+**Idea**: A piece that is in the Skill Path (line of sight) of 2+ enemy Champions is "Threatened" — it cannot be moved during the Movement Phase (but CAN still use its own skills, and CAN be moved by Move skills).
+
+**Why interesting**: Rewards surrounding and multi-piece coordination without dealing damage. Creates positional "captures" — you restrict the opponent's options by clever placement. The opponent must use a Move skill (Rune cost) to escape, or reposition the threatening Champions away. Connects to the "restriction as reward" pattern from Hive/Go.
+
+**Risk**: Could feel oppressive / "control-losing" for the defending player. May make Movement skills a must-pick (interesting but constrains draft freedom).
+
+**Counterplay**: Move skills become the escape tool (gives Move category a defensive role). Opponent can break the pin by moving one of the threatening Champions. Guard screens can block LoS to prevent pins.
+
+**Open design questions**:
+- Does the King count as a "Champion" for pin purposes? (Probably yes — it has skills.)
+- Can Guards be pinned? (Probably yes — Guards in LoS of 2 Champions can't move. But Guards don't have skills, so pinning a Guard removes ALL its options except being rescued by a Move skill on an ally.)
+- Does "Skill Path" mean direct LoS or does the path need to be unblocked? (Probably unblocked — you must have a clear shot to "threaten.")
+
+**Trigger**: As its own test layer (Stack F or later). Independent of combat/economy changes.
+
+---
+
+## Collision Damage — Universal Rule (speculative)
+
+**Idea**: When a piece is pushed/pulled into a tile occupied by another piece, the stationary piece takes 1 DMG. The pushed piece stops on the tile before (does not displace).
+
+**Why interesting**: Makes ALL push/pull skills into positional combo tools. Rewards reading the board and creating "lined up" formations to exploit. Adds depth to Blade Tempest, Air Blast, Precision Thrust, Maelstrom, and any future push/pull skills.
+
+**Risk (identified in Session 11 discussion)**:
+- If BOTH pieces take damage: too punishing — creates keep-away zones where nobody advances into push range.
+- If only the stationary piece takes damage: could amplify standoff problem (fear of being pushed into allies for splash damage). Opponent clusters less OR stays far away.
+- Makes push skills potentially very strong relative to their cost (2-3 Runes for damage + displacement + collision damage).
+
+**Why deferred**: The standoff problem must be confirmed dissolved FIRST (via Stack A results). If players ARE engaging closely after the standard attack nerf, collision damage adds exciting interactions. If standoff persists, collision damage makes it worse.
+
+**Trigger**: Test ONLY after standoff is confirmed dissolved (post-Stack A, possibly post-Stack C). Do not test alongside standoff-fixing mechanics — evaluate independently.
+
+---
+
+## Collision Damage — Skill-Specific ("Ram" / "Shove")
+
+**Idea**: A new Strike or Move skill where collision damage is the SKILL'S special property, not a universal physics rule. Example: *Ram (Strike, cost 3 Runes)*: Move self 1 tile toward target along Skill Path, push target 1 tile. If target hits another piece, that piece takes 1 DMG.
+
+**Why interesting**: Opt-in during drafting (not a universal rule everyone must account for). Counterable (don't cluster pieces). Creates board-reading moments without taxing ALL positioning decisions. Gives the skill a unique identity — "the one that punishes clusters."
+
+**Design space**: Could be a Strike (deals damage + push + collision) or a Move (no base damage, but repositions self AND punishes target's neighbours). The Move version is more novel.
+
+**Trigger**: When skill catalogue expands (Stack F or later). Design the full skill text before testing.
+
+---
+
 ## New Skill Idea — Mini-Step
 
 **Idea (Session 8)**: A cheap micro-repositioning skill. *Mini-Step (Move, cost 1–2 Runes)*: Move self 1 tile along Skill Path.
