@@ -1,5 +1,40 @@
 # Session Log
 
+## Session 10 — 2026-04-29 — Old Versions Triage + Design Language
+
+**Goal**: Convert old xlsx/pptx files to readable markdown, extract all possible design ideas from old game versions, triage them against current design state, collect user feedback on every idea, and process that feedback into the correct project locations.
+
+**What was done**:
+- Converted `ROE-goofing-around.xlsx` (v2) and `Project ROE Skills.xlsx` / `quick list skills export gemini.xlsx` (v3) from garbled auto-conversions into clean readable markdown.
+- Extracted 21 new idea entries into `docs/research/old-versions-ideas.md` (Champion roster concepts, terrain modifiers, 13 skill ideas, economy insights, draft constraints).
+- Created `docs/mechanics-log/old-versions-triage.md` — ~80 ideas sorted into New/Possible, Deferred, Archived with reasoning.
+- Created feedback form (`old-versions-triage-feedback.md`), user annotated all items.
+- Restructured `docs/backpocket.md` — added 7 Design Guardrails (G1-G7), Known Potential Issues section, new staged ideas (Draw if only Kings, Line pull).
+- Created `docs/design-language.md` — future visual/identity direction (blank-slate Champions, emergent skill identity, naming direction, physical design notes).
+- Updated triage with final dispositions: 9 items → Archived, 7 items → Deferred (based on user feedback).
+- Added 3 backlog items to NEXT_STEPS: temp effect tracking research, adjacency synergies brainstorm, skill catalogue expansion roadmap.
+- Added `design-language.md` to README navigation.
+
+**Key findings**:
+- User confirmed: Champions must remain blank slates — identity emerges from equipped skills, not pre-naming.
+- "Shortfall never closes" is an explicit economy principle (now guardrail G1).
+- Cognitive load from tracking temporary effects is the primary blocker for several skill ideas (Temp Armor, Shield duration, Guard-Bind). Research needed.
+- User explicitly excited about adjacency synergies / piece compatibility — connects to OQ-51.
+
+**Decisions made**:
+- Design Guardrails established (G1-G7 in backpocket.md) — invariants every proposed change must pass.
+- Information/scouting skills archived — irrelevant in perfect-information game.
+- Class-based skill pools archived — restricts strategy freedom for minimal complexity reduction.
+- Champion naming archived — contradicts blank-slate design value.
+- Visual identity work deferred to Phase B (~2027) — design-language.md collects insights until then.
+
+**Open items for next session**:
+- Print and play Stack A (unchanged from Session 9 — still the immediate priority).
+- Run `/research how board games track temporary effects on pieces` when ready to unblock triage items.
+- Brainstorm adjacency synergies when Stack F becomes active.
+
+---
+
 ## Session 9 — 2026-04-28 — Dynamic Stack System + Composable Rule Sheets
 
 **Goal**: Replace the fixed linear test layer queue with a dynamic, evidence-driven stack system. Build composable Typst rule sheets so baseline changes propagate automatically. Improve the `/playtest` skill for deeper analysis.

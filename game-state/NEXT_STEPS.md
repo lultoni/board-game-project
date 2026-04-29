@@ -2,7 +2,7 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-04-28 — Session 9 (dynamic stack system, composable Typst rule sheets, playtest skill improvements)*
+*Last updated: 2026-04-29 — Session 10 (old-versions triage feedback processed; research/brainstorm backlog items added)*
 
 ---
 
@@ -77,6 +77,9 @@ Full reasoning: `docs/decisions/ADR-003-rewarding-cleverness.md`
 - Skill pool draft variant (OQ-35)
 - Flexible piece placement variant (OQ-36)
 - **Run `/research` on hex vs. square grid** (OQ-42) — before any hex layer proposed
+- **Run `/research` on how board games track temporary effects on pieces** — blocks: Temp Armor, Shield duration, Active Guard-Bind (see triage "Needs Tracking Solution" section)
+- **Brainstorm session: Adjacency synergies / piece compatibility** — user excited (Session 10 feedback); connects OQ-51 (rewarding clever plays). Reward complex positioning setups.
+- **Skill catalogue expansion** (connects Stack F / Cleverness II) — staged candidates: attack-then-reposition, line pull (Strömungsruf), range empowerment expansion, speed boost, heal at range. Add gradually after core combat stacks resolve.
 - First-player advantage mitigation
 - In-game skill redraft (shop/auction/interval) — Layer 6+ candidate (see backpocket)
 - Armor timing asymmetry — discuss after Stack A

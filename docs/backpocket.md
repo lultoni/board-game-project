@@ -1,8 +1,41 @@
 # Backpocket
 
-*Pre-thought fixes for known or anticipated problems. These are not active changes — they are staged hypotheses ready to test when the relevant problem surfaces.*
+*Three-part reference: (1) Design guardrails — invariants to check every change against. (2) New ideas & staged fixes — hypotheses ready to deploy when triggered. (3) Known potential issues — risks to monitor.*
 
-*Last updated: 2026-04-25*
+*Last updated: 2026-04-29*
+
+---
+
+## Design Guardrails
+
+*Every proposed change must pass these. If a change violates a guardrail, it needs explicit justification or redesign.*
+
+### G1. Shortfall Never Closes
+Players should *never* be able to fill all their skill slots with Rune-funded activations every turn. The economy is tuned so you always want to do more than you can afford. This scarcity IS the decision engine.
+
+### G2. Encourage Spending via Attractiveness, Not Punishment
+If players hoard Runes, the fix is making spending more attractive (better skills, more combo opportunities) — not forcing them to spend via caps or use-it-or-lose-it rules. "Better to invest badly than lose the money entirely" should never describe the player's situation.
+
+### G3. Skill Cost is Feel, Not Math
+Don't calibrate skill costs by spreadsheet. Calibrate by playtesting: players should never feel "I can't do anything" (too expensive) or "I have no reason to plan" (too cheap). The right cost creates agonising tradeoffs.
+
+### G4. Cognitive Load is Real Cost
+Any mechanic that requires tracking state (temp effects, turn timers, tile conditions) must have a physical tracking solution that doesn't break flow. If you can't explain how it's tracked on the table, the mechanic isn't ready.
+
+### G5. Strategy Freedom > Simplification
+Never restrict player choice just to reduce complexity. If a system is complex, find ways to make it *learnable* (better onboarding, clearer rules text, reference cards) rather than *smaller*. The space of possibilities is the game's value proposition.
+
+### G6. No Single Strategy Dominance
+Don't ban strategies — make more strategies viable. If one approach dominates, the fix is strengthening alternatives, not nerfing the dominant one into uselessness.
+
+### G7. Core Fantasy First
+"Does this make skill combos more interesting?" is the test for every system. If a mechanic doesn't serve the combo/cleverness fantasy, it needs to justify its existence on other grounds.
+
+---
+
+## New Ideas & Staged Fixes
+
+*Hypotheses ready to test when the relevant problem surfaces. Each has a trigger condition.*
 
 ---
 
@@ -236,3 +269,79 @@
 **Connects to**: OQ-36 (flexible placement), OQ-48 (placement order).
 
 **Trigger**: Test after Layer 3 accepted, bundled with OQ-36/48. Design the formation options first.
+
+---
+
+## Draw if Only Kings Remain
+
+**Idea**: If every piece except the two Kings is removed → draw. Forces endgame resolution before losing all army.
+
+**Why interesting**: A natural draw condition that prevents an endgame of two naked Kings chasing each other. Also gives losing players a comeback path — if you can trade down to Kings-only, you draw rather than lose.
+
+**Trigger**: If only-Kings-left endgames become common and don't feel fun. Backpocketed until observed.
+
+---
+
+## Line Pull — Strömungsruf
+
+**Idea**: Choose a line (LoS). Pull all enemies on that line 1 tile toward its centre. Unlike Maelstrom (pulls toward caster), this collapses enemies inward from both ends.
+
+**Why interesting**: Compresses an opponent's formation, sets up AoE-like multi-target situations, blocks retreat routes. Genuinely novel geometry in the current skill set.
+
+**Implementation constraint**: Must be formulatable as a single simple rule of thumb — "all enemies on the line move 1 tile toward the line's midpoint." No edge case exceptions.
+
+**Trigger**: When skill catalogue expands (Stack F or later). Needs elegant rule formulation before testing.
+
+---
+
+---
+
+## Known Potential Issues
+
+*Risks to monitor. Not active problems — but if the trigger conditions are met, these become real.*
+
+---
+
+### King 3 Skill Slots → Ultimate Stay-Back Support
+
+**Risk**: If the King ever gets 3 slots (post-v1 tuning), it could become the ultimate backline healer/buffer — never needing to advance, just stacking heal + buff + buff from safety. This makes the "capture the King" win condition harder to achieve because the King has no reason to be in danger.
+
+**Mitigation ideas**: King-specific slot restriction (e.g., at least 1 slot must be Strike); or King gains 3rd slot only when on opponent's half of the board.
+
+**Trigger**: If King 3 slots is ever tested.
+
+---
+
+### Armor Destruction Skills → Armor Becomes Dead Skill
+
+**Risk**: If anti-Armor skills (Pocket Thief, Rüstungsbrecher) are too strong or too cheap, Armor skills (Armorsmith, Scrap Armor) become a waste of a slot — you spend 3 Runes to grant Armor, opponent spends 2 to strip it instantly.
+
+**Mitigation ideas**: Anti-Armor skills must cost ≥ the Armor they destroy (economy-neutral at best); or Armor grants some residual benefit even when removed (e.g., the piece gets +1 Speed for 1 turn as the "Armor drops off" benefit).
+
+**Trigger**: If anti-Armor skills are added to the catalogue.
+
+---
+
+### Temporary Effects Tracking Overhead
+
+**Risk**: Any mechanic with a duration (Temp Armor, shields, speed boosts, debuffs) creates tracking overhead on a physical board. Without a solution, these become cognitive-load traps that slow the game.
+
+**Known approaches to research**: Tokens placed on pieces, countdown dice, card sleeves with markers, turn-track markers. See `/research how board games track temporary effects on pieces`.
+
+**Trigger**: Before any temp-duration mechanic is added to the catalogue.
+
+---
+
+### Move Slot Loss as Debuff → Feels OP
+
+**Risk**: Restricting the opponent's Move Slots (they move one fewer piece this turn) is an extremely powerful tempo debuff. It directly removes agency and could feel unfair / unfun regardless of balance.
+
+**Mitigation ideas**: Very high Rune cost (5+), or limited to "only when target is Injured" (conditional). Or: don't reduce Move Slots, instead reduce Speed by 1 for that piece (softer, still feels like a debuff, has existing mechanical precedent via Injured).
+
+**Trigger**: If this debuff type is ever proposed for the skill catalogue.
+
+---
+
+### Rune Theft Dominance (existing — OQ-34)
+
+See existing section above ("Rune Theft — Cost Nerf"). Monitoring in Layer 2.

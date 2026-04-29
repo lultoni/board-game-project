@@ -19,6 +19,8 @@ A 2-player abstract-tactical board game in active development. Two players comma
 | Read about a specific game system | [`docs/systems/`](docs/systems/) |
 | See design decisions with reasoning | [`docs/decisions/`](docs/decisions/) |
 | See what has been tried and why | [`docs/mechanics-log/mechanics-evaluated.md`](docs/mechanics-log/mechanics-evaluated.md) |
+| See old-version ideas triaged (new / deferred / archived) | [`docs/mechanics-log/old-versions-triage.md`](docs/mechanics-log/old-versions-triage.md) |
+| See future visual/identity direction | [`docs/design-language.md`](docs/design-language.md) |
 | Read session history | [`docs/brainstorm/session-log.md`](docs/brainstorm/session-log.md) |
 | Resume a Claude Code session | [`HANDOVER.md`](HANDOVER.md) — paste into new session |
 

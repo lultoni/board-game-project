@@ -38,6 +38,27 @@
 - Guards were neutral on all terrain.
 - Could create differentiated Champion value based on board layout.
 
+### 1g. Six Distinct Champion Classes with 3 Champions Each
+- The confirmed ROE class breakdown: **Joker, Boost, Offense, Defense, Tile Control, Mobility** — 3 Champions per class, 18 total.
+- Joker class intentionally smaller skill pool (6 skills vs 11 for others) — wildcard/generalist identity expressed through deliberate limitation.
+- Skill pool per class was explicitly calculated: base + added abilities = 9–11 skills per class to choose from during draft.
+- Each class had a *different number* of available skills, creating natural pick-rate variation.
+
+### 1h. Full Named Champion Roster
+- Every Champion was explicitly assigned a terrain home (Plains / Forest / Mountain / Water):
+  - Plains: Blacksmith, Bard, Fire Witch, Paladin, Engineer.
+  - Forest: Thief, Scavenger, Musketeer, Earth Witch, Wildkeeper.
+  - Mountain: Necromancer, Vampire, Monk, Stone Golem, Harpy.
+  - Water: Siren, Water Mage, Healer.
+- Extra names brainstormed but not assigned: Alchemist, Druid, Hunter, Spirit Mage, Trapper, General, Archer.
+
+### 1i. Draft Pool Balancing Math
+- Draft parameters were explicitly modelled across 3 variants:
+  - **12-pool, 5 picks, 4 bans** → 3 Champions left undrafted.
+  - **18-pool, 5 picks, 4 bans** → 9 left (only one Champion per terrain type allowed).
+  - **20-pool, 5 picks, 8 bans** → 7 left (one per type constraint).
+- The "one Champion per terrain type in entire game" constraint prevents one player monopolising a terrain archetype.
+
 ---
 
 ## 2. Board & Terrain
@@ -71,6 +92,15 @@
 - **Stun zone** (Tremor/Overgrown): pieces on affected tiles skip their next turn.
 - **Overgrown effect**: piece cannot move, attack, OR use skills (total freeze).
 - All effects have a turn timer — tracked per tile, not per piece.
+
+### 2f-ii. Terrain Stat Modifier System — Quantified
+- Terrain bonuses were explicitly quantified per stat. The full table:
+  - **Water**: −1 Armor, +1 Skill Range.
+  - **Forest**: +1 Armor, −1 Skill Range.
+  - **Plains**: −1 Armor, +1 Move Range.
+  - **Mountain**: −1 Move Range, +1 Skill Range.
+- Key design choice: **no terrain affected Skill Damage or Skill Cost** — only positioning stats. Combat power was intentionally kept terrain-neutral.
+- This means terrain creates positioning incentives without making some tiles "win buttons."
 
 ### 2g. Contested centre tile / zone control
 - Performance-based Rune idea: occupying the centre tile for a full round = +1 Rune gain.
@@ -188,6 +218,76 @@ Full list of skills that existed in the catalogue but aren't in the current game
 - Kill target AND steal a resource from opponent.
 - Creates a compounding advantage when you execute a kill: not just board presence, but economy.
 
+### 3j. Attack-Then-Reposition Combo Skills
+- *Ambush*: Attack a piece in R2, then move 1 tile. The attack and repositioning happen in a single activation.
+- *Hakenzug*: Deal 1 DMG to target, then pull them 1 tile closer (damage + forced repositioning as a unit).
+- *Klingenorkan*: Deal 1 DMG to target (R3) + push all pieces adjacent to the target 1 tile away — the kill disrupts the enemy formation simultaneously.
+- These are "do damage AND change board state" combos baked into a single skill. Very different from the current game where damage and repositioning are separate skills.
+
+### 3k. Move Slot Loss as a Debuff
+- *Schnellstich* variant B: deal 1 DMG + target loses 1 Move Slot this turn.
+- *Runenraub* variant B: steal 1 Rune + target loses 1 Move Slot.
+- A new debuff axis: not just HP damage, not just repositioning — impairing how many pieces the opponent can move this turn.
+- Could slow down aggressive charging or prevent a retreat.
+
+### 3l. Temporary Armor
+- Armor that disappears when the piece takes any damage — absorbs it then vanishes.
+- *Schrottpanzer* variant A: +1 Armor but lost on first hit.
+- *Tauschschritt* variant B: swap position with ally + ally gains 1 Temp Armor.
+- Different feel from permanent Armor: incentivises using the protected piece aggressively while it lasts, rather than playing it safe.
+
+### 3m. Armor Destruction as Offense
+- *Rüstungsschwund*: Remove 1 Armor from adjacent enemy (no effect if no Armor).
+- *Rüstungsbrecher*: Remove 1 Armor from target (at range).
+- *Pocket Thief*: Steal 1 Armor from target (if >0 Armor) — you gain it, they lose it.
+- *Rüstungsschwund* variant B: Remove Armor + caster gains +1 Rune (risk/reward — anti-Armor as economy move).
+- Creates a counter-play axis against defensive builds: if someone stacks Armor, Armor-removal skills become strong picks.
+
+### 3n. Guard-Bind Mechanic (Wächterband)
+- *Wächterband* (DOG skill, cost 4): Bind one of your Guards to a target ally. The Guard loses its move this turn, but the target gains +1 Armor against the next damage instance.
+- Explicitly ties Guard sacrifice to an ally benefit — the Guard gives up mobility to protect a Champion.
+- Different from the existing Bodyguard rule (which is passive/positional). This is an *active* Guard sacrifice.
+
+### 3o. Information Warfare (Runenblick)
+- *Runenblick*: Reveal the target's Rune count + optionally steal 1 Rune (once per activation).
+- Creates a scouting mechanic: knowing exactly how many Runes the opponent has is genuinely valuable for predicting their next turn.
+- The optional steal makes it a tempo tool as well as an information tool.
+
+### 3p. Movement as a Skill (Self-Repositioning)
+- *Horseback Tag Along / Schnelltritt / Pferdesprung*: Move yourself up to 2 tiles along a Skill Path.
+- Using a skill slot for self-movement means you can exceed your normal 1-tile speed for a cost.
+- Different from the current game where movement is always free/fixed.
+- *Escape Plan / Rückzugsplan*: Teleport self adjacent to a friendly Guard anywhere on the path — panic button escape.
+- *Purifying Waters*: Move to any Water tile in range + heal self — combines terrain-seeking with healing.
+- *Wasserlauf*: Move to a Water tile in R3 (pure positional tool, no bonus).
+
+### 3q. Range Empowerment as a Skill Category
+- *Bardic Inspiration*: Next Skill gets +1 Range (1 Rune, any own piece).
+- *War Cry*: All your Skills next *round* get +1 Range (5 Runes, global).
+- *Fokusstoß*: Next Skill this *turn* gets +1 Range (1 Rune, self only).
+- *Blood Spear*: Next Skill gets +1 Range OR +1 DMG (caster chooses) — flexible empowerment.
+- *Klingenruf*: Pay +1 Rune extra on next Skill for +1 DMG — "pay more, hit harder."
+- A whole design space: skills that amplify other skills rather than having direct effects. Creates setup-payoff combos.
+
+### 3r. Line Pull (Strömungsruf)
+- *Strömungsruf* (DOG skill, cost 4): Choose a line (LoS). Pull all enemies on that line 1 tile toward its centre.
+- Unlike Maelstrom (pulls toward caster), this pulls toward the *line's midpoint* — enemies on both ends get pulled inward.
+- Could compress an opponent's formation, potentially setting up AoE or blocking their movement.
+
+### 3s. Speed Boost Skill (Eagle Vision)
+- *Eagle Vision*: Next turn, chosen ally gets +1 Speed (Move Range +1).
+- Temporary movement increase via skill — means Guards could briefly have Speed 3, or a Champion could reach Speed 2 tiles.
+- One-turn window creates a timing game: save it for the right moment.
+
+### 3t. Heal-at-Range (Plague Medicine)
+- *Plague Medicine*: Heal Injured status from a piece on the Skill Path (at range, not adjacent).
+- The current game's healing is adjacent only. Ranged healing changes the dynamic significantly — your healer doesn't need to be in the frontline.
+
+### 3u. Directional Push Choice (Federstoß)
+- *Federstoß*: Push target 1 tile in **any direction** (attacker chooses, not "away from caster").
+- Contrast with Windstoß which pushes away from caster. Free-direction push gives much more control over where the enemy lands.
+- Can be used to push enemies *into* a bad position, not just away.
+
 ---
 
 ## 4. Combat & Attack System
@@ -252,6 +352,19 @@ Full list of skills that existed in the catalogue but aren't in the current game
 - `Project-ROE Notizen`: "Do you want to add a turtle bonus?" — if a player chooses not to spend their skill slots, do they get a benefit?
 - Never implemented, but the question is interesting: reward for restraint vs. reward for aggression.
 
+### 5h. The "Shortfall Never Closes" Design Principle (Economy Simulation)
+- The ROE economy was explicitly modelled in a spreadsheet across 39 rounds. Key finding:
+  - Min skill cost: 1. Average: 2.59. Max: 4.
+  - Even at round 39 (6 Runes/turn, 5 skill slots), players could activate only **2–3 skills per round** on average — always below their slot count.
+  - The shortfall was *intentional*: the game was designed so you could never do everything you wanted.
+- This is the same principle the current game uses — skill slots as the scarcity ceiling, Runes as the spending floor.
+- The current economy fix (start 6 Runes, +2/turn from R2) was specifically designed to avoid the dead rounds 1–4 problem that the original simulation showed.
+
+### 5i. Skill Cost as a Range: 1–4 Runes
+- Original catalogue had skills ranging from 1 Rune (Fokusstoß) to 10 Runes (Raise Undead), with most clustered at 2–4.
+- The average cost of 2.59 across all skills was not accidental — it was the calibration point for the economy sim.
+- Design implication: if you want "2 skills per turn on average," design economy around 2× avg_cost Runes per turn.
+
 ---
 
 ## 6. Turn Structure
@@ -305,6 +418,16 @@ Full list of skills that existed in the catalogue but aren't in the current game
 ### 7e. CR-style draft (one for me, one for you)
 - Alternative: P1 picks 1, P2 picks 1, alternating singles rather than P1 picks 2 then P2.
 - Stricter interleaving — prevents P1 taking two complementary skills in a row.
+
+### 7f. Draft Pool Constraint: One Champion per Terrain Type
+- Constraint added to prevent monopolisation: only one Champion per terrain affinity may be drafted into the entire game (not per player).
+- If P1 drafts the Water Mage (Water), P2 cannot draft Siren or Healer (also Water).
+- Forces both players to diversify across terrain types. Creates natural draft tension around the best Champion in each terrain category.
+
+### 7g. Class-Based Skill Pool Draft
+- Each Champion class has a different-sized skill pool (9–11 skills per class).
+- Joker class intentionally has fewer (6) — smaller pool = more predictable but more unique feel.
+- When drafting skills, the class determines your available options — picking a Mobility Champion gives you a different set of skill choices than picking an Offense Champion.
 
 ---
 

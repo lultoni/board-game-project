@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-04-28 — end of Session 9.*
+*Last updated: 2026-04-29 — end of Session 10.*
 
 ---
 
@@ -31,12 +31,13 @@ You are my board game design co-creator and systems architect. We are working on
 5. Skim `docs/brainstorm/session-log.md` for the latest session entry to understand recent context.
 6. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 9 complete, 2026-04-28)
+### Where We Are (Session 10 complete, 2026-04-29)
 
-- **Dynamic stack system built**: Testing is now evidence-driven — pick the highest-value stack after each playtest. 8 stacks defined (A–G + Accepted). `TESTING_PLAN.pdf` has the full decision tree.
-- **Composable Typst rule sheets**: `shared/baseline-sections.typ` has 16 parameterized section functions. Layer files are ~50 lines each. Changing the baseline propagates automatically.
-- **All folder/file naming updated**: `stack-a-cleverness/`, `stack-b-guards/`, `stack-g-structure/`, `accepted-layer-1-economy/`. 12 PDFs build cleanly.
-- **Stack A ready to print and play** — two games: G1 (attack nerf), G2 (nerf + combo bonus). Feedback + tracking forms included.
+- **Old-versions triage complete**: ~80 ideas from v1–v3 game versions triaged into New/Possible, Deferred, Archived. User feedback processed into all relevant docs.
+- **Design Guardrails established**: 7 guardrails (G1–G7) in `docs/backpocket.md` — invariants every proposed change must pass (e.g. "shortfall never closes," "encourage spending via attractiveness not punishment," "cognitive load = real cost").
+- **Design language doc created**: `docs/design-language.md` — Champions are blank slates, identity from equipped skills. Collects visual/identity insights for Phase B (~2027).
+- **Backlog expanded**: Research needed on temp effect tracking (blocks 3 skill ideas); adjacency synergies brainstorm ready (connects OQ-51); skill catalogue expansion roadmap staged (connects Stack F).
+- **Stack A still ready to print and play** — unchanged from Session 9. This remains the immediate priority.
 
 ### Immediate Next Action
 
@@ -68,7 +69,8 @@ After results: follow `docs/test-scenarios/TESTING_PLAN.pdf` decision tree to pi
 | `docs/test-scenarios/stack-a-cleverness/` | Stack A rule sheets + feedback (ready to print) |
 | `docs/test-scenarios/stack-b-guards/` | Stack B rule sheet + feedback (ready to print) |
 | `docs/test-scenarios/build-pdfs.sh` | Rebuilds all PDFs from Typst source |
-| `docs/backpocket.md` | Pre-thought fixes for anticipated problems |
+| `docs/backpocket.md` | Design Guardrails (G1-G7) + staged fixes + known potential issues |
+| `docs/design-language.md` | Future visual/identity direction (Phase B) |
 | `docs/mechanics-log/mechanics-evaluated.md` | Running log: accepted, deferred, withdrawn mechanics |
 | `game-state/CURRENT_DESIGN.md` | Living master design doc (summary index) |
 | `game-state/OPEN_QUESTIONS.md` | All unresolved questions with status + triggers |
@@ -76,4 +78,3 @@ After results: follow `docs/test-scenarios/TESTING_PLAN.pdf` decision tree to pi
 | `docs/decisions/ADR-001/002/003` | Architecture direction decisions |
 | `docs/research/` | Playtest analyses + game design research |
 | `docs/brainstorm/session-log.md` | Session history |
-| `baseline-rules/md-converted/` | Original rule documents (read-only reference) |
