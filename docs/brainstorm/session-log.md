@@ -1,5 +1,39 @@
 # Session Log
 
+## Session 11 — 2026-04-29 — Research & Brainstorm: Playtest Response Toolkit
+
+**Goal**: Pre-load design knowledge for rapid responses to upcoming Stack A/B playtest results. Research 4 topics via Perplexity, discuss findings, stage concrete candidates.
+
+**What was done**:
+- Researched OQ-51 (mechanical levers for rewarding clever play): identified 4 patterns — threat-as-reward, environmental multiplier, restriction-as-reward, one-time action economy. Staged Cascade Trigger (+1 Skill Slot on kill), Pin/Threatened (2+ LoS = can't move), Collision Damage (as Ram skill).
+- Researched checkmate-style win conditions: killed checkmate (verification burden impossible with ranged + heals + armor). Replaced with King Lifetime HP and Armor Decay as Stack C candidates.
+- Researched forward positioning incentives: sente skill design chosen as primary standoff solution. Preserves game identity (uses existing skill system) over territory mechanics. Fallback hierarchy staged.
+- Researched skill catalogue balance: minimum 25-35 skills needed. 10 new candidates designed (Thorn Armor, Runic Ward, Bulwark, Bind, Energize, Skill Drain, Mini-Step, Swap Step, Ram, Gravity Well) with sente test applied to each.
+- Ran conflict check: 10 potential clashes between new skills and existing guardrails. User resolved all — most "test it and see." Sente vs G1 tension researched and resolved.
+- Added G8 (Spending Tension) guardrail to backpocket and CLAUDE.md. Researched via Perplexity.
+- Mini-Step deprioritized (luxury candidate, gated on sente results).
+
+**Key findings**:
+- Checkmate is fundamentally wrong for this game — can't detect "inescapable lethal" with ranged attacks + heals + armor.
+- Sente and G1 coexist: forced reactive spending IS compatible with "shortfall never closes" because the tradeoff persists (respond = can't execute own plan).
+- The economy naturally transitions: early=Rune-scarce, mid=Slot-limited, late=opportunity-rich. G8 codifies this.
+- Cascade trigger works on any kill (not "kill via combo") — simpler, less snowbally, actually fires.
+- Skill catalogue problem is VARIETY of effects, not underpicking of categories (Playtest 2 showed all Shield skills heavily drafted).
+
+**Decisions made**:
+- Checkmate win condition KILLED — replaced by King Lifetime HP concept (backpocket).
+- Sente skill design = primary standoff approach (not territory mechanics).
+- G8 guardrail established: "Players must always want to do more than they can execute."
+- Mini-Step deprioritized to luxury/post-sente candidate.
+- 10 skill candidates staged in backpocket with full sente analysis and conflict notes.
+
+**Open items for next session**:
+- Print and play Stack A (still top priority — unchanged).
+- After Stack A results: use staged research to respond quickly (candidates ready in backpocket).
+- `/playtest` skill improvement (draft-pick extraction) when next playtest happens.
+
+---
+
 ## Session 10 — 2026-04-29 — Old Versions Triage + Design Language
 
 **Goal**: Convert old xlsx/pptx files to readable markdown, extract all possible design ideas from old game versions, triage them against current design state, collect user feedback on every idea, and process that feedback into the correct project locations.

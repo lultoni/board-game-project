@@ -2,7 +2,7 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-04-29 — Session 10 (old-versions triage feedback processed; research/brainstorm backlog items added)*
+*Last updated: 2026-04-29 — Session 11 (4 research topics completed; 10 skill candidates staged; G8 added; sente vs G1 resolved)*
 
 ---
 
@@ -69,10 +69,10 @@ Full reasoning: `docs/decisions/ADR-003-rewarding-cleverness.md`
 
 ## Backlog
 
-- Stack C (Pacing): checkmate win condition, board/piece count — write when triggered
+- Stack C (Pacing): King Lifetime HP, Armor Decay — write when triggered (checkmate killed Session 11)
 - Stack D (Board): 8x8 or hex — hex gated on `/research hex vs square grid` first (OQ-42)
 - Stack E (Draft): pool draft (OQ-35) + placement order (OQ-36+48) — after Stack B accepted
-- Stack F (Cleverness II): OQ-51 mechanical levers — after Stack A combo data
+- Stack F (Cleverness II): cascade trigger, Pin/Threatened, sente skills — after Stack A combo data
 - Stack G (Structure): unified AP framework — draft written, run after core stacks stabilise
 - Skill pool draft variant (OQ-35)
 - Flexible piece placement variant (OQ-36)

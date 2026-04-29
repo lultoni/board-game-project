@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-04-29 — end of Session 10.*
+*Last updated: 2026-04-29 — end of Session 11.*
 
 ---
 
@@ -31,12 +31,13 @@ You are my board game design co-creator and systems architect. We are working on
 5. Skim `docs/brainstorm/session-log.md` for the latest session entry to understand recent context.
 6. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 10 complete, 2026-04-29)
+### Where We Are (Session 11 complete, 2026-04-29)
 
-- **Old-versions triage complete**: ~80 ideas from v1–v3 game versions triaged into New/Possible, Deferred, Archived. User feedback processed into all relevant docs.
-- **Design Guardrails established**: 7 guardrails (G1–G7) in `docs/backpocket.md` — invariants every proposed change must pass (e.g. "shortfall never closes," "encourage spending via attractiveness not punishment," "cognitive load = real cost").
-- **Design language doc created**: `docs/design-language.md` — Champions are blank slates, identity from equipped skills. Collects visual/identity insights for Phase B (~2027).
-- **Backlog expanded**: Research needed on temp effect tracking (blocks 3 skill ideas); adjacency synergies brainstorm ready (connects OQ-51); skill catalogue expansion roadmap staged (connects Stack F).
+- **Playtest-response research complete**: 4 research topics finished (clever-play levers, checkmate, forward positioning, skill catalogue balance). Results in `docs/research/`.
+- **10 skill candidates staged**: Thorn Armor, Runic Ward, Bulwark, Bind, Energize, Skill Drain, Mini-Step, Swap Step, Ram, Gravity Well — all in `docs/backpocket.md` with sente analysis and conflict notes.
+- **Sente as primary standoff solution**: Design skills that create must-respond threats from forward positions. Confirmed G1/G8 compatible.
+- **G8 guardrail added**: "Players must always want to do more than they can execute." In CLAUDE.md + backpocket.
+- **Checkmate killed**: Replaced by King Lifetime HP + Armor Decay as Stack C candidates.
 - **Stack A still ready to print and play** — unchanged from Session 9. This remains the immediate priority.
 
 ### Immediate Next Action
@@ -47,7 +48,7 @@ You are my board game design co-creator and systems architect. We are working on
 - `stack-a-feedback.pdf` — fill out after Game 2
 - `shared/game-tracking.pdf` — 1 per player per game
 
-After results: follow `docs/test-scenarios/TESTING_PLAN.pdf` decision tree to pick next stack.
+After results: use `/playtest` skill to transcribe. Then consult `docs/backpocket.md` for pre-staged responses (sente skills, cascade trigger, skill candidates) based on what the data shows.
 
 ### Key Design Principles (always follow)
 
@@ -69,12 +70,12 @@ After results: follow `docs/test-scenarios/TESTING_PLAN.pdf` decision tree to pi
 | `docs/test-scenarios/stack-a-cleverness/` | Stack A rule sheets + feedback (ready to print) |
 | `docs/test-scenarios/stack-b-guards/` | Stack B rule sheet + feedback (ready to print) |
 | `docs/test-scenarios/build-pdfs.sh` | Rebuilds all PDFs from Typst source |
-| `docs/backpocket.md` | Design Guardrails (G1-G7) + staged fixes + known potential issues |
+| `docs/backpocket.md` | Design Guardrails (G1-G8) + staged fixes + skill candidates |
 | `docs/design-language.md` | Future visual/identity direction (Phase B) |
 | `docs/mechanics-log/mechanics-evaluated.md` | Running log: accepted, deferred, withdrawn mechanics |
 | `game-state/CURRENT_DESIGN.md` | Living master design doc (summary index) |
 | `game-state/OPEN_QUESTIONS.md` | All unresolved questions with status + triggers |
 | `game-state/NEXT_STEPS.md` | Prioritised action items |
 | `docs/decisions/ADR-001/002/003` | Architecture direction decisions |
-| `docs/research/` | Playtest analyses + game design research |
+| `docs/research/` | Research threads + playtest analyses |
 | `docs/brainstorm/session-log.md` | Session history |

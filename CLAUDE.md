@@ -66,6 +66,7 @@ Full system documentation lives in `docs/systems/` (one file per system). Summar
 - **Core fantasy**: Discovering and executing clever spell/skill combos. Every system must serve this.
 - **When in doubt**: Cut features, deepen systems
 - **No luck**: Perfect information / pure strategy. No dice, no hidden cards, no randomness.
+- **Spending tension (G8)**: Players must always want to do more than they can execute. Early: Runes limit. Mid/late: Skill Slots limit while Rune costs force choosing WHICH skills. If either resource becomes so abundant that spending requires no tradeoff, something is broken.
 
 ## Incremental Testing Methodology (MANDATORY)
 

@@ -31,6 +31,9 @@ Don't ban strategies — make more strategies viable. If one approach dominates,
 ### G7. Core Fantasy First
 "Does this make skill combos more interesting?" is the test for every system. If a mechanic doesn't serve the combo/cleverness fantasy, it needs to justify its existence on other grounds.
 
+### G8. Spending Tension
+Players must always want to do more than they can execute. Early game: Runes limit action count. Mid/late game: Skill Slots limit action count while Rune costs force choosing WHICH skills to fire. If either resource becomes so abundant that spending requires no tradeoff, something is broken.
+
 ---
 
 ## New Ideas & Staged Fixes
@@ -180,10 +183,11 @@ Target enemy Champion within range: their next skill activation this turn costs 
 
 ### Move — New Candidates
 
-**Mini-Step (Move, cost 1-2 Runes)**
+**Mini-Step (Move, cost 2 Runes)**
 Move self 1 tile along Skill Path.
 
 - **Sente**: No — pure self-repositioning. But enables sente plays (adjust LoS for follow-up Strike).
+- **Priority**: LOW — luxury candidate. Only test if sente skills don't already solve game speed. Risk: if efficient, becomes auto-draft and crowds out interesting skills.
 - **Use case**: Cheap LoS adjustment. Fills gap between free movement (Move Phase) and expensive Move skills (Quick Dash = 3 Runes). The "glue" skill that makes combos possible.
 - **Cost decision**: 1 Rune might be too spammable. 2 Runes makes it economy-comparable to other options. Test at 2, reduce to 1 if underused.
 - **Status**: Ready to test. Already in backpocket from Session 8.
@@ -298,6 +302,8 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 **Current skills WITHOUT sente properties** (opponent can ignore):
 - Armorsmith, Field Medic: self/ally buffs — no pressure on opponent
 - Focus Strike: setup for your own future action — opponent can wait
+
+**G1/G8 compatibility (Session 11 — researched)**: Sente threats force *reactive* spending — the defender spends Runes/slots to neutralize, not to profit. Both players still feel the shortfall (G1). The attacker's advantage is tempo (they chose when/where), not resources. This is G8-compatible because the tradeoff persists: spending to respond means NOT spending on your own plan. Sente breaks G1 only if responding generates more resources than it costs — avoid that in skill design.
 
 **Implication for skill catalogue expansion**: Prioritize skills that create "must-respond" threats from mid-range positions. Skills that are purely self-buffing don't dissolve standoffs. See Topic 4 (skill gaps) for specific candidates.
 

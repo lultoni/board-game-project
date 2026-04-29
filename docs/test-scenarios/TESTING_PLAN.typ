@@ -102,16 +102,16 @@ _After each playtest, follow the branch that matches your result to find the hig
     B_WEAK --> CHOOSE2
 
     CHOOSE2 --> STACKE[Stack E: Draft\nPool draft + Placement]
-    CHOOSE2 --> STACKF[Stack F: Cleverness II\nOQ-51 levers]
+    CHOOSE2 --> STACKF[Stack F: Cleverness II\nCascade + Pin + Sente skills]
     CHOOSE2 --> STACKD[Stack D: Board\n8x8 or Hex]
 
     subgraph StackC [Stack C — Pacing]
-      STACKC[Checkmate win condition\nOR board + piece count]
+      STACKC[King Lifetime HP\nOR Armor Decay]
     end
 
     STACKC --> CHOOSE3{Which first?}
-    CHOOSE3 -->|game length primary| CHECKMATE[Checkmate layer\nindependent of combat]
-    CHOOSE3 -->|piece count primary| BOARDSCALE[L5: Board + pieces\nbundle with Stack D]
+    CHOOSE3 -->|King dies too slowly| LIFETIMEHP[King Lifetime HP\nirreversible damage track]
+    CHOOSE3 -->|Armor stalls combat| ARMORDECAY[Armor Decay\narmor degrades over time]
   "),
   caption: [Dynamic testing decision tree. Update this diagram after each session.],
 )

@@ -1,6 +1,6 @@
 # CURRENT DESIGN - (GAME NAME)
 
-*Last updated: 2026-04-29 — Session 10 (old-versions triage completed; backpocket restructured with Design Guardrails; design-language.md created; NEXT_STEPS backlog expanded)*
+*Last updated: 2026-04-29 — Session 11 (4 research topics completed: clever-play levers, checkmate win conditions, forward positioning/sente, skill catalogue balance. 10 skill candidates staged. G8 guardrail added. Sente as primary standoff solution.)*
 
 ---
 
@@ -125,10 +125,10 @@ Testing is now stack-based (not linear). See `docs/test-scenarios/TESTING_PLAN.p
 | **Accepted** | Economy fix (Layer 1) | 6 start Runes · +2/turn · +1 every 5 rounds | **ACCEPTED** (Playtest 2, 24.04.2026) |
 | **A — Cleverness** | Make skill combos dominant strategy | G1: 1 DMG attack · G2: + combo bonus | **Ready to print** (`stack-a-cleverness/`) |
 | **B — Guards** | Make Guards strategically useful | Bodyguard: adjacent to defender only | **Ready to print** (`stack-b-guards/`) |
-| **C — Pacing** | Shorten games / accelerate kills | Checkmate win condition · board/piece count | Not yet written |
+| **C — Pacing** | Shorten games / accelerate kills | King Lifetime HP · Armor Decay (checkmate killed) | Not yet written |
 | **D — Board** | Optimise board feel and scale | 8x8 · Hex (gated on `/research` first) | Not yet written |
 | **E — Draft** | Improve pre-game drafting | Pool draft (OQ-35) · Placement order (OQ-36+48) | Not yet written |
-| **F — Cleverness II** | More levers for clever plays | OQ-51: cascade triggers, positional payoffs | Not yet written |
+| **F — Cleverness II** | More levers for clever plays | Cascade trigger, Pin/Threatened, sente skills | Not yet written |
 | **G — Structure** | Radical turn structure redesign | Unified AP framework (no separate phases) | Draft written (`stack-g-structure/`) |
 
 All rule sheets use the composable section system (`docs/test-scenarios/shared/baseline-sections.typ`). Baseline changes propagate automatically — no manual copy-paste across files.
