@@ -208,17 +208,54 @@ Don't ban strategies — make more strategies viable. If one approach dominates,
 
 ---
 
-## Checkmate-Style Win Condition
+## ~~Checkmate-Style Win Condition~~ — KILLED (Session 11)
 
-**Idea**: Game ends when a player can deal lethal damage to the opponent's King and the opponent has no legal response to prevent it. Both players jointly verify the position is inescapable. The King is not actually captured — the game ends on the *setup*, not the execution.
+**Original idea**: Game ends when a player creates an inescapable lethal position against the King.
 
-**Why interesting**: Cuts drawn-out endgame where outcome is decided but execution takes 5-10 more rounds. Rewards clever positioning and combo setup over grinding through remaining pieces. The moment both players jointly analyse "is this escapable?" IS the shared-puzzle peak — the game literally asks "can both players agree this position is decided?"
+**Why killed**: Our game has too many defensive options (heal, armor, push, LoS blocking, 6+ Champions with 2 skills each) to ever formally prove "this position is 100% lost" at the table. Chess checkmate works because the defender's options are extremely limited (move/block/capture). In our game, verification burden is closer to Shogi's brinkmate — impractical without a computer. Research confirmed this (`docs/research/checkmate-win-conditions.md`).
 
-**Needs**: Anti-stalling/draw rules to prevent infinite loops (threefold repetition → draw, or N rounds without damage → draw). Don't ban stalling as a strategy — make it strategically suboptimal through escalation pressure.
+**What remains**: King capture is the only formal win condition. Either player may resign at any time (informal convention — no rule needed).
 
-**Risk**: "Only saves 1-2 turns" in mechanical terms. The value is experiential (game ends on the clever move, not the cleanup) rather than length-reducing. True game length fix likely requires fewer pieces or smaller board.
+**Replaced by**: King Lifetime HP (see below) as the mechanical endgame accelerator, IF the problem manifests in playtests.
 
-**Trigger**: Independent layer after Layer 2-3 results. Not coupled with the damage economy changes.
+---
+
+## King Lifetime HP (Endgame Accelerator)
+
+**Idea**: The King has a separate **Lifetime HP** track (number TBD — likely 4–8). Every point of damage the King takes from any source is permanently marked on this track, regardless of healing or armor. When Lifetime HP reaches 0, the King is removed and the game ends. Normal HP (2: Normal → Injured → Removed) still exists alongside — the King can still die through the normal route.
+
+**Why interesting**:
+- Creates an irreversible game clock — the game MUST end eventually because King damage accumulates permanently
+- Healing becomes "delay" not "undo" — strategically richer (aligns with G1: shortfall never closes)
+- Zero verification burden (one counter per player, tracked on game-tracking sheet)
+- No arguments about "is this decidable?" — the King simply dies when the counter runs out
+- Incentivises dealing ANY damage to the King (even 1 DMG "snipes" matter over time)
+
+**Open design questions**:
+- **Armor interaction — Model A**: Armor damage does NOT count toward Lifetime HP. Only real HP damage ticks the counter. This means armor is a true shield — extends lifetime. Risk: infinite armor cycling loops remain possible.
+- **Armor interaction — Model B**: ALL damage counts (including armor). "Snipe hits" over many rounds eventually kill the King even through armor. Risk: needs a higher Lifetime HP number to feel fair. Upside: no infinite loop possible.
+- **The number**: Must be high enough that "accidental" early King damage doesn't create a snowball, but low enough that games can't stall past ~25 rounds. Needs playtest data on average King damage per game to calibrate.
+- **Tracking**: Single counter per player (e.g., a token track on the game-tracking sheet, or a small dial). Minimal overhead.
+
+**Risk**: If playtests show Kings rarely take damage anyway (Playtest 2: ~0-2 King damage in 26 rounds), this mechanic doesn't fire and doesn't solve the length problem. The real fix may need to come from elsewhere (fewer pieces, smaller board, pacing stack).
+
+**Trigger**: Only deploy if playtests show the King is specifically unkillable (armor/heal loops prevent capture) despite the game being strategically decided. NOT an active proposal — a backpocketed response.
+
+---
+
+## Armor Decay (Lifetime Armor Cap)
+
+**Idea (speculative)**: Each piece has a maximum lifetime armor absorption (e.g., 6-8 total armor points across the whole game). Once a piece has absorbed that much armor damage cumulatively, no further armor can be applied to it. Piece becomes permanently "exposed."
+
+**Why interesting**: Prevents infinite armor cycling in late game. Creates natural "wear and tear" — pieces degrade over time. Adds strategic depth to armor timing (use it early vs. save for when you really need it).
+
+**Tracking problem**: Requires a per-piece counter (up to 12 per player). Same overhead issue as all-piece Lifetime HP. Likely only viable for Champions + King (6 per player) if at all.
+
+**Connects to**: King Lifetime HP (same philosophy — irreversible accumulation), OQ-11 (armor cap), G4 (cognitive load).
+
+**Trigger**: Only if armor cycling becomes a degenerate stalling strategy in playtests. Very speculative — park until observed.
+
+---
 
 ---
 

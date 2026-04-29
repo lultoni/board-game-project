@@ -25,13 +25,16 @@
 ### OQ-13: First Player Advantage — PARTIALLY RESOLVED
 **No strong advantage observed** in Playtest 1. Low priority.
 
-### OQ-19: Endgame Acceleration — ESCALATED (concrete trigger)
+### OQ-19: Endgame Acceleration — RESEARCHED (Session 11, concrete trigger unchanged)
 - YINSH-inspired capture penalty **withdrawn** — creates unfair asymmetry when one player has no Guards left.
 - Damage escalation after Round X **deferred** — feels arbitrary.
-- **Playtest 2 update**: Game ran 4+ hours; natural finish estimated ~R40. Layers 1–3 have not fixed game length. This is now more urgent. The problem appears to be piece durability (first kill at R26) + long think times + positional deadlock, not just Rune speed.
-- **Leading candidate**: Checkmate-style win condition (game ends when lethal setup is inescapable — see `docs/backpocket.md`).
-- **Re-entry trigger**: After Layer 2 playtest — if first Champion kill is still past R20, endgame acceleration becomes Priority 1. If first kill moves earlier, deprioritize.
-- **Status**: Escalated. Concrete trigger: Layer 2 kill timing data.
+- Checkmate-style win condition **killed** (Session 11) — verification burden too high for our game. Too many defensive options to formally prove "100% lost" at the table. Research: `docs/research/checkmate-win-conditions.md`.
+- **Playtest 2 update**: Game ran 4+ hours; natural finish estimated ~R40. Layers 1–3 have not fixed game length. The problem appears to be piece durability (first kill at R26) + long think times + positional deadlock, not just Rune speed.
+- **New leading candidate**: King Lifetime HP — separate irreversible damage track on the King. Healing delays but cannot prevent death. Creates natural game clock without verification burden. See `docs/backpocket.md`. Only deploy if King specifically proves unkillable through armor/heal loops.
+- **Secondary candidates**: Fewer pieces (Stack D), smaller board (Stack D), anti-repetition rule (threefold repetition = draw).
+- **Anti-repetition rule (from research)**: If same board position occurs 3 times → draw. Prevents infinite stalling loops. Simple, no blame assignment needed. Add to any layer where game-length is being tested.
+- **Re-entry trigger**: After Stack A playtest — if first Champion kill is still past R20, endgame acceleration becomes Priority 1. If first kill moves earlier, deprioritize.
+- **Status**: Researched. Checkmate killed. King Lifetime HP staged in backpocket. Trigger unchanged: Stack A kill timing data.
 
 ### OQ-25: Economy Skills as Skill Slots — CLOSED (Session 8)
 - With only 2 skill slots per Champion, equipping an economy skill makes that piece a "one-trick pony" — sacrifices combat versatility entirely.
