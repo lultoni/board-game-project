@@ -26,10 +26,6 @@ compile "$SCRIPT_DIR/TESTING_PLAN.typ"
 # Canonical baseline
 compile "$SCRIPT_DIR/baseline/ruleset-baseline.typ"
 
-# Accepted Layer 1 — economy fix
-compile "$SCRIPT_DIR/accepted-layer-1-economy/layer-1-economy-fix.typ"
-compile "$SCRIPT_DIR/accepted-layer-1-economy/layer-1-feedback.typ"
-
 # Stack A — Cleverness (attack nerf + combo bonus, two-game format)
 compile "$SCRIPT_DIR/stack-a-cleverness/stack-a-game1-attack-nerf.typ"
 compile "$SCRIPT_DIR/stack-a-cleverness/stack-a-game2-attack-nerf-combo.typ"

@@ -17,11 +17,10 @@ Run `git pull` to fetch any changes pushed from another device. If there are con
 Read all of these files (in parallel where possible):
 
 1. `CLAUDE.md`
-2. `game-state/CURRENT_DESIGN.md`
+2. `docs/design-principles.md`
 3. `game-state/NEXT_STEPS.md`
 4. `game-state/OPEN_QUESTIONS.md`
-5. `HANDOVER.md`
-6. `docs/brainstorm/session-log.md` (skim the latest entry only)
+5. `.claude/HANDOVER.md`
 
 ## Step 2: Check for New Files
 

@@ -1,6 +1,6 @@
 # Old Game Versions — History & Archive
 
-This folder contains every previous iteration of the game, going back to its first spark in summer 2023. The material here is **read-only reference** — do not treat any of it as current rules. For current design, see [`game-state/CURRENT_DESIGN.md`](../game-state/CURRENT_DESIGN.md).
+This folder contains every previous iteration of the game, going back to its first spark in summer 2023. The material here is **read-only reference** — do not treat any of it as current rules. For current design, see [`docs/test-scenarios/baseline/ruleset-baseline.typ`](../docs/test-scenarios/baseline/ruleset-baseline.typ) (player-facing rules) and [`docs/systems-and-mechanics.md`](../docs/systems-and-mechanics.md) (design documentation).
 
 ---
 
@@ -118,39 +118,106 @@ These findings became the entire testing programme. Every stack, every layer, ev
 
 ---
 
-### April 2026 — The Claude Code Partnership
+### April 17, 2026 — Session 1: The Claude Code Partnership Begins
 
 Semester break. A decision to approach the design more systematically — not just "try a change and see what happens," but a real methodology: incremental layers, isolated variables, documented decisions, living documents that survive between sessions.
 
-Enter Claude Code as AI co-creator. Not a chatbot to ask questions — a design partner to think with. The first session established the project infrastructure that now underlies everything in this repo: `game-state/`, `docs/systems/`, `docs/decisions/`, `docs/test-scenarios/`. Architecture Decision Records were written. The terrain system was formally removed (overhead complexity confirmed). The grid was formally confirmed as non-negotiable (it's what makes skills interesting — queens move, blocked by pieces, geometry matters). Perfect information, no luck, no dice: the design principles crystallised into writing.
+Enter Claude Code as AI co-creator. Not a chatbot to ask questions — a design partner to think with. The first session established the project infrastructure: `game-state/`, `docs/`, Typst rule sheets, feedback forms. All six baseline rules documents read, 8 interlocking systems identified, 16 open questions documented.
 
-Over nine sessions through April 2026, the design process became genuinely collaborative. Claude would read all the living documents at the start of each session, run research threads on comparable games (Onitama, Hive, Twilight Struggle, Go), extract ideas from the old version archives, generate Architecture Decision Records when multiple paths diverged, and write test scenario rule sheets in Typst ready to compile to PDF and print. The methodology evolved: linear test layers became a dynamic stack system, where evidence from each playtest determined which stack to run next rather than following a fixed sequence. Twelve PDFs now build from a composable Typst template system — change the baseline section, every stack updates automatically.
+Three research threads ran: wizard-chess genre landscape (Onitama, War Chest, Tash-Kalar), competitive card fighters (BattleCon, Flesh and Blood, Yomi), and cognitive load in game design (3-5 variables per decision = sweet spot).
 
-The partnership has a specific character. Claude brings breadth (research, comparable games, MDA analysis, design frameworks) and structure (documenting decisions, maintaining living docs, generating rule sheets). The human brings taste, judgment, and the thing that can only come from actually sitting across a table from another person and watching them play.
+The first architecture decision: three directions proposed for the game's structural identity.
+- **Direction A**: Streamlined Tactical Grid (Onitama model) — keep the board, strip it to the bone, make spells the star.
+- **Direction B**: Card Fighter (BattleCon model) — drop the board entirely.
+- **Direction C**: Spatial Hybrid (Summoner Wars model) — minimal spatial element, spells primary.
 
----
+Elias chose Direction A. Direction B rejected ("just another card game"). Direction C lukewarm. Perfect information confirmed as non-negotiable.
 
-### April 24, 2026 — Playtest 2: Elias vs Jonathan
+Then the monolithic overhaul was proposed: change board size, HP, turn structure, economy, piece count, bodyguard simultaneously. Elias caught it: **"Don't change everything at once."** This became the mandatory incremental testing methodology. Five test layers defined (economy → HP → bodyguard → AP → board), to be run one at a time.
 
-Economy fix confirmed: skills active from Round 1, Skill Slots now the real limiter, Injured state relevant ("Often" — both players). Defensive skills used meaningfully for the first time. Bodyguard triggered twice. Overall enjoyment: 4–5 out of 5. Jonathan: "Mid to late game Bombe — 6 out of 5."
-
-But the game still ran four hours, ending as a draw at Round 26. Only one Champion kill in 26 rounds. The underlying problem became clear: standard attacks deal 2 DMG for free, outperforming every skill combo in the game. Skills are supposed to be the core fantasy — they're structurally the supporting act. That's what Stack A tests.
-
----
-
-### April 28–29, 2026 — Sessions 8–12: Infrastructure Complete, Research Loaded
-
-Dynamic stack testing system built. Eight stacks defined (A through G, plus Accepted). Composable Typst section functions. `TESTING_PLAN.pdf` with a full decision tree covering all stacks. All twelve PDFs building cleanly from source. Stack A — standard attack nerf + multi-Champion combo bonus — printed and ready to play. Four Perplexity research threads completed (clever-play levers, checkmate win conditions, forward positioning, skill catalogue balance). Ten new skill candidates staged. Sente skill design chosen as primary standoff solution. Checkmate win condition killed and replaced with King Lifetime HP concept.
-
-The game is no longer being designed. It's being refined.
+Other decisions: YINSH capture penalty withdrawn (unfair when asymmetric), economy skills as slots withdrawn (2 slots too few), damage escalation deferred (arbitrary). Guards shouldn't be obligatory first kills — they should matter in endgame.
 
 ---
 
-### Now — Session 12 onwards
+### April 18 — Session 2: Tooling
+
+Six custom Claude Code skills built (`/start`, `/wrapup`, `/research`, `/playtest`, `/scenario`, `/adr`). Discovery: skill directories must be unhyphenated.
+
+---
+
+### April 19 — Session 3: Rules Audit & Typst Migration
+
+All rule ambiguities resolved via explicit designer rulings: Rune timing (start of own turn), movement pathing (free route ≤ speed, blocked by all pieces), attack resolution (attacker stops before target if it survives), Bodyguard scope (Standard Attacks only), healing cap (none), Skill Path blockers (all pieces). Canonical baseline ruleset created in Typst. Build system established.
+
+---
+
+### Session 4: Feedback Forms & Tracking
+
+Per-player in-game tracking sheet (35-round log). Section C (systems feel) added to all feedback forms. `mechanics-evaluated.md` created as the living decision registry. `feedback-baseline.typ` template for future layers.
+
+---
+
+### April 24 — Playtest 2: Elias vs Jonathan (Layer 1 Economy Fix)
+
+Economy fix confirmed working. Skills active from Round 1. Skill Slots now the real limiter. Injured state relevant ("Often" — both players). Defensive skills used meaningfully for the first time. Bodyguard triggered twice. Overall enjoyment: 4–5 out of 5. Jonathan: "Mid to late game Bombe — 6 out of 5."
+
+But the game still ran four hours, ending as a draw at Round 26. Only one Champion kill in 26 rounds. The underlying problem was about to become clear.
+
+**Layer 1 accepted.** Economy changes (6 start Runes, +2/turn, +1 every 5 rounds) carry forward permanently.
+
+---
+
+### April 25 — Session 5: Playtest 2 Analysis
+
+Full transcription and analysis of all materials. Layer 1 marked ACCEPTED. The standard attack dominance problem identified in the data: 2 DMG free vs. skill combos costing 3-6 Runes for equivalent damage. Skills are structurally the supporting act despite being the stated core fantasy.
+
+---
+
+### April 27 — Session 6: Layer 2 Scrapped, Baseline Overhauled
+
+The 3 HP proposal (Layer 2) was killed: first Champion kill was R26 with 2 HP — 3 HP would push that later. Guards at 2 HP vs Champions at 3 HP would create an artificial tier. Baseline ruleset rewritten with all Playtest 2 clarifications. `docs/backpocket.md` created.
+
+---
+
+### April 27 — Session 7: Cleverness vs Attrition (The Turning Point)
+
+A full system-by-system audit revealed: the game consistently rewards attrition over clever play. Standard attack: 2 DMG, 0 Runes, infinite efficiency. Best skill combo in the game: 2 DMG, 6 Runes, 3 Skill Slots. The "best combo" merely matches what a free attack does.
+
+Research on cooperative feel in competitive games found "mutual epistemic exploration" — both players co-interpreting the same puzzle. This was already happening naturally in Playtest 2.
+
+Five design principles established (now in `docs/design-principles.md`). Layer 2 redefined: standard attack nerf (1 DMG) + multi-Champion combo bonus. Two-game test format: Game 1 tests nerf alone, Game 2 adds combo bonus. Rule sheets written, feedback forms created, all 15 skill icons added.
+
+---
+
+### April 28 — Sessions 8–9: Infrastructure Complete
+
+**Session 8**: All 7 per-system design docs populated. All ideas from old "Systems to Test" document triaged. Hex grid reopened (original rejection was by omission, not evaluation). Performance-based Rune gain permanently closed (forces single playstyle). 3rd skill slot closed by principle (2 slots forces specialist builds).
+
+**Session 9**: Linear test layers replaced with dynamic stack system. Composable Typst section functions built. All rule sheets refactored. `TESTING_PLAN.pdf` created. Eight stacks defined (A through G). `/scenario` and `/playtest` skills rewritten.
+
+---
+
+### April 29 — Sessions 10–12: Research Loaded, Ready to Play
+
+**Session 10**: All old xlsx/pptx files converted. 21 ideas extracted from old versions, triaged into 80-item assessment. Designer confirmed: Champions must remain blank slates. Design Guardrails G1–G7 established. `design-language.md` created for future visual identity phase.
+
+**Session 11**: Four Perplexity research threads completed (clever-play levers, checkmate win conditions, forward positioning, skill catalogue balance). Checkmate win condition killed (verification burden impossible with ranged + heals + armor). Sente skill design chosen as primary standoff solution. Ten new skill candidates staged. G8 (Spending Tension) guardrail established.
+
+**Session 12**: TESTING_PLAN audited and fixed (stale since Session 9). Decision tree rebuilt as tables. Three new backpocket ideas. All 12 PDFs rebuilding cleanly.
+
+---
+
+### May 2026 — Session 13: Repository Consolidation
+
+Restructured the entire repository. Eliminated overlapping documentation: ADRs dissolved (principles extracted into `design-principles.md`, history into this timeline), 7 per-system files merged into one `systems-and-mechanics.md`, session-log absorbed into this timeline. Result: each document has one clear job, no redundancy.
+
+---
+
+### Now — Waiting for Stack A
 
 The core systems are stable. The rules are coherent. Two playtests have generated real data. Four research threads have pre-loaded design knowledge for rapid response to playtest results. Ten new skill candidates are staged. The question is no longer "will this work?" — it's "how do we make it genuinely great?"
 
-Stack A tests whether nerfing the standard attack and rewarding coordinated Champions makes skill combos the dominant strategy. Stack B tests the Bodyguard fix. After those, the decision tree (now a complete table-based routing system in `TESTING_PLAN.pdf`) branches based on what the data shows.
+Stack A tests whether nerfing the standard attack and rewarding coordinated Champions makes skill combos the dominant strategy. Stack B tests the Bodyguard fix. After those, the decision tree (in `TESTING_PLAN.pdf`) branches based on what the data shows.
 
 ---
 
@@ -226,6 +293,6 @@ Timeline estimate: **2028–2029** for first commercial copies shipped. Beyond t
 
 ---
 
-*The idea started in a school holiday in summer 2023. It's now April 2026. In three years it went from a thought experiment about chess and magic to a documented, tested, systematically iterated design with a version history, a composable rule sheet system, and a testing methodology rigorous enough to isolate individual mechanics. That's not nothing. That's most of the hard work.*
+*The idea started in a school holiday in summer 2023. It's now May 2026. In three years it went from a thought experiment about chess and magic to a documented, tested, systematically iterated design with a version history, a composable rule sheet system, and a testing methodology rigorous enough to isolate individual mechanics. That's not nothing. That's most of the hard work.*
 
 *The rest is just time.*

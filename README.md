@@ -10,19 +10,17 @@ A 2-player abstract-tactical board game in active development. Two players comma
 
 | I want to... | Go here |
 |---|---|
-| Understand the current design | [`game-state/CURRENT_DESIGN.md`](game-state/CURRENT_DESIGN.md) |
+| Read the canonical rules (printable) | [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf) |
+| Understand design principles | [`docs/design-principles.md`](docs/design-principles.md) |
+| Understand how each system works (MDA, health, open questions) | [`docs/systems-and-mechanics.md`](docs/systems-and-mechanics.md) |
 | See what needs doing next | [`game-state/NEXT_STEPS.md`](game-state/NEXT_STEPS.md) |
 | See unresolved design questions | [`game-state/OPEN_QUESTIONS.md`](game-state/OPEN_QUESTIONS.md) |
-| Read the canonical rules (printable) | [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf) |
 | See the full testing plan | [`docs/test-scenarios/TESTING_PLAN.pdf`](docs/test-scenarios/TESTING_PLAN.pdf) |
 | Print materials for the next playtest | [`docs/test-scenarios/stack-a-cleverness/`](docs/test-scenarios/stack-a-cleverness/) |
-| Read about a specific game system | [`docs/systems/`](docs/systems/) |
-| See design decisions with reasoning | [`docs/decisions/`](docs/decisions/) |
 | See what has been tried and why | [`docs/mechanics-log/mechanics-evaluated.md`](docs/mechanics-log/mechanics-evaluated.md) |
-| See old-version ideas triaged (new / deferred / archived) | [`docs/mechanics-log/old-versions-triage.md`](docs/mechanics-log/old-versions-triage.md) |
-| See future visual/identity direction | [`docs/design-language.md`](docs/design-language.md) |
-| Read session history | [`docs/brainstorm/session-log.md`](docs/brainstorm/session-log.md) |
-| Resume a Claude Code session | [`HANDOVER.md`](HANDOVER.md) — paste into new session |
+| See future visual/identity direction | [`docs/game-identity-visual-naming.md`](docs/game-identity-visual-naming.md) |
+| Read the full game history & session timeline | [`old-game-versions/README.md`](old-game-versions/README.md) |
+| Pre-thought fixes for anticipated problems | [`docs/backpocket.md`](docs/backpocket.md) |
 
 ---
 
@@ -32,68 +30,52 @@ A 2-player abstract-tactical board game in active development. Two players comma
 board-game-project/
 │
 ├── README.md                        ← you are here
-├── CLAUDE.md                        ← project conventions for Claude Code (read this)
-├── HANDOVER.md                      ← copy-paste into Claude to resume where you left off
+├── CLAUDE.md                        ← project conventions for Claude Code
 │
 ├── game-state/                      ← living documents — always up to date
-│   ├── CURRENT_DESIGN.md            ← master design summary (index into docs/systems/)
 │   ├── NEXT_STEPS.md                ← prioritised action items
 │   └── OPEN_QUESTIONS.md            ← every unresolved question with status + triggers
 │
 ├── docs/
-│   ├── systems/                     ← one file per game system; full rules + MDA + health
-│   │   ├── turn-structure.md
-│   │   ├── resource-economy.md
-│   │   ├── progression.md
-│   │   ├── skill-system.md
-│   │   ├── combat-attack.md
-│   │   ├── health-armor.md
-│   │   └── skill-drafting.md
-│   │
-│   ├── decisions/                   ← ADR-style design decision records
-│   │   ├── ADR-001-game-architecture-direction.md
-│   │   ├── ADR-002-direction-a-plus.md
-│   │   └── ADR-003-rewarding-cleverness.md
+│   ├── design-principles.md         ← rules to design by (5 principles, constraints, methodology)
+│   ├── systems-and-mechanics.md     ← all 7 systems: how they work, MDA, health, open questions
+│   ├── game-identity-visual-naming.md ← future Phase B: art, naming, physical design direction
+│   ├── backpocket.md                ← pre-thought fixes for anticipated problems (staged, not active)
 │   │
 │   ├── test-scenarios/              ← printable rule sheets + feedback forms (Typst → PDF)
 │   │   ├── build-pdfs.sh            ← run this to rebuild all PDFs
-│   │   ├── TESTING_PLAN.pdf         ← decision tree: which stack to run next
+│   │   ├── TESTING_PLAN.typ/.pdf    ← decision tree: which stack to run next
 │   │   ├── shared/                  ← reusable Typst components
-│   │   │   ├── template.typ         ← shared styling (imported by all .typ files)
-│   │   │   ├── baseline-sections.typ ← 16 parameterised section functions
+│   │   │   ├── template.typ         ← shared styling
+│   │   │   ├── baseline-sections.typ ← parameterless baseline section functions
 │   │   │   ├── feedback-baseline.typ ← feedback form template
 │   │   │   └── game-tracking.typ    ← per-player in-game tracking sheet
 │   │   ├── baseline/                ← canonical ruleset (source of truth for rule text)
-│   │   ├── accepted-layer-1-economy/ ← accepted: economy fix (now baked into baseline)
 │   │   ├── stack-a-cleverness/      ← READY TO PLAY: attack nerf + combo bonus
 │   │   ├── stack-b-guards/          ← READY TO PLAY: bodyguard fix
 │   │   └── stack-g-structure/       ← DRAFT: unified AP framework
 │   │
 │   ├── research/                    ← Perplexity research exports + playtest analyses
-│   ├── mechanics-log/
-│   │   └── mechanics-evaluated.md   ← every mechanic ever considered: status + reasoning
-│   ├── brainstorm/
-│   │   └── session-log.md           ← full history of every design session
-│   └── backpocket.md                ← pre-thought fixes for anticipated problems (not active)
+│   └── mechanics-log/
+│       └── mechanics-evaluated.md   ← decision registry: every mechanic considered + status
 │
 ├── playtest-results/                ← photos of handwritten feedback + game logs
 │   ├── elias-vs-pasco-31_10_25/
 │   └── elias-vs-jonathan-24_04_26/
 │
-├── images/                          ← skill card images + other assets
-├── old-game-versions/               ← archived earlier game iterations (read-only reference)
+├── images/                          ← skill card images (15 skills)
+│
+├── old-game-versions/               ← archived earlier iterations + full game timeline
+│   ├── README.md                    ← The Ultimate Game Timeline (2023–present)
+│   ├── v1-realm-of-elements/
+│   ├── v2-project-roe/
+│   └── v3-first-board-game/
 │
 └── .claude/                         ← Claude Code project config
-    ├── settings.local.json          ← permissions + hooks
-    ├── hooks/session-start.sh       ← injects skill-trigger reminders each session
-    └── skills/                      ← custom slash commands (see "Working with Claude" below)
-        ├── start/SKILL.md
-        ├── wrapup/SKILL.md
-        ├── research/SKILL.md
-        ├── playtest/SKILL.md
-        ├── scenario/SKILL.md
-        ├── adr/SKILL.md
-        └── build-pdfs/SKILL.md
+    ├── HANDOVER.md                  ← session bookmark (paste into new session)
+    ├── settings.local.json
+    ├── hooks/session-start.sh
+    └── skills/                      ← custom slash commands
 ```
 
 ---
@@ -116,30 +98,19 @@ board-game-project/
 2. **Action Phase** — activate up to N skills (limited by Skill Slots, paid in Runes)
 
 ### Key Systems
-- **Runes** — the currency. Gain +2/turn from Round 2 (starts at 6). Spend to activate skills.
-- **Skills** — equipped during pre-game draft. Champions/King get 2 skill slots each. Skills use line-of-sight paths blocked by all pieces.
+- **Runes** — currency. Start 6, gain +2/turn from Round 2 (scaling). Spend to activate skills.
+- **Skills** — equipped during pre-game draft. 2 slots per Champion/King. Line-of-sight paths blocked by all pieces.
 - **2 HP** — Normal → Injured → Removed. Injured reduces Guard speed and skill range.
-- **Bodyguard** — a Guard adjacent to an attacked Champion/King can intercept standard attacks.
-- **Standard Attack** — move onto an enemy tile to deal 1 DMG (Stack A change, being tested).
+- **Bodyguard** — Guard adjacent to an attacked Champion/King can intercept standard attacks.
+- **Standard Attack** — move onto enemy tile = 2 DMG (baseline).
 
 Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf)
 
 ---
 
-## Design Principles
+## Current Status (Session 13)
 
-1. **Core fantasy first** — "Does this make skill combos more interesting?" is the test for every system.
-2. **Perfect information** — no dice, no hidden cards, no randomness.
-3. **Depth over breadth** — cut features, deepen systems.
-4. **Incremental testing** — never change multiple interacting systems at once. One stack = one experience outcome.
-5. **MDA lens** — always evaluate mechanics through Mechanics → Dynamics → Aesthetics.
-6. **Shared-puzzle feel** — winning should feel like "I found the better solution," not "I crushed you."
-
----
-
-## Current Status (Session 12)
-
-| Layer / Stack | Topic | Status |
+| Stack | Topic | Status |
 |---|---|---|
 | Layer 1 — Economy Fix | 6 start Runes, +2/turn | **ACCEPTED** (Playtest 2) |
 | **Stack A — Cleverness** | Attack nerf + combo bonus | **Ready to print and play** |
@@ -156,80 +127,56 @@ Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scen
 
 ## Working with Claude Code
 
-This project uses Claude Code as an AI design collaborator. A session works like this:
-
 ### Starting a Session
-Run `/start` in Claude Code. It reads all living documents and presents a status briefing. Alternatively, paste the contents of `HANDOVER.md` into a new session.
+Run `/start` in Claude Code. It reads all living documents and presents a status briefing.
 
 ### Ending a Session
-Run `/wrapup`. It updates all living documents, writes the session log entry, updates `HANDOVER.md`, and commits + pushes changes.
+Run `/wrapup`. It updates all living documents, writes the session entry into the timeline, and commits.
 
-### Custom Skills (Slash Commands)
+### Custom Skills
 
 | Command | When to use |
 |---|---|
-| `/start` | Begin a design session — reads living docs, presents briefing |
-| `/wrapup` | End a session — updates all docs, commits, pushes |
-| `/research <topic>` | Need external knowledge about game design, comparable games, player psychology |
-| `/adr <topic>` | Multiple valid design approaches exist and need formal comparison |
-| `/scenario <stack-X> <desc>` | Design discussion ends with a testable, isolated change |
-| `/playtest <N>` | Analyse playtest results from photos in `playtest-results/` |
-| `/build-pdfs` | Rebuild all PDFs from Typst source |
-
-Skills auto-trigger when context matches (e.g. `/research` fires when a knowledge gap is identified). You can also invoke them manually.
+| `/start` | Begin a design session |
+| `/wrapup` | End a session — updates docs, commits |
+| `/research <topic>` | Need external knowledge about game design |
+| `/adr <topic>` | Multiple valid design approaches need comparison |
+| `/scenario <stack-X> <desc>` | Design discussion yields a testable change |
+| `/playtest <N>` | Analyse playtest results from photos |
 
 ### Source of Truth Hierarchy
-1. **Rule text**: `docs/test-scenarios/baseline/ruleset-baseline.typ` (Typst source) / `.pdf` (printable)
-2. **Design decisions**: `game-state/CURRENT_DESIGN.md` (index) + `docs/systems/` (per-system detail)
-3. **What to do next**: `game-state/NEXT_STEPS.md`
-4. **Historical reasoning**: `docs/decisions/ADR-*.md` and `docs/brainstorm/session-log.md`
+1. **Rule text**: `docs/test-scenarios/baseline/ruleset-baseline.typ`
+2. **Design principles**: `docs/design-principles.md`
+3. **Systems detail**: `docs/systems-and-mechanics.md`
+4. **What to do next**: `game-state/NEXT_STEPS.md`
+5. **Decision history**: `docs/mechanics-log/mechanics-evaluated.md`
+6. **Full game timeline**: `old-game-versions/README.md`
 
 ---
 
 ## How Rule Sheets Are Made
 
-Rule sheets use **Typst** (a modern typesetting system) and a composable section system:
+Rule sheets use **Typst** and a composable section system:
 
-- `docs/test-scenarios/shared/baseline-sections.typ` — 16 parameterised `#let` functions, one per ruleset section.
-- Each stack file is ~50 lines: it imports `baseline-sections.typ`, calls each section function, and overrides only what changes.
-- Changing the baseline propagates automatically to all stack files — no manual copy-paste.
-- Changes are marked with a `⚡ CHANGED:` callout and a before/after table in the relevant section.
+- `shared/baseline-sections.typ` — parameterless functions, one per baseline section.
+- Each stack file calls baseline functions for unchanged sections and inlines its own changed sections with `⚡ CHANGED:` callouts.
+- Changing the baseline propagates automatically to all stack files.
 
-**To rebuild all PDFs**: run `docs/test-scenarios/build-pdfs.sh` (requires [Typst](https://typst.app) installed).
+**To rebuild all PDFs**: run `zsh docs/test-scenarios/build-pdfs.sh` (requires [Typst](https://typst.app)).
 
 ---
 
 ## Playtest Methodology
 
-Testing follows an incremental, evidence-driven stack system:
-
 1. **One stack = one experience outcome** (e.g. "make skill combos dominant strategy").
-2. **Each stack contains 1–2 game variants** — the minimum change needed to test the hypothesis.
-3. **After each playtest**, consult `TESTING_PLAN.pdf` to pick the highest-value next stack based on results.
-4. **Never change multiple interacting systems at once.** If you can't isolate the cause of an effect, the test is invalid.
+2. **Each stack contains 1–2 game variants** — minimum change to test the hypothesis.
+3. **After each playtest**, consult `TESTING_PLAN.pdf` to pick the highest-value next stack.
+4. **Never change multiple interacting systems at once.** If you can't isolate causation, the test is invalid.
 
-Playtest materials per session: rule sheet(s) + feedback form + game tracking sheet (1 per player).
-
-Results go in `playtest-results/<players>-<date>/` as photo scans. Run `/playtest <N>` to transcribe and analyse.
+Results go in `playtest-results/<players>-<date>/`. Run `/playtest <N>` to analyse.
 
 ---
 
-## Tooling Requirements
+## Old Game Versions
 
-| Tool | Purpose | Install |
-|---|---|---|
-| [Claude Code](https://claude.ai/code) | AI design collaborator + session workflow | `npm install -g @anthropic-ai/claude-code` |
-| [Typst](https://typst.app) | Compiles `.typ` rule sheets to PDF | `brew install typst` |
-| [Pandoc](https://pandoc.org) | Markdown → PDF conversion (secondary) | `brew install pandoc` |
-
----
-
-## Old Game Versions (Historical Reference Only)
-
-`old-game-versions/` contains archived material from earlier iterations of the game going back to 2023. Three subfolders correspond to distinct eras:
-
-- `v1-realm-of-elements/` — the original concept with elemental mages on an 8×8 board (2023)
-- `v2-project-roe/` — Project ROE: a redesign with Champion classes, tile control, and a digital Java implementation (2024)
-- `v3-first-board-game/` — the first pure board game ruleset: Guards, Champions, King, Runes, Skills (2025, pre-migration)
-
-See [`old-game-versions/README.md`](old-game-versions/README.md) for the full game history and a timeline of how the design evolved.
+`old-game-versions/` contains archived material from earlier iterations (2023–2025). See [`old-game-versions/README.md`](old-game-versions/README.md) for the full game history and session timeline.

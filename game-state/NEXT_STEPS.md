@@ -16,7 +16,7 @@ Two-game test format in one session:
 
 Play the more disruptive change (nerf) first. Game 2 is strictly additive — delta between games = combo bonus effect.
 
-Full reasoning: `docs/decisions/ADR-003-rewarding-cleverness.md`
+Full reasoning: `docs/design-principles.md`
 
 ## ~~Priority 0: Write Layer 2 Rule Sheets~~ DONE (Session 7 cont.)
 

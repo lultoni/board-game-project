@@ -1,7 +1,6 @@
 # Mechanics Evaluated Log
 
 *A running log of mechanics considered, tested, accepted, deferred, or discarded.*
-*Supplements the ADR records (`docs/decisions/`) with smaller-scale evaluations.*
 *Update whenever a mechanic is proposed, tested, or resolved.*
 
 ---
@@ -34,10 +33,9 @@ These are accepted in principle but need playtest confirmation.
 | Mechanic | Layer | Hypothesis |
 |----------|-------|------------|
 | 6 start Runes, +2/turn, scaling every 5 rounds | Layer 1 | Fixes dead opening; skills come online Turn 1 |
-| 3 HP for Champions/King (Guards stay 2 HP) | Layer 2 | Combat becomes gradual; Injured state matters |
-| Bodyguard: adjacent to defender only; Guard takes 2 DMG | Layer 3 | Bodyguard triggers frequently; Guards feel useful |
-| Unified AP system (3 AP/turn) | Layer 4 | Cleaner decisions; merges Move + Skill phases |
-| 8x8 board, fewer pieces | Layer 5 | Spells become the star; faster first contact |
+| Bodyguard: adjacent to defender only; Guard takes 2 DMG | Stack B | Bodyguard triggers frequently; Guards feel useful |
+| Unified AP system (3 AP/turn) | Stack G | Cleaner decisions; merges Move + Skill phases |
+| Standard attack 1 DMG + combo bonus | Stack A | Skills become primary damage source; coordination rewarded |
 
 ---
 
@@ -77,6 +75,11 @@ Mechanics that were explicitly ruled out, with reasons.
 | Starting player bid (hidden Rune auction) | Session 8 (OQ-45) | No first-player advantage observed. If it surfaces, use Go-style komi (fewer starting Runes) instead. |
 | Coordinated movement bonus (−1 Rune if pieces move to same zone) | Session 11 (OQ-51) | Too easy to trigger accidentally — rewards moving pieces in the same direction, which players do anyway. Doesn't actually require cleverness. |
 | Checkmate-style win condition (formal "inescapable position" rule) | Session 11 (OQ-19) | Verification burden too high for our game — too many defensive options (heal, armor, push, LoS block) to formally prove "100% lost" at the table. Research confirmed this is analogous to Shogi brinkmate (impractical without a computer). King capture remains the only formal win condition. |
+| 3 HP for Champions/King (Guards stay 2 HP) | Session 6 | Would extend game (first Champion kill at R26 with 2 HP). Guards at 2 HP vs Champions at 3 HP creates artificial tier — conflicts with Guards having late-game presence. |
+| 8x8 board, fewer pieces | Session 8 (OQ-1) | Deferred indefinitely — not solving a confirmed problem yet. Trigger: if first Champion kill still past R15 after Stack A/B results. |
+| Class-based skill pools (Champion's class determines which skills you can draft) | Session 10 | Restricts strategy freedom for minimal complexity reduction. Contradicts blank-slate Champion design. |
+| Champion pre-naming (Blacksmith, Necromancer, etc.) | Session 10 | Champions are blank slates — identity emerges from equipped skills. Pre-naming destroys mental freedom. |
+| Information/scouting skill (reveal Rune count) | Session 10 | Irrelevant in a perfect-information game. |
 
 ---
 
