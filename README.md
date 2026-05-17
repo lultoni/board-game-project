@@ -102,26 +102,27 @@ board-game-project/
 - **Skills** — equipped during pre-game draft. 2 slots per Champion/King. Line-of-sight paths blocked by all pieces.
 - **2 HP** — Normal → Injured → Removed. Injured reduces Guard speed and skill range.
 - **Bodyguard** — Guard adjacent to an attacked Champion/King can intercept standard attacks.
-- **Standard Attack** — move onto enemy tile = 2 DMG (baseline).
+- **Standard Attack** — move onto enemy tile = 1 DMG (baseline, accepted Session 15).
 
 Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf)
 
 ---
 
-## Current Status (Session 14)
+## Current Status (Session 15)
 
 | Stack | Topic | Status |
 |---|---|---|
 | Layer 1 — Economy Fix | 6 start Runes, +2/turn | **ACCEPTED** (Playtest 2) |
-| **Stack A — Cleverness** | Attack nerf + combo bonus | **Ready to print and play** |
-| Stack B — Guards | Bodyguard adjacency fix | Ready to print and play |
+| Standard Attack 1 DMG | Attack nerf | **ACCEPTED** into baseline (Playtest 3) |
+| **Stack A — Cleverness** | G1 nerf confirmed; G2 (combo bonus) next | **G1 done, G2 ready (pending pre-work)** |
+| Stack B — Guards | Bodyguard adjacency fix | **De-prioritised** (may be obsolete after P3) |
 | Stack C — Pacing | King Lifetime HP · Armor Decay | Not yet written |
-| Stack D — Board | 8×8 · Piece count · Hex | Not yet written |
+| Stack D — Board | 8×10 · 8×8 · Piece count · Hex | Not yet written |
 | Stack E — Draft | Pool draft, placement order | Not yet written |
 | Stack F — Cleverness II | Cascade trigger · Pin/Threatened · Sente skills | Not yet written |
 | Stack G — Structure | Unified AP framework | Draft written |
 
-**Immediate next action**: Print and play Stack A (files in `docs/test-scenarios/stack-a-cleverness/`).
+**Immediate next action**: pre-Game-2 prep — resolve Lance Thrust + Injured rule ambiguity, fix tracking sheet (add Standard Attack count), brainstorm OQ-52/53, decide combo-bonus scope.
 
 ---
 

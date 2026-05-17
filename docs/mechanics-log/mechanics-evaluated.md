@@ -23,6 +23,7 @@ These mechanics were tested in Playtest 1 or resolved by designer ruling and are
 | Free pathing for movement (any route ≤ speed) | Session 3 (ruling) | Cannot pass through any piece |
 | Defender chooses which Guard intercepts | Session 1 / P1 suggestion | Accepted as ruling |
 | No terrain effects | Session 1 (ADR-001/002) | Confirmed overhead complexity; removed |
+| Standard attack 1 DMG (was 2) | Session 15 / P3 | First Champion kill R11 (vs P2's R26). Both players Q2 "Felt right." Combat feel "Better/Much Better." Standoff dissolved. Skills become primary damage source; standard attack remains as low-cost Injurer. |
 
 ---
 
@@ -33,9 +34,9 @@ These are accepted in principle but need playtest confirmation.
 | Mechanic | Layer | Hypothesis |
 |----------|-------|------------|
 | 6 start Runes, +2/turn, scaling every 5 rounds | Layer 1 | Fixes dead opening; skills come online Turn 1 |
-| Bodyguard: adjacent to defender only; Guard takes 2 DMG | Stack B | Bodyguard triggers frequently; Guards feel useful |
+| Bodyguard: adjacent to defender only; Guard takes 2 DMG | Stack B | Bodyguard triggers frequently; Guards feel useful. **P3 update**: may be obsolete — Bodyguard organically activated under Stack A nerf without adjacency change. De-prioritised pending one more experienced-player game. |
 | Unified AP system (3 AP/turn) | Stack G | Cleaner decisions; merges Move + Skill phases |
-| Standard attack 1 DMG + combo bonus | Stack A | Skills become primary damage source; coordination rewarded |
+| Multi-Champion combo bonus (+1 DMG on 2nd+ skill same target same turn) | Stack A G2 | Coordination rewarded; raises ceiling of clever play. **P3 update**: cross-piece combos already emerge organically without bonus (Air Blast → Hook Pull). Game 2 question reframed: does bonus *add* to combo system or crowd out cross-category play? |
 
 ---
 

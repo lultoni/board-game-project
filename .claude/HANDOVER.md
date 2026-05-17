@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-17 — end of Session 14.*
+*Last updated: 2026-05-18 — end of Session 15.*
 
 ---
 
@@ -30,17 +30,22 @@ You are my board game design co-creator and systems architect. We are working on
 4. Read `game-state/OPEN_QUESTIONS.md` (unresolved design questions).
 5. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 14 complete, 2026-05-17)
+### Where We Are (Session 15 complete, 2026-05-18)
 
-- **Fresh playtest pending transcription**: `playtest-results/elias-vs-mario-17_05_26/` (11 photos + side-notes) — needs `/playtest 3` next session. Confirm variant (Stack A vs baseline) before transcribing.
-- **3 new ideas captured** in `backpocket.md` (Guard buffs, mid-game events, private draft + trade) — all `[TO DISCUSS]`, none active.
-- **New mandatory rule** in `CLAUDE.md`: Justification Rule — every new idea must answer "what problem does this fix / what game-feel does this improve?" Variety alone is not justification.
-- **`design-principles.md` amended**: strategy-specific economy is OK if balanced across multiple paths; cognitive-load 4-axis model marked as aspirational (experienced players), not descriptive of new players.
-- **Test-scenario UX issues logged** in NEXT_STEPS for next template rebuild (separate src/PDFs, facilitator-page pattern, independent feedback forms, more writing space).
+- **Playtest 3 analysed** (`docs/research/playtest-3-analysis.md`). Stack A Game 1 (standard attack 1 DMG) **confirmed working** — standoff dissolved, first Champion kill R11. Standard Attack 1 DMG **accepted into baseline**.
+- **Stack B de-prioritised**: Bodyguard activated organically under Stack A. Re-evaluate after Stack A G2.
+- **Two new OQs**: OQ-52 (centre-of-board has no attractor) and OQ-53 (attrition vs regicide — King isn't a real target). Both need brainstorm sessions before Stack F.
+- **Four new backpocket entries**: 8×10 narrower board, starting-formation swap to expose King, "spec for a programmer" (with `/research requirements engineering` note), digital playtest prototype (sleep-on-it, ADR required).
+- **Rune Theft (OQ-34) reframed** into state-dependent Mode A / Mode B with time-dependent disable value. Inconclusive, monitor in Stack A G2.
 
 ### Immediate Next Action
 
-**Run `/playtest 3`** on `playtest-results/elias-vs-mario-17_05_26/`. Confirm variant first (check `side-notes.md`). After transcription, extract metrics + feedback themes, then consult `docs/backpocket.md` for pre-staged responses.
+**Session 16 = pre-Stack-A-G2 prep** (do NOT print Stack A G2 yet). Priority order:
+1. Resolve baseline rule ambiguities: Lance Thrust + Injured Range penalty (cost Elias R22), Focus Strike + adjacent self-target. Update `ruleset-baseline.typ` so 1 DMG is canonical.
+2. Fix tracking sheet: add Standard Attack count column, bake Rune-gain + Skill-Slot scaling into the sheet, drop redundant skill-cost column.
+3. Brainstorm OQ-52 + OQ-53 (combined session — they share solution space). Constraint: no "queen" piece; King must *participate*, not just *survive*.
+4. Decide combo-bonus scope (Strike+Strike-only vs cross-category) before Stack A G2 rule sheet is finalised.
+5. Sleep-on-it: digital prototype ADR — only after physical iteration loop is unblocked.
 
 ### Key Files
 

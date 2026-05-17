@@ -701,6 +701,60 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ---
 
+---
+
+## [TO DISCUSS] 8×10 Narrower Board Variant (Session 15 idea)
+
+**What it fixes / improves**: shrinks the "spread to the flanks" runway. Pieces can't fan as far before hitting the edge → potentially less flank-drift at opening, more incentive to engage centrally. Addresses OQ-52 (centre attractor) directly via geometry rather than via added mechanics. Same height as 10×10 (preserves opening distance), narrower width.
+
+**Trigger condition**: when OQ-52 reaches an active design-discussion phase, OR alongside a Stack D (Board) test.
+
+**Risks**: increases piece density per column → standoff risk could re-emerge (the problem we just solved with the attack nerf — would erase Stack A gains). Rectangular not square — changes skill-range and LoS feel asymmetrically. Hard to isolate effect from other variables; must test as a single-variable change. Might require formation rework (current `--GGGGGG-- / --CCKCCC--` is centred for a 10-wide board).
+
+**Status**: `[TO DISCUSS]` — staged option for OQ-52 / Stack D.
+
+---
+
+## [TO DISCUSS] Starting-Formation Swap to Expose King (Session 15 idea)
+
+**What it fixes / improves**: addresses OQ-53 (King isn't a real target) by changing the *starting* geometry so the King is more open from turn 1 — without changing what the King *is*. Specifically: swap the centre 2 Champions with the Guards in front of them, OR swap King + adjacent Champion with their fronting Guards, OR similar formation tweaks that reduce the King's screen. Lightweight to test (no rule changes — only initial setup).
+
+**Trigger condition**: as part of an OQ-53 design discussion, or as a one-off setup variant during any non-formation-dependent stack.
+
+**Risks**: swapped formations may unbalance opening (the player who's better at exploiting an exposed King wins reliably). Could push too far and make the King die too quickly, killing the "long game" feel. Test as one of several formation variants, not as a single fix. Bundles awkwardly with OQ-36 (flexible placement) — confirm which question is being answered.
+
+**Status**: `[TO DISCUSS]` — needs brainstorming as part of OQ-53.
+
+---
+
+## [TO DISCUSS] "Spec the Game for a Programmer" Exercise (Session 15 idea)
+
+**What it fixes / improves**: forces unambiguous rule definitions. Code has no tolerance for "we'll figure it out at the table" — writing an implementation spec exposes every ambiguous interaction (Lance Thrust + Injured, Focus Strike + adjacent self-target, push-into-LoS-blocker, Blade Tempest pushed-onto-occupied-tile, etc.) and forces decisions. Output: a cleaner ruleset with no hidden gaps. Doubles as a foundation for the digital prototype if that goes ahead. Concrete catalyst: Playtest 3's R22 was a wasted turn because Elias couldn't resolve an ambiguity at the table.
+
+**Trigger condition**: anytime; scope-limited (write spec, do not build). Could be a single dedicated session, or a slow background pass while writing baseline updates.
+
+**Note**: consider running `/research requirements engineering` first — there are established techniques (use cases, formal specs, behaviour-driven specs, decision tables, state machines) for exactly this kind of "translate a fuzzy domain into unambiguous rules" exercise. A short research pass before starting could surface the right format for our case (rule book → spec) and save us from inventing one from scratch.
+
+**Risks**: low. Time investment, not design risk. Could surface contradictions in current rules that need resolving — that *is* the point. Risk of scope creep into "let's just build it" — keep this as a write-only exercise unless ADR-status decision is made first.
+
+**Status**: `[TO DISCUSS]` — bookmarked exercise.
+
+---
+
+## [TO DISCUSS] Digital Playtest Prototype (web / iPad / Tabletop Simulator) (Session 15 idea)
+
+**What it fixes / improves**: faster playtest iteration cycles, cleaner data capture (auto-logged rounds, attacks, armor, runes — fixes the form gaps surfaced in Playtest 3), can play during travel or short windows, and forces rule-disambiguation as a by-product (see "Spec the game for a programmer" entry above). Useful as a *complement* to physical playtests, not a replacement.
+
+**Trigger condition**: travel window with a playtest partner (mentioned: Jonathan), OR after 2+ more physical playtests when iteration speed becomes the bottleneck.
+
+**Scope discipline**: minimum viable = drag-and-drop simulator + long-press wheel for Injured/Armor/skill-equip + side-panel rune/round tracking. **No rules enforcement, no AI opponents, no polish.** Treat as a tool, not a product. Decision needs an ADR before any implementation work.
+
+**Risks**: scope creep (polish is bottomless); risk of "the digital version becomes the game" — defeats the screen-free design intent; rule-state divergence between digital and `ruleset-baseline.typ` (digital must source from baseline, not the other way around).
+
+**Status**: `[TO DISCUSS]` — sleep-on-it. ADR required before any building.
+
+---
+
 ## Known Potential Issues
 
 *Risks to monitor. Not active problems — but if the trigger conditions are met, these become real.*

@@ -64,13 +64,15 @@
 - Side-note alternative (Range+1) not needed: default Range 2 is correct and consistent.
 - **Status**: Resolved as Range 2 (default). Carry forward into all layers. Watch whether Range 2 feels limiting in practice.
 
-### OQ-21: Bodyguard Rule — READY TO TEST (Layer 3)
-**Adjacent to defender only.** Guard takes the damage (this is already the baseline rule — only the adjacency requirement changes in Layer 3).
-- Full standalone rule sheet: `docs/test-scenarios/layer-3-bodyguard-fix/layer-3-bodyguard-fix.typ`
+### OQ-21: Bodyguard Rule — SIGNIFICANTLY UPDATED (Playtest 3, Stack B may be obsolete)
+**Adjacent to defender only.** Guard takes the damage (this is already the baseline rule — only the adjacency requirement changes in Stack B).
+- Full standalone rule sheet: `docs/test-scenarios/stack-b-guards/stack-b-bodyguard-fix.typ`
 - **Hypothesis**: Bodyguard triggers more frequently. Guards become genuinely useful as screens.
-- **P2 update**: Bodyguard triggered 2x in Playtest 2 under baseline adjacency rule. Layer 3 still worth testing.
+- **P2 update**: Bodyguard triggered 2x in Playtest 2 under baseline adjacency rule.
+- **P3 update (Session 15)**: Elias Q15 — "with less standoff it (Bodyguard rule) happened way more often" + repositioned **Yes**. **Bodyguard organically activated under Stack A nerf** without any adjacency-rule change. The dead-Bodyguard problem may be a *symptom* of the standoff problem, not an independent issue. Stack B may be solving an already-solved problem.
 - **Attacker movement on intercept**: RULED — attacker moves 1 tile toward target (stops before Guard). Applied to baseline.
-- **Contingent variant (Session 8)**: If "defender-only" overshoots (triggers too often / breaks positioning), test "attacker-only" adjacency as a middle ground between "both" (too restrictive) and "defender-only" (possibly too permissive). This skipped variant was identified as implicitly closed; add to Layer 3 evaluation criteria.
+- **Contingent variant (Session 8)**: If "defender-only" overshoots (triggers too often / breaks positioning), test "attacker-only" adjacency as a middle ground between "both" (too restrictive) and "defender-only" (possibly too permissive).
+- **Status**: De-prioritise Stack B. Re-evaluate after one more experienced-player playtest (Stack A G2). If Bodyguard keeps triggering organically across multiple games, close OQ-21 as resolved-by-side-effect.
 
 ---
 
@@ -92,13 +94,22 @@
 ### OQ-33: Blade Tempest Self-Affect — RESOLVED (applied to baseline)
 **Blade Tempest does NOT affect the caster.** Only the target takes 1 DMG; only pieces adjacent to the *target* are pushed. Now in skill text.
 
-### OQ-34: Rune Theft Balance — MONITORING
-**Rune Theft (3 Rune cost: 1 DMG + steal 1 Rune) may be too strong with Layer 1 economy.**
-- Elias flagged it as a dominant tool — creates "Rune races" and tempo swings.
-- With +2/turn income, stealing 1 Rune is a meaningful ~50% of a turn's income.
-- **Hypothesis**: Raise cost to 4 Runes, or reduce effect (no damage, just theft).
-- **Evaluation criteria (Session 8)**: Add indirect playtest question: "Did any skill feel too dominant or like a must-pick?" Don't lead with Rune Theft specifically — let players name it organically.
-- **Status**: Monitor in Layer 2. If still dominant, test a nerfed version.
+### OQ-34: Rune Theft Balance — INCONCLUSIVE (Playtest 3, reframe)
+**Rune Theft has two operating modes — verdict depends on which one shows up in a given game.**
+- **Mode A** — opponent at 0 Runes: Rune Theft is functionally a normal-range Strike skill (1 DMG, no theft effect). Comparable to Lance Thrust at full board range. Not dominant.
+- **Mode B** — opponent has Runes, mid-game: cheap damage + opponent disabling. Tempo weapon. **Disable value is time-dependent**: early-game, stealing 1 Rune blocks a planned skill (~50% of a turn's gain — high impact); late-game, both sides roll major-combo Runes every ~2 turns, so −1 Rune barely dents the opponent (low impact). So Mode B itself splits into "early-Mode-B = punishing" vs. "late-Mode-B = mostly cosmetic."
+- **Playtest 3 evidence**: Elias's late Rune Theft burst (R23–R24, 6 activations across 2 turns) happened after Mario was already mostly out of Runes — Mode A territory. Per user's reframe: "the late burst was forced by positioning, not strategic save." Does NOT confirm dominance.
+- **Playtest 2 (P2)**: Earlier flagging was Mode B framing (mid-game, both with Runes).
+- **Open question becomes**: in a typical experienced-player game, which mode dominates? If Mode B is rare because the economy keeps both players spending, Rune Theft is fine at cost 3.
+- **Hypothesis (unchanged)**: Raise cost to 4 Runes if Mode B is prevalent in next experienced-player game.
+- **What to watch in Stack A G2**: (a) does early-game Rune Theft block opponent's opener plans? (b) does late-game Rune Theft feel pointless or still tempo-relevant? If (a) → cost question reopens. If (b) is "pointless" → Rune Theft might need a redesign rather than a cost tweak (scaling effect, or theft amount tied to opponent pool).
+- **Status**: Inconclusive. Continue monitoring in Stack A Game 2.
+
+### OQ-46: Rune Cap — CLOSE FROM MONITORING (Playtest 3)
+`[System: Resource Economy] [Affects: Skill System]`
+
+**No hoarding observed in Playtest 3 — neither player accumulated unspent Runes meaningfully.** Both players' max unspent end-of-turn Rune count was small; both players said "always wanted more / balanced." Confirms G2 (encourage spending via attractiveness) is working. Close from monitoring unless a future game shows different behaviour.
+- **Status**: Close from monitoring. No cap needed.
 
 ### OQ-35: Skill Pool Draft Variant — DEFERRED (concrete trigger)
 **Alternative draft: each player drafts a pool of N skills first, then assigns skills to Champions.**
@@ -150,15 +161,19 @@ With unified AP, a single piece could spend all 3 AP on movement and rush the Ki
 
 ## Medium Priority (balance and polish)
 
-### OQ-10: Injured Penalty Severity
+### OQ-10: Injured Penalty Severity — INCONCLUSIVE (Playtest 3, blocked by rule clarity)
 - **Speed penalty is Guard-only**: Champions/King are already Speed 1, so Injured's "Speed capped at 1" does nothing for them. The only Champion/King Injured effect is Range 2+ → Range 1.
 - Question: Is that range reduction punishing enough for Champions/King? Or do Injured Champions feel largely unaffected until they're killed?
 - Potential alternative effects: +1 Rune cost on all skills when Injured; −1 Skill Slot when Injured; or something else.
-- **Status**: Monitor in Layer 2 (whatever topic it becomes). Re-evaluate whether Champions feel meaningfully Injured in practice.
+- **P3 update (Session 15)**: Elias Q1 "Sometimes" — injured pieces had meaningful time before dying. Q16 ("did Injured Champions feel weaker?") **blank**. The rule itself is also ambiguous: side-note #5 (Lance Thrust + Injured Range penalty) cost Elias an entire turn (R22) — he stalled rather than risk a misplay. Until the rule is unambiguous, "is the penalty enough?" can't be evaluated.
+- **Action required**: resolve the Lance Thrust + Injured rule ambiguity in baseline before next playtest. Then re-evaluate severity question.
+- **Status**: Inconclusive. Rule clarity is the blocker — fix that first.
 
-### OQ-11: Armor Cap
-- Keep at 3. Re-evaluate after Layer 2.
-- **Evaluation criteria (Session 8)**: Track armor amounts during game — total armor granted, per player, per piece. Cross-reference with: damage dealt, economy spent on armor vs. offense, game length. This tells us whether armor is (a) too cheap relative to offense, (b) extending games by absorbing too much damage, or (c) well-balanced as a strategic choice.
+### OQ-11: Armor Cap — CONFIRMED WORKING (Playtest 3, RPS loop functions)
+- Keep at 3.
+- **P3 update (Session 15)**: Mario stacked Armor heavily (~20 Armorsmith activations). Elias drafted Armor Breaker as the counter and used it effectively (multiple R14, R15, R20, R21, R23 activations). The RPS loop **functions as designed**: Armor stacking exists, the counter exists, the counter wins when picked. Elias Q17: Armor "slightly extended / well balanced; start: only armor stacking, afterwards prevented instant death + gave presence." This is the intended Armor experience.
+- Mario's heavy stacking was draft-and-experience-driven (no Rust Shield in his pool, no presence pieces, reactive defensive learning curve), not an Armor-too-cheap signal.
+- **Status**: Confirmed working at cap 3. Watch for re-emergence with two experienced players (does Armor still meaningfully resist a competent Armor Breaker draft?). Close monitoring otherwise.
 
 ### OQ-12: Skill Catalogue Completeness — RESEARCHED (Session 11)
 **Is the catalogue large enough and balanced enough across categories?**
@@ -207,13 +222,11 @@ With unified AP, a single piece could spend all 3 AP on movement and rush the Ki
 
 ## New (from Session 7, 2026-04-27)
 
-### OQ-37: Standard Attack Damage — READY TO TEST (Layer 2)
-**Should standard attacks deal 1 DMG instead of 2?**
-- Current: standard attack (move onto enemy tile) = 2 DMG, 0 Runes. This is the most efficient damage source in the game, making skills structurally outperformed.
-- Proposed: standard attack = 1 DMG. Skills and attacks deal equal damage, but skills offer range/utility at a Rune cost. Makes skills worth their price.
-- **Risk**: Guards take twice as many hits to remove. May extend game length. Track rounds-to-first-Guard-kill and rounds-to-first-Champion-kill.
-- Rejected alternative: standard attacks cost 1 Rune (muddies attack/skill distinction — players perceive it as "another skill").
-- **Status**: Ready to test in Layer 2 (Game 1). See ADR-003.
+### OQ-37: Standard Attack Damage — CONFIRMED (Playtest 3, accept into baseline)
+**Standard attacks deal 1 DMG instead of 2.**
+- Playtest 3 (L2G1): first Champion kill **Round 11** (vs P2's R26). Both players Q2 "Felt right." Combat feel "Better / Much Better" (Elias). Standoff dissolved. No "1 DMG too weak" complaints.
+- Risk that Guards become hard to remove — **not observed**. First Guard kill R10. Guards behaved as screens rather than damage sponges.
+- **Status**: **Accepted into baseline.** Move to `mechanics-evaluated.md` accepted-in-baseline. Update `ruleset-baseline.typ` so 1 DMG is the canonical Standard Attack rule.
 
 ### OQ-38: Multi-Champion Combo Bonus — READY TO TEST (Layer 2, Game 2)
 **Should coordinated multi-Champion attacks on the same target get +1 DMG on the second+ hit?**
@@ -233,22 +246,18 @@ With unified AP, a single piece could spend all 3 AP on movement and rush the Ki
 - Design principles agreed (see ADR-003): expand viable strategies, reward cleverness visibly, let both players appreciate each other's plays.
 - **Status**: Open. Principles agreed, not yet a mechanical commitment. Revisit after Layer 2 data. See also OQ-51 (mechanical levers for rewarding clever plays).
 
-### OQ-40: Standoff / No-Man's-Land Problem — RESEARCHED (Session 11, tracking in Stack A)
-**How to dissolve the zone between formations that neither player wants to enter first?**
-- Both playtests showed this: a 2-3 tile gap where entering attack range risks instant death (2 DMG standard attack). First player to commit is at disadvantage.
-- Playtest 2: "two guards like pawns" blocking lanes at R14. Standoff with 2-3 spaces between formations. Rarely any close-quarter combat.
-- **Research findings** (`docs/research/forward-positioning-incentives.md`): Five mechanical patterns identified. Key insight — standoff is an incentive-intent gap; perfect information makes it worse (no informational advantage to committing first). XCOM postmortem confirms: reduced entry risk (our attack nerf) + moderate cost to passivity is the ideal combination.
-- **Primary solution chosen: Sente skill design principle** — design skills that create "must-respond" threats from forward/mid-range positions. The game dissolves standoffs through its own skill system, not bolted-on territory mechanics. Identity stays pure.
-- **Hypothesis (unchanged)**: Standard attack nerf (OQ-37) lowers entry risk. Combo bonus (OQ-38) raises coordination reward. Sente-property skills in future catalogue create implicit forward pressure. Together these should dissolve the standoff.
-- **Fallback hierarchy** (if primary approach fails): (1) one-time midline crossing bonus, (2) contested Rune generators, (3) VP scoring track. See `docs/backpocket.md` for details.
-- **Status**: Researched. Primary approach decided (sente skills). Track in Stack A. Ask playtesters: "Did you feel reluctant to move pieces forward? When did first contact happen?"
+### OQ-40: Standoff / No-Man's-Land Problem — CONFIRMED RESOLVED (Playtest 3, primary lever worked)
+**The standard attack nerf (OQ-37) dissolved the standoff in Playtest 3.**
+- Both players Q4: "Much less standoff" (Elias) / "?" Mario, but Mario didn't play P2 so has no comparison frame. Q5: both said "Not reluctant to move forward." Elias: "I knew I would not die immediately if I did."
+- First Guard kill R10, first Champion kill R11. Forward movement was active from early rounds; not the 2–3 tile gap of P2.
+- **Confirms primary research finding**: lower entry risk + sente design dissolves standoff. The combo bonus (Game 2) is no longer needed *to fix the standoff* — it remains worth testing for combo-ceiling reasons (OQ-38), but standoff is solved.
+- **Sente skills** (Stack F) remain worthwhile long-term to keep standoff dissolved against more experienced opposition, but not urgent.
+- **Status**: Confirmed resolved by Stack A Game 1. Sente design (Stack F) is no longer urgent. Watch for re-emergence with two experienced players.
 
-### OQ-41: Game Length vs. Damage Nerf Tradeoff — TRACKING (Layer 2)
-**If standard attacks deal 1 DMG, does the game get longer?**
-- Likely yes for Guard removal (twice as many hits needed). Unclear for Champions (combo bonus may speed up Champion kills).
-- Compensating mechanisms if game length increases: fewer pieces (Layer 5), smaller board (Layer 5), checkmate win condition (independent layer).
-- Note: Playtest 2's "only 1 Champion kill in 26 rounds" stat excludes Guards — Guards were dying throughout. The nerf specifically slows Guard clearing.
-- **Status**: Track in Layer 2. Compare rounds-to-first-Guard-kill and rounds-to-first-Champion-kill against Playtest 2 data.
+### OQ-41: Game Length vs. Damage Nerf Tradeoff — PARTIALLY CONFIRMED (Playtest 3)
+**1-DMG attacks did NOT noticeably extend the game.** Game ended at Round 24 (Mario surrendered) — comparable or shorter than P2 (~26 rounds when P2 had not yet finished). First Guard kill R10. No game-length blow-up from the nerf alone.
+- Caveat: this was a draft-asymmetric game (Mario inexperienced) — pacing data is influenced by Mario's passive Armor stacking, not just the rule change.
+- **Status**: Partially confirmed. Re-evaluate with two experienced players in Stack A Game 2.
 
 ---
 
@@ -295,17 +304,6 @@ With unified AP, a single piece could spend all 3 AP on movement and rush the Ki
 - Options: coin flip (contradicts no-luck), hidden Rune bid, mutual agreement.
 - **Session 8 verdict**: Parked. No first-player advantage observed in 2 playtests. If it ever surfaces over many games (accounting for skill level), the fix is Go-style komi (P1 starts with fewer Runes as compensation), not a bidding war.
 - **Status**: Parked indefinitely. Only revisit if consistent first-player win rate observed across many games.
-
----
-
-### OQ-46: Rune Cap — MONITORING
-`[System: Resource Economy] [Affects: Skill System]`
-
-**Should there be a hard cap on Runes (e.g., 8)?**
-- Current: no cap. Players naturally spend down — hoarding not observed as a problem in P1 or P2.
-- As economy speeds up (Layer 1: +2/turn), a cap of 8 would rarely bind in practice.
-- **Evaluation criteria (Session 8)**: Ask playtesters: "Do you feel like players are hoarding Runes?" Distinguish between: (a) strategically saving for a big combo play, (b) saving because no viable spend exists, (c) accumulating without awareness. Only (b) and (c) are problems. Also: define desired Rune state — how many Runes should a player typically hold? This informs whether a cap is needed at all.
-- **Status**: Monitoring. Re-evaluate after Layer 2. If large pools accumulate without spending, test cap at 8.
 
 ---
 
@@ -391,3 +389,33 @@ Four mechanical patterns identified from published games:
 - **Design constraint**: Must reward *cleverness of execution* (hard to set up, requires multi-turn planning), not *outcomes* (easy to measure, creates snowball). The KPI principle from ADR-003 applies. Anti-snowball key: one-time tempo advantages, not permanent resource engines.
 - **Status**: Researched. Three promising candidates staged in backpocket. Next step: test cascade trigger in Stack F (or earlier if opportunity arises). Pin/Threatened needs its own layer. Collision damage gated on standoff resolution.
 - **Connected to**: OQ-39 (shared-puzzle), OQ-19 (endgame acceleration via checkmate), OQ-50 (ultimate skills), OQ-40 (standoff — positional payoff deferred there).
+
+---
+
+## New (from Playtest 3, 2026-05-17 / Session 15)
+
+### OQ-52: Centre of the Board Has No Attractor — OPEN
+`[System: Board/Spatial] [Affects: Movement, King role, Opening dynamics]`
+
+**The centre of the board is mechanically inert and players naturally flank-drift at the start.**
+- Three reinforcing causes (Playtest 3): (a) starting formation crams pieces into centre 6 columns of 10-wide board → opening play is about spreading to flanks; (b) opponent pieces are clustered in the centre → engaging centre means engaging strongest concentration first; (c) King is centre-positioned but functionally a back-row skill carrier → "keep safe" pulls it backward.
+- Centre is doubly anti-attractive in the opening (cramped + dense with enemies). Nothing rewards being there.
+- **Designer constraint (explicit)**: NOT introducing a "queen" piece that pulls action centrally — the lever must be board-geometry, attractor mechanics, or formation, not piece power.
+- **Solution space (to brainstorm, not decide here)**: central rune/scoring tile; contested resource at centre; narrower board (8×10 — see backpocket); formation rework that opens centre lanes; or accepting it and designing around it.
+- **Connected to**: OQ-53 (King-as-target), OQ-1 (board size — partially resolved, but 8×10 not yet evaluated), OQ-40 (sente skills assume threatenable territory).
+- **Status**: Open. Real found issue from Playtest 3.
+- **Re-entry trigger**: Address before or during Stack F (Cleverness II), since sente skills assume there are valuable squares/positions to threaten — without a centre attractor, sente threats may stay at the flanks.
+
+### OQ-53: Attrition vs. Regicide — Should the King Be a Real Target? — OPEN
+`[System: Win condition / Strategic texture] [Affects: King role, Pacing, Endgame, Sente design]`
+
+**The formal win condition is King capture, but the real victory path is attrition. The game is currently played as "wear down the army," not "threaten the King."**
+- Playtest 3 evidence: Mario surrendered when his last Champion died, not when his King was threatened. Elias never targeted the King — he ground out the army. King capture would have been an inevitable consequence, not a parallel strategic axis.
+- Both players' Kings barely moved (side-note #6): Mario's King "mystic skill slave," Elias's King moved only at game end out of necessity.
+- **Designer's intent (Session 14)**: The King should be a real threatenable target — "getting the King to be an active part of the game" is when the game becomes "real fun."
+- **Alternate (or compounding) cause to consider**: this might also be a *player-strategy* artefact — both players see attrition as the easier and lower-risk path, so neither pushes for "risky sniping the King." It may not be purely a mechanical lack of incentive; it may also be that the mechanical incentive *exists* but is dominated by the easier attrition path. Brainstorm should distinguish: is the attrition default a mechanics problem, a player-knowledge problem, or both?
+- **Critical clarification**: King Lifetime HP (in backpocket) does NOT fix this alone. Adding HP to a static piece just makes a static piece harder to kill. The lever is *making the King participate*, not *making the King durable*.
+- **Solution space (to brainstorm, not decide here)**: starting-formation swaps that expose the King (see backpocket); central-attractor mechanics that pull the King forward (overlaps with OQ-52); sente threat skills that target the King specifically; mobility/safety asymmetry that rewards King advancement.
+- **Connected to**: OQ-52 (centre attractor), OQ-19 (endgame acceleration), OQ-51 (mechanical levers for clever play — sente skills are sharper when there's a high-value target to threaten).
+- **Status**: Open. Real found issue from Playtest 3, designer-intent driven.
+- **Re-entry trigger**: Brainstorm session before Stack F, OR a dedicated King-role design session.

@@ -3,7 +3,7 @@
 
 = Testing Plan — Dynamic Stack System
 
-_Last updated: 2026-04-29. Updated by Claude at end of each session._
+_Last updated: 2026-05-18. Updated by Claude at end of each session._
 
 #note-box[
   *How to use this document:* After each playtest, read the decision tree on the next page to find which stack to run next. Pick the stack that addresses the most pressing issue the playtest surfaced. PDFs for all available tests are in their stack folder.
@@ -18,12 +18,12 @@ A *stack* = a group of 1–3 test scenarios that all push toward the same experi
 #table(
   columns: (auto, auto, 1fr, auto),
   table.header([Stack], [Outcome], [Scenarios in Stack], [Status]),
-  [*A*], [Make cleverness rewarding], [L2-G1: Attack nerf · L2-G2: + Combo bonus], [*Ready — print now*],
-  [*B*], [Make Guards matter more], [L3: Bodyguard fix (defender-only)], [*Ready — print now*],
+  [*A*], [Make cleverness rewarding], [L2-G1: Attack nerf · L2-G2: + Combo bonus], [*G1 confirmed (P3) · G2 ready (pending pre-work)*],
+  [*B*], [Make Guards matter more], [L3: Bodyguard fix (defender-only)], [*De-prioritised — may be obsolete after P3*],
   [*C*], [Shorten games / accelerate kills], [King Lifetime HP · Armor Decay], [Not yet written],
-  [*D*], [Optimise board feel and scale], [8×8 board · Piece count · Hex grid (gated on `/research`)], [Not yet written],
+  [*D*], [Optimise board feel and scale], [8×10 board (new — OQ-52) · 8×8 · Piece count · Hex grid (gated on `/research`)], [Not yet written],
   [*E*], [Improve drafting experience], [Pool draft (OQ-35) · Placement order (OQ-36+48)], [Not yet written],
-  [*F*], [More levers for clever plays], [Cascade trigger · Pin/Threatened · Sente skills (10 candidates staged)], [Not yet written],
+  [*F*], [More levers for clever plays], [Cascade trigger · Pin/Threatened · Sente skills (10 candidates staged)], [Not yet written — gated on OQ-52/53 brainstorm],
   [*G*], [Radical structure redesign], [Unified AP framework (no separate Movement/Action phases)], [Draft written — not yet tested],
 )
 
@@ -62,15 +62,17 @@ A *stack* = a group of 1–3 test scenarios that all push toward the same experi
 
 == Current Priority Sequence
 
-_Result-driven — this ordering updates after each playtest. Last confirmed: Session 11 (2026-04-29)._
+_Result-driven — this ordering updates after each playtest. Last confirmed: Session 15 (2026-05-18, post-Playtest 3)._
 
 #table(
   columns: (auto, 1fr, 1fr),
   table.header([Priority], [Action], [Trigger to advance]),
-  [*P1*], [Run Stack A playtest (two games in one session)], [Print and schedule session],
-  [*P2*], [Run Stack B playtest (can run same session or separate)], [Independent — any time],
-  [*P3*], [Evaluate A + B results → choose next stack via decision tree], [Both A and B data in hand],
-  [*P4*], [Skill balance monitoring (Rune Theft, Shadow Shift, Blade Call)], [Ongoing during P1–P3],
+  [*P1*], [Pre-Stack-A-G2 prep: rule clarifications (Lance Thrust + Injured, Focus Strike + adjacent self), tracking-sheet fixes (add Standard Attack count, bake Rune scaling), update `ruleset-baseline.typ` to 1 DMG canonical], [Baseline + tracking sheet ready],
+  [*P2*], [Brainstorm OQ-52 (centre attractor) + OQ-53 (King as real target) — combined session], [Solution candidates staged or scoped],
+  [*P3*], [Decide combo-bonus scope (Strike+Strike-only vs cross-category) — blocks Stack A G2 rule sheet], [Decision documented],
+  [*P4*], [Run Stack A Game 2 with two experienced players], [P1+P2+P3 done],
+  [*P5*], [Evaluate Stack A G2 → choose next stack via decision tree], [G2 data in hand],
+  [*P6*], [Skill balance monitoring (Rune Theft Mode A/B, Shadow Shift, Blade Call)], [Ongoing during P4–P5],
 )
 
 #note-box[
@@ -144,6 +146,8 @@ _After each playtest, follow the branch that matches your result to find the hig
 #hr
 
 #note-box[
+  *Session 15 context (2026-05-18):* Playtest 3 confirmed Stack A Game 1 (standard attack 1 DMG) — accepted into baseline. Bodyguard activated organically without Stack B's adjacency fix → Stack B de-prioritised. Two new OQs raised: OQ-52 (centre-of-board has no attractor, flank-drift problem) and OQ-53 (attrition vs regicide — King is incidental, not a target). These are gating Stack F. Stack D gained 8×10 narrower board as a new candidate.
+
   *Session 11 context (2026-04-29):* Checkmate win condition killed — King Lifetime HP replaces it as Stack C's lead mechanic. Sente skill design chosen as primary standoff solution (affects Stack F). 10 skill candidates staged in `docs/backpocket.md`. G8 guardrail added: "Players must always want to do more than they can execute." All future stack evaluations should check G8 compliance.
 ]
 
@@ -155,6 +159,7 @@ _After each playtest, follow the branch that matches your result to find the hig
   columns: (auto, auto, 1fr),
   table.header([Layer], [Status], [What it adds]),
   [1: Economy fix], [*Accepted* (Playtest 2, 24.04.2026)], [6 start Runes · +2/turn · +1 every 5 rounds],
+  [Standard Attack 1 DMG], [*Accepted* (Playtest 3, 17.05.2026)], [Standard attack deals 1 DMG (was 2). Skills become primary damage source. Standoff dissolved.],
 )
 
 _All future layers must include Layer 1 economy values. Use `section-setup(start-runes: 6, layer1-accepted: true)` and `section-resource-economy(start-runes: 6, layer1-accepted: true)` in baseline-sections.typ._

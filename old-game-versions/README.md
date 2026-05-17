@@ -219,6 +219,12 @@ Captured three new design ideas from a fresh post-playtest conversation (Elias v
 
 ---
 
+### May 18, 2026 — Session 15: Playtest 3 Analysed — Stack A G1 Confirmed
+
+Transcribed and analysed Playtest 3 (Elias vs Mario 17.05.26, Stack A Game 1: standard attack nerfed to 1 DMG). Key findings: standoff dissolved (first Champion kill R11 vs P2's R26), Bodyguard activated organically without the Stack B adjacency fix (may obsolete Stack B), Armor / Armor-Breaker RPS loop functioned as designed, and a cross-piece Move-into-Strike combo (Air Blast → Hook Pull) emerged organically without the combo-bonus layer. **Standard attack 1 DMG accepted into baseline.** Two new design questions raised as OQ-52 (centre-of-board has no attractor — flank-drift, cramped opening, King stays back) and OQ-53 (attrition vs regicide — King is currently incidental, not a target). Reframed Rune Theft (OQ-34) into Mode A (opponent at 0 Runes = normal Strike) vs Mode B (cheap damage + disable, time-dependent); P3 burst was Mode A, not dominance. Four new backpocket entries: 8×10 narrower board, starting-formation swap to expose King, "spec the game for a programmer" exercise (with note to research requirements engineering first), and digital playtest prototype (sleep-on-it, ADR required). NEXT_STEPS restructured with Session 16 priorities: rule clarifications (Lance Thrust + Injured, Focus Strike + adjacent self), form fixes (standard-attack count, bake-in Rune scaling), OQ-52/53 brainstorm, combo-bonus scope decision before Stack A G2.
+
+---
+
 ### Now — Waiting for Stack A
 
 The core systems are stable. The rules are coherent. Two playtests have generated real data. Four research threads have pre-loaded design knowledge for rapid response to playtest results. Ten new skill candidates are staged. The question is no longer "will this work?" — it's "how do we make it genuinely great?"
