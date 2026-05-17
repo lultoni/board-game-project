@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-17 — end of Session 13.*
+*Last updated: 2026-05-17 — end of Session 14.*
 
 ---
 
@@ -30,20 +30,17 @@ You are my board game design co-creator and systems architect. We are working on
 4. Read `game-state/OPEN_QUESTIONS.md` (unresolved design questions).
 5. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 13 complete, 2026-05-17)
+### Where We Are (Session 14 complete, 2026-05-17)
 
-- **Repository restructured**: Eliminated overlapping documentation. Single source of truth for each concern: `ruleset-baseline.typ` (rules), `design-principles.md` (principles), `systems-and-mechanics.md` (systems detail), `mechanics-evaluated.md` (decision registry), `old-game-versions/README.md` (full history + session timeline).
-- **Stack A still ready to print and play** — unchanged since Session 9. This remains the immediate priority.
+- **Fresh playtest pending transcription**: `playtest-results/elias-vs-mario-17_05_26/` (11 photos + side-notes) — needs `/playtest 3` next session. Confirm variant (Stack A vs baseline) before transcribing.
+- **3 new ideas captured** in `backpocket.md` (Guard buffs, mid-game events, private draft + trade) — all `[TO DISCUSS]`, none active.
+- **New mandatory rule** in `CLAUDE.md`: Justification Rule — every new idea must answer "what problem does this fix / what game-feel does this improve?" Variety alone is not justification.
+- **`design-principles.md` amended**: strategy-specific economy is OK if balanced across multiple paths; cognitive-load 4-axis model marked as aspirational (experienced players), not descriptive of new players.
+- **Test-scenario UX issues logged** in NEXT_STEPS for next template rebuild (separate src/PDFs, facilitator-page pattern, independent feedback forms, more writing space).
 
 ### Immediate Next Action
 
-**Print and play Stack A.** Files in `docs/test-scenarios/stack-a-cleverness/`:
-- `stack-a-game1-attack-nerf.pdf` — play first
-- `stack-a-game2-attack-nerf-combo.pdf` — play second
-- `stack-a-feedback.pdf` — fill out after Game 2
-- `shared/game-tracking.pdf` — 1 per player per game
-
-After results: use `/playtest` skill to transcribe. Then consult `docs/backpocket.md` for pre-staged responses.
+**Run `/playtest 3`** on `playtest-results/elias-vs-mario-17_05_26/`. Confirm variant first (check `side-notes.md`). After transcription, extract metrics + feedback themes, then consult `docs/backpocket.md` for pre-staged responses.
 
 ### Key Files
 

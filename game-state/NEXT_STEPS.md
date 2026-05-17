@@ -2,7 +2,7 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-04-29 — Session 12 (TESTING_PLAN.typ brought up to date; 3 new ideas staged in backpocket for discussion)*
+*Last updated: 2026-05-17 — Session 13 (repo restructured; 3 new ideas staged in backpocket; test-scenario UX issues captured)*
 
 ---
 
@@ -36,7 +36,14 @@ Full reasoning: `docs/design-principles.md`
 - [x] **Feedback forms improved** — OQ-monitoring pattern in `feedback-baseline.typ`; Layer 2 and Layer 3 feedback forms updated with OQ-10, OQ-11, OQ-34, OQ-46 monitoring questions.
 - [x] **All 12 PDFs rebuilt** successfully.
 
-## Priority 1: Run Stack A Playtest
+## Priority 1: Transcribe Latest Playtest (Elias vs Mario, 17.05.26)
+
+- [ ] **Run `/playtest 3`** — folder added: `playtest-results/elias-vs-mario-17_05_26/` (11 photos: feedback p1+p2 per player, game logs, start/during/end pieces, side-notes.md).
+  - **Confirm variant first**: was this Stack A (Game 1 nerf, Game 2 nerf+combo) or baseline? Side-notes.md may say.
+  - After transcription: extract metrics (rounds to first Guard kill, first Champion kill, combo attempts, Rune totals) and feedback themes.
+  - Then consult `docs/backpocket.md` for pre-staged responses to whatever surfaced.
+
+## Priority 2: Run Stack A Playtest (if not yet done)
 
 - [ ] **Print and play Stack A** — two games in one session.
   - Game 1 (`stack-a-cleverness/stack-a-game1-attack-nerf.pdf`): standard attack nerf only.
@@ -46,20 +53,20 @@ Full reasoning: `docs/design-principles.md`
   - Layer 1 economy carried forward (6 start Runes, +2/turn, +1 every 5 rounds).
   - **Track explicitly**: rounds to first Guard kill, rounds to first Champion kill, combo attempts, Rune totals.
 
-## Priority 2: Run Stack B Playtest (Bodyguard Fix)
+## Priority 3: Run Stack B Playtest (Bodyguard Fix)
 
 - [ ] **Print and play Stack B**: `stack-b-guards/stack-b-bodyguard-fix.pdf` + feedback + tracking.
   - Independent of Stack A — can run any time.
   - Only change: Bodyguard adjacency to defender only.
 
-## Priority 3: Evaluate Stack A + B and Choose Next Stack
+## Priority 4: Evaluate Stack A + B and Choose Next Stack
 
 - [ ] After results in: follow `TESTING_PLAN.pdf` decision tree to pick highest-value next stack.
 - [ ] If first Champion kill still past R20 → **Stack C (Pacing)** becomes Priority 1.
 - [ ] If combo ceiling still low → **Stack F (Cleverness II)** next.
 - [ ] If Guards feel irrelevant → extend Stack B evaluation.
 
-## Priority 4: Skill Balance
+## Priority 5: Skill Balance
 
 - [ ] Monitor **Rune Theft** in Stack A — if dominant, test cost 4 (see `docs/backpocket.md`).
 - [ ] Confirm **Shadow Shift** Range 2 feels right in play.
@@ -84,3 +91,14 @@ Full reasoning: `docs/design-principles.md`
 - First-player advantage mitigation
 - In-game skill redraft (shop/auction/interval) — Layer 6+ candidate (see backpocket)
 - Armor timing asymmetry — discuss after Stack A
+
+---
+
+## Test-Scenario UX Improvements (Session 13)
+
+*Template/architecture changes for the next time rule sheets or feedback forms are rebuilt.*
+
+- [ ] **Separate .typ source from PDF output** — move all `.typ` files into a `src/` subfolder within each stack directory. Top-level of each stack shows only PDFs (what players interact with). Update `build-pdfs.sh` accordingly.
+- [ ] **Rules PDFs read as "intended rules"** — move all meta-information (hypothesis, what we're testing, "everything else is baseline" notes) to a detachable facilitator page at the front. Page 1 of the player-facing rules should read cleanly as THE rules, not a test document.
+- [ ] **Feedback forms fully independent** — no cross-game references ("compared to Game 1…"). Each form works standalone. Players will naturally compare if they played multiple games.
+- [ ] **More physical writing space** — feedback forms and game-tracking sheets need larger answer areas and more whitespace. Current layout is too cramped for handwritten notes.

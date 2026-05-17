@@ -69,7 +69,7 @@ If either resource becomes so abundant that spending requires no tradeoff, somet
 ## Economy Philosophy
 
 - **Encourage spending through attractive options, not by punishing saving.** The cleanest fix for Rune hoarding is making skill usage effective and rewarding, not capping Runes or making them expire.
-- **Auto-economy is strategy-neutral.** Performance-based income (captures → Runes) forces one playstyle, constraining creative expression. The combo bonus is the better lever — it rewards cleverness of execution, not which action you chose.
+- **Base auto-economy is strategy-neutral.** The guaranteed passive income (+2/turn) must not force a playstyle. However, strategy-specific economy sources (e.g., bonuses tied to aggression, control, or combo play) ARE acceptable — provided (a) multiple strategies each have a viable economy path, and (b) those paths are balanced against each other. The ban is on a single-strategy economy funnel, not on economy variety.
 - **Shortfall never closes** (G1) — players can never fill all skill slots with maximum-cost skills every turn. There's always more they want to do than they can afford.
 
 ---
@@ -98,3 +98,5 @@ Players can hold 3–5 simultaneous decision variables before paralysis (Sweller
 - Opponent prediction (4)
 
 That's 4 axes — right in the sweet spot. Every new system added must either replace an existing axis or be absorbed into one.
+
+**Important nuance**: This 4-axis model is *aspirational* — it describes what experienced players engage with, not what new players do. Early-experience players primarily process their own available actions ("what can I do?") and check the Rune budget *after* identifying a desired action, not before. Opponent prediction emerges with game knowledge (like chess: low-Elo players play reactively, grandmasters read positions and calculate 5+ turns ahead). Design should support both modes: the game must be playable with just axes 1–3 while axis 4 provides the depth ceiling.

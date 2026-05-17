@@ -213,6 +213,12 @@ Restructured the entire repository. Eliminated overlapping documentation: ADRs d
 
 ---
 
+### May 17, 2026 — Session 14: Idea Capture & Justification Rule
+
+Captured three new design ideas from a fresh post-playtest conversation (Elias vs Mario 17.05.26): Guard passive-buff drafts, mid-game inflection events, and private-draft-plus-trade. Amended `design-principles.md` to clarify that strategy-specific economy is acceptable if multiple paths exist and are balanced, and to add nuance that the 4-axis cognitive-load model is aspirational (experienced play) not descriptive (early experience). Added a new mandatory **Justification Rule** to `CLAUDE.md`: every new idea must answer "what current problem / uncoolheit does this fix, OR what specific aspect of game feel does this improve?" — variety alone is not justification. Logged four test-scenario UX issues (separate src/PDF folders, facilitator-page pattern, independent feedback forms, more writing space) to NEXT_STEPS.
+
+---
+
 ### Now — Waiting for Stack A
 
 The core systems are stable. The rules are coherent. Two playtests have generated real data. Four research threads have pre-loaded design knowledge for rapid response to playtest results. Ten new skill candidates are staged. The question is no longer "will this work?" — it's "how do we make it genuinely great?"

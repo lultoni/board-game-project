@@ -2,7 +2,7 @@
 
 *Three-part reference: (1) Design guardrails — invariants to check every change against. (2) New ideas & staged fixes — hypotheses ready to deploy when triggered. (3) Known potential issues — risks to monitor.*
 
-*Last updated: 2026-04-29*
+*Last updated: 2026-05-17*
 
 ---
 
@@ -598,6 +598,104 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 - Is Wave Pull too strong as a combo setup tool? (Pull 3 enemies into a cluster → Blade Tempest AoE?)
 
 **Trigger**: Discuss as part of skill catalogue expansion (Stack F). Supersedes the earlier "Push Wave" concept in Previously Listed Ideas.
+
+---
+
+---
+
+## [TO DISCUSS] Guard "Skills" — Passive Buff Draft (Session 13 idea)
+
+**What it fixes / improves**: Guards are currently strategically flat — all 6 are mechanically identical, so they're treated as interchangeable bodies. This idea gives Guards their own identity layer (parallel to how skills give Champions identity), so positioning them is a real decision rather than just "where do bodies go." Also opens a new draft axis without adding active-skill cognitive load (buffs are passive — no in-game Rune decisions).
+
+**Concept**: Just as Champions equip 2 active skills during draft, Guards could draft passive buffs from a separate pool. These aren't activated with Runes — they're permanent traits that change how the Guard plays.
+
+**Example buffs**:
+- *Stalwart*: This Guard has +1 Armor permanently (starts with 1 Armor).
+- *Flanker*: This Guard has Speed 3 (instead of 2).
+- *Sentinel*: This Guard can bodyguard from 2 tiles away (not just adjacent).
+- *Anchor*: This Guard cannot be pushed or pulled by enemy skills.
+
+**Why interesting**:
+- Adds draft depth without adding active-skill cognitive load (Guards don't need Rune spending decisions)
+- Differentiates Guards from each other — currently all 6 Guards are identical, which is strategically flat
+- Creates formation-building decisions: which buffs go where in your lineup?
+- Connects to OQ-51 (rewarding clever plays) — Guard buffs could reward specific positioning patterns
+
+**Open questions**:
+- How many buffs per Guard? (1 each seems right — 6 Guards × 1 buff = 6 draft picks from Guard pool)
+- Separate draft phase or combined with Champion skill draft?
+- Pool size: how many distinct Guard buffs exist? (8-12 seems right for meaningful choice with 6 picks)
+- Does the opponent see your Guard buffs? (Perfect information says yes — but does that make Guards too readable?)
+- Does this violate "Guards are simple" or enhance it? (Buff is passive = no in-game decisions, just draft decision)
+
+**Risk**: Could make Guards too important relative to Champions. The core fantasy is Champion combos — Guard buffs must support that, not compete with it.
+
+**Trigger**: Discuss after Stack A/B results confirm basic balance. Could be its own mini-stack or bundled with Stack E (Draft).
+
+---
+
+## [TO DISCUSS] Mid-Game Events / Inflection Points (Session 13 idea)
+
+**What it fixes / improves**: The game currently feels linear — players "play out the strategy they decided at draft" with little reason to evolve mid-game. This breaks the engagement curve: once your plan is set, the rest is execution. Inflection points create natural pacing beats that force re-evaluation, give the late game a different feel from the early game, and prevent stalling by escalating pressure over time.
+
+**Concept**: At set points during the game, something "shifts" — a rule changes, a resource appears, or a constraint activates. Creates natural game phases with distinct feels.
+
+**Example events**:
+- *Round 10 — "The Veil Lifts"*: All pieces gain +1 Skill Slot for the rest of the game. (Accelerates the endgame — more actions per turn, more Rune pressure.)
+- *Round 15 — "Desperation"*: Standard attacks deal 2 DMG again (reverting the nerf). (Forces engagement if stalling.)
+- *First Champion killed — "Blood Price"*: The killer's team loses 2 Runes immediately. (Anti-snowball.)
+- *Midpoint — "Resupply"*: Both players gain a one-time Rune bonus (e.g., +5). (Enables a big skill turn.)
+
+**Why interesting**:
+- Creates natural pacing beats — the game feels different at Round 5 vs Round 15
+- Can address the "game too long" problem by escalating pressure over time
+- Players can plan AROUND events (setup before, capitalise after)
+- Deterministic (no randomness) — both players know when events fire
+
+**Open questions**:
+- Fixed-round triggers vs. state-based triggers (first kill, first King damage)?
+- How many events per game? (1-2 seems right — more creates tracking overhead / G4 violation)
+- Are events symmetric (affect both players equally)?
+- Does this conflict with "small number of interlocking systems" north star?
+- Could events be DRAFTED? (Each player picks 1 event card that fires at a time they choose — adds a hidden-info element… but we're perfect information. So: open event picks during draft?)
+
+**Risk**: Could add complexity without depth. Events that are just "numbers change" don't create interesting decisions. Events must create NEW decision points, not just shift existing ones.
+
+**Connects to**: King Lifetime HP (irreversible game clock), Cascade Trigger (+1 slot on kill), Pacing (Stack C).
+
+**Trigger**: Discuss after core stacks (A/B/C) tested. This is a game-mode-level concept — don't prototype until base systems are stable.
+
+---
+
+## [TO DISCUSS] Private Draft + Trade Phase (Session 13 idea)
+
+**What it fixes / improves**: Open reactive drafting (current model) drifts toward a single meta over time — the game becomes "counter-pick the opponent's picks" rather than "express a creative strategy." Private drafts with simultaneous reveal break this collapse: you commit to a real plan instead of just countering. The trade phase adds a social/negotiation layer and lets players adjust at the seam without devolving into pure counter-picking. Goal: protect strategy diversity across many matches between the same players.
+
+**Concept**: Modify the skill draft to include a trading/negotiation phase. Instead of purely sequential drafting from a shared pool, each player first receives a private allocation, then a simultaneous-reveal trade window opens.
+
+**How it could work**:
+1. **Split phase**: The 6 copies of each skill are randomly (or by rule) split 3-3 between players. Each player now has a private pool of skill copies.
+2. **Trade phase**: Players simultaneously reveal trade offers ("I give you Skill X if you give me Skill Y"). Both must agree for a trade to happen. Limited rounds of offers (e.g., 3 rounds max).
+3. **Equip phase**: After trades resolve, each player equips skills from their final pool onto Champions/King as normal.
+
+**Why interesting**:
+- Creates a pre-game social/negotiation layer — "the draft IS a mini-game"
+- Both players have imperfect information about opponent's intentions during trade
+- Trade refusal is information ("they really want to keep that skill — why?")
+- Could create asymmetric loadouts that feel more personal/expressive
+
+**Open questions**:
+- Does this violate perfect information? (During the trade phase, yes — but by game start, all equipped skills are visible. Could argue trade phase is a "setup" separate from the game itself.)
+- Random initial split vs. deterministic (alternating picks, then trade)? Random adds a luck element we've explicitly banned. Deterministic split (e.g., player A takes first copy of each odd-numbered skill, player B takes first of each even) is predictable but boring.
+- Is trading actually fun with only 2 players? (Works better with 3+ — with 2, every trade is zero-sum. If I give you something good, I'm helping you directly. Might devolve into "no trades ever" equilibrium.)
+- Time pressure: does negotiation slow the game down? (A 2-player game shouldn't spend 10 minutes haggling before play starts.)
+- Simultaneous reveal: both players secretly write offers and reveal at once? Or alternating open offers?
+
+**Risk**: The 2-player zero-sum problem is real. In a 2-player game, any trade that benefits your opponent directly hurts you. This might make the entire trade phase degenerate (no trades happen, or only trades where both players mis-evaluate). Works much better in 3+ player games where you can trade with a non-direct-rival.
+
+**Alternative that preserves the feel**: Private draft with simultaneous reveal of equipped skills. Each player drafts skills in private (from a shared pool, but secretly), then all equipped skills are revealed before play starts. This gives the "surprise" element without the zero-sum trade problem. But it adds a hidden-information phase to a perfect-information game.
+
+**Trigger**: Discuss alongside Stack E (Draft). This is a draft-variant concept — evaluate against current sequential open draft first.
 
 ---
 

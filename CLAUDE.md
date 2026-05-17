@@ -61,6 +61,22 @@ Full system documentation lives in `docs/systems-and-mechanics.md`. Summary:
 - **No luck**: Perfect information / pure strategy. No dice, no hidden cards, no randomness.
 - **Spending tension (G8)**: Players must always want to do more than they can execute. Early: Runes limit. Mid/late: Skill Slots limit while Rune costs force choosing WHICH skills. If either resource becomes so abundant that spending requires no tradeoff, something is broken.
 
+## Justification Rule (MANDATORY)
+
+**Every new idea, mechanic, rule, or system change must explicitly justify its purpose.** Before staging an idea in `backpocket.md`, before proposing a layer, before drafting a stack, the entry must answer:
+
+> **What current problem / "uncoolheit" does this fix, OR what specific aspect of game feel does this improve?**
+
+If the answer is "it sounds cool" or "it would add more options" — that is NOT enough. Variety is not a justification on its own. The idea must point to:
+- A concrete observed issue (e.g., "standoff zone", "Bodyguard never triggered", "draft converges to one meta"), OR
+- A specific game-feel improvement tied to the core fantasy (e.g., "creates a sente threat that dissolves passive play", "rewards multi-turn setup more than brute force").
+
+Format every new entry in `backpocket.md` with a **"What it fixes / improves"** field at the top, alongside the existing trigger condition. Ideas that cannot pass this test should be discarded, not parked. The backpocket is for *anticipated solutions*, not a graveyard of "could be cool."
+
+This rule applies retroactively to any new idea I propose unprompted, and to any user idea I capture into the doc — if the user's pitch doesn't include the justification, I must ask before writing it down.
+
+---
+
 ## Incremental Testing Methodology (MANDATORY)
 
 **Never propose changing multiple interacting systems at once.**

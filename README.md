@@ -108,7 +108,7 @@ Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scen
 
 ---
 
-## Current Status (Session 13)
+## Current Status (Session 14)
 
 | Stack | Topic | Status |
 |---|---|---|
