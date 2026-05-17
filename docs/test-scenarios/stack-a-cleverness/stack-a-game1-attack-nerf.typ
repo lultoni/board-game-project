@@ -30,14 +30,33 @@ _Feedback form (fill out after Game 2): stack-a-feedback.pdf_
 
 #section-goal()
 #section-components()
-#section-setup(start-runes: 6, layer1-accepted: true)
+#section-setup()
 #section-round-structure()
 #section-turn-structure()
 #section-movement-phase()
-#section-standard-attack(damage: 1, changed: true)
+
+== ⚡ CHANGED: Standard Attack
+
+#changed-box[
+  #table(
+    columns: (1fr, 1fr, 1fr),
+    table.header([], [Baseline], [This Layer]),
+    [Standard Attack damage], [*2 DMG*], [*1 DMG*],
+    [Everything else], [—], [Unchanged],
+  )
+]
+
+To attack, spend a Move Slot to move your piece *onto a tile occupied by an enemy piece.*
+
+- Deal *1 DMG* to the enemy _(baseline: 2 DMG)_.
+- *If the enemy is removed:* your piece occupies the tile.
+- *If the enemy survives:* your piece stops on the tile immediately before the target.
+
+You may attack with one Move Slot and move a different piece with the other Move Slot in the same turn.
+
 #section-action-phase()
 #section-skill-system()
-#section-resource-economy(start-runes: 6, layer1-accepted: true)
+#section-resource-economy()
 #section-health-armor()
 #section-bodyguard()
 #section-skill-drafting()
@@ -46,7 +65,21 @@ _Feedback form (fill out after Game 2): stack-a-feedback.pdf_
 #pagebreak()
 
 #section-skill-reference()
-#section-quick-reference(
-  attack-damage: 1,
-  layer1-accepted: true,
+
+== Quick Reference
+
+#block(breakable: false)[
+#table(
+  columns: (1fr, 1.5fr),
+  table.header([Concept], [Rule]),
+  [Movement], [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per phase.],
+  [Attack ⚡], [Move onto enemy tile (1 Move Slot). *1 DMG* _(baseline: 2)_.],
+  [Attack — target survives], [Attacker stops on tile before target],
+  [Skill Path], [Straight line (Queen). Blocked by all pieces.],
+  [Default Skill Range], [Range 2 (unless skill specifies)],
+  [Bodyguard], [Guard adjacent to both tile-before-target AND defender. Guard takes the damage. Attacker moves 1 tile. Standard Attacks only. Optional.],
+  [Rune income], [Start of YOUR turn (not Round 1). 6 start, +2/+3/+4/+5 scaling.],
+  [Healing], [No cap. Same piece can be healed multiple times per turn.],
+  [Armor], [Armor absorbs damage first, then HP],
 )
+]

@@ -1,13 +1,14 @@
 // baseline-sections.typ
-// Parameterized section functions for all (GAME NAME) rule sheets.
+// Baseline section functions for all (GAME NAME) rule sheets.
 // Import this file alongside template.typ in any rule sheet or layer file.
 //
 // Usage:
 //   #import "../shared/template.typ": *
 //   #import "../shared/baseline-sections.typ": *
 //
-// Each function renders one document section with baseline defaults.
-// Pass named arguments only for what changes in your layer.
+// Every function renders one section with the current accepted baseline rules.
+// No parameters — functions are intentionally not configurable.
+// Test files inline their own changed sections directly; they do not pass flags here.
 
 #import "./template.typ": *
 
@@ -34,10 +35,8 @@ Capture the opponent's *King*. The game ends immediately when a King is removed 
 ]
 
 // ── SETUP ─────────────────────────────────────────────────────────────────────
-// start-runes: starting Rune count (default 4, Layer 1 accepted = 6)
-// layer1-accepted: if true, adds "(Layer 1 accepted)" label next to Rune count
 
-#let section-setup(start-runes: 4, layer1-accepted: false) = [
+#let section-setup() = [
 == Setup
 
 + *Board:* Use the 10×10 grid. Ignore any terrain markings.
@@ -46,7 +45,7 @@ Capture the opponent's *King*. The game ends immediately when a King is removed 
   - Back row (row 1/10): King in the centre, Champions fill the remaining 5 spaces.
   - Second row (row 2/9): All 6 Guards.
 + *Skill Draft:* Alternating picks. P1 picks 2 skills from the pool and assigns them freely to any of their Champions or King, then P2. Repeat until all Champions and the King on each side have 2 skills each (12 per player). Duplicates allowed.
-+ *Starting Runes:* Each player starts with *#start-runes Runes*#if layer1-accepted [ (Layer 1 accepted)].
++ *Starting Runes:* Each player starts with *6 Runes*.
 + P1 begins Round 1.
 ]
 
@@ -96,72 +95,21 @@ You have *2 Move Slots* per turn. Spend 1 Move Slot to move one piece. *Each pie
 ]
 
 // ── STANDARD ATTACK ───────────────────────────────────────────────────────────
-// damage: DMG dealt (default 2; Layer 2+ uses 1)
-// changed: if true, adds ⚡ heading and changed-box comparison table
 
-#let section-standard-attack(damage: 2, changed: false) = {
-  let heading = if changed [== ⚡ CHANGED: Standard Attack] else [== Standard Attack]
-  let survives-text = if damage == 2 [
-    - *If the enemy survives* (Armor absorbed the damage): your piece stops on the tile immediately before the target.
-  ] else [
-    - *If the enemy survives:* your piece stops on the tile immediately before the target.
-  ]
-  let damage-note = if changed [ _(baseline: 2 DMG)_] else []
-  [
-    #heading
-    #if changed [
-      #changed-box[
-        #table(
-          columns: (1fr, 1fr, 1fr),
-          table.header([], [Baseline], [This Layer]),
-          [Standard Attack damage], [*2 DMG*], [*#damage DMG*],
-          [Everything else], [—], [Unchanged],
-        )
-      ]
-    ]
-    To attack, spend a Move Slot to move your piece *onto a tile occupied by an enemy piece.*
+#let section-standard-attack() = [
+== Standard Attack
 
-    - Deal *#damage DMG* to the enemy#damage-note.
-    - *If the enemy is removed:* your piece occupies the tile.
-    #survives-text
-    You may attack with one Move Slot and move a different piece with the other Move Slot in the same turn.
-  ]
-}
+To attack, spend a Move Slot to move your piece *onto a tile occupied by an enemy piece.*
+
+- Deal *2 DMG* to the enemy.
+- *If the enemy is removed:* your piece occupies the tile.
+- *If the enemy survives* (Armor absorbed the damage): your piece stops on the tile immediately before the target.
+
+You may attack with one Move Slot and move a different piece with the other Move Slot in the same turn.
+]
 
 // ── MULTI-CHAMPION COMBO BONUS ────────────────────────────────────────────────
-// show: if true, renders this section (only appears in L2-G2+)
-
-#let section-combo-bonus(enabled: false) = {
-  if enabled [
-    == ⚡ NEW: Multi-Champion Combo Bonus
-
-    #changed-box[
-      *New rule — not in baseline.* When a second (or third, etc.) Champion's Strike skill hits the *same enemy target* in the *same turn*, each subsequent Strike deals *+1 DMG*.
-
-      The first Strike skill against a target deals normal damage. The second Strike from a *different Champion* deals +1 DMG. A third from yet another Champion would deal +2 DMG (etc.).
-    ]
-
-    *Rules:*
-    - Only *Strike-category skills* qualify (Lance Thrust, Hook Pull, Armor Breaker, Rune Theft, Blade Tempest).
-    - The bonus applies when *different Champions* (or King) hit the *same target* in the same turn.
-    - One Champion hitting the same target twice with two Strike skills does *not* trigger the bonus — it must be a different attacking piece.
-    - You may use other skills (buffs, heals, movement) in between the Strikes that contribute to the combo. It does not have to be a continuous streak — it just has to be in the same turn.
-    - *Buff skills targeting your own pieces* (Focus Strike, Blade Call) do not count as "hitting a target." They enhance damage but don't themselves qualify for the combo bonus.
-    - The combo bonus stacks with Blade Call. Each Blade Call activation boosts exactly *one* Strike skill by +1 DMG, then is spent. Multiple Blade Call activations can boost the same or different Strikes.
-    - Standard Attacks (Movement Phase) do *not* count toward the combo chain — only Action Phase Strike skills.
-
-    *Example:*
-    - Champion A casts Hook Pull on enemy Guard → 1 DMG (normal), pulls Guard 1 tile closer.
-    - Champion B casts Lance Thrust on the *same* Guard → 1 DMG + 1 combo bonus = *2 DMG*.
-    - That Guard took 3 DMG total this turn (1 + 2). Even with 1 Armor it's Removed (Armor absorbs 1 → 2 DMG to HP → Removed).
-
-    *Example with Blade Call:*
-    - Champion A casts Blade Call (boosts the next Strike by +1 DMG — one use only).
-    - Champion A casts Lance Thrust on target → 1 + 1 (Blade Call) = 2 DMG. This is the *first* Strike on that target. The Blade Call is now spent.
-    - Champion B casts Hook Pull on the *same* target → 1 + 1 (combo bonus) = 2 DMG.
-    - Total: 4 DMG this turn (kills a Normal piece with up to 2 Armor).
-  ]
-}
+// This section does not exist in baseline. Test files inline it directly.
 
 // ── ACTION PHASE ──────────────────────────────────────────────────────────────
 
@@ -204,55 +152,27 @@ All skills cost 1 Skill Slot unless noted otherwise.
 ]
 
 // ── RESOURCE ECONOMY ──────────────────────────────────────────────────────────
-// start-runes: starting Rune count (default 4)
-// layer1-accepted: if true, uses Layer 1 income table (+2/+3/+4/+5) and "(Layer 1 accepted)" label
-// changed: if true, adds ⚡ heading and changed-box
+// Layer 1 accepted — Playtest 2, 24.04.2026
 
-#let section-resource-economy(start-runes: 4, layer1-accepted: false, changed: false) = {
-  let heading = if changed [== ⚡ CHANGED: Resource Economy (Runes)] else [== Resource Economy (Runes)]
-  let label = if layer1-accepted [ (Layer 1 accepted)] else []
-  let income-table = if layer1-accepted [
-    #table(
-      columns: (auto, 1fr),
-      table.header([Round], [Income per player turn]),
-      [1], [0 (starting Runes only)],
-      [2–4], [+2],
-      [5–9], [+3],
-      [10–14], [+4],
-      [15+], [+5 (+1 every 5 rounds)],
-    )
-  ] else [
-    #table(
-      columns: (auto, 1fr),
-      table.header([Round], [Income per player turn]),
-      [1], [0 (starting Runes only)],
-      [2–4], [+1],
-      [5–9], [+2],
-      [10–14], [+3],
-      [15+], [+4 (+1 every 5 rounds)],
-    )
-  ]
-  [
-    #heading
-    #if changed [
-      #changed-box[
-        #table(
-          columns: (1fr, 1fr, 1fr),
-          table.header([], [Baseline], [This Layer]),
-          [Starting Runes], [*4*], [*#start-runes*],
-          [Rune income], [+1/+2/+3/+4], [+2/+3/+4/+5],
-        )
-      ]
-    ]
-    *Starting Runes:* #start-runes per player#label.
+#let section-resource-economy() = [
+== Resource Economy (Runes)
 
-    Rune income is collected at the *start of each player's own turn:*
+*Starting Runes:* 6 per player.
 
-    #income-table
+Rune income is collected at the *start of each player's own turn:*
 
-    *No Rune cap.*
-  ]
-}
+#table(
+  columns: (auto, 1fr),
+  table.header([Round], [Income per player turn]),
+  [1], [0 (starting Runes only)],
+  [2–4], [+2],
+  [5–9], [+3],
+  [10–14], [+4],
+  [15+], [+5 (+1 every 5 rounds)],
+)
+
+*No Rune cap.*
+]
 
 // ── HEALTH & ARMOR ────────────────────────────────────────────────────────────
 
@@ -278,54 +198,21 @@ All skills cost 1 Skill Slot unless noted otherwise.
 ]
 
 // ── BODYGUARD RULE ────────────────────────────────────────────────────────────
-// adjacency: "both" (default, baseline) or "defender" (Layer 3)
-// changed: if true, adds ⚡ heading and changed-box
 
-#let section-bodyguard(adjacency: "both", changed: false) = {
-  let heading = if changed [== ⚡ CHANGED: Bodyguard Rule] else [== Bodyguard Rule]
-  let condition-text = if adjacency == "defender" [
-    *if* a friendly Guard is on a tile *adjacent to the defending piece* (baseline requires adjacent to both attacker AND defender).
-  ] else [
-    *if* a friendly Guard is on a tile adjacent to *both the tile immediately before the target (along the attack path) and the defending piece.*
-  ]
-  [
-    #heading
-    #if changed [
-      #changed-box[
-        #table(
-          columns: (1fr, 1fr, 1fr),
-          table.header([], [Baseline], [This Layer]),
-          [Guard must be adjacent to], [*Both attacker AND defender*], [*Defender only*],
-          [Everything else], [—], [Unchanged],
-        )
-      ]
-    ]
-    When you make a *Standard Attack* against an opponent's Champion or King, the defender may choose to have a Guard intercept — #condition-text
+#let section-bodyguard() = [
+== Bodyguard Rule
 
-    *Interception:*
-    + Defender announces a Guard to intercept.
-    + The Guard takes the damage instead of the original target.
-    + The attacker moves *1 tile* toward the target (stops on the tile immediately before the Guard, not before the original target).
+When you make a *Standard Attack* against an opponent's Champion or King, the defender may choose to have a Guard intercept — *if* a friendly Guard is on a tile adjacent to *both the tile immediately before the target (along the attack path) and the defending piece.*
 
-    *Interception is optional.* The defender may decline even if a Guard is eligible.
+*Interception:*
++ Defender announces a Guard to intercept.
++ The Guard takes the damage instead of the original target.
++ The attacker moves *1 tile* toward the target (stops on the tile immediately before the Guard, not before the original target).
 
-    Only Standard Attacks can be intercepted. Skills always hit directly.
+*Interception is optional.* The defender may decline even if a Guard is eligible.
 
-    #if adjacency == "defender" [
-      *Example:*
-
-      ```
-        . . . . .
-        . G . . .
-        . . C . .     C = your Champion, G = your Guard, A = enemy piece
-        . . . A .
-        . . . . .
-      ```
-
-      Enemy A attacks Champion C. Your Guard G is adjacent to C (but not to A). Under baseline this would not qualify — under Layer 3 it does. You intercept: A moves 1 tile, G takes 2 DMG, C is safe.
-    ]
-  ]
-}
+Only Standard Attacks can be intercepted. Skills always hit directly.
+]
 
 // ── SKILL DRAFTING ────────────────────────────────────────────────────────────
 
@@ -382,51 +269,23 @@ All skills cost 1 Skill Slot unless noted otherwise.
 ]
 
 // ── QUICK REFERENCE ───────────────────────────────────────────────────────────
-// attack-damage: int (default 2)
-// bodyguard-adjacency: "both" or "defender" (default "both")
-// layer1-accepted: bool (default false) — adds Layer 1 note to Rune income row
-// show-combo-bonus: bool (default false) — adds combo bonus row
 
-#let section-quick-reference(
-  attack-damage: 2,
-  bodyguard-adjacency: "both",
-  layer1-accepted: false,
-  show-combo-bonus: false,
-) = {
-  let attack-label = if attack-damage != 2 [Attack ⚡] else [Attack]
-  let attack-rule = if attack-damage != 2 [
-    Move onto enemy tile (1 Move Slot). *#attack-damage DMG* _(baseline: 2)_.
-  ] else [
-    Move onto enemy tile (1 Move Slot). 2 DMG.
-  ]
-  let bodyguard-label = if bodyguard-adjacency == "defender" [Bodyguard ⚡] else [Bodyguard]
-  let bodyguard-rule = if bodyguard-adjacency == "defender" [
-    *Adjacent to defender only.* Guard takes the damage. Attacker moves 1 tile. Standard Attacks only. Optional.
-  ] else [
-    Guard adjacent to both tile-before-target and defender. Guard takes the damage. Attacker moves 1 tile. Standard Attacks only. Optional.
-  ]
-  let rune-note = if layer1-accepted [ Layer 1: 6 start, +2/turn scaling.] else []
-  [
-    == Quick Reference
+#let section-quick-reference() = [
+  == Quick Reference
 
-    #block(breakable: false)[
-    #table(
-      columns: (1fr, 1.5fr),
-      table.header([Concept], [Rule]),
-      [Movement], [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per phase.],
-      [#attack-label], [#attack-rule],
-      [Attack — target survives], [Attacker stops on tile before target],
-      ..if show-combo-bonus {(
-        [Combo Bonus ⚡],
-        [2nd+ Champion Strike on same target in same turn: *+1 DMG*. Standard Attacks don't count.],
-      )},
-      [Skill Path], [Straight line (Queen). Blocked by all pieces.],
-      [Default Skill Range], [Range 2 (unless skill specifies)],
-      [#bodyguard-label], [#bodyguard-rule],
-      [Rune income], [Start of YOUR turn (not Round 1).#rune-note],
-      [Healing], [No cap. Same piece can be healed multiple times per turn.],
-      [Armor], [Armor absorbs damage first, then HP],
-    )
-    ]
+  #block(breakable: false)[
+  #table(
+    columns: (1fr, 1.5fr),
+    table.header([Concept], [Rule]),
+    [Movement], [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per phase.],
+    [Attack], [Move onto enemy tile (1 Move Slot). *2 DMG*.],
+    [Attack — target survives], [Attacker stops on tile before target],
+    [Skill Path], [Straight line (Queen). Blocked by all pieces.],
+    [Default Skill Range], [Range 2 (unless skill specifies)],
+    [Bodyguard], [Guard adjacent to both tile-before-target AND defender. Guard takes the damage. Attacker moves 1 tile. Standard Attacks only. Optional.],
+    [Rune income], [Start of YOUR turn (not Round 1). 6 start, +2/+3/+4/+5 scaling.],
+    [Healing], [No cap. Same piece can be healed multiple times per turn.],
+    [Armor], [Armor absorbs damage first, then HP],
+  )
   ]
-}
+]
