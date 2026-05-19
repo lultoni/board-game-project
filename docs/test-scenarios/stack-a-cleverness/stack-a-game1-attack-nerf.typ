@@ -13,6 +13,9 @@ _Feedback form (fill out after Game 2): stack-a-feedback.pdf_
   *Play this game FIRST*, then play Game 2 (adds combo bonus).
 ]
 
+#designer-box[
+*Designer notes — read before facilitating, players can skip.*
+
 *What we're testing:* Does reducing Standard Attack damage from 2 to 1 make skills the primary damage source, create meaningful Injured states, and reduce the "wait and pounce" dynamic?
 
 *Hypothesis:* Standard attacks at 2 DMG dominate the damage economy (free instant kills). At 1 DMG, a single attack only Injures — finishing a piece requires a second attack or a skill, making skills worth their Rune cost.
@@ -23,6 +26,7 @@ _Feedback form (fill out after Game 2): stack-a-feedback.pdf_
 - Does the no-man's-land / standoff dissolve (lower risk to move forward)?
 - Do players spend more Runes on Strike skills to finish pieces off?
 - Does game length increase, decrease, or stay similar?
+]
 
 #hr
 

@@ -13,6 +13,9 @@ _Feedback form (fill out after this game): stack-a-feedback.pdf_
   *Play this game SECOND* (after Game 1, nerf only). Compare your experience.
 ]
 
+#designer-box[
+*Designer notes — read before facilitating, players can skip.*
+
 *What we're testing:* Does the combo bonus create a meaningful incentive for multi-Champion coordination, raise the skill combo ceiling, and help resolve the standoff problem?
 
 *Hypothesis:* The standard attack nerf (Game 1) makes skills the primary damage source. The combo bonus rewards positioning two Champions with line-of-sight to the same target — a spatial puzzle that rewards cleverness over grinding.
@@ -23,6 +26,7 @@ _Feedback form (fill out after this game): stack-a-feedback.pdf_
 - Does it break anything? (Too easy to set up? Too powerful with Blade Call?)
 - Does it change how players position Champions relative to Game 1?
 - Does the combo bonus speed up the game compared to Game 1?
+]
 
 #hr
 

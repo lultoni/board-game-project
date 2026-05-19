@@ -86,6 +86,18 @@
   body
 )
 
+// Designer-only notes — small, muted, visually backgrounded
+// Players can safely ignore; facilitator/designer reads before the game
+#let designer-box(body) = block(
+  breakable: false,
+  fill: rgb("#f5f5f5"),
+  stroke: (left: 2pt + rgb("#aaaaaa")),
+  radius: (right: 3pt),
+  inset: (left: 10pt, right: 8pt, top: 5pt, bottom: 5pt),
+  width: 100%,
+  text(size: 8pt, fill: rgb("#666666"), style: "italic", body)
+)
+
 // Horizontal rule shorthand
 #let hr = line(length: 100%, stroke: 0.5pt + rgb("#cccccc"))
 
