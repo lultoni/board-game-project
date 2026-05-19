@@ -2,7 +2,7 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-05-18 — Session 15 (Playtest 3 analysed; standard attack 1 DMG accepted into baseline; OQ-52 + OQ-53 raised; Stack B de-prioritised)*
+*Last updated: 2026-05-19 — Session 16 (Pre-Stack-A-G2 prep complete; rule clarifications done; tracking sheet redesigned; rule document structure redesigned; Stack A G2 ready to print)*
 
 ---
 
@@ -39,45 +39,49 @@ Full reasoning: `docs/design-principles.md`
 
 ---
 
-## Priority 1: Pre-Stack-A-Game-2 Prep Work (Session 16)
+## ~~Priority 1: Pre-Stack-A-Game-2 Prep Work~~ DONE (Session 16)
 
-*Before deciding the next stack, address the issues surfaced by Playtest 3 that block clean future data.*
+*All prep items complete. Stack A Game 2 is ready to print.*
 
-### 1a. Resolve baseline rule ambiguities
+### 1a. Resolve baseline rule ambiguities ✓
 
-- [ ] **Lance Thrust + Injured Range penalty** (side-note #5; cost Elias R22). Lance Thrust is Range 1; the Injured "Range 2+ → Range 1" penalty is a no-op. Decide: ruling text — "Injured penalty does not apply to Range 1 skills" — and add to baseline.
-- [ ] **Focus Strike + adjacent self-target interaction** (side-note #4). Decide: can Focus Strike extend Range 1 self-targeting skills (like Field Medic) to Range 2? Per side-note: yes (Focus Strike extends *any* skill); no, you can't magically self-target an adjacent skill via Focus Strike. Resolve and write into Focus Strike's skill text.
-- [ ] **Update `ruleset-baseline.typ`** to reflect Standard Attack 1 DMG as canonical (was 2 DMG). Cascade to all Stack rule sheets that import baseline sections.
+- [x] **Lance Thrust + Injured Range penalty** — ruled: all skills default to Range 2 unless text explicitly says "self" or "adjacent." Lance Thrust uses "Range−1" modifier from default. Injured reduces it to Range 0 = unusable against enemies. Written into baseline Skill System section.
+- [x] **Focus Strike + adjacent self-target** — no action needed. Rules already handle it correctly: Injured exception protects base skill range; Focus Strike rewards on top. Added note to Focus Strike: "can boost self→adjacent and adjacent→Range 2."
+- [x] **Self/adjacent targeting constraint** — added: "adjacent" skills cannot target self even with Range buffs, and vice versa.
+- [x] **Update `ruleset-baseline.typ`** — 1 DMG is now canonical. Cascaded to all stack files. All PDFs rebuilt.
 
-### 1b. Form / tracking sheet fixes
+### 1b. Form / tracking sheet fixes ✓
 
-- [ ] **Add Standard Attack count column** to `shared/game-tracking.typ`. Mario's attack count is unknown because the form didn't ask — Playtest 3 surfaced this gap.
-- [ ] **Bake Rune-gain + Skill-Slot scaling into the tracking sheet** (side-note #1). Reduces explanation burden + cognitive load at game start. Per Elias's feedback: rule explanation overhead is meaningfully eating game time.
-- [ ] **Drop "cost" column** from skill draft section of tracking sheet (side-note #2 — not needed once you've drafted).
-- [ ] **More writing space on feedback forms** (carried from Session 13 UX list — still relevant).
+- [x] **Add Standard Attack count column** (`Atk`) to `shared/game-tracking.typ`.
+- [x] **Bake Rune-gain + Skill-Slot scaling** — added `R+` and `SS` columns pre-filled with values on change rounds, `|` otherwise.
+- [x] **Drop "cost" column** from skills section of tracking sheet.
 
-### 1c. Design-discussion brainstorms (no playtest yet)
+### 1c. Rule document structure redesign ✓
 
-- [ ] **OQ-52 (centre attractor) brainstorm session**. Pre-think solution candidates: central scoring tile, contested rune source, narrower board (`[TO DISCUSS]` 8×10 entry), formation rework. Constraint: no "queen" piece — use board-geometry / attractor-mechanics levers.
-- [ ] **OQ-53 (King as real target) brainstorm session**. Pre-think candidates: starting-formation swap (`[TO DISCUSS]` entry), King-specific sente skills, mobility/safety asymmetry rewarding King advancement. Constraint: King must *participate*, not just *be more durable* (King Lifetime HP doesn't fix this alone).
-- [ ] **OQ-52 + OQ-53 are deeply linked** — likely needs one combined brainstorm session.
+- [x] **New Introduction section** — one-page orientation for new players.
+- [x] **New Simple Overview section** — surface-level map of every system, no edge cases.
+- [x] **Dependency-correct section order** — Skill Drafting moved early; Bodyguard after Standard Attack; Progression next to Resource Economy; Health & Armor last.
+- [x] **Updated Quick Reference** — 14-row table covering all systems, speed, Injured, Skill Slots, Focus Strike, Blade Call.
+- [x] **Designer-box style** — all "What we're testing / Hypothesis / Watch for" blocks in stack files wrapped in muted grey box; players can skip.
+- [x] **Stack A G1 + G2 rule sheets updated** — version strings, attack clause, Quick References all brought in line with new baseline.
 
 ### 1d. Decide: digital playtest prototype yes/no
 
-- [ ] **Sleep-on-it status**: user wants to think on this for a few days. Decision via ADR before any implementation. Option to start with the no-build "spec the game for a programmer" exercise as a low-cost step.
+- [ ] **Sleep-on-it status**: still pending. Decision via ADR before any implementation.
 
-### 1e. Combo-bonus scope question (blocks Stack A G2 rule sheet)
+### 1e. Combo-bonus scope question ✓
 
-- [x] **Resolved (Session 16)**: combo bonus is Strike-only for Game 2. Cross-category combos (Move-into-Strike, Mystic-into-Strike) already happen organically without the bonus — Game 2's purpose is to test whether a Strike+Strike bonus adds value or crowds out that organic play. Cross-category scope will be reconsidered after Game 2 data.
+- [x] **Resolved (Session 16)**: Strike-only for Game 2. Cross-category to reconsider after Game 2 data.
 
 ---
 
-## Priority 2: Run Stack A Game 2 (after pre-work above)
+## Priority 1: Run Stack A Game 2 — READY (Session 16)
 
-- [ ] **Print and play Stack A Game 2** (`stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf`) once 1a–1c are done.
-  - Ideal: two experienced players (Elias + an experienced opponent — NOT a draft-asymmetric setup). The Mario inexperience confounded Playtest 3's draft data.
+- [ ] **Print and play Stack A Game 2** (`stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf`) — all prep complete, ready to print.
+  - Ideal: two experienced players (Elias + experienced opponent — NOT draft-asymmetric). Mario inexperience confounded Playtest 3's draft data.
   - Track explicitly: Champion kill timing, combo bonus activations, *cross-category combos vs. Strike+Strike combos*, whether organic combos persist or get crowded out.
   - Watch Rune Theft for Mode B usage — confirm or deny dominance framing.
+  - Use updated `shared/game-tracking.pdf` — now has R+, SS, Atk columns pre-filled.
 
 ## Priority 3: De-prioritised — Stack B (Bodyguard Fix)
 

@@ -154,9 +154,10 @@ Skill Slots do not carry over between turns.
 - All skills cost 1 Skill Slot + a Rune cost.
 - A Champion may use its skills multiple times per turn — including the same skill twice.
 - **Skill Path**: Queen-like straight line. Blocked by all pieces (ally and enemy).
-- **Default Skill Range = 2**. Range 0 = self, Range 1 = adjacent, Range 2 = 2 tiles along path.
+- **Default Skill Range = 2**. Unless the skill's text explicitly names "self" (Range 0) or "adjacent" (Range 1). Skills with a Range modifier (e.g. "Range−1") are still Range 2 skills with a modifier — not treated as adjacent. Self/adjacent targeting cannot be shifted inward by Range buffs.
 - Skills that cause movement do not deal damage.
-- **Injured effect on range**: −1 Range when Injured (affects Range 2+ only; Range 0 and 1 always work).
+- **Injured effect on range**: −1 Range when Injured. Does NOT affect skills that explicitly name "self" or "adjacent" — those always work regardless of Injured status.
+- **Focus Strike note**: +1 Range to next skill. Can boost self → adjacent and adjacent → Range 2. Range and Injured penalties are calculated independently.
 
 ### Current Skill Catalogue
 
@@ -217,7 +218,7 @@ Skill Slots do not carry over between turns.
 
 ### How It Works
 
-**Standard Attack**: Move onto enemy tile = 2 DMG (baseline). No Rune cost. Uses a Move Slot.
+**Standard Attack**: Move onto enemy tile = 1 DMG *(accepted into baseline, Playtest 3)*. No Rune cost. Uses a Move Slot. If there are multiple paths toward the target, attacker may choose which to take (relevant for Bodyguard).
 - If target removed: attacker occupies tile.
 - If target survives: attacker stops on tile immediately before target.
 
@@ -245,12 +246,12 @@ Skill Slots do not carry over between turns.
 | Interconnection | 4 | Movement + Health + Guards + Skills intersect here. |
 | Emotional Resonance | 5 | Capturing a piece is decisive. Bodyguard intercepts are dramatic. |
 
-**Critical issue** (Session 7): Standard attack dominance. 2 DMG for free outperforms all skill combos. Stack A tests 1 DMG nerf + combo bonus.
+**Critical issue** (Session 7): Standard attack dominance. 2 DMG for free outperformed all skill combos. Stack A Game 1 tested 1 DMG nerf — *accepted into baseline (Playtest 3)*. First Champion kill moved from R26 → R11. Standoff dissolved. Stack A Game 2 (combo bonus) ready to test.
 
 ### Open Questions
 
-- **OQ-37**: Standard attack 1 DMG — Stack A, Game 1.
-- **OQ-38**: Combo bonus — Stack A, Game 2.
+- **OQ-37**: Standard attack 1 DMG — ~~Stack A, Game 1~~ **ACCEPTED into baseline (P3)**.
+- **OQ-38**: Combo bonus — Stack A, Game 2. **Ready to test (Session 16).**
 - **OQ-21**: Bodyguard adjacency to defender only — Stack B.
 - **OQ-40**: Standoff / no-man's-land — tracking in Stack A.
 - **OQ-41**: Game length vs. damage nerf tradeoff.

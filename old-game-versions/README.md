@@ -225,6 +225,12 @@ Transcribed and analysed Playtest 3 (Elias vs Mario 17.05.26, Stack A Game 1: st
 
 ---
 
+### May 19, 2026 — Session 16: Pre-Stack-A-G2 Prep Complete — Stack A G2 Ready to Print
+
+Full housekeeping session before Playtest 4. Rule clarifications accepted into baseline: Range system refined (all skills default to Range 2 unless text explicitly names "self"/"adjacent"; Range modifiers apply from default; self/adjacent targeting cannot be shifted inward by buffs even with Focus Strike); Focus Strike note added. Tracking sheet redesigned with pre-filled `R+` and `SS` columns (scaling values shown on change rounds, `|` otherwise) plus new `Atk` column; cost column dropped. Rule document restructured with new Introduction + Simple Overview pages and dependency-correct section order (Skill Drafting early; Bodyguard after Standard Attack; Progression next to Economy; Health/Armor last). Designer-box style added to stack files so facilitator notes fade into background for players. OQ-54 (Lance Thrust wording) and OQ-55 (Blade Call broader interaction) logged. Combo-bonus scope decided: Strike-only for Game 2, cross-category reconsidered after data. Stack A G2 rule sheets updated and ready to print.
+
+---
+
 ### Now — Waiting for Stack A
 
 The core systems are stable. The rules are coherent. Two playtests have generated real data. Four research threads have pre-loaded design knowledge for rapid response to playtest results. Ten new skill candidates are staged. The question is no longer "will this work?" — it's "how do we make it genuinely great?"

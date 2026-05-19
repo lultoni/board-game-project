@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-18 — end of Session 15.*
+*Last updated: 2026-05-19 — end of Session 16.*
 
 ---
 
@@ -30,22 +30,19 @@ You are my board game design co-creator and systems architect. We are working on
 4. Read `game-state/OPEN_QUESTIONS.md` (unresolved design questions).
 5. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 15 complete, 2026-05-18)
+### Where We Are (Session 16 complete, 2026-05-19)
 
-- **Playtest 3 analysed** (`docs/research/playtest-3-analysis.md`). Stack A Game 1 (standard attack 1 DMG) **confirmed working** — standoff dissolved, first Champion kill R11. Standard Attack 1 DMG **accepted into baseline**.
-- **Stack B de-prioritised**: Bodyguard activated organically under Stack A. Re-evaluate after Stack A G2.
-- **Two new OQs**: OQ-52 (centre-of-board has no attractor) and OQ-53 (attrition vs regicide — King isn't a real target). Both need brainstorm sessions before Stack F.
-- **Four new backpocket entries**: 8×10 narrower board, starting-formation swap to expose King, "spec for a programmer" (with `/research requirements engineering` note), digital playtest prototype (sleep-on-it, ADR required).
-- **Rune Theft (OQ-34) reframed** into state-dependent Mode A / Mode B with time-dependent disable value. Inconclusive, monitor in Stack A G2.
+- **All pre-Stack-A-G2 prep done.** Stack A Game 2 (`stack-a-game2-attack-nerf-combo.pdf`) is ready to print and play.
+- **Rule clarifications accepted into baseline**: Range system (default=2, "self"/"adjacent" explicit only, modifiers from default, no inward shifting), Focus Strike note added, self/adjacent targeting constraint explicit.
+- **Tracking sheet redesigned**: pre-filled R+ and SS columns (change rounds show value, others show `|`); Atk column added; cost column dropped.
+- **Rule document restructured**: Introduction + Simple Overview pages added; section order is now dependency-correct; Quick Reference expanded to 14 rows; designer-box style added to stack files.
+- **Combo-bonus scope decided**: Strike-only for Game 2. Cross-category to reconsider after data.
+- **OQ-54 + OQ-55 logged**: Lance Thrust wording question; Blade Call broader interaction question.
+- **OQ-52 + OQ-53 brainstorm (centre attractor + King as real target)** not yet done — deferred, not urgent before the playtest.
 
 ### Immediate Next Action
 
-**Session 16 = pre-Stack-A-G2 prep** (do NOT print Stack A G2 yet). Priority order:
-1. Resolve baseline rule ambiguities: Lance Thrust + Injured Range penalty (cost Elias R22), Focus Strike + adjacent self-target. Update `ruleset-baseline.typ` so 1 DMG is canonical.
-2. Fix tracking sheet: add Standard Attack count column, bake Rune-gain + Skill-Slot scaling into the sheet, drop redundant skill-cost column.
-3. Brainstorm OQ-52 + OQ-53 (combined session — they share solution space). Constraint: no "queen" piece; King must *participate*, not just *survive*.
-4. Decide combo-bonus scope (Strike+Strike-only vs cross-category) before Stack A G2 rule sheet is finalised.
-5. Sleep-on-it: digital prototype ADR — only after physical iteration loop is unblocked.
+**Run Stack A Game 2.** Print `stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf` + `stack-a-cleverness/stack-a-feedback.pdf` + `shared/game-tracking.pdf` (2 copies). Use `/playtest 4` next session to analyse results.
 
 ### Key Files
 

@@ -23,7 +23,8 @@ These mechanics were tested in Playtest 1 or resolved by designer ruling and are
 | Free pathing for movement (any route ≤ speed) | Session 3 (ruling) | Cannot pass through any piece |
 | Defender chooses which Guard intercepts | Session 1 / P1 suggestion | Accepted as ruling |
 | No terrain effects | Session 1 (ADR-001/002) | Confirmed overhead complexity; removed |
-| Standard attack 1 DMG (was 2) | Session 15 / P3 | First Champion kill R11 (vs P2's R26). Both players Q2 "Felt right." Combat feel "Better/Much Better." Standoff dissolved. Skills become primary damage source; standard attack remains as low-cost Injurer. |
+| Range system clarification (self/adjacent/default) | Session 16 (ruling) | All skills default to Range 2 unless text names "self" or "adjacent." Range modifiers (e.g. Range−1) apply from default. Self/adjacent cannot be shifted inward by Range buffs. Injured penalty does not affect self/adjacent skills. |
+| Focus Strike boosting self/adjacent skills | Session 16 (ruling) | Focus Strike can boost self→adjacent and adjacent→Range 2. Range and Injured calculated independently. |
 
 ---
 
