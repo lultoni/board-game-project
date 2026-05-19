@@ -27,6 +27,7 @@ _Feedback form (fill out after the game): stack-b-feedback.pdf_
 
 #section-goal()
 #section-components()
+#section-skill-drafting()
 #section-setup()
 #section-round-structure()
 #section-turn-structure()
@@ -35,6 +36,7 @@ _Feedback form (fill out after the game): stack-b-feedback.pdf_
 #section-action-phase()
 #section-skill-system()
 #section-resource-economy()
+#section-progression()
 #section-health-armor()
 
 == ⚡ CHANGED: Bodyguard Rule
@@ -72,7 +74,6 @@ Only Standard Attacks can be intercepted. Skills always hit directly.
 Enemy A attacks Champion C. Your Guard G is adjacent to C (but not to A). Under baseline this would not qualify — under this layer it does. You intercept: A moves 1 tile toward C, G takes the damage, C is safe.
 
 #section-skill-drafting()
-#section-progression()
 
 #pagebreak()
 
@@ -85,7 +86,7 @@ Enemy A attacks Champion C. Your Guard G is adjacent to C (but not to A). Under 
   columns: (1fr, 1.5fr),
   table.header([Concept], [Rule]),
   [Movement], [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per phase.],
-  [Attack], [Move onto enemy tile (1 Move Slot). *2 DMG*.],
+  [Attack], [Move onto enemy tile (1 Move Slot). *1 DMG*.],
   [Attack — target survives], [Attacker stops on tile before target],
   [Skill Path], [Straight line (Queen). Blocked by all pieces.],
   [Default Skill Range], [Range 2 (unless skill specifies)],

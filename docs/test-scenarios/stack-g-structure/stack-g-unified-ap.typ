@@ -48,7 +48,7 @@ _[Same as current after Layer 1–3 results.]_
   Each turn you receive *3 Action Points (AP).* You may spend each AP on one of:
   - *Move:* Move one piece (by its speed).
   - *Skill:* Activate one equipped skill on a Champion or King (pay Rune cost).
-  - *Attack:* Perform a Standard Attack (move onto enemy tile, deal 2 DMG).
+  - *Attack:* Perform a Standard Attack (move onto enemy tile, deal 1 DMG).
 
   You may use 0, 1, 2, or 3 AP. Unused AP are lost — no banking.
 
@@ -72,15 +72,14 @@ _[Same as current after Layer 1–3 results.]_
 
 _[FROM LAYERS 2–3: Use 3 HP system if accepted. Use simplified Bodyguard if accepted.]_
 
-*Standard Attack:* Spend 1 AP to move your piece onto an enemy-occupied tile. Deal 2 DMG. If target removed, occupy tile. If target survives, your piece stops on the tile before.
-
-#section-health-armor()
+*Standard Attack:* Spend 1 AP to move your piece onto an enemy-occupied tile. Deal 1 DMG. If target removed, occupy tile. If target survives, your piece stops on the tile before.
 
 == Resource Economy
 
 _[FROM LAYER 1 results.]_
 
 #section-skill-system()
+#section-health-armor()
 
 == Progression
 

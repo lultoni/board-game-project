@@ -30,6 +30,7 @@ _Feedback form (fill out after Game 2): stack-a-feedback.pdf_
 
 #section-goal()
 #section-components()
+#section-skill-drafting()
 #section-setup()
 #section-round-structure()
 #section-turn-structure()
@@ -57,10 +58,9 @@ You may attack with one Move Slot and move a different piece with the other Move
 #section-action-phase()
 #section-skill-system()
 #section-resource-economy()
+#section-progression()
 #section-health-armor()
 #section-bodyguard()
-#section-skill-drafting()
-#section-progression()
 
 #pagebreak()
 

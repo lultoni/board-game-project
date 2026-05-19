@@ -394,6 +394,26 @@ Four mechanical patterns identified from published games:
 
 ## New (from Playtest 3, 2026-05-17 / Session 15)
 
+### OQ-54: Lance Thrust — Should Its Text Say "Adjacent" Instead of "Range−1"? — OPEN
+`[System: Skill System] [Affects: Skill clarity, Injured interaction]`
+
+**Lance Thrust's effect text reads "Target within Range−1 takes 1 DMG." Under the accepted Range ruling, this makes it a Range 2 skill with a −1 modifier (effective Range 1 = adjacent). The question is whether the text should be rewritten to say "adjacent" explicitly.**
+- Argument for rewriting to "adjacent": clearer at the table, no mental arithmetic, consistent with how Field Medic uses "adjacent."
+- Argument for keeping "Range−1": preserves the design signal that the reduced range is a deliberate tradeoff (hence the lower cost of 2 Runes), not just a fixed property. Keeps the modifier language visible.
+- Injured interaction under current ruling: Injured reduces Lance Thrust to Range 0 (self) — unusable against enemies. This cost Elias a full turn in Playtest 3 (R22).
+- **Status**: Open. Do not decide now — watch whether the Range−1 language causes confusion in further playtests. If it does, rewrite to "adjacent."
+
+### OQ-55: Blade Call — Broader Skill Interaction? — OPEN
+`[System: Skill System] [Affects: Skill combo depth, Mystic category identity]`
+
+**Blade Call currently boosts one Strike skill by +1 DMG. Could it interact with a wider range of skills — e.g. also boosting the Armor gained by Shield skills (+1 Armor instead of +1 DMG)?**
+- The core question: should Blade Call become a general "amplifier" for any skill, or stay as a Strike-specific damage booster?
+- A broader Blade Call would deepen the Mystic category's identity as a "combo enabler" — using Mystic skills to amplify whatever strategy you're running that turn, not just the Strike path.
+- Risk: if Blade Call can amplify Armor gain, it becomes a universal "make your best skill better" button — possibly too flexible, crowding out other Mystic skills.
+- Alternative framing: rather than changing Blade Call, introduce a second Mystic skill that amplifies Shield/Move skills (a separate amplifier archetype).
+- **Connected to**: OQ-12 (skill catalogue completeness — Mystic category currently has too few distinct identities), OQ-51 (mechanical levers for clever play).
+- **Status**: Open. No action until skill catalogue expansion is unblocked (post-Stack A/B combat confirmation). Justification required before any change: what specific problem does broader Blade Call fix?
+
 ### OQ-52: Centre of the Board Has No Attractor — OPEN
 `[System: Board/Spatial] [Affects: Movement, King role, Opening dynamics]`
 
