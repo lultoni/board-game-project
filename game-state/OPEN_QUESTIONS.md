@@ -235,7 +235,7 @@ With unified AP, a single piece could spend all 3 AP on movement and rush the Ki
 - Incentivises "gang-ups" — multi-Champion coordination that is currently rare because single-Champion plays are easier.
 - Blade Call stacks with combo bonus (separate effects).
 - **Risk**: could make multi-Champion combos the only viable strategy. Mitigated by naturally high setup cost (LoS constraints on crowded board).
-- **Status**: Ready to test in Layer 2 (Game 2, on top of OQ-37 nerf). See ADR-003.
+- **Status**: Strike-only for Stack A Game 2 (decided Session 16). Cross-category scope (Move-into-Strike, Mystic-into-Strike) to be reconsidered after Game 2 data — cross-category combos already happen organically, so Game 2 isolates whether the Strike+Strike bonus adds value or crowds that out.
 
 ### OQ-39: Shared-Puzzle Design Direction — OPEN
 **Should the game lean into "rewarding cleverness / mutual epistemic exploration" as a deliberate design direction?**

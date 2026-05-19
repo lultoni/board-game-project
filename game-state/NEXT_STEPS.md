@@ -68,7 +68,7 @@ Full reasoning: `docs/design-principles.md`
 
 ### 1e. Combo-bonus scope question (blocks Stack A G2 rule sheet)
 
-- [ ] **Resolve before printing Stack A Game 2**: should the combo bonus reward only Strike+Strike sequences, or any cross-category (Move-into-Strike, Mystic-into-Strike) coordination on the same target? Surfaced by Elias's organic Air Blast → Hook Pull at L2G1 — cross-piece, cross-category combos already happen *without* the bonus, so Game 2's purpose is now "does the bonus add to or crowd out cross-category play?" — needs a decision before the rule text is finalised.
+- [x] **Resolved (Session 16)**: combo bonus is Strike-only for Game 2. Cross-category combos (Move-into-Strike, Mystic-into-Strike) already happen organically without the bonus — Game 2's purpose is to test whether a Strike+Strike bonus adds value or crowds out that organic play. Cross-category scope will be reconsidered after Game 2 data.
 
 ---
 

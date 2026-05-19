@@ -4,7 +4,7 @@
 
 = Stack A — Game 2: Attack Nerf + Combo Bonus
 
-_Version: 2026-04-27. Based on baseline rules v2026-04-25 + Layer 1 economy (accepted)._\
+_Version: 2026-05-19. Based on baseline rules v2026-05-19 + Layer 1 economy (accepted)._\
 _Feedback form (fill out after this game): stack-a-feedback.pdf_
 
 #note-box[
@@ -55,7 +55,7 @@ To attack, spend a Move Slot to move your piece *onto a tile occupied by an enem
 
 - Deal *1 DMG* to the enemy _(baseline: 2 DMG)_.
 - *If the enemy is removed:* your piece occupies the tile.
-- *If the enemy survives:* your piece stops on the tile immediately before the target.
+- *If the enemy survives:* your piece stops on the tile immediately before the target. _(If there are multiple paths toward the target you may choose which one to take — relevant for Bodyguard.)_
 
 You may attack with one Move Slot and move a different piece with the other Move Slot in the same turn.
 
@@ -113,15 +113,20 @@ You may attack with one Move Slot and move a different piece with the other Move
 #table(
   columns: (1fr, 1.5fr),
   table.header([Concept], [Rule]),
-  [Movement], [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per phase.],
-  [Attack ⚡], [Move onto enemy tile (1 Move Slot). *1 DMG* _(baseline: 2)_.],
-  [Attack — target survives], [Attacker stops on tile before target],
-  [Combo Bonus ⚡], [Each enemy has a hit counter (resets end of your turn). Counter=0→+0, 1→+1, 2→+2 bonus DMG per Strike. Different Champions increment it. Standard Attacks don't count.],
-  [Skill Path], [Straight line (Queen). Blocked by all pieces.],
-  [Default Skill Range], [Range 2 (unless skill specifies)],
-  [Bodyguard], [Guard adjacent to both tile-before-target AND defender. Guard takes the damage. Attacker moves 1 tile. Standard Attacks only. Optional.],
-  [Rune income], [Start of YOUR turn (not Round 1). 6 start, +2/+3/+4/+5 scaling.],
-  [Healing], [No cap. Same piece can be healed multiple times per turn.],
-  [Armor], [Armor absorbs damage first, then HP],
+  [Movement], [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per Movement Phase.],
+  [Guard speed], [Normal: 2 tiles. Injured: 1 tile.],
+  [Champion / King speed], [1 tile (Normal or Injured).],
+  [Standard Attack ⚡], [Move onto enemy tile (1 Move Slot). *1 DMG* _(baseline: 2)_. Attacker stops before target if target survives.],
+  [Combo Bonus ⚡], [Each enemy has a hit counter (resets end of your turn). Strike skills deal +counter DMG, then counter increments if a *different* Champion hit. Standard Attacks don't count.],
+  [Skill Path], [Straight line (Queen-style). Blocked by *all* pieces — ally and enemy.],
+  [Skill Range], [Default Range 2. Skills with "self" = Range 0. Skills with "adjacent" = Range 1. Range modifiers apply from default.],
+  [Injured Range penalty], [Injured pieces: Skill Range −1. Does not affect "self" or "adjacent" skills.],
+  [Bodyguard], [Standard Attacks on Champion/King only. Guard adjacent to both tile-before-target AND defender. Guard takes the hit. Defender chooses which eligible Guard intercepts.],
+  [Armor], [Max 3 per piece. Each point absorbs 1 DMG before HP, then destroyed. Does not prevent Injured status.],
+  [Health], [2 HP: Normal → Injured → Removed. 1 DMG = one step. 2 DMG = skip Injured, Removed instantly.],
+  [Rune income], [Collected at start of YOUR turn (not Round 1). Starts 6, then +2/+3/+4/+5 scaling.],
+  [Skill Slots], [Start at 2/turn. Grow with Progression (Rounds 1–10: 2, 11–20: 3, 21–30: 4, 31+: 5).],
+  [Focus Strike], [+1 Range to next skill this turn. Can boost self (→ adjacent) and adjacent (→ Range 2) skills.],
+  [Blade Call], [+1 DMG to one Strike skill this turn. Stacks with Combo Bonus.],
 )
 ]
