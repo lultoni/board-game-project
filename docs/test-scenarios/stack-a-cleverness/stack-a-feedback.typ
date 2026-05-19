@@ -1,19 +1,19 @@
 #import "../shared/template.typ": *
-#show: template.with(title: "Playtest Feedback — Layer 2: Standard Attack Nerf + Combo Bonus")
+#show: template.with(title: "Playtest Feedback — Stack A Game 2: Combo Bonus")
 
-= Playtest Feedback — Layer 2: Standard Attack Nerf + Combo Bonus
+= Playtest Feedback — Stack A Game 2: Combo Bonus
 
-_One form per player. Fill out after *both* games. Compare Game 1 (nerf only) vs Game 2 (nerf + combo)._
+_One form per player. Fill out after the game._
 
-#note-box[*Game 1:* Standard Attacks deal 1 DMG (was 2). *Game 2:* Same, plus multi-Champion combo bonus (+1 DMG on 2nd Champion Strike to same target).]
+#note-box[*This game:* Standard Attacks deal 1 DMG (accepted baseline). Multi-Champion combo bonus active: when a second different Champion lands a Strike skill on the same target in the same turn, it deals +1 DMG (counter scales with more Champions).]
 
 #grid(
   columns: (1fr, 1fr),
   gutter: 8pt,
   [*Date:* \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_],
-  [*Game 1 length (rounds):* \_\_\_\_\_ #h(6pt) *Game 2:* \_\_\_\_\_],
+  [*Game length (rounds):* \_\_\_\_\_],
   [*Your name:* \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_],
-  [*Playing as:* P1 / P2 _(circle one per game)_],
+  [*Playing as:* P1 / P2 _(circle)_],
   [*Opponent:* \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_],
   [],
 )
@@ -22,166 +22,130 @@ _One form per player. Fill out after *both* games. Compare Game 1 (nerf only) vs
 
 == A — Observational Data
 
-_Reference your tracking sheets for both games._
-
 #grid(
   columns: (1fr, 1fr),
   gutter: 8pt,
-  [*Game 1 — first Guard kill:* Round \_\_\_\_\_],
-  [*Game 2 — first Guard kill:* Round \_\_\_\_\_],
-  [*Game 1 — first Champion kill:* Round \_\_\_\_\_],
-  [*Game 2 — first Champion kill:* Round \_\_\_\_\_],
-  [*Game 1 — total captures (you/opp):* \_\_/\_\_],
-  [*Game 2 — total captures (you/opp):* \_\_/\_\_],
-  [*Game 1 — total Armor granted (you/opp):* \_\_/\_\_],
-  [*Game 2 — total Armor granted (you/opp):* \_\_/\_\_],
+  [*First Guard kill:* Round \_\_\_\_\_],
+  [*First Champion kill:* Round \_\_\_\_\_],
+  [*Total captures (you / opp):* \_\_ / \_\_],
+  [*Total Armor granted (you / opp):* \_\_ / \_\_],
+  [*Combo bonus activations:* \_\_\_\_\_],
+  [*Standard Attacks (you / opp):* \_\_ / \_\_],
 )
 
 #hr
 
-== B — Layer Questions: Game 1 (Nerf Only)
+== B — Layer Questions: Combo Bonus
 
 #fq("1")[
-  *Did pieces spend meaningful time Injured before dying?*\
-  Almost always — Often — Sometimes — Rarely — Never
+  *Did you attempt multi-Champion combos? How many succeeded?*\
+  Attempted: \_\_\_\_\_ times. #h(8pt) Succeeded: \_\_\_\_\_ times.
 ]
+#v(2.7cm)
 
 #fq("2")[
-  *Was it frustrating that Standard Attacks only Injure (not kill)?*\
-  Very frustrating — A bit frustrating — Neutral — Felt right — Very satisfying
+  *What blocked the failed attempts?*
 ]
+#v(2.7cm)
 
 #fq("3")[
-  *Did you use Strike skills to finish off Injured pieces?*\
-  Constantly — Often — Sometimes — Rarely — Never\
-  Which skills? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-#fq("4")[
-  *Did the no-man's-land / standoff feel different from Playtest 2?*\
-  Much less standoff — Somewhat less — About the same — Worse standoff
-]
-
-#fq("5")[
-  *Were you reluctant to move pieces forward? Why?*\
-  Not reluctant — Somewhat — Very reluctant\
-  Reason: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-#hr
-
-== B2 — Layer Questions: Game 2 (Nerf + Combo Bonus)
-
-#fq("6")[
-  *Did you attempt multi-Champion combos?* How many succeeded?\
-  Attempted: \_\_\_\_\_ times. #h(8pt) Succeeded: \_\_\_\_\_ times.\
-  What blocked the failed attempts? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-#fq("7")[
   *Did the combo bonus feel like a meaningful reward for coordination?*\
   Very rewarding — Somewhat — Neutral — Barely noticeable — Never triggered
 ]
+#v(2.7cm)
 
-#fq("8")[
-  *Did you change how you positioned Champions compared to Game 1?*\
+#fq("4")[
+  *Did you change how you positioned Champions because of the combo bonus?*\
   Yes, significantly — Somewhat — Not really — No\
-  How? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+  How?
 ]
+#v(2.7cm)
 
-#fq("9")[
-  *Comparing Game 1 vs Game 2 — which felt better?*\
-  Game 1 much better — Game 1 slightly better — About the same — Game 2 slightly better — Game 2 much better\
-  Why? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+#fq("5")[
+  *Did organic cross-category combos (e.g. Move skill → Strike skill on same target) still happen — or did the Strike+Strike bonus crowd them out?*\
+  Cross-category combos happened often — Sometimes — Rarely — Never\
+  Examples:
 ]
+#v(2.7cm)
 
-#fq("10")[
+#fq("6")[
   *Did the combo bonus make any skill or combination feel broken?*\
-  No — Maybe: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+  No — Maybe — Yes\
+  Which?
 ]
+#v(2.7cm)
 
 #hr
 
 == C — Systems & Overall Feel
 
-_These questions cover the full game — not just the layer being tested._
-
-#fq("11")[
-  *Skill Drafting:* Did the draft feel fair and engaging? Did you have a clear plan going in, or did you just pick what seemed good?\
-  \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+#fq("7")[
+  *Skill Drafting:* Did the draft feel fair and engaging? Clear plan, or just picked what seemed good?
 ]
+#v(2.7cm)
 
-#fq("12")[
+#fq("8")[
   *Turn flow:* Did Move Slots and Skill Slots feel intuitive to manage together?\
   Very intuitive — Mostly yes — Sometimes confusing — Often confusing
 ]
+#v(2.7cm)
+
+#fq("9")[
+  *Skills — balance:* Any skill that felt too strong or too weak? Best combo you pulled off?
+]
+#v(2.7cm)
+
+#fq("10")[
+  *Must-pick skills:* Did any skill feel like skipping it would always be a mistake?\
+  Yes: \_\_\_\_\_\_\_\_\_\_\_\_\_\_ #h(8pt) No
+]
+#v(2.7cm)
+
+#fq("11")[
+  *Bodyguard Rule:* Did it trigger? Did you actively reposition Guards to use it?\
+  Triggered \_\_\_\_\_ times. #h(8pt) Repositioned for it: Yes / No / Sometimes
+]
+#v(2.7cm)
+
+#fq("12")[
+  *Injured Champions:* When a Champion was Injured, did it feel meaningfully weaker — or basically fine until killed?\
+  Clearly weaker — Slightly weaker — Barely noticeable — Not different at all
+]
+#v(2.7cm)
 
 #fq("13")[
-  *Skills — balance:* Any skill that felt too strong or too weak?\
-  Too strong: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ #h(8pt) Too weak: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\
-  Best combo you pulled off: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-// OQ-34: Ask indirectly — let player name Rune Theft if dominant, don't lead them
-#fq("14")[
-  *Must-pick skills:* Did any skill feel like everyone should always pick it — like skipping it would be a mistake?\
-  Yes: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ #h(8pt) No — Why: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-#fq("15")[
-  *Bodyguard Rule:* Did it trigger? Did you actively reposition Guards to use it?\
-  Triggered \_\_\_\_\_ times. #h(8pt) Repositioned Guards for it: Yes / No / Sometimes
-]
-
-// OQ-10: Injured Champion penalty — do Injured Champions feel meaningfully weaker?
-#fq("16")[
-  *Injured Champions:* When a Champion (not a Guard) was Injured, did it feel meaningfully weaker — or basically fine until killed?\
-  Clearly weaker — Slightly weaker — Barely noticeable — Not different at all\
-  What changed for them? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-// OQ-11: Armor cap — did armor extend games or feel well-balanced?
-#fq("17")[
-  *Armor:* Did either player stack a lot of Armor? Did Armor feel like it slowed the game down, or was it a fair tradeoff?\
+  *Armor:* Did either player stack Armor heavily? Did it feel well-balanced or did it slow the game?\
   Slowed game noticeably — Slightly extended — Well balanced — Armor rarely mattered
 ]
+#v(2.7cm)
 
-// OQ-46: Rune hoarding — saving for a plan vs. nothing to spend on vs. always wanting more
-#fq("18")[
-  *Rune spending:* Did you ever sit on a lot of Runes with nothing good to spend them on — or were you always wanting more?\
-  Always wanted more — Balanced — Sometimes nothing to spend on — Often sat on Runes\
-  If sitting on Runes, why? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+#fq("14")[
+  *Rune spending:* Always wanting more, or sometimes nothing worth spending on?\
+  Always wanted more — Balanced — Sometimes nothing to spend on — Often sat on Runes
+]
+#v(2.7cm)
+
+#fq("15")[
+  *Favourite moment:*
+]
+#v(2.7cm)
+
+#fq("16")[
+  *Most confusing or frustrating rule or moment:*
+]
+#v(2.7cm)
+
+#rating-row("Game length:")[
+  1 (way too short) — 2 (a bit short) — 3 (just right) — 4 (a bit long) — 5 (way too long) #h(8pt) Circle: *1 · 2 · 3 · 4 · 5*
 ]
 
-#fq("19")[
-  *Did Rune economy feel different with 1-DMG attacks?* (More pressure to spend on skills?)\
-  Much more spending — Somewhat more — About the same — Less spending\
-  \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-#fq("20")[
-  *Favorite moment across both games:*\
-  \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-#fq("21")[
-  *Most confusing or frustrating rule or moment:*\
-  \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
-]
-
-#rating-row("Game 1 length:")[
-  1 (way too short) — 2 (a bit short) — 3 (just right) — 4 (a bit long) — 5 (way too long)\
-  Circle: *1 · 2 · 3 · 4 · 5*
-]
-
-#rating-row("Game 2 length:")[
-  1 (way too short) — 2 (a bit short) — 3 (just right) — 4 (a bit long) — 5 (way too long)\
-  Circle: *1 · 2 · 3 · 4 · 5*
-]
+#v(0.5em)
 
 #rating-row("Combat feel vs Playtest 2:")[
   Much worse — Worse — Same — Better — Much better
 ]
+
+#v(0.5em)
 
 #rating-row("Overall enjoyment:")[
   1 — 2 — 3 — 4 — 5
