@@ -39,6 +39,7 @@ You are my board game design co-creator and systems architect. We are working on
 - **Combo-bonus scope decided**: Strike-only for Game 2. Cross-category to reconsider after data.
 - **OQ-54 + OQ-55 logged**: Lance Thrust wording question; Blade Call broader interaction question.
 - **OQ-52 + OQ-53 brainstorm (centre attractor + King as real target)** not yet done — deferred, not urgent before the playtest.
+- **OQ-56 logged**: Game is complex to get into — draft requires experience to evaluate well, loadout decisions are permanent, and the skill catalogue demands internalisation over time. Gated on Stack A/B balance confirmation.
 
 ### Immediate Next Action
 

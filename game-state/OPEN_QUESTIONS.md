@@ -439,3 +439,31 @@ Four mechanical patterns identified from published games:
 - **Connected to**: OQ-52 (centre attractor), OQ-19 (endgame acceleration), OQ-51 (mechanical levers for clever play — sente skills are sharper when there's a high-value target to threaten).
 - **Status**: Open. Real found issue from Playtest 3, designer-intent driven.
 - **Re-entry trigger**: Brainstorm session before Stack F, OR a dedicated King-role design session.
+
+### OQ-56: Draft Entry Complexity + Skill Permanence — OPEN
+`[System: Skill Drafting] [Affects: New player onboarding, Mid-game adaptability, Skill System]`
+
+**Two linked problems surfaced in post-Playtest-3 feedback (Mario, corroborated by Elias vs Jonathan):**
+
+**Problem A — Draft entry complexity:** New players cannot evaluate skills during the draft because they have no experience of what a skill does on the board. They pick by name/description but can't model the downstream consequences (range constraints, combo potential, Rune cost pressure). This is a high skill floor — it only drops after many games, which take a long time each.
+
+**Problem B — Permanent draft decisions:** Mid-game, players realise their loadout doesn't fit the board state they're in (example: picked Lance Thrust for range, needed Rune Theft for economy pressure; realised too late). With no way to adapt, the mismatch lasts the entire game. Long games make this worse — you feel locked in for a very long time.
+
+**Problem C — In-game reference load:** Constantly switching attention between the board and the skill list to check costs and effects. Physical skill cards on the table help reduce the lookup friction, but do not fully solve the problem — with 15 skills in the pool, players still need to internalise what each skill does, when it's worth its Rune cost, and how it interacts with positioning. Cards make the text visible; they don't build the mental model. Mario's post-game reflection: cards would have helped, but you still have to learn it all eventually.
+
+**Why these are linked:** The root is the same — skills are too abstract at draft time and too permanent afterwards. An experienced player builds internal models over many games; a new player has no such model and then gets no chance to correct course.
+
+**Design constraint:** The solution must not reduce strategic depth for experienced players. The goal is to lower the entry floor *and* maintain (or raise) the ceiling — not flatten the game toward simplicity.
+
+**Solution candidates (to brainstorm, not decide here):**
+- **In-game skill switching** (Mario's suggestion): mid-game mechanism to swap one equipped skill for another from a reserve pool — could be turn-cost, Rune-cost, or once-per-game. Rewards adaptation; reduces sunk-cost feeling. Risk: if too cheap, draft becomes meaningless; if too expensive, it's irrelevant.
+- **Fewer skills, deeper each** (Mario's framing): reduce catalogue to ~8–10 very legible skills with clear identities — easier to evaluate at draft, easier to track in play. Risk: less draft variety; may reduce replayability. Connected to OQ-12 (catalogue completeness goes the other way).
+- **Skill cards on the table** (partial UX fix for Problem C): physical cards in front of each piece showing its equipped skills — eliminates lookup friction but does not build the mental model. Useful as a baseline improvement regardless of other changes.
+- **Draft with a "try before lock" phase**: players assign skills tentatively, play 1–2 rounds, then lock. Lets new players feel the skill before committing. Risk: adds setup time; may feel artificial.
+- **Simplified starter set**: a curated subset of 6–8 skills specifically for new players' first game, replacing the full draft. Graduated onramp. Risk: adds complexity to the meta-game (which set do we use?).
+
+**Connected to**: OQ-12 (skill catalogue size — currently pushing for more skills; this question pulls the other way), OQ-35 (pool draft — separating pool selection from assignment could help Problem A), OQ-16 (draft fairness/determinism).
+
+**Status**: Open. Post-Playtest-3 player feedback. Do not act on until Stack A/B combat balance is confirmed — skill set must be stable before evaluating onboarding changes. The UX fix (skill cards) can happen any time.
+
+**Re-entry trigger**: After Stack A G2. If new players continue to struggle in future playtests, this becomes Priority 1 for accessibility. If experienced players are the main audience, deprioritise.
