@@ -12,7 +12,7 @@ Read ALL files in the relevant playtest subfolder — images AND any .md side-no
 
 Also read the test scenario rule sheet that was used (check `docs/test-scenarios/` for the relevant layer) to understand what was being tested and what to watch for.
 
-Also read `game-state/OPEN_QUESTIONS.md` — specifically any OQ marked **TRACKING** or with **Evaluation criteria** notes for this layer. These are the monitoring hypotheses you must answer from the data.
+Also read `game-state/OPEN_QUESTIONS.md` — specifically any OQ marked **TRACKING** or with **Evaluation criteria** notes for this stack. These are the monitoring hypotheses you must answer from the data. (OQ numbers are not hardcoded in this skill — read the live file to find which ones apply.)
 
 ## Step 2: Transcribe
 
@@ -198,10 +198,10 @@ Cover at minimum:
 
 After writing the analysis, update the following living documents:
 
-### `game-state/CURRENT_DESIGN.md`
+### `docs/systems-and-mechanics.md`
 - Update Playtest Evidence section with new findings.
 - Update Design Health Check scores if evidence warrants.
-- Update Incremental Test Plan table (mark layer as tested, note result).
+- Update Incremental Test Plan table (mark stack as tested, note result).
 
 ### `game-state/OPEN_QUESTIONS.md`
 - Resolve any questions answered by this playtest.
@@ -217,18 +217,18 @@ After writing the analysis, update the following living documents:
 - If the playtest confirms or withdraws a mechanic, update its entry.
 - If new mechanics/variants were discussed at the table (from side-notes), add them as new entries with status "Raised in Playtest N".
 
-### `docs/brainstorm/session-log.md`
+### `game-state/SESSION_LOG.md`
 - Add a sub-section under the current session entry noting the playtest analysis.
 
 ## Step 5: Decision Tree Routing
 
-Read `docs/test-scenarios/TESTING_PLAN.typ` — specifically the "Entry Conditions Per Stack" table and the "Decision Tree" tables (Phase 1 and Phase 2).
+Read `docs/test-scenarios/TESTING_PLAN.typ` — specifically the "Entry Conditions Per Stack" table and the "Decision Tree" tables (Phase 1 and Phase 2). **TESTING_PLAN.typ is the source of truth for routing thresholds — consult it directly rather than relying on numbers cached in this skill.**
 
 Map the playtest metrics to the decision tree's branching criteria:
 
-1. **Champion kill round** — extract from Block A tracking data. Compare against thresholds: before R15 (strong), R15–R20 (partial), after R20 (pacing urgent → Stack C).
+1. **Champion kill round** — extract from Block A tracking data. Compare against the thresholds defined in TESTING_PLAN.typ (currently: before R15 strong, R15–R20 partial, after R20 pacing urgent → Stack C — verify these are still current).
 2. **Standoff persistence** — extract from Block B behavioral patterns (first contact round, evidence of standoff, forward movement timing). If standoff persists → Stack F.
-3. **Bodyguard triggers** — extract from feedback form or game log. Compare: ≥3 (accepted), 1–2 (partial), 0 (broken).
+3. **Bodyguard triggers** — extract from feedback form or game log. Compare against TESTING_PLAN's accepted/partial/broken thresholds.
 4. **Any other routing criteria** mentioned in the entry conditions table (combo ceiling, board feel, draft staleness).
 
 Write a routing block:

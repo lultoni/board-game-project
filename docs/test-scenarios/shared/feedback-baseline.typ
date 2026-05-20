@@ -1,20 +1,20 @@
 // feedback-baseline.typ — base template for all playtest feedback forms
 // HOW TO USE:
-//   1. Copy this file to layer-N-<desc>/layer-N-feedback.typ
-//   2. Replace every line marked with [LAYER: ...] with layer-specific content
-//   3. Section C follows the OQ-monitor pattern below — update it per layer
+//   1. Copy this file to stack-X-<slug>/stack-X-feedback.typ
+//   2. Replace every line marked with [STACK: ...] with stack-specific content
+//   3. Section C follows the OQ-monitor pattern below — update it per stack
 //   4. Do NOT change the Section D free notes block
-//   5. Run build-pdfs.sh to compile
+//   5. Run build-pdfs.sh to compile (discovers new files automatically)
 //
 // ─── OQ-MONITOR PATTERN ──────────────────────────────────────────────────────
 //
-// Section C must contain one question per open monitoring OQ for this layer.
+// Section C must contain one question per open monitoring OQ for this stack.
 //
-// HOW TO FIND MONITORING OQs FOR A LAYER:
+// HOW TO FIND MONITORING OQs FOR A STACK:
 //   Open game-state/OPEN_QUESTIONS.md and search for:
-//   - "TRACKING (Layer N)" — OQ explicitly scheduled for this layer
-//   - "Evaluation criteria (Session X)" — OQ with a concrete observable to check
-//   - "Monitor in Layer N" — OQ with a softer watch flag
+//   - "TRACKING (Stack X)" — OQ explicitly scheduled for this stack
+//   - "Evaluation criteria (Session N)" — OQ with a concrete observable to check
+//   - "Monitor in Stack X" — OQ with a softer watch flag
 //
 // For each OQ found, map it to a Section C question:
 //   OQ-10 (Injured Champion penalty) → "Do Injured Champions feel meaningfully
@@ -36,16 +36,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #import "./template.typ": *
-#show: template.with(title: "Playtest Feedback — [LAYER: Layer name]")
+#show: template.with(title: "Playtest Feedback — [STACK: Stack name]")
 
-#note-box[*TEMPLATE — not for player use.* Copy to `layer-N-feedback.typ` and fill in all `[LAYER: ...]` placeholders before printing.]
+#note-box[*TEMPLATE — not for player use.* Copy to `stack-X-feedback.typ` and fill in all `[STACK: ...]` placeholders before printing.]
 
-= Playtest Feedback — [LAYER: Layer name]
+= Playtest Feedback — [STACK: Stack name]
 
 _One form per player. Fill out independently after the game._
 
-// [LAYER: Add a note-box here summarising what changed in this layer. Example:]
-// #note-box[Champions and King have *3 HP* in this layer. Guards remain at 2 HP.]
+// [STACK: Add a note-box here summarising what changed in this stack. Example:]
+// #note-box[Champions and King have *3 HP* in this stack. Guards remain at 2 HP.]
 
 #grid(
   columns: (1fr, 1fr),
@@ -64,7 +64,7 @@ _One form per player. Fill out independently after the game._
 
 _Reference your tracking sheet for round-by-round Rune and skill data._
 
-// [LAYER: Add factual fields tied to what this layer is testing + standard kill
+// [STACK: Add factual fields tied to what this stack is testing + standard kill
 //  timing fields (always include these — they feed OQ-19, OQ-37, OQ-41 kill timing).]
 //
 //  #grid(
@@ -73,16 +73,16 @@ _Reference your tracking sheet for round-by-round Rune and skill data._
 //    [*First Guard kill:* Round \_\_\_\_\_],
 //    [*First Champion kill:* Round \_\_\_\_\_],
 //    [*Total captures — you:* \_\_\_ / *opponent:* \_\_\_],
-//    [*[Layer-specific observable]:* \_\_\_\_\_],
+//    [*[Stack-specific observable]:* \_\_\_\_\_],
 //    [*Total Armor granted — you:* \_\_\_ / *opponent:* \_\_\_],   // OQ-11
 //    [],
 //  )
 
 #hr
 
-== B — Layer Questions
+== B — Stack Questions
 
-// [LAYER: 6–8 questions directly testing this layer's hypothesis.
+// [STACK: 6–8 questions directly testing this stack's hypothesis.
 //  Use fq("N")[...] for each. Number from 1.
 //  Keep answers fast: Yes/No, scales, circle options, short blanks.
 //  Focus ONLY on the change being tested — system-wide questions go in Section C.]
@@ -91,9 +91,9 @@ _Reference your tracking sheet for round-by-round Rune and skill data._
 
 == C — Systems & Overall Feel
 
-_These questions cover the full game — not just the layer being tested. Identical structure across all layers; OQ-monitoring questions updated per layer._
+_These questions cover the full game — not just the stack being tested. Identical structure across all stacks; OQ-monitoring questions updated per stack._
 
-// ── STANDARD SKELETON (keep in all layers) ──────────────────────────────────
+// ── STANDARD SKELETON (keep in all stacks) ──────────────────────────────────
 
 #fq("N")[
   *Skill Drafting:* Did the draft feel fair and engaging? Did you have a clear plan going in, or did you just pick what seemed good?\
@@ -142,9 +142,9 @@ _These questions cover the full game — not just the layer being tested. Identi
   If sitting on Runes, why? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
 
-// ── OQ-SPECIFIC QUESTIONS (update per layer) ────────────────────────────────
-// [LAYER: Replace this block with the monitoring question for the one carry-over
-//  system most relevant to this specific layer. Examples:
+// ── OQ-SPECIFIC QUESTIONS (update per stack) ────────────────────────────────
+// [STACK: Replace this block with the monitoring question for the one carry-over
+//  system most relevant to this specific stack. Examples:
 //  "Did skill use feel frequent enough throughout the game?" (monitoring economy)
 //  "Did pieces spend meaningful time Injured before dying?"   (monitoring HP gradient)
 //  "Did Guards feel strategically useful beyond just blocking?" (monitoring Guard value)
@@ -165,10 +165,10 @@ _These questions cover the full game — not just the layer being tested. Identi
   Circle: *1 · 2 · 3 · 4 · 5*
 ]
 
-// [LAYER: Set a comparison rating relevant to this layer's change.
+// [STACK: Set a comparison rating relevant to this stack's change.
 //  Label: name the dimension being compared. Examples:
 //    Opening feel vs prior playtest:  /  Combat feel vs prior playtest:]
-#rating-row("[LAYER: Dimension vs prior playtest]:")[
+#rating-row("[STACK: Dimension vs prior playtest]:")[
   Much worse — Worse — Same — Better — Much better
 ]
 

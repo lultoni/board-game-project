@@ -1,41 +1,50 @@
 #!/usr/bin/env zsh
 # build-pdfs.sh
-# Compiles all .typ files in the per-stack subfolders to their sibling PDFs.
+# Discovers and compiles every .typ file under docs/test-scenarios/ to its
+# sibling PDF, except library files in shared/ that are imported by others.
 # Usage: zsh docs/test-scenarios/build-pdfs.sh
 
-set -e
 SCRIPT_DIR="${0:A:h}"
 PROJECT_ROOT="${SCRIPT_DIR:h:h}"
 
-compile() {
-  local src="$1"
-  local dir="${src:h}"
-  local base="${src:t:r}"
-  local out="$dir/${base}.pdf"
-  typst compile --root "$PROJECT_ROOT" "$src" "$out"
-  echo "Built: $out"
-}
+# Library files in shared/ that are imported but not standalone documents.
+# game-tracking.typ and feedback-baseline.typ remain compilable (they produce
+# PDFs intentionally), so they are NOT in this exclusion list — only the
+# pure-import libraries are.
+typeset -a SKIP=(
+  "$SCRIPT_DIR/shared/template.typ"
+  "$SCRIPT_DIR/shared/baseline-sections.typ"
+)
 
-# Shared components
-compile "$SCRIPT_DIR/shared/game-tracking.typ"
-compile "$SCRIPT_DIR/shared/feedback-baseline.typ"
+typeset -a SOURCES
+SOURCES=("${(@f)$(find "$SCRIPT_DIR" -name '*.typ' -type f | sort)}")
 
-# Testing plan + decision tree
-compile "$SCRIPT_DIR/TESTING_PLAN.typ"
+typeset -a FAILURES
+FAILURES=()
 
-# Canonical baseline
-compile "$SCRIPT_DIR/baseline/ruleset-baseline.typ"
+for src in "${SOURCES[@]}"; do
+  # Skip library files
+  if (( ${SKIP[(I)$src]} )); then
+    continue
+  fi
 
-# Stack A — Cleverness (attack nerf + combo bonus, two-game format)
-compile "$SCRIPT_DIR/stack-a-cleverness/stack-a-game1-attack-nerf.typ"
-compile "$SCRIPT_DIR/stack-a-cleverness/stack-a-game2-attack-nerf-combo.typ"
-compile "$SCRIPT_DIR/stack-a-cleverness/stack-a-feedback.typ"
+  dir="${src:h}"
+  base="${src:t:r}"
+  out="$dir/${base}.pdf"
 
-# Stack B — Guards (bodyguard fix)
-compile "$SCRIPT_DIR/stack-b-guards/stack-b-bodyguard-fix.typ"
-compile "$SCRIPT_DIR/stack-b-guards/stack-b-feedback.typ"
+  if typst compile --root "$PROJECT_ROOT" "$src" "$out"; then
+    echo "Built: $out"
+  else
+    echo "FAILED: $src" >&2
+    FAILURES+=("$src")
+  fi
+done
 
-# Stack G — Structure (unified AP framework)
-compile "$SCRIPT_DIR/stack-g-structure/stack-g-unified-ap.typ"
+if (( ${#FAILURES[@]} > 0 )); then
+  echo
+  echo "=== ${#FAILURES[@]} build failure(s): ==="
+  for f in "${FAILURES[@]}"; do echo "  - $f"; done
+  exit 1
+fi
 
 echo "Done — all PDFs built."

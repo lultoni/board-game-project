@@ -12,6 +12,13 @@
 
 #import "./template.typ": *
 
+// ── BASELINE VERSION ──────────────────────────────────────────────────────────
+// Single source of truth for the baseline ruleset version. Stack files reference
+// this constant rather than restating a date. Bump when an accepted mechanic
+// modifies any baseline section function below.
+
+#let BASELINE_VERSION = "2026-05-19"
+
 // ── INTRODUCTION ──────────────────────────────────────────────────────────────
 
 #let section-introduction() = [
@@ -332,34 +339,64 @@ Only Standard Attacks can be intercepted. Skills always hit directly.
   skill-icon("shadow_shift"), [Move], [Shadow Shift], [4], [Swap position with an allied piece. Requires unobstructed Skill Path.],
   skill-icon("retreat_plan"), [Move], [Retreat Plan], [4], [Self: move along Skill Path to land adjacent to one of your Guards. *Range+1.*],
   skill-icon("focus_strike"), [Mystic], [Focus Strike], [1], [The next skill used by *any of your pieces* this turn gains +1 Range. _(Note: can boost self and adjacent skills — Range 0 → 1, Range 1 → 2.)_],
-  skill-icon("balde_call"), [Mystic], [Blade Call], [3], [One Strike skill used by *any of your pieces* this turn deals +1 DMG.],
+  skill-icon("blade_call"), [Mystic], [Blade Call], [3], [One Strike skill used by *any of your pieces* this turn deals +1 DMG.],
 )
 ]
 ]
 
 // ── QUICK REFERENCE ───────────────────────────────────────────────────────────
+//
+// Use `overrides` to replace specific rows for a stack — keys are the Concept
+// strings shown in column 1. Pass content for the value, e.g.:
+//
+//   #section-quick-reference(overrides: (
+//     "Standard Attack": [Move onto enemy tile (1 Move Slot). *1 DMG* _(baseline: 2)_. Attacker stops before target if target survives.],
+//   ))
+//
+// Use `extra-rows` to inject additional rows (in order). Each entry is a
+// `(concept, rule)` pair, e.g.:
+//
+//   #section-quick-reference(extra-rows: (
+//     ("Combo Bonus ⚡", [Each enemy has a hit counter ...]),
+//   ))
+//
+// Stack files that diverge significantly from baseline (different row set
+// entirely) should still inline their own table — overrides is for one-or-two
+// row swaps that share the canonical structure.
 
-#let section-quick-reference() = [
+#let section-quick-reference(overrides: (:), extra-rows: ()) = {
+  let baseline-rows = (
+    ("Movement",                 [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per Movement Phase.]),
+    ("Guard speed",              [Normal: 2 tiles. Injured: 1 tile.]),
+    ("Champion / King speed",    [1 tile (Normal or Injured).]),
+    ("Standard Attack",          [Move onto enemy tile (1 Move Slot). Deals *1 DMG*. Attacker stops before target if target survives.]),
+    ("Skill Path",               [Straight line (Queen-style). Blocked by *all* pieces — ally and enemy.]),
+    ("Skill Range",              [Default Range 2. Skills with "self" = Range 0. Skills with "adjacent" = Range 1. Range modifiers (e.g. Range−1) apply from default.]),
+    ("Injured Range penalty",    [Injured pieces: Skill Range −1. Does not affect "self" or "adjacent" skills.]),
+    ("Bodyguard",                [Standard Attacks on Champion/King only. Guard must be adjacent to both tile-before-target AND defender. Guard takes the hit. Defender chooses which eligible Guard intercepts.]),
+    ("Armor",                    [Max 3 per piece. Each point absorbs 1 DMG before HP, then is destroyed. Does not prevent Injured status.]),
+    ("Health",                   [2 HP: Normal → Injured → Removed. 1 DMG = one step. 2 DMG = skip Injured, Removed instantly.]),
+    ("Rune income",              [Collected at start of YOUR turn (not Round 1). Starts 6, then +2/+3/+4/+5 scaling.]),
+    ("Skill Slots",              [Start at 2/turn. Grow with Progression (Rounds 1–10: 2, 11–20: 3, 21–30: 4, 31+: 5).]),
+    ("Focus Strike",             [+1 Range to next skill this turn. Can boost self (→ adjacent) and adjacent (→ Range 2) skills.]),
+    ("Blade Call",               [+1 DMG to one Strike skill this turn. Stacks with Combo Bonus.]),
+  )
+
+  let resolved = baseline-rows.map(row => {
+    let (concept, rule) = row
+    if concept in overrides { (concept, overrides.at(concept)) } else { (concept, rule) }
+  })
+  let final-rows = resolved + extra-rows.map(r => (r.at(0), r.at(1)))
+
+  [
 == Quick Reference
 
 #block(breakable: false)[
 #table(
   columns: (1fr, 1.5fr),
   table.header([Concept], [Rule]),
-  [Movement], [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per Movement Phase.],
-  [Guard speed], [Normal: 2 tiles. Injured: 1 tile.],
-  [Champion / King speed], [1 tile (Normal or Injured).],
-  [Standard Attack], [Move onto enemy tile (1 Move Slot). Deals *1 DMG*. Attacker stops before target if target survives.],
-  [Skill Path], [Straight line (Queen-style). Blocked by *all* pieces — ally and enemy.],
-  [Skill Range], [Default Range 2. Skills with "self" = Range 0. Skills with "adjacent" = Range 1. Range modifiers (e.g. Range−1) apply from default.],
-  [Injured Range penalty], [Injured pieces: Skill Range −1. Does not affect "self" or "adjacent" skills.],
-  [Bodyguard], [Standard Attacks on Champion/King only. Guard must be adjacent to both tile-before-target AND defender. Guard takes the hit. Defender chooses which eligible Guard intercepts.],
-  [Armor], [Max 3 per piece. Each point absorbs 1 DMG before HP, then is destroyed. Does not prevent Injured status.],
-  [Health], [2 HP: Normal → Injured → Removed. 1 DMG = one step. 2 DMG = skip Injured, Removed instantly.],
-  [Rune income], [Collected at start of YOUR turn (not Round 1). Starts 6, then +2/+3/+4/+5 scaling.],
-  [Skill Slots], [Start at 2/turn. Grow with Progression (Rounds 1–10: 2, 11–20: 3, 21–30: 4, 31+: 5).],
-  [Focus Strike], [+1 Range to next skill this turn. Can boost self (→ adjacent) and adjacent (→ Range 2) skills.],
-  [Blade Call], [+1 DMG to one Strike skill this turn. Stacks with Combo Bonus.],
+  ..final-rows.map(row => ([#row.at(0)], row.at(1))).flatten()
 )
 ]
-]
+  ]
+}

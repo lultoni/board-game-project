@@ -12,7 +12,7 @@ _One sheet per player. Fill in as you play._
   gutter: 8pt,
   [*Date:* \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_],
   [*Your name:* \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_],
-  [*Layer / Variant:* \_\_\_\_\_\_\_\_\_\_],
+  [*Stack / Variant:* \_\_\_\_\_\_\_\_\_\_],
   [*Opponent:* \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_],
   [*Playing as:* P1 / P2 _(circle)_],
   [*Winner:* \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_],

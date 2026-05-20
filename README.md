@@ -14,12 +14,14 @@ A 2-player abstract-tactical board game in active development. Two players comma
 | Understand design principles | [`docs/design-principles.md`](docs/design-principles.md) |
 | Understand how each system works (MDA, health, open questions) | [`docs/systems-and-mechanics.md`](docs/systems-and-mechanics.md) |
 | See what needs doing next | [`game-state/NEXT_STEPS.md`](game-state/NEXT_STEPS.md) |
-| See unresolved design questions | [`game-state/OPEN_QUESTIONS.md`](game-state/OPEN_QUESTIONS.md) |
+| See unresolved design questions | [`game-state/OPEN_QUESTIONS.md`](game-state/OPEN_QUESTIONS.md) (live) / [`game-state/OPEN_QUESTIONS_ARCHIVE.md`](game-state/OPEN_QUESTIONS_ARCHIVE.md) (resolved) |
+| Re-enter the project after a gap | [`game-state/STATUS.md`](game-state/STATUS.md) |
+| Read the per-session narrative log | [`game-state/SESSION_LOG.md`](game-state/SESSION_LOG.md) |
 | See the full testing plan | [`docs/test-scenarios/TESTING_PLAN.pdf`](docs/test-scenarios/TESTING_PLAN.pdf) |
 | Print materials for the next playtest | [`docs/test-scenarios/stack-a-cleverness/`](docs/test-scenarios/stack-a-cleverness/) |
 | See what has been tried and why | [`docs/mechanics-log/mechanics-evaluated.md`](docs/mechanics-log/mechanics-evaluated.md) |
 | See future visual/identity direction | [`docs/game-identity-visual-naming.md`](docs/game-identity-visual-naming.md) |
-| Read the full game history & session timeline | [`old-game-versions/README.md`](old-game-versions/README.md) |
+| Read the full game history | [`old-game-versions/README.md`](old-game-versions/README.md) |
 | Pre-thought fixes for anticipated problems | [`docs/backpocket.md`](docs/backpocket.md) |
 
 ---
@@ -108,21 +110,25 @@ Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scen
 
 ---
 
-## Current Status (Session 15)
+## Current Status (Session 17)
+
+See [`game-state/STATUS.md`](game-state/STATUS.md) for the one-screen re-entry doc.
+
+**Current focus**: Stack A Game 2 (Standard Attack 1 DMG + Multi-Champion Combo Bonus) — ready to print and play.
+
+**Stack pipeline**:
 
 | Stack | Topic | Status |
 |---|---|---|
 | Layer 1 — Economy Fix | 6 start Runes, +2/turn | **ACCEPTED** (Playtest 2) |
-| Standard Attack 1 DMG | Attack nerf | **ACCEPTED** into baseline (Playtest 3) |
-| **Stack A — Cleverness** | G1 nerf confirmed; G2 (combo bonus) next | **G1 done, G2 ready (pending pre-work)** |
-| Stack B — Guards | Bodyguard adjacency fix | **De-prioritised** (may be obsolete after P3) |
-| Stack C — Pacing | King Lifetime HP · Armor Decay | Not yet written |
-| Stack D — Board | 8×10 · 8×8 · Piece count · Hex | Not yet written |
-| Stack E — Draft | Pool draft, placement order | Not yet written |
-| Stack F — Cleverness II | Cascade trigger · Pin/Threatened · Sente skills | Not yet written |
+| Standard Attack 1 DMG | Attack nerf | **ACCEPTED** (Playtest 3) |
+| **Stack A — Cleverness** | G1 nerf accepted; G2 combo bonus next | **G2 ready to play** |
+| Stack B — Guards | Bodyguard adjacency fix | De-prioritised (may be obsolete after P3) |
+| Stack C — Pacing | King Lifetime HP · Armor Decay | Trigger: first kill > R20 in G2 |
+| Stack D — Board | 8×10 · 8×8 · Hex | Trigger: after Stack A |
+| Stack E — Draft | Pool draft, placement order | Trigger: after Stack A |
+| Stack F — Cleverness II | Cascade · Pin/Threatened · Sente | Trigger: Stack A G2 results |
 | Stack G — Structure | Unified AP framework | Draft written |
-
-**Immediate next action**: pre-Game-2 prep — resolve Lance Thrust + Injured rule ambiguity, fix tracking sheet (add Standard Attack count), brainstorm OQ-52/53, decide combo-bonus scope.
 
 ---
 
@@ -164,6 +170,8 @@ Rule sheets use **Typst** and a composable section system:
 - Changing the baseline propagates automatically to all stack files.
 
 **To rebuild all PDFs**: run `zsh docs/test-scenarios/build-pdfs.sh` (requires [Typst](https://typst.app)).
+
+> **PDF commit policy**: Compiled `.pdf` files for rule sheets, feedback forms, and the testing plan are committed to the repo. Collaborators without Typst installed can read them directly. The `.typ` source remains the source of truth — regenerate via the script after editing.
 
 ---
 

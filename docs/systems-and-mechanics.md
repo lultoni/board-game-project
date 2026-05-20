@@ -51,18 +51,8 @@
 
 ### How It Works
 
-- **Starting Runes**: 6 per player (Layer 1 accepted, Playtest 2).
+- **Canonical numbers**: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-resource-economy()`.
 - **Gain timing**: Collected at the start of each player's own turn. Round 1: no collection.
-- **Gain rate**:
-
-| Rounds | Gain per player turn |
-|--------|----------------------|
-| R1 | 0 (use starting Runes) |
-| R2–4 | +2 |
-| R5–9 | +3 (+1 every 5 rounds) |
-| R10–14 | +4 |
-| R15+ | +5 (continues scaling) |
-
 - **Rune cap**: None.
 - **Spending**: Runes spent to activate skills. Some skills steal opponent Runes.
 
@@ -103,17 +93,8 @@
 
 ### How It Works
 
-- **Starting Skill Slots**: 2 per turn.
-- **Scaling**: +1 Skill Slot every 10 rounds.
-
-| Rounds | Skill Slots per turn |
-|--------|----------------------|
-| R1–10 | 2 |
-| R11–20 | 3 |
-| R21–30 | 4 |
-| R31+ | continues (+1 every 10 rounds) |
-
-Skill Slots do not carry over between turns.
+- **Canonical numbers**: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-progression()`.
+- Skill Slots do not carry over between turns.
 
 ### MDA Analysis
 
@@ -161,23 +142,7 @@ Skill Slots do not carry over between turns.
 
 ### Current Skill Catalogue
 
-| Cat. | Name | Cost | Effect |
-|------|------|------|--------|
-| Strike | Lance Thrust | 2 | 1 DMG at Range−1 (1 tile from caster) |
-| Strike | Hook Pull | 3 | 1 DMG + pull target 1 tile closer |
-| Strike | Armor Breaker | 2 | Remove 1 Armor from target |
-| Strike | Rune Theft | 3 | 1 DMG + steal 1 Rune from opponent |
-| Strike | Blade Tempest | 4 | 1 DMG to target; adjacent pieces pushed 1 tile away. Caster unaffected. |
-| Shield | Rust Shield | 2 | Self: +1 Armor |
-| Shield | Field Medic | 3 | Remove Injured from one adjacent ally |
-| Shield | Armorsmith | 3 | Adjacent ally: +1 Armor |
-| Move | Quick Dash | 3 | Self: move up to 2 tiles along Skill Path |
-| Move | Air Blast | 2 | Push target enemy 1 tile away from caster |
-| Move | Precision Thrust | 3 | Push target 1 tile in any direction. Range+1. |
-| Move | Shadow Shift | 4 | Swap with allied piece. Requires unobstructed path. |
-| Move | Retreat Plan | 4 | Self: move to adjacent to one of your Guards. Range+1. |
-| Mystic | Focus Strike | 1 | Next skill used by any of your pieces this turn gains +1 Range. |
-| Mystic | Blade Call | 3 | One Strike skill used by any of your pieces this turn deals +1 DMG. Fixed cost. |
+Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-skill-reference()`.
 
 ### MDA Analysis
 

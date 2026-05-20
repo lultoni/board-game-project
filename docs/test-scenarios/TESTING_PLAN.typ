@@ -167,12 +167,11 @@ _All future layers must include Layer 1 economy values. Use `section-setup(start
 
 #hr
 
-== How to Create a New Test Layer
+== How to Create a New Test Stack
 
-+ Identify which stack the new layer belongs to.
-+ Create folder: `docs/test-scenarios/layer-N-<stack-slug>/`
-+ Write `layer-N-<desc>.typ` — import `baseline-sections.typ`, call section functions with only the changed parameters.
-+ Write `layer-N-feedback.typ` — copy `shared/feedback-baseline.typ`, fill `[LAYER: ...]` placeholders, add OQ-monitoring questions for this layer's active OQs.
-+ Add both files to `build-pdfs.sh`.
++ Identify which stack the new variant belongs to.
++ Create folder: `docs/test-scenarios/stack-X-<slug>/`
++ Write `stack-X-<desc>.typ` — import `baseline-sections.typ`, call section functions for unchanged rules. For Quick Reference, prefer `#section-quick-reference(overrides: (...), extra-rows: (...))` over inlining the table.
++ Write `stack-X-feedback.typ` — copy `shared/feedback-baseline.typ`, fill `[STACK: ...]` placeholders, add OQ-monitoring questions for this stack's active OQs.
++ Run `zsh docs/test-scenarios/build-pdfs.sh` — the script auto-discovers new `.typ` files; no list maintenance needed.
 + Update this TESTING_PLAN.typ: add the new scenario to the stack table, entry conditions, and decision tree.
-+ Run `zsh docs/test-scenarios/build-pdfs.sh` to compile.

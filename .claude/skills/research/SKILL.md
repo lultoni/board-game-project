@@ -12,7 +12,7 @@ Search `docs/research/` for any existing files that cover this topic or a closel
 
 ## Step 2: Build Context Block
 
-Read `game-state/CURRENT_DESIGN.md` to understand the current game state. Identify which specific systems or design questions relate to this research topic.
+Read the current design state from the canonical trio: `docs/design-principles.md`, `docs/systems-and-mechanics.md`, and `game-state/OPEN_QUESTIONS.md`. Identify which specific systems or design questions relate to this research topic.
 
 ## Step 3: Generate Perplexity Prompt
 
@@ -23,7 +23,7 @@ RESEARCH REQUEST: [Topic]
 
 Context: We are designing a 2-player perfect-information tactical board game where players command armies on a grid, equipping Champions with skills/spells and spending Runes to activate them. The core fantasy is discovering and executing clever spell/skill combos.
 
-[Include 2-3 sentences of specific context about which system or question this research relates to, drawn from CURRENT_DESIGN.md.]
+[Include 2-3 sentences of specific context about which system or question this research relates to, drawn from systems-and-mechanics.md and OPEN_QUESTIONS.md.]
 
 Questions:
 1. [Specific question 1]
@@ -47,5 +47,5 @@ Tell the user to:
 When the user provides the filename:
 1. Read the saved research file.
 2. Summarise the key findings relevant to the current design.
-3. Identify any findings that should update CURRENT_DESIGN.md, OPEN_QUESTIONS.md, or NEXT_STEPS.md.
+3. Identify any findings that should update `docs/systems-and-mechanics.md`, `game-state/OPEN_QUESTIONS.md`, or `game-state/NEXT_STEPS.md`.
 4. Propose specific design implications (don't just summarise — connect to our game).

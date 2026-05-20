@@ -12,7 +12,7 @@ Check existing files in `docs/decisions/` to find the next available ADR number.
 
 ## Step 2: Research Context
 
-Read `game-state/CURRENT_DESIGN.md` and `game-state/OPEN_QUESTIONS.md` to understand how this decision connects to the current design state.
+Read `docs/design-principles.md`, `docs/systems-and-mechanics.md`, and `game-state/OPEN_QUESTIONS.md` to understand how this decision connects to the current design state.
 
 If external game design knowledge is needed and you're not confident in your knowledge, trigger the `/research` skill first to gather evidence before writing the ADR.
 
@@ -77,6 +77,6 @@ Output a concise summary of the options (3-5 sentences per option) and your reco
 When the user decides:
 
 1. Update the ADR status to `ACCEPTED` or `REJECTED` with the date and rationale.
-2. Update `game-state/CURRENT_DESIGN.md` to reflect the decision.
+2. Update the relevant project doc (`docs/systems-and-mechanics.md` for system-level decisions, `docs/design-principles.md` for principle-level) to reflect the decision.
 3. Update `game-state/OPEN_QUESTIONS.md` to resolve related questions.
-4. If the decision requires testing, trigger `/test-scenario` to create the test layer.
+4. If the decision requires testing, trigger `/scenario` to create the test stack.

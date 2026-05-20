@@ -10,7 +10,7 @@ Perform all of the following updates to close out the current session. Ask the u
 
 ## Step 1: Determine Session Info
 
-- Check the latest session entry in `old-game-versions/README.md` (in The Ultimate Game Timeline section) to find the current session number.
+- Check the latest session entry in `game-state/SESSION_LOG.md` to find the current session number.
 - New session number = last session number + 1.
 - Session date = today's date.
 
@@ -49,8 +49,12 @@ Update each of these files. Only modify sections that changed this session.
 - Update "Current Status" table if any stack statuses changed.
 - Update the session number in the heading.
 
-### `old-game-versions/README.md`
-- Add a brief session entry (2-5 lines) to the timeline in the appropriate chronological position, following the existing style:
+### `game-state/STATUS.md`
+- Update Current Focus, Active OQs (top 3), Last Session line, and Next Action.
+- Keep the file ≤30 lines — it's the one-screen re-entry doc.
+
+### `game-state/SESSION_LOG.md`
+- Add a brief session entry (2-5 lines) at the top of the file (newest-first), following the existing style:
 
 ```markdown
 ### [Date] — Session N: [Short Title]
@@ -70,11 +74,11 @@ Update `.claude/HANDOVER.md`:
 ## Step 4: Commit and Push
 
 1. Run `git status --short` to see all changed files.
-2. Stage all changed files: `git add -A`
+2. Stage explicitly by name — do NOT use `git add -A` (it sweeps `.DS_Store`, stray binaries, etc.). Stage the files you actually changed this session.
 3. Commit with a message in this format:
    ```
    Session N — <short title>
-   
+
    <2-3 sentence summary of what changed>
    ```
 4. Push to origin: `git push`

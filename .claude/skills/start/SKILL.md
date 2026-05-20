@@ -17,10 +17,11 @@ Run `git pull` to fetch any changes pushed from another device. If there are con
 Read all of these files (in parallel where possible):
 
 1. `CLAUDE.md`
-2. `docs/design-principles.md`
-3. `game-state/NEXT_STEPS.md`
-4. `game-state/OPEN_QUESTIONS.md`
-5. `.claude/HANDOVER.md`
+2. `game-state/STATUS.md`  ← one-screen re-entry doc; read first for orientation
+3. `docs/design-principles.md`
+4. `game-state/NEXT_STEPS.md`
+5. `game-state/OPEN_QUESTIONS.md`
+6. `.claude/HANDOVER.md`
 
 ## Step 2: Check for New Files
 

@@ -70,25 +70,6 @@ You may attack with one Move Slot and move a different piece with the other Move
 
 #section-skill-reference()
 
-== Quick Reference
-
-#block(breakable: false)[
-#table(
-  columns: (1fr, 1.5fr),
-  table.header([Concept], [Rule]),
-  [Movement], [Free pathing, ≤ speed in tiles, cannot pass through pieces. Each piece once per Movement Phase.],
-  [Guard speed], [Normal: 2 tiles. Injured: 1 tile.],
-  [Champion / King speed], [1 tile (Normal or Injured).],
-  [Standard Attack ⚡], [Move onto enemy tile (1 Move Slot). *1 DMG* _(baseline: 2)_. Attacker stops before target if target survives.],
-  [Skill Path], [Straight line (Queen-style). Blocked by *all* pieces — ally and enemy.],
-  [Skill Range], [Default Range 2. Skills with "self" = Range 0. Skills with "adjacent" = Range 1. Range modifiers apply from default.],
-  [Injured Range penalty], [Injured pieces: Skill Range −1. Does not affect "self" or "adjacent" skills.],
-  [Bodyguard], [Standard Attacks on Champion/King only. Guard adjacent to both tile-before-target AND defender. Guard takes the hit. Defender chooses which eligible Guard intercepts.],
-  [Armor], [Max 3 per piece. Each point absorbs 1 DMG before HP, then destroyed. Does not prevent Injured status.],
-  [Health], [2 HP: Normal → Injured → Removed. 1 DMG = one step. 2 DMG = skip Injured, Removed instantly.],
-  [Rune income], [Collected at start of YOUR turn (not Round 1). Starts 6, then +2/+3/+4/+5 scaling.],
-  [Skill Slots], [Start at 2/turn. Grow with Progression (Rounds 1–10: 2, 11–20: 3, 21–30: 4, 31+: 5).],
-  [Focus Strike], [+1 Range to next skill this turn. Can boost self (→ adjacent) and adjacent (→ Range 2) skills.],
-  [Blade Call], [+1 DMG to one Strike skill this turn.],
-)
-]
+#section-quick-reference(overrides: (
+  "Standard Attack": [Move onto enemy tile (1 Move Slot). *1 DMG* _(baseline: 2)_. Attacker stops before target if target survives.],
+))
