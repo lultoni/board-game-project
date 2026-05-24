@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-20 — end of Session 17.*
+*Last updated: 2026-05-24 — end of Session 18.*
 
 ---
 
@@ -31,19 +31,18 @@ You are my board game design co-creator and systems architect. We are working on
 5. Read `game-state/OPEN_QUESTIONS.md` (live design questions only — archive lives in `OPEN_QUESTIONS_ARCHIVE.md`).
 6. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 17 complete, 2026-05-20)
+### Where We Are (Session 18 complete, 2026-05-24)
 
-- **Repo rework session.** Architecture audit ran across documentation, test-scenario pipeline, skill workflow, state-doc lifecycle, and repo hygiene. Findings consolidated into a single rework plan and executed in one pass.
-- **Skills repaired**: ghost references to `CURRENT_DESIGN.md`, `docs/decisions/`, and `docs/brainstorm/session-log.md` repointed across `/research`, `/scenario`, `/adr`, `/playtest`, `/build-pdfs`. Layer→Stack vocabulary rename completed.
-- **State docs split**: `OPEN_QUESTIONS.md` is now live-only; `OPEN_QUESTIONS_ARCHIVE.md` holds resolved/closed/scrapped/parked. `STATUS.md` added as one-screen re-entry doc. `mechanics-evaluated.md` extended with Source OQ + Evidence columns. Session log moved to `game-state/SESSION_LOG.md`.
-- **Single source of truth** for rule numbers: `BASELINE_VERSION` constant added to `baseline-sections.typ`; CLAUDE.md "Key Game Systems" + `docs/systems-and-mechanics.md` numeric tables trimmed to pointers.
-- **Pipeline parameterization**: `section-quick-reference()` now accepts `overrides:` and `extra-rows:`; Stack A files migrated. `build-pdfs.sh` rewritten to discover `.typ` files via `find`.
-- **Hygiene**: `.DS_Store` swept; PDF commit policy documented; `playtest-results/README.md` and `images/README.md` added; `balde_call.jpg` typo fixed.
-- **Hygiene principles** captured in `CLAUDE.md` so future sessions avoid the drift patterns this rework addressed.
+- **Pre-playtest tooling shipped.** Two new artifacts under `shared/`: `skill-cards.pdf` (15 physical cards, 2×2 range matrix per card showing Default/+Focus/Injured/Inj.+Focus, per-skill Focus footnotes on Move cards) and `feedback-onboarding.pdf` (2-page first-game-only feedback form covering rules absorption, draft thinking, mid-game confusion, anchoring).
+- **Ruling — Focus Strike on Move skills**: caster chooses, at activation, whether the +1 applies to activation range OR effect range. Not both. Documented in `baseline-sections.typ`, on every Move skill card, and in `mechanics-evaluated.md`.
+- **Lance Thrust derivation confirmed**: effective Range 0 while Injured = cannot fire. The chained derivation IS the ruling, not ambiguity. Memory `feedback_baseline_is_authoritative.md` written so this misconception isn't repeated. OQ-54 (rewrite to "Adjacent") closed: keep "Range−1" — the modifier preserves a real interaction.
+- **Forms cleanup**: Stack A, Stack B, and feedback-baseline forms converted from fixed `#v(2.7cm)` to `#v(1fr)` distribution. Build script gained zsh guard. Hygiene principle 7 expanded with the `1fr` sub-rule.
+- **Decision logged for 2026-05-28 playtest**: Nico plays the standard baseline draft. No rule changes for first-time players — onboarding signal comes from the form, not from changing the game. Memory `project_nico_first_game.md`.
+- **Deferred from this session**: one-page player-facing intro, rule sheet ordering audit, tiered-catalogue ADR. Backlogged in NEXT_STEPS until Nico's data lands.
 
 ### Immediate Next Action
 
-**Run Stack A Game 2.** Print `stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf` + `stack-a-cleverness/stack-a-feedback.pdf` + `shared/game-tracking.pdf` (2 copies). Use `/playtest 4` next session to analyse results.
+**Print the 2026-05-28 packet.** Per Priority 1 in `NEXT_STEPS.md`: `stack-a-game2-attack-nerf-combo.pdf` ×2 + `shared/skill-cards.pdf` ×2 + `shared/feedback-onboarding.pdf` ×1 (Nico) + `stack-a-feedback.pdf` ×2 + `shared/game-tracking.pdf` ×2. Run `/playtest 4` next session to analyse.
 
 ### Key Files
 

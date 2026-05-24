@@ -17,7 +17,7 @@
 // this constant rather than restating a date. Bump when an accepted mechanic
 // modifies any baseline section function below.
 
-#let BASELINE_VERSION = "2026-05-19"
+#let BASELINE_VERSION = "2026-05-24"
 
 // ── INTRODUCTION ──────────────────────────────────────────────────────────────
 
@@ -338,7 +338,7 @@ Only Standard Attacks can be intercepted. Skills always hit directly.
   skill-icon("precision_thrust"), [Move], [Precision Thrust], [3], [Push target enemy 1 tile in any direction (caster chooses). *Range+1.*],
   skill-icon("shadow_shift"), [Move], [Shadow Shift], [4], [Swap position with an allied piece. Requires unobstructed Skill Path.],
   skill-icon("retreat_plan"), [Move], [Retreat Plan], [4], [Self: move along Skill Path to land adjacent to one of your Guards. *Range+1.*],
-  skill-icon("focus_strike"), [Mystic], [Focus Strike], [1], [The next skill used by *any of your pieces* this turn gains +1 Range. _(Note: can boost self and adjacent skills — Range 0 → 1, Range 1 → 2.)_],
+  skill-icon("focus_strike"), [Mystic], [Focus Strike], [1], [The next skill used by *any of your pieces* this turn gains +1 Range. _(Note: can boost self and adjacent skills — Range 0 → 1, Range 1 → 2.)_ #h(0pt) *Move skills:* the caster chooses, when activating the Move skill, whether the +1 applies to its *activation range* (how far the skill can target) or its *effect range* (how far it moves/pushes). Not both.],
   skill-icon("blade_call"), [Mystic], [Blade Call], [3], [One Strike skill used by *any of your pieces* this turn deals +1 DMG.],
 )
 ]
@@ -378,7 +378,7 @@ Only Standard Attacks can be intercepted. Skills always hit directly.
     ("Health",                   [2 HP: Normal → Injured → Removed. 1 DMG = one step. 2 DMG = skip Injured, Removed instantly.]),
     ("Rune income",              [Collected at start of YOUR turn (not Round 1). Starts 6, then +2/+3/+4/+5 scaling.]),
     ("Skill Slots",              [Start at 2/turn. Grow with Progression (Rounds 1–10: 2, 11–20: 3, 21–30: 4, 31+: 5).]),
-    ("Focus Strike",             [+1 Range to next skill this turn. Can boost self (→ adjacent) and adjacent (→ Range 2) skills.]),
+    ("Focus Strike",             [+1 Range to next skill this turn. Can boost self (→ adjacent) and adjacent (→ Range 2) skills. On Move skills, caster chooses: activation range OR effect range.]),
     ("Blade Call",               [+1 DMG to one Strike skill this turn. Stacks with Combo Bonus.]),
   )
 

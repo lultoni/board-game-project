@@ -6,6 +6,18 @@
 //   4. Do NOT change the Section D free notes block
 //   5. Run build-pdfs.sh to compile (discovers new files automatically)
 //
+// ─── WRITING SPACE CONVENTION ────────────────────────────────────────────────
+//
+// After every #fq("N")[...] block, add #v(1fr) to give the player physical
+// writing room. Use #v(1fr) (ratio-based) NOT #v(Ncm) (fixed) — fixed spacers
+// pile up at the bottom of pages and create dead-zone empty pages. 1fr
+// distributes whatever vertical space is left on the page evenly between
+// questions. Use #pagebreak() between sections to control which questions
+// land on which page; otherwise let Typst flow naturally.
+//
+// DO NOT use #v(Ncm) here. See feedback-onboarding.typ for the canonical
+// 2-page example.
+//
 // ─── OQ-MONITOR PATTERN ──────────────────────────────────────────────────────
 //
 // Section C must contain one question per open monitoring OQ for this stack.
@@ -99,28 +111,33 @@ _These questions cover the full game — not just the stack being tested. Identi
   *Skill Drafting:* Did the draft feel fair and engaging? Did you have a clear plan going in, or did you just pick what seemed good?\
   \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
+#v(1fr)
 
 #fq("N")[
   *Turn flow:* Did Move Slots and Skill Slots feel intuitive to manage together?\
   Very intuitive — Mostly yes — Sometimes confusing — Often confusing
 ]
+#v(1fr)
 
 #fq("N")[
   *Skills — balance:* Any skill that felt too strong or too weak?\
   Too strong: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ #h(8pt) Too weak: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\
   Best combo you pulled off: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
+#v(1fr)
 
 // OQ-34 (Rune Theft dominance — ask INDIRECTLY, don't name the skill)
 #fq("N")[
   *Must-pick skills:* Did any skill feel like everyone should always pick it — like skipping it would be a mistake?\
   Yes: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ #h(8pt) No — Why: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
+#v(1fr)
 
 #fq("N")[
   *Bodyguard Rule:* Did it trigger? Did you actively reposition Guards to use it?\
   Triggered \_\_\_\_\_ times. #h(8pt) Repositioned Guards for it: Yes / No / Sometimes
 ]
+#v(1fr)
 
 // OQ-10 (Injured Champion penalty — do Injured Champions feel meaningfully punished?)
 #fq("N")[
@@ -128,12 +145,14 @@ _These questions cover the full game — not just the stack being tested. Identi
   Clearly weaker — Slightly weaker — Barely noticeable — Not different at all\
   What changed for them? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
+#v(1fr)
 
 // OQ-11 (Armor Cap — did armor extend games or feel well-balanced?)
 #fq("N")[
   *Armor:* Did either player stack a lot of Armor? Did Armor feel like it slowed the game down, or was it a fair tradeoff?\
   Slowed game noticeably — Slightly extended — Well balanced — Armor rarely mattered
 ]
+#v(1fr)
 
 // OQ-46 (Rune hoarding — saving for a plan vs. nothing to spend on)
 #fq("N")[
@@ -141,6 +160,7 @@ _These questions cover the full game — not just the stack being tested. Identi
   Always more to spend than Runes — Balanced — Sometimes nothing to spend on — Often sat on Runes\
   If sitting on Runes, why? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
+#v(1fr)
 
 // ── OQ-SPECIFIC QUESTIONS (update per stack) ────────────────────────────────
 // [STACK: Replace this block with the monitoring question for the one carry-over
@@ -154,11 +174,13 @@ _These questions cover the full game — not just the stack being tested. Identi
   *Favorite moment of the game:*\
   \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
+#v(1fr)
 
 #fq("N")[
   *Most confusing or frustrating rule or moment:*\
   \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
+#v(1fr)
 
 #rating-row("Game length:")[
   1 (way too short) — 2 (a bit short) — 3 (just right) — 4 (a bit long) — 5 (way too long)\

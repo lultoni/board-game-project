@@ -35,117 +35,113 @@ _One form per player. Fill out after the game._
 
 #hr
 
-== B — Layer Questions: Combo Bonus
+== B — Stack Questions: Combo Bonus
 
 #fq("1")[
   *Did you attempt multi-Champion combos? How many succeeded?*\
   Attempted: \_\_\_\_\_ times. #h(8pt) Succeeded: \_\_\_\_\_ times.
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("2")[
   *What blocked the failed attempts?*
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("3")[
   *Did the combo bonus feel like a meaningful reward for coordination?*\
   Very rewarding — Somewhat — Neutral — Barely noticeable — Never triggered
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("4")[
   *Did you change how you positioned Champions because of the combo bonus?*\
   Yes, significantly — Somewhat — Not really — No\
   How?
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("5")[
   *Did organic cross-category combos (e.g. Move skill → Strike skill on same target) still happen — or did the Strike+Strike bonus crowd them out?*\
   Cross-category combos happened often — Sometimes — Rarely — Never\
   Examples:
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("6")[
   *Did the combo bonus make any skill or combination feel broken?*\
   No — Maybe — Yes\
   Which?
 ]
-#v(2.7cm)
 
-#hr
+#pagebreak()
 
 == C — Systems & Overall Feel
 
 #fq("7")[
   *Skill Drafting:* Did the draft feel fair and engaging? Clear plan, or just picked what seemed good?
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("8")[
   *Turn flow:* Did Move Slots and Skill Slots feel intuitive to manage together?\
   Very intuitive — Mostly yes — Sometimes confusing — Often confusing
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("9")[
   *Skills — balance:* Any skill that felt too strong or too weak? Best combo you pulled off?
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("10")[
   *Must-pick skills:* Did any skill feel like skipping it would always be a mistake?\
   Yes: \_\_\_\_\_\_\_\_\_\_\_\_\_\_ #h(8pt) No
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("11")[
   *Bodyguard Rule:* Did it trigger? Did you actively reposition Guards to use it?\
   Triggered \_\_\_\_\_ times. #h(8pt) Repositioned for it: Yes / No / Sometimes
 ]
-#v(2.7cm)
+
+#pagebreak()
 
 #fq("12")[
   *Injured Champions:* When a Champion was Injured, did it feel meaningfully weaker — or basically fine until killed?\
   Clearly weaker — Slightly weaker — Barely noticeable — Not different at all
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("13")[
   *Armor:* Did either player stack Armor heavily? Did it feel well-balanced or did it slow the game?\
   Slowed game noticeably — Slightly extended — Well balanced — Armor rarely mattered
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("14")[
   *Rune spending:* Always wanting more, or sometimes nothing worth spending on?\
   Always wanted more — Balanced — Sometimes nothing to spend on — Often sat on Runes
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("15")[
   *Favourite moment:*
 ]
-#v(2.7cm)
+#v(1fr)
 
 #fq("16")[
   *Most confusing or frustrating rule or moment:*
 ]
-#v(2.7cm)
+#v(1fr)
 
 #rating-row("Game length:")[
   1 (way too short) — 2 (a bit short) — 3 (just right) — 4 (a bit long) — 5 (way too long) #h(8pt) Circle: *1 · 2 · 3 · 4 · 5*
 ]
 
-#v(0.5em)
-
 #rating-row("Combat feel vs Playtest 2:")[
   Much worse — Worse — Same — Better — Much better
 ]
-
-#v(0.5em)
 
 #rating-row("Overall enjoyment:")[
   1 — 2 — 3 — 4 — 5

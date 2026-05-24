@@ -34,6 +34,7 @@ These mechanics were tested in playtests or resolved by designer ruling and are 
 | Standard attack 1 DMG (instead of 2) | OQ-37 | `playtest-3-analysis.md` | Session 15 / P3 | First Champion kill R11 vs P2 R26; standoff dissolved; combat feel "Better/Much Better" |
 | Range system clarification (self/adjacent/default) | OQ-10 | Session 16 ruling | Session 16 | All skills default to Range 2 unless text names "self" or "adjacent." Range modifiers apply from default. Self/adjacent cannot be shifted inward by Range buffs. Injured penalty does not affect self/adjacent skills. |
 | Focus Strike boosting self/adjacent skills | OQ-31 | Session 16 ruling | Session 16 | Can boost self→adjacent and adjacent→Range 2. Range and Injured calculated independently. |
+| Focus Strike on Move skills: caster chooses activation OR effect range | — | Session 18 ruling | Session 18 | The +1 from Focus Strike applies to either the activation range (how far the skill can target) or the effect range (how far it moves/pushes), caster's choice at activation. Not both. Resolves ambiguity for Move-skill / Focus Strike interaction; preserves combo variety without making any single combo dominant. |
 
 ---
 

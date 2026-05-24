@@ -64,12 +64,19 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 ### OQ-56: Draft Entry Complexity + Skill Permanence — OPEN
 `[System: Skill Drafting] [Affects: New player onboarding, Mid-game adaptability]`
 **Three linked problems**:
-- **A — Draft entry complexity**: New players cannot evaluate skills during draft (no on-board experience).
+- **A — Draft entry complexity**: New players cannot evaluate skills during draft (no on-board experience). Compounded by catalogue size: more skills = more options to evaluate before the first move.
 - **B — Permanent draft decisions**: Mid-game realisation that loadout doesn't fit board state, no way to adapt.
-- **C — In-game reference load**: Constant board↔skill-list switching. Cards on the table help reduce lookup friction but don't build the mental model.
+- **C — In-game reference load**: Two compounding sources.
+  - *C1 — Lookup friction (UX layer)*: Constant board↔skill-list switching. Physical skill cards on the table reduce this directly.
+  - *C2 — Skill identity volume (structural layer)*: Number of distinct skills a player must mentally model — own loadout + opponent's loadout. UX fixes do NOT address this. More skills equipped per side = more identities to track. Currently ~8 identities at the table (4 Champions × 2 slots × 2 players).
+- **Tension with OQ-12 (catalogue expansion to ~25)**: Catalogue size primarily affects A (more options to evaluate at draft), not C2 (capped by equipped-slot count). But a larger catalogue still makes the draft harder for new players. Expansion and onboarding need to be reconciled.
 - **Design constraint**: Solution must not reduce strategic depth for experienced players.
-- **Solution candidates**: in-game skill switching; fewer/deeper skills; physical skill cards (UX fix, low risk); try-before-lock draft phase; simplified starter set.
-- **Re-entry trigger**: After Stack A G2. UX fix (skill cards) can happen any time. Decision deferred until Stack A/B combat balance is confirmed.
+- **Solution candidates**:
+  - For A: try-before-lock draft phase; simplified starter loadouts (skip draft on first game); tiered "core vs. advanced" skill catalogue (new players play core-only).
+  - For B: in-game skill switching; mid-game redraft event.
+  - For C1: physical skill cards (low-risk UX fix). **SHIPPED Session 18** (`shared/skill-cards.pdf`).
+  - For C2: lower equipped-slot count (Stack D / OQ-27 territory); force loadout overlap (smaller draft pool, duplicates across Champions); tiered catalogue (also helps A).
+- **Re-entry trigger**: After Stack A G2 + Nico's first game (2026-05-28). Onboarding feedback form (`shared/feedback-onboarding.pdf`) will provide the data for A and C2 decisions. A/B/C2 decisions deferred until that data lands.
 
 ---
 
@@ -87,15 +94,11 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 ### OQ-8: Rune Cap — superseded
 **No cap initially.** Players naturally spend down. See OQ-46 in archive (closed from monitoring P3). Kept open only as a watch-flag.
 
-### OQ-10: Injured Penalty Severity — INCONCLUSIVE (rule-clarity blocker)
-- Speed penalty is Guard-only (Champions/King are already Speed 1). The only Champion/King Injured effect is Range 2+ → Range 1.
-- **P3 update**: Lance Thrust + Injured rule ambiguity cost Elias an entire turn (R22). Until rule is unambiguous, severity question can't be evaluated.
-- **Action required**: resolve the Lance Thrust + Injured rule ambiguity in baseline before next playtest. Then re-evaluate severity.
-
 ### OQ-12: Skill Catalogue Completeness — RESEARCHED
 **Real problem**: Too few distinct strategic identities within Shield (3 passive buffs) and Mystic (1 must-pick + 1 never-pick).
 - **10 new skill candidates staged** in `docs/backpocket.md`.
 - **Target**: ~25 skills total. Distribution: ~9 Strike / 6 Shield / 5 Move / 5 Mystic.
+- **Tension with OQ-56 Problem A**: Larger catalogue = harder draft for new players. Tiered "core vs. advanced" catalogue is one way to reconcile.
 - **Trigger for expansion**: Stack F or dedicated session after Stack A/B confirm combat balance is stable. Do not expand mid-combat-testing.
 
 ### OQ-22: Defensive Skill Viability
@@ -204,7 +207,8 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 **Effect text reads "Target within Range−1 takes 1 DMG" — under accepted Range ruling, effective Range 1 = adjacent.**
 - For rewriting: clearer at the table, no mental arithmetic.
 - For keeping "Range−1": preserves the design signal that reduced range is a deliberate tradeoff.
-- **Status**: Watch whether the Range−1 language causes confusion in further playtests.
+- **Session 18 ruling**: Keep "Range−1." The derivation chain (default 2 + Range−1 = effective 1) is the rule; the modifier-form preserves the design intent. Confirmed during skill-cards build that Range−1 + Injured = effective 0 = cannot fire — a non-trivial interaction the "Adjacent" rewrite would obscure.
+- **Status**: Closed for now. Re-watch only if Range−1 language causes confusion in further playtests.
 
 ### OQ-55: Blade Call — Broader Skill Interaction?
 **Could Blade Call interact with a wider range of skills (e.g. boost Armor gained by Shield skills)?**

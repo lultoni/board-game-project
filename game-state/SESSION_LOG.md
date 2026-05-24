@@ -6,6 +6,22 @@
 
 ---
 
+### May 24, 2026 — Session 18: Pre-Playtest Tooling — Skill Cards, Onboarding Form, Focus+Move Ruling
+
+Two artifacts shipped under `docs/test-scenarios/shared/` ahead of the 2026-05-28 playtest with Nico (first-time player). `skill-cards.typ/pdf` is a printable A4 sheet of 15 physical reference cards — one per skill, color-coded by category, with a 2×2 range matrix per card showing reach in four states (Default / +Focus / Injured / Inj.+Focus) and per-skill Focus footnotes on Move cards. Resolves OQ-56 problem C1 (in-game lookup friction). `feedback-onboarding.typ/pdf` is a 2-page first-game-only feedback form covering rules absorption, draft thinking, in-game confusion, and player anchoring — independent of stack, fills before the standard stack form.
+
+Major ruling: Focus Strike on Move skills lets the caster choose, at activation, whether the +1 applies to activation range OR effect range (not both). Documented in `baseline-sections.typ` (Skill Reference + Quick Reference), on every Move skill card, and in `mechanics-evaluated.md`. Resolves the ambiguity that surfaced while building the cards.
+
+Lance Thrust effective Range 0 while Injured ruled "cannot fire" — the chained derivation from baseline rules IS the ruling, not ambiguity to be resolved. User correction: never reframe a derivation as "let's make a ruling — it already is one." Memory `feedback_baseline_is_authoritative.md` written. OQ-54 (Lance Thrust wording rewrite) closed: keep "Range−1" — the modifier preserves a real interaction the "Adjacent" rewrite would obscure.
+
+Decision logged for 2026-05-28: Nico plays the standard baseline draft. No starter loadout, no simplified pool, no rule changes for first-time players. Onboarding data comes from the new form, not from changing the game. Memory `project_nico_first_game.md`.
+
+Forms cleanup: Stack A, Stack B, and feedback-baseline forms converted from fixed `#v(2.7cm)` to `#v(1fr)` distribution (eliminates dead-zone empty pages). Build script gained zsh guard. Hygiene principle 7 expanded with the `1fr`-over-`#v(Ncm)` sub-rule. BASELINE_VERSION bumped to 2026-05-24.
+
+Deferred from end-of-session: one-page player-facing intro, rule sheet ordering audit, tiered-catalogue ADR. Backlogged in NEXT_STEPS until Nico's onboarding feedback lands and informs reorder priorities.
+
+---
+
 ### May 20, 2026 — Session 17: Repo Rework — Skills, State Lifecycle, Single Source of Truth, Hygiene Principles
 
 Five-agent architecture audit ran first to surface drift and friction across documentation, test-scenario pipeline, skill workflow, state-doc lifecycle, and repo hygiene. Findings were consolidated into a single rework plan executed in one pass.

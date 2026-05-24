@@ -134,7 +134,7 @@ These are the patterns that produced the drift addressed in the Session 17 rewor
 
 6. **Memory is for immutable facts, not current state.** Memories should read as historical claims ("Session 3 ruling: starting Runes was 4 at that time"), not as live state ("starting Runes is 4"). Anything pointing at "current" rots — let project docs own current state.
 
-7. **Templates that get copy-pasted should be functions instead.** If three stack files copy a 14-row table to edit one row, the template has failed. Parameterize. Apply to: rule sections, feedback forms, anything else with hand-copied boilerplate.
+7. **Templates that get copy-pasted should be functions instead.** If three stack files copy a 14-row table to edit one row, the template has failed. Parameterize. Apply to: rule sections, feedback forms, anything else with hand-copied boilerplate. Sub-rule for fillable forms: use `#v(1fr)` between question blocks, not fixed `#v(Ncm)` — fixed spacers pile up at page bottoms and create dead-zone empty pages; `1fr` distributes whatever's left on the page evenly. Use `#pagebreak()` to control which questions land on which page.
 
 8. **Build scripts should discover, not enumerate.** Hardcoded file lists go stale every time a new file is added. Use `find` / glob patterns where the convention is stable enough.
 

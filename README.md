@@ -110,11 +110,11 @@ Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scen
 
 ---
 
-## Current Status (Session 17)
+## Current Status (Session 18)
 
 See [`game-state/STATUS.md`](game-state/STATUS.md) for the one-screen re-entry doc.
 
-**Current focus**: Stack A Game 2 (Standard Attack 1 DMG + Multi-Champion Combo Bonus) — ready to print and play.
+**Current focus**: Print packet for Nico's first game (2026-05-28, Stack A G2). Skill cards and onboarding feedback form shipped this session.
 
 **Stack pipeline**:
 

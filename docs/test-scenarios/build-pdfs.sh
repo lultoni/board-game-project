@@ -4,6 +4,14 @@
 # sibling PDF, except library files in shared/ that are imported by others.
 # Usage: zsh docs/test-scenarios/build-pdfs.sh
 
+# Fail loudly if invoked under bash — the script uses zsh-only syntax
+# (${(@f)...}, typeset -a, ${SKIP[(I)...]}) and silently no-ops under bash.
+if [ -z "${ZSH_VERSION:-}" ]; then
+  echo "ERROR: this script must be run with zsh, not bash/sh." >&2
+  echo "Run: zsh docs/test-scenarios/build-pdfs.sh" >&2
+  exit 2
+fi
+
 SCRIPT_DIR="${0:A:h}"
 PROJECT_ROOT="${SCRIPT_DIR:h:h}"
 

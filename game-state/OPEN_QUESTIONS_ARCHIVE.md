@@ -72,6 +72,13 @@
 **No hoarding observed in Playtest 3** — neither player accumulated unspent Runes meaningfully. Both players said "always wanted more / balanced." Confirms G2 (encourage spending via attractiveness) is working.
 - **Status**: Closed. No cap needed.
 
+### OQ-10: Injured Penalty Severity — CLOSED (ruling confirmed in baseline)
+- Speed penalty is Guard-only. The only Champion/King Injured effect is Skill Range -1 (affects Range 2+ skills only).
+- **P3 blocker**: Lance Thrust + Injured ambiguity cost Elias a turn at R22. Blocked severity evaluation.
+- **Resolution (Session 18)**: Baseline already contains the complete ruling. Range-1 is a modifier from default Range 2, so an Injured piece using Lance Thrust has effective Range 0 (self only) — it cannot fire. This is derivable from `baseline-sections.typ` lines covering Range modifiers and the Injured Range penalty.
+- **Remaining watch**: The rule requires chaining three lines of text — not explicit at the table. OQ-54 tracks whether "Range-1" language causes confusion in practice.
+- **Status**: Closed. Severity is evaluatable; watch OQ-54 for wording clarity.
+
 ### OQ-11: Armor Cap — CONFIRMED WORKING (Playtest 3, RPS loop functions)
 - Keep at 3.
 - **P3 update (Session 15)**: Mario stacked Armor heavily; Elias drafted Armor Breaker as the counter and used it effectively. The RPS loop **functions as designed**. Elias Q17: Armor "slightly extended / well balanced."
