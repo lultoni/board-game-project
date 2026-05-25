@@ -6,6 +6,14 @@
 
 ---
 
+### May 25, 2026 — Session 19: Digital Playtest Prototype — PWA Shipped, iOS Touch Fixed
+
+Built and deployed a single-file offline PWA prototype at GitHub Pages (repo made public). The prototype covers the full game loop: 10×10 board with drag-and-drop piece movement, piece state tracking (armor pips, injured dot, 2 skill slots with icons), rune tracking per player, end-turn notes panel, post-game feedback form (multi-select scale questions + notes), and JSON export per game. All 15 skill icons are base64-embedded so the file runs fully offline once cached. Board and all piece content scale dynamically via `--cell` CSS custom property.
+
+iOS touch handling was broken (instant drag on any touch, modal unreachable). Rewrote from Touch Events API to Pointer Events API: event delegation on `#board` via `pointerdown`, `setPointerCapture` for reliable routing, combined 10px distance + 100ms time threshold before committing to drag, `requestAnimationFrame` wrapping for iOS 17.4 DOM repaint compatibility, and `elementFromPoint` with `pointer-events:none` on the drag clone for accurate hit-testing. User confirmed it works on iPad.
+
+---
+
 ### May 24, 2026 — Session 18: Pre-Playtest Tooling — Skill Cards, Onboarding Form, Focus+Move Ruling
 
 Two artifacts shipped under `docs/test-scenarios/shared/` ahead of the 2026-05-28 playtest with Nico (first-time player). `skill-cards.typ/pdf` is a printable A4 sheet of 15 physical reference cards — one per skill, color-coded by category, with a 2×2 range matrix per card showing reach in four states (Default / +Focus / Injured / Inj.+Focus) and per-skill Focus footnotes on Move cards. Resolves OQ-56 problem C1 (in-game lookup friction). `feedback-onboarding.typ/pdf` is a 2-page first-game-only feedback form covering rules absorption, draft thinking, in-game confusion, and player anchoring — independent of stack, fills before the standard stack form.

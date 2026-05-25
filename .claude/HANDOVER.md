@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-24 — end of Session 18.*
+*Last updated: 2026-05-25 — end of Session 19.*
 
 ---
 
@@ -31,14 +31,12 @@ You are my board game design co-creator and systems architect. We are working on
 5. Read `game-state/OPEN_QUESTIONS.md` (live design questions only — archive lives in `OPEN_QUESTIONS_ARCHIVE.md`).
 6. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 18 complete, 2026-05-24)
+### Where We Are (Session 19 complete, 2026-05-25)
 
-- **Pre-playtest tooling shipped.** Two new artifacts under `shared/`: `skill-cards.pdf` (15 physical cards, 2×2 range matrix per card showing Default/+Focus/Injured/Inj.+Focus, per-skill Focus footnotes on Move cards) and `feedback-onboarding.pdf` (2-page first-game-only feedback form covering rules absorption, draft thinking, mid-game confusion, anchoring).
-- **Ruling — Focus Strike on Move skills**: caster chooses, at activation, whether the +1 applies to activation range OR effect range. Not both. Documented in `baseline-sections.typ`, on every Move skill card, and in `mechanics-evaluated.md`.
-- **Lance Thrust derivation confirmed**: effective Range 0 while Injured = cannot fire. The chained derivation IS the ruling, not ambiguity. Memory `feedback_baseline_is_authoritative.md` written so this misconception isn't repeated. OQ-54 (rewrite to "Adjacent") closed: keep "Range−1" — the modifier preserves a real interaction.
-- **Forms cleanup**: Stack A, Stack B, and feedback-baseline forms converted from fixed `#v(2.7cm)` to `#v(1fr)` distribution. Build script gained zsh guard. Hygiene principle 7 expanded with the `1fr` sub-rule.
-- **Decision logged for 2026-05-28 playtest**: Nico plays the standard baseline draft. No rule changes for first-time players — onboarding signal comes from the form, not from changing the game. Memory `project_nico_first_game.md`.
-- **Deferred from this session**: one-page player-facing intro, rule sheet ordering audit, tiered-catalogue ADR. Backlogged in NEXT_STEPS until Nico's data lands.
+- **Digital prototype shipped.** Single-file offline PWA at `prototype/index.html`, deployed to GitHub Pages (repo now public). Full game loop: 10×10 board, drag-and-drop, piece state (armor/injured/skill icons), rune tracking, end-turn notes, post-game feedback form, JSON export. All 15 skill icons base64-embedded — fully offline once cached.
+- **iOS touch fixed.** Rewrote Touch Events → Pointer Events API. Combined 10px distance + 100ms time threshold before committing drag; `setPointerCapture` for routing; `requestAnimationFrame` for iOS 17.4 repaint compat. Tap-to-modal and drag-to-move confirmed working on iPad.
+- **Prototype is for after Nico's game.** Nico's 2026-05-28 playtest is paper-only. Prototype comes into use after that data lands.
+- **2026-05-28 print packet unchanged**: same Priority 1 items from Session 18.
 
 ### Immediate Next Action
 

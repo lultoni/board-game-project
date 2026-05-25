@@ -2,7 +2,7 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-05-24 — Session 18 (Skill cards + onboarding feedback form shipped; Focus Strike + Move ruling; Nico-no-changes decision).*
+*Last updated: 2026-05-25 — Session 19 (Digital prototype PWA shipped; iOS touch fixed).*
 
 ---
 
@@ -18,20 +18,27 @@
 - [ ] Track explicitly: Champion kill timing, combo bonus activations, cross-category vs Strike+Strike combos.
 - [ ] Watch Rune Theft for Mode B (OQ-34).
 
-## Priority 2 — Decide: digital playtest prototype yes/no
+## Priority 2 — Run `/playtest 4` after 2026-05-28 game
 
-- [ ] **Sleep-on-it status**: still pending. Decision via ADR before any implementation.
+- [ ] Transcribe + analyse Stack A G2 results and Nico's onboarding feedback form.
+- [ ] Use results to decide next stack (see TESTING_PLAN.pdf decision tree).
 
-## Priority 3 — Hold Stack B (Bodyguard Fix)
+## Priority 3 — Digital prototype improvements (post-Nico's-game)
+
+- [ ] **Nico's game (2026-05-28) is paper-only.** Prototype comes into use for playtests after that.
+- [ ] Evaluate after Nico's session: does the JSON export cover what we need for playtest analysis?
+- [ ] Potential improvements backlogged: move history log per turn, undo last move, note which skill was activated per turn.
+
+## Priority 4 — Hold Stack B (Bodyguard Fix)
 
 - [ ] **De-prioritised.** Playtest 3 showed Bodyguard activates organically once standoff dissolves. Re-evaluate after Stack A G2.
 
-## Priority 4 — Decide next stack after Stack A G2
+## Priority 5 — Decide next stack after Stack A G2
 
 - [ ] Follow `TESTING_PLAN.pdf` decision tree once G2 data lands.
 - [ ] Likely candidates: Stack F (Cleverness II — sente skills), or a dedicated stack addressing OQ-52 / OQ-53.
 
-## Priority 5 — Skill Balance (carry-over watches)
+## Priority 6 — Skill Balance (carry-over watches)
 
 - [ ] Monitor **Rune Theft** in Stack A G2 — confirm Mode A vs Mode B framing.
 - [ ] Confirm **Shadow Shift** Range 2 feels right in play.
@@ -80,6 +87,13 @@
 - [x] **More physical writing space** — feedback forms converted to `#v(1fr)` distribution (Session 18).
 
 ---
+
+## Recently completed (Session 19)
+
+- Digital prototype PWA built and deployed to GitHub Pages (`prototype/index.html`).
+- Full game loop: 10×10 board, drag-and-drop, piece state (armor/injured/skill icons), rune tracking, end-turn notes, post-game feedback form, JSON export.
+- All 15 skill icons base64-embedded — fully offline once cached.
+- iOS touch rewritten: Pointer Events API, combined distance+time threshold, `setPointerCapture`, `requestAnimationFrame` for iOS 17.4 compatibility. Confirmed working on iPad.
 
 ## Recently completed (Session 18)
 
