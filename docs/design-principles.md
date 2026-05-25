@@ -8,6 +8,21 @@
 
 **Discovering and executing clever spell/skill combos.** Every system must serve this. If a mechanic doesn't make spell combos better, cut it.
 
+## High-Concept Framing
+
+*Established Session 19 (ADR-004, 2026-05-26).*
+
+The Core Fantasy is delivered under the **"Two minds, one puzzle"** framing: two players race to discover and execute clever skill combos in a *shared* combinatorial space. The 2-player nature is **load-bearing** — replace the opponent with an AI and the core experience dies, because the parallel-solving *is* the experience. The opponent is a fellow puzzle-solver, not a constraint generator.
+
+Practical consequences:
+- Combo legibility must work in both directions — caster *and* observer must read the elegance.
+- The shared draft pool is a load-bearing chassis feature, not decoration.
+- Phase B (theme/identity) is briefed under "two minds reading the same combinatorial space" — rules out soloist-wizard themes and faction-versus-faction war themes; pulls toward mirroring / parallel-discovery imagery.
+- Asymmetry (factions, starting conditions) is biased against — symmetric or near-symmetric drafts and setups preferred.
+- Future mechanical decisions are evaluated partly on whether they support the framing (soft preference for B-aligned over A-aligned when otherwise equal).
+
+This is design intent, not a mechanical mandate. No immediate rule changes follow from it. See ADR-004 in `mechanics-log/mechanics-evaluated.md` for the alternatives considered and the reversal criterion.
+
 ## North Star
 
 "A small number of interlocking systems that generate surprising, meaningful decisions."

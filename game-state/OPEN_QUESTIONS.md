@@ -110,12 +110,9 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 ### OQ-24: Skill Card/Rule Clarity
 **Review all skill descriptions for clarity before next playtest.** Connects to OQ-56 Problem C (skill cards on the table).
 
-### OQ-39: Shared-Puzzle Design Direction — OPEN
-**Should the game lean into "rewarding cleverness / mutual epistemic exploration"?**
-- Research (`docs/research/cooperative-feel-competitive-games.md`): the shared-puzzle feel comes from perfect information + depth, not from removing competition.
-- Design principles agreed (see ADR-003): expand viable strategies, reward cleverness visibly, let both players appreciate each other's plays.
-- Not a mechanical commitment yet — framing/identity question.
-- **Status**: Revisit after more stack data. See OQ-51 for mechanical levers.
+### OQ-39: Shared-Puzzle Design Direction — RESOLVED (ADR-004, 2026-05-26)
+**Resolved as Framing B ("Two minds, one puzzle") — see ADR-004 in `docs/mechanics-log/mechanics-evaluated.md` and `docs/design-principles.md` § High-Concept Framing.** Design intent locked: 2-player nature is load-bearing, opponent is fellow puzzle-solver, combo legibility must work in both directions, asymmetry biased against. No immediate mechanical changes. Reversal criterion in ADR-004.
+**→ Move to OPEN_QUESTIONS_ARCHIVE.md next archive pass.**
 
 ### OQ-41: Game Length vs. Damage Nerf Tradeoff — PARTIALLY CONFIRMED (Playtest 3)
 **1-DMG attacks did NOT noticeably extend the game** — Round 24 finish, comparable or shorter than P2.
