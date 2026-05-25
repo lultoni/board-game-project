@@ -524,8 +524,6 @@ function renderBoard() {
       cell.appendChild(coord);
       cell.addEventListener('dragover', onDragOver);
       cell.addEventListener('drop', onDrop);
-      cell.addEventListener('touchmove', onTouchMove, { passive: false });
-      cell.addEventListener('touchend', onTouchEnd);
       board.appendChild(cell);
     }
   }
@@ -594,6 +592,8 @@ function renderPieces() {
     el.addEventListener('dragend', onDragEnd);
     el.addEventListener('click', (e) => { e.stopPropagation(); openPieceModal(piece.id); });
     el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', (e) => { e.preventDefault(); onTouchEnd(e); });
 
     cell.appendChild(el);
   });
@@ -643,30 +643,47 @@ function onDrop(e) {
 
 // ═══════════════════════════════════════════════════ TOUCH DRAG
 
+const DRAG_THRESHOLD = 8; // px movement before drag starts
+
 let touchPieceId = null;
 let touchClone = null;
-let touchOffsetX = 0, touchOffsetY = 0;
+let touchStartX = 0, touchStartY = 0;
+let touchDragging = false;
 
 function onTouchStart(e) {
   const pieceEl = e.currentTarget;
   touchPieceId = pieceEl.dataset.pieceId;
-  const rect = pieceEl.getBoundingClientRect();
   const touch = e.touches[0];
-  touchOffsetX = touch.clientX - rect.left - rect.width / 2;
-  touchOffsetY = touch.clientY - rect.top - rect.height / 2;
-  // Clone for visual drag
-  touchClone = pieceEl.cloneNode(true);
-  touchClone.style.cssText = `position:fixed;z-index:999;pointer-events:none;opacity:0.85;width:44px;height:44px;left:${touch.clientX - 22}px;top:${touch.clientY - 22}px;`;
-  document.body.appendChild(touchClone);
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+  touchDragging = false;
+  touchClone = null;
 }
 
 function onTouchMove(e) {
+  if (!touchPieceId) return;
+  const touch = e.touches[0];
+  const dx = touch.clientX - touchStartX;
+  const dy = touch.clientY - touchStartY;
+
+  if (!touchDragging) {
+    if (Math.sqrt(dx*dx + dy*dy) < DRAG_THRESHOLD) return; // not yet a drag
+    // Threshold crossed — start drag
+    touchDragging = true;
+    const pieceEl = document.querySelector(`.piece[data-piece-id="${touchPieceId}"]`);
+    if (pieceEl) {
+      const cellSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--cell'));
+      touchClone = pieceEl.cloneNode(true);
+      touchClone.style.cssText = `position:fixed;z-index:999;pointer-events:none;opacity:0.85;width:${cellSize-6}px;height:${cellSize-6}px;left:${touch.clientX - (cellSize-6)/2}px;top:${touch.clientY - (cellSize-6)/2}px;`;
+      document.body.appendChild(touchClone);
+    }
+  }
+
   e.preventDefault();
   if (!touchClone) return;
-  const touch = e.touches[0];
-  touchClone.style.left = (touch.clientX - 22) + 'px';
-  touchClone.style.top = (touch.clientY - 22) + 'px';
-  // Highlight target cell
+  const cellSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--cell'));
+  touchClone.style.left = (touch.clientX - (cellSize-6)/2) + 'px';
+  touchClone.style.top  = (touch.clientY - (cellSize-6)/2) + 'px';
   document.querySelectorAll('.cell.drag-over').forEach(c => c.classList.remove('drag-over'));
   const el = document.elementFromPoint(touch.clientX, touch.clientY);
   const cell = el && el.closest('.cell');
@@ -677,13 +694,20 @@ function onTouchEnd(e) {
   document.querySelectorAll('.cell.drag-over').forEach(c => c.classList.remove('drag-over'));
   if (touchClone) { touchClone.remove(); touchClone = null; }
   if (!touchPieceId) return;
-  const touch = e.changedTouches[0];
-  const el = document.elementFromPoint(touch.clientX, touch.clientY);
-  const cell = el && el.closest('.cell');
-  if (cell) {
-    movePiece(touchPieceId, parseInt(cell.dataset.row), parseInt(cell.dataset.col));
+
+  if (!touchDragging) {
+    // It was a tap — open modal
+    openPieceModal(touchPieceId);
+  } else {
+    // It was a drag — move piece
+    const touch = e.changedTouches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const cell = el && el.closest('.cell');
+    if (cell) movePiece(touchPieceId, parseInt(cell.dataset.row), parseInt(cell.dataset.col));
   }
+
   touchPieceId = null;
+  touchDragging = false;
 }
 
 function movePiece(pieceId, row, col) {
