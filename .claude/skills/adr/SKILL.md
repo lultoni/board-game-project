@@ -6,40 +6,27 @@ argument-hint: "<topic>"
 
 # Architecture Decision Record: $ARGUMENTS
 
-## Step 1: Determine ADR Number
-
-Check existing files in `docs/decisions/` to find the next available ADR number. Use the format: `ADR-NNN-slug.md` (e.g., `ADR-003-skill-slot-scaling.md`).
-
-## Step 2: Research Context
+## Step 1: Research Context
 
 Read `docs/design-principles.md`, `docs/systems-and-mechanics.md`, and `game-state/OPEN_QUESTIONS.md` to understand how this decision connects to the current design state.
 
 If external game design knowledge is needed and you're not confident in your knowledge, trigger the `/research` skill first to gather evidence before writing the ADR.
 
-## Step 3: Write the ADR
+## Step 2: Present the ADR inline
 
-Create `docs/decisions/ADR-NNN-slug.md` with this structure:
+Do NOT create a separate file. Present the ADR directly in the conversation using this structure:
 
-```markdown
-# ADR-NNN: [Decision Title]
+```
+## ADR: [Decision Title]
 
-**Status**: PROPOSED  
-**Date proposed**: [today]  
-**Decision maker**: Elias  
-**Related questions**: [OQ numbers if applicable]
+**Date**: [today]  
+**Related OQs**: [OQ numbers if applicable]
 
-## Context
-
-[2-3 paragraphs explaining:
-- What prompted this decision
-- What constraints exist
-- How this connects to the core fantasy and existing systems]
-
-## Options
+### Context
+[2-3 paragraphs: what prompted this, what constraints exist, how it connects to the core fantasy]
 
 ### Option A: [Name]
-**Reference games**: [Published games that use this approach]
-**How it works**: [Concrete mechanics description]
+**How it works**: [Concrete description]
 **Pros**: [Bullet list]
 **Cons**: [Bullet list]
 
@@ -49,34 +36,19 @@ Create `docs/decisions/ADR-NNN-slug.md` with this structure:
 ### Option C: [Name] (if applicable)
 [Same structure]
 
-## Comparison Matrix
-
-| Criterion | Option A | Option B | Option C |
-|-----------|----------|----------|----------|
-| Serves core fantasy (spell combos) | | | |
-| Cognitive load | | | |
-| Interaction with [relevant system] | | | |
-| Testability (can we isolate this?) | | | |
-| [Other relevant criteria] | | | |
-
-## Assessment
-
-[Your analysis of which option best serves the project. Be opinionated but transparent about trade-offs. Always evaluate against the core fantasy: "Does this make spell combos more interesting?"]
-
-## Recommended Next Step
-
-[What should happen after the decision is made — typically "create a test scenario" or "incorporate into Layer N".]
+### Recommendation
+[Opinionated assessment. Always evaluate against the core fantasy: "Does this make spell combos more interesting?"]
 ```
 
-## Step 4: Present to User
+Ask the user to decide.
 
-Output a concise summary of the options (3-5 sentences per option) and your recommendation. Ask the user to decide.
-
-## Step 5: After Decision
+## Step 3: After Decision
 
 When the user decides:
 
-1. Update the ADR status to `ACCEPTED` or `REJECTED` with the date and rationale.
-2. Update the relevant project doc (`docs/systems-and-mechanics.md` for system-level decisions, `docs/design-principles.md` for principle-level) to reflect the decision.
-3. Update `game-state/OPEN_QUESTIONS.md` to resolve related questions.
-4. If the decision requires testing, trigger `/scenario` to create the test stack.
+1. Update the relevant project doc to reflect the decision:
+   - System-level decisions → `docs/systems-and-mechanics.md`
+   - Principle-level decisions → `docs/design-principles.md`
+   - Decision log entry → `docs/mechanics-log/mechanics-evaluated.md`
+2. Update `game-state/OPEN_QUESTIONS.md` to resolve related questions.
+3. If the decision requires testing, trigger `/scenario` to create the test stack.
