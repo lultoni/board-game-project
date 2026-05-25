@@ -72,7 +72,7 @@
   .board-area { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; min-height: 0; }
   .board-container { position: relative; transform-origin: center center; }
   .board-coords { display: grid; }
-  .board { display: grid; grid-template-columns: repeat(10, var(--cell)); grid-template-rows: repeat(10, var(--cell)); border: 2px solid var(--border); background: #111; }
+  .board { display: grid; grid-template-columns: repeat(10, var(--cell)); grid-template-rows: repeat(10, var(--cell)); border: 2px solid var(--border); background: #111; touch-action: none; }
   .cell {
     width: var(--cell); height: var(--cell);
     border: 1px solid #222;
@@ -498,6 +498,7 @@ function startGame() {
   document.getElementById('p2-rune-label').textContent = state.config.p2Name + ' — Runes';
 
   renderBoard();
+  initPointerBoard();
   updateHeader();
   showScreen('game');
 }
@@ -590,10 +591,6 @@ function renderPieces() {
 
     el.addEventListener('dragstart', onDragStart);
     el.addEventListener('dragend', onDragEnd);
-    el.addEventListener('click', (e) => { e.stopPropagation(); openPieceModal(piece.id); });
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', (e) => { e.preventDefault(); onTouchEnd(e); });
 
     cell.appendChild(el);
   });
@@ -641,73 +638,116 @@ function onDrop(e) {
   dragPieceId = null;
 }
 
-// ═══════════════════════════════════════════════════ TOUCH DRAG
+// ═══════════════════════════════════════════════════ POINTER DRAG (mouse + touch)
 
-const DRAG_THRESHOLD = 8; // px movement before drag starts
+const DRAG_DIST_THRESHOLD = 10;  // px Euclidean before committing to drag
+const DRAG_TIME_THRESHOLD = 100; // ms hold before committing to drag
 
-let touchPieceId = null;
-let touchClone = null;
-let touchStartX = 0, touchStartY = 0;
-let touchDragging = false;
+let ptrPieceId = null;
+let ptrClone = null;
+let ptrStartX = 0, ptrStartY = 0;
+let ptrStartTime = 0;
+let ptrDragging = false;
+let ptrPointerId = null;
 
-function onTouchStart(e) {
-  const pieceEl = e.currentTarget;
-  touchPieceId = pieceEl.dataset.pieceId;
-  const touch = e.touches[0];
-  touchStartX = touch.clientX;
-  touchStartY = touch.clientY;
-  touchDragging = false;
-  touchClone = null;
+function initPointerBoard() {
+  const board = document.getElementById('board');
+  board.addEventListener('pointerdown', onPointerDown);
 }
 
-function onTouchMove(e) {
-  if (!touchPieceId) return;
-  const touch = e.touches[0];
-  const dx = touch.clientX - touchStartX;
-  const dy = touch.clientY - touchStartY;
-
-  if (!touchDragging) {
-    if (Math.sqrt(dx*dx + dy*dy) < DRAG_THRESHOLD) return; // not yet a drag
-    // Threshold crossed — start drag
-    touchDragging = true;
-    const pieceEl = document.querySelector(`.piece[data-piece-id="${touchPieceId}"]`);
-    if (pieceEl) {
-      const cellSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--cell'));
-      touchClone = pieceEl.cloneNode(true);
-      touchClone.style.cssText = `position:fixed;z-index:999;pointer-events:none;opacity:0.85;width:${cellSize-6}px;height:${cellSize-6}px;left:${touch.clientX - (cellSize-6)/2}px;top:${touch.clientY - (cellSize-6)/2}px;`;
-      document.body.appendChild(touchClone);
-    }
-  }
+function onPointerDown(e) {
+  // Only primary button / touch
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const pieceEl = e.target.closest('.piece');
+  if (!pieceEl) return;
 
   e.preventDefault();
-  if (!touchClone) return;
+  ptrPieceId = pieceEl.dataset.pieceId;
+  ptrStartX = e.clientX;
+  ptrStartY = e.clientY;
+  ptrStartTime = Date.now();
+  ptrDragging = false;
+  ptrClone = null;
+  ptrPointerId = e.pointerId;
+
+  // Capture so pointermove/up reach us even if finger leaves the piece
+  e.currentTarget.setPointerCapture(e.pointerId);
+
+  document.addEventListener('pointermove', onPointerMove);
+  document.addEventListener('pointerup', onPointerUp);
+  document.addEventListener('pointercancel', onPointerCancel);
+}
+
+function onPointerMove(e) {
+  if (!ptrPieceId || e.pointerId !== ptrPointerId) return;
+  const dx = e.clientX - ptrStartX;
+  const dy = e.clientY - ptrStartY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const elapsed = Date.now() - ptrStartTime;
+
+  if (!ptrDragging) {
+    if (dist < DRAG_DIST_THRESHOLD || elapsed < DRAG_TIME_THRESHOLD) return;
+    // Commit to drag
+    ptrDragging = true;
+    const cx = e.clientX, cy = e.clientY;
+    requestAnimationFrame(() => {
+      const pieceEl = document.querySelector(`.piece[data-piece-id="${ptrPieceId}"]`);
+      if (!pieceEl) return;
+      const cellSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--cell'));
+      ptrClone = pieceEl.cloneNode(true);
+      ptrClone.style.cssText = `position:fixed;z-index:999;pointer-events:none;opacity:0.85;width:${cellSize-6}px;height:${cellSize-6}px;left:${cx-(cellSize-6)/2}px;top:${cy-(cellSize-6)/2}px;`;
+      document.body.appendChild(ptrClone);
+    });
+    return;
+  }
+
+  if (!ptrClone) return;
   const cellSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--cell'));
-  touchClone.style.left = (touch.clientX - (cellSize-6)/2) + 'px';
-  touchClone.style.top  = (touch.clientY - (cellSize-6)/2) + 'px';
+  ptrClone.style.left = (e.clientX - (cellSize - 6) / 2) + 'px';
+  ptrClone.style.top  = (e.clientY - (cellSize - 6) / 2) + 'px';
+
+  // Hit-test: hide clone so elementFromPoint sees the cell beneath
+  ptrClone.style.pointerEvents = 'none';
   document.querySelectorAll('.cell.drag-over').forEach(c => c.classList.remove('drag-over'));
-  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  const el = document.elementFromPoint(e.clientX, e.clientY);
   const cell = el && el.closest('.cell');
   if (cell) cell.classList.add('drag-over');
 }
 
-function onTouchEnd(e) {
-  document.querySelectorAll('.cell.drag-over').forEach(c => c.classList.remove('drag-over'));
-  if (touchClone) { touchClone.remove(); touchClone = null; }
-  if (!touchPieceId) return;
+function onPointerUp(e) {
+  if (!ptrPieceId || e.pointerId !== ptrPointerId) return;
+  const wasDragging = ptrDragging;
+  const pid = ptrPieceId;
+  cleanupPointer();
 
-  if (!touchDragging) {
-    // It was a tap — open modal
-    openPieceModal(touchPieceId);
+  if (!wasDragging) {
+    // Tap — open modal
+    openPieceModal(pid);
   } else {
-    // It was a drag — move piece
-    const touch = e.changedTouches[0];
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    const cell = el && el.closest('.cell');
-    if (cell) movePiece(touchPieceId, parseInt(cell.dataset.row), parseInt(cell.dataset.col));
+    // Drag drop — move piece
+    const upX = e.clientX, upY = e.clientY;
+    requestAnimationFrame(() => {
+      const el = document.elementFromPoint(upX, upY);
+      const cell = el && el.closest('.cell');
+      if (cell) movePiece(pid, parseInt(cell.dataset.row), parseInt(cell.dataset.col));
+    });
   }
+  ptrPieceId = null;
+}
 
-  touchPieceId = null;
-  touchDragging = false;
+function onPointerCancel(e) {
+  if (e.pointerId !== ptrPointerId) return;
+  cleanupPointer();
+  ptrPieceId = null;
+}
+
+function cleanupPointer() {
+  document.querySelectorAll('.cell.drag-over').forEach(c => c.classList.remove('drag-over'));
+  if (ptrClone) { ptrClone.remove(); ptrClone = null; }
+  ptrDragging = false;
+  document.removeEventListener('pointermove', onPointerMove);
+  document.removeEventListener('pointerup', onPointerUp);
+  document.removeEventListener('pointercancel', onPointerCancel);
 }
 
 function movePiece(pieceId, row, col) {
