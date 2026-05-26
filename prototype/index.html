@@ -190,6 +190,7 @@
   .feedback-q textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 72px; }
   .feedback-q input[type=number], .feedback-q input[type=text] { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 14px; font-family: inherit; }
   .scale-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .feedback-notice { font-size: 12px; color: var(--text-dim); background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; line-height: 1.5; }
   .scale-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-dim); font-size: 13px; cursor: pointer; }
   .scale-btn.selected { border-color: var(--p1); background: var(--p1-bg); color: var(--p1); }
   .feedback-actions { padding: 12px 16px; border-top: 1px solid var(--border); flex-shrink: 0; }
@@ -1047,7 +1048,7 @@ const FEEDBACK_QUESTIONS = [
     questions: [
       { id: "combos_attempted", label: "Did you attempt multi-Champion combos? How many times?", type: "text" },
       { id: "combos_blocked_by", label: "What blocked failed combo attempts?", type: "textarea" },
-      { id: "combo_reward_feel", label: "Did the combo bonus feel like a meaningful reward for coordination?", type: "scale", options: ["Very rewarding", "Somewhat", "Neutral", "Barely noticeable", "Never triggered"] },
+      { id: "combo_reward_feel", label: "Did the combo bonus feel like a meaningful reward for coordination? When it triggered, was that planned in advance or more by coincidence?", type: "scale", options: ["Very rewarding — planned", "Rewarding — coincidence", "Somewhat", "Neutral", "Barely noticeable", "Never triggered"] },
       { id: "cross_category_combos", label: "Did organic cross-category combos (e.g. Move → Strike on same target) still happen, or did Strike+Strike dominate?", type: "scale", options: ["Cross-category often", "Sometimes", "Rarely", "Strike+Strike dominated"] },
       { id: "skill_too_strong", label: "Any skill that felt too strong?", type: "text" },
       { id: "skill_too_weak", label: "Any skill that felt too weak?", type: "text" },
@@ -1058,11 +1059,12 @@ const FEEDBACK_QUESTIONS = [
   {
     section: "D — Systems & Overall Feel",
     questions: [
-      { id: "draft_feel", label: "Skill Drafting: Did the draft feel fair and engaging? Did you have a clear plan, or just picked what seemed good?", type: "textarea" },
+      { id: "draft_feel", label: "Skill Drafting: Did you draft with specific skill pairings in mind — thinking about how skills could work together — or did you evaluate each skill individually for what it does on its own?", type: "textarea" },
       { id: "turn_flow", label: "Turn flow: Did Move Slots and Skill Slots feel intuitive to manage together?", type: "scale", options: ["Very intuitive", "Mostly yes", "Sometimes confusing", "Often confusing"] },
-      { id: "bodyguard_triggered", label: "Bodyguard Rule: Did it trigger? Did you actively reposition Guards for it?", type: "text" },
+      { id: "bodyguard_triggered", label: "Bodyguard Rule: Did it trigger? When you repositioned Guards, was it mainly to protect a piece from attack — or to open a line of sight for a skill? Or both?", type: "textarea" },
       { id: "injured_feel", label: "Injured Champions: Did it feel meaningfully weaker, or basically fine until killed?", type: "scale", options: ["Clearly weaker", "Slightly weaker", "Barely noticeable", "No difference"] },
       { id: "armor_balance", label: "Armor: Did it feel well-balanced, or did it slow the game?", type: "scale", options: ["Slowed game noticeably", "Slightly extended", "Well balanced", "Armor rarely mattered"] },
+      { id: "armor_attention", label: "Armor (attentional cost): Did tracking and managing Armor take up a noticeable part of your mental focus — time you might otherwise have spent planning skill combos?", type: "scale", options: ["Yes, a lot", "Somewhat", "Not really", "No"] },
       { id: "rune_spending", label: "Rune spending: Always wanting more, or sometimes nothing worth spending on?", type: "scale", options: ["Always wanted more", "Balanced", "Sometimes nothing to spend on", "Often sat on Runes"] },
       { id: "rune_theft_timing", label: "Rune Theft (if used): Did it feel like a tempo weapon in the early game, pointless late, or consistent?", type: "text" },
       { id: "positioning_forward", label: "Were you reluctant to move pieces forward into the centre?", type: "scale", options: ["Never pushed forward", "Hesitant", "Neutral", "Pushed forward actively"] },
@@ -1072,7 +1074,8 @@ const FEEDBACK_QUESTIONS = [
   {
     section: "E — Game Feel",
     questions: [
-      { id: "favourite_moment", label: "Favourite moment of the game:", type: "textarea" },
+      { id: "favourite_moment", label: "Favourite moment of the game — describe what happened, what led up to it, and why it felt good:", type: "textarea" },
+      { id: "parallel_puzzle", label: "Opponent's game: Did you feel like you and your opponent were both solving a similar kind of puzzle — figuring out the same game from opposite sides? Or more of a direct 'stop them from winning' contest?", type: "scale", options: ["Same puzzle", "Bit of both", "Direct contest", "Hard to say"] },
       { id: "frustrating_moment", label: "Most confusing or frustrating rule or moment:", type: "textarea" },
       { id: "game_length_rating", label: "Game length:", type: "scale", options: ["Way too short", "A bit short", "Just right", "A bit long", "Way too long"] },
       { id: "combat_feel_vs_prior", label: "Combat feel vs. prior playtest:", type: "scale", options: ["Much worse", "Worse", "Same", "Better", "Much better"] },
@@ -1087,15 +1090,20 @@ const FEEDBACK_QUESTIONS = [
     ]
   },
   {
-    section: "G — First-Game Only (skip if experienced)",
+    section: "G — First-Game Only",
     questions: [
+      { id: "_notice_g", label: "⚠ Skip this section if both players have played before. If one or both players are new: fill this out together, writing both perspectives into each answer.", type: "notice" },
       { id: "rules_felt", label: "How did the rules feel when they were first explained to you?", type: "textarea" },
       { id: "rule_asked_again", label: "Was there a rule you had to ask about again during the game? Which one, and why unclear?", type: "textarea" },
       { id: "understood_when", label: "At what point did you start feeling like you understood what you were doing?", type: "textarea" },
-      { id: "draft_thinking", label: "How did you decide which skills to pick during the draft?", type: "textarea" },
+      { id: "draft_thinking", label: "How did you decide which skills to pick during the draft? Did you think about how skills might work together — or pick each skill for what it does on its own?", type: "textarea" },
+      { id: "discovery_moment", label: "Was there a moment in the game where you suddenly saw how two skills could work together — something you hadn't planned at the start? Describe what happened.", type: "textarea" },
+      { id: "chassis_confusion", label: "Were there moments where you were confused by the rules, pieces, or how the board worked — things like movement, attacks, or Armor? Describe.", type: "textarea" },
+      { id: "engine_confusion", label: "Were there moments where you had a skill plan in mind but it didn't come together — either because you couldn't see how to set it up, or it failed when you tried? Describe.", type: "textarea" },
       { id: "opponent_skills_known", label: "Did you have a sense of what your opponent's skills could do, or did each move feel surprising?", type: "textarea" },
       { id: "game_about", label: "In your own words: what is this game about? What is the player trying to do?", type: "textarea" },
-      { id: "anchor_game", label: "What other game does this feel closest to, if any?", type: "text" },
+      { id: "first_game_parallel_puzzle", label: "At any point did you feel like you and your opponent were both solving a similar kind of puzzle — figuring out the same game from opposite sides? Or did it feel more like a direct 'stop them from winning' contest?", type: "scale", options: ["Same puzzle", "Bit of both", "Direct contest", "Hard to say"] },
+      { id: "anchor_game", label: "What other game does this feel closest to, if any?", type: "textarea" },
     ]
   }
 ];
@@ -1128,7 +1136,13 @@ function renderFeedbackForm() {
       lbl.textContent = q.label;
       qDiv.appendChild(lbl);
 
-      if (q.type === 'textarea') {
+      if (q.type === 'notice') {
+        const p = document.createElement('p');
+        p.className = 'feedback-notice';
+        p.textContent = q.label;
+        qDiv.removeChild(lbl);
+        qDiv.appendChild(p);
+      } else if (q.type === 'textarea') {
         const ta = document.createElement('textarea');
         ta.value = data[q.id] || '';
         ta.rows = 3;
