@@ -2,7 +2,7 @@
 
 *One-screen re-entry doc. Read this first after a gap. Updated by `/wrapup`.*
 
-*Last updated: 2026-05-26 — Session 20.*
+*Last updated: 2026-05-26 — Session 21.*
 
 ## Current focus
 
@@ -16,8 +16,8 @@ High-concept investigation closed: ADR-004 locks "Two minds, one puzzle" (Framin
 
 ## Last session
 
-2026-05-26 (Session 20): All 11 high-concept open questions resolved (Q-A1 → Q-F1). ADR-004 accepted. New `§ Chassis and Engine` section added to `design-principles.md`; chassis/engine becomes canonical project vocabulary. Stacks H, I, J, K queued in `TESTING_PLAN.typ`. OQ-11 reopened, OQ-57 added.
+2026-05-26 (Session 21): Feedback forms audited and updated for high-concept alignment. feedback-onboarding.typ fully restructured (Q-D1 discovery question, chassis vs engine confusion split, Framing B question, facilitator checklist reminder). stack-a-feedback.typ: 5 targeted fixes (Bodyguard chess/combo distinction, Armor attentional cost, draft pairing framing, combo planned/coincidence, Framing B). feedback-baseline.typ template updated (propagates to stacks H/I/J/K). Prototype feedback form aligned to match. WHAT_TO_PRINT.md added. README sanitised.
 
 ## Next action
 
-Print 2026-05-28 packet: `stack-a-game2-attack-nerf-combo.pdf` ×2 + `shared/skill-cards.pdf` ×2 + `shared/feedback-onboarding.pdf` ×1 + `shared/teacher-vocab-checklist.pdf` ×1 + `stack-a-feedback.pdf` ×2 + `shared/game-tracking.pdf` ×2. Run `/playtest 4` next session.
+Print 2026-05-28 packet (see `WHAT_TO_PRINT.md` Scenario B — both forms updated, reprint required): `stack-a-game2-attack-nerf-combo.pdf` ×2 + `shared/skill-cards.pdf` ×2 + `shared/feedback-onboarding.pdf` ×1 + `shared/teacher-vocab-checklist.pdf` ×1 + `stack-a-feedback.pdf` ×2 + `shared/game-tracking.pdf` ×2. Run `/playtest 4` next session.

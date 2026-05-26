@@ -6,6 +6,16 @@
 
 ---
 
+### May 26, 2026 — Session 21: Feedback Forms — High-Concept Alignment
+
+Audited all three feedback forms (`feedback-onboarding.typ`, `stack-a-feedback.typ`, `feedback-baseline.typ`) against the high-concept investigation findings (Sessions 19–20). Identified gaps: no Q-D1 combo-discovery signal questions, no Framing B parallel-puzzle coverage, stale question framings (Armor only asked about pacing, not attentional cost; Bodyguard asked frequency not chess-vs-combo type; draft asked "did you have a plan" not "were pairings in mind"), no chassis-vs-engine confusion distinction.
+
+`feedback-onboarding.typ` fully restructured: new Q6 (aha discovery moment), Q9/Q10 split into chassis-confusion vs engine-confusion, Q12 expanded with "describe what happened", new Q14 (Framing B), facilitator reminder to staple teacher-vocab-checklist. `stack-a-feedback.typ`: 5 targeted fixes (combo planned/coincidence, draft pairing framing, Bodyguard chess/combo distinction, Armor attentional cost second line, new Framing B question). `feedback-baseline.typ` template updated — changes propagate to all future stacks H/I/J/K. Prototype feedback form (Section G + Sections C/D/E) brought to parity with paper forms; `notice` render type added for section headers; Section G notice instructs both players to fill together.
+
+`WHAT_TO_PRINT.md` added to repo root (print checklist for all game scenarios). `README.md` sanitised: live state removed, project structure tree corrected, prototype/ and all new shared/ files added.
+
+---
+
 ### May 26, 2026 — Session 20: High-Concept Open Questions Sweep — All 11 Resolved
 
 Worked through every question in `docs/research/high-concept-open-questions.md` (Q-A1 through Q-F1) with discussion-then-decision per question. ADR-004 written and accepted: high-concept framing is **"Two minds, one puzzle" (Framing B)** — 2-player nature is load-bearing, opponent is a fellow puzzle-solver, asymmetry biased against. New `§ High-Concept Framing` and `§ Chassis and Engine` sections added to `design-principles.md`; chassis/engine becomes canonical project vocabulary as a companion lens to the Justification Rule.

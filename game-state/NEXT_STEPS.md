@@ -2,18 +2,18 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-05-26 — Session 20 (High-concept questions all resolved; ADR-004 accepted; Stacks H/I/J/K queued).*
+*Last updated: 2026-05-26 — Session 21 (Feedback forms updated for high-concept alignment; WHAT_TO_PRINT.md added; README sanitised).*
 
 ---
 
 ## Priority 1 — Print packet for Nico's first game (2026-05-28)
 
-- [ ] **Print for Stack A G2 + Nico onboarding (28.05.26)**:
+- [ ] **Print for Stack A G2 + Nico onboarding (28.05.26)** — see [`WHAT_TO_PRINT.md`](../WHAT_TO_PRINT.md) for the full checklist (Scenario B):
   - `docs/test-scenarios/stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf` ×2
   - `docs/test-scenarios/shared/skill-cards.pdf` ×2 (one per player)
-  - `docs/test-scenarios/shared/feedback-onboarding.pdf` ×1 (Nico only, fill first)
+  - `docs/test-scenarios/shared/feedback-onboarding.pdf` ×1 (Nico only, fill first) ← **updated Session 21, reprint**
   - `docs/test-scenarios/shared/teacher-vocab-checklist.pdf` ×1 (facilitator self-check, Q-D1 bias correction)
-  - `docs/test-scenarios/stack-a-cleverness/stack-a-feedback.pdf` ×2 (both players, fill after onboarding form)
+  - `docs/test-scenarios/stack-a-cleverness/stack-a-feedback.pdf` ×2 (both players, fill after onboarding form) ← **updated Session 21, reprint**
   - `docs/test-scenarios/shared/game-tracking.pdf` ×2
 - [ ] **No rule changes for Nico** — full standard baseline draft. Decision logged in memory (`project_nico_first_game.md`).
 - [ ] Track explicitly: Champion kill timing, combo bonus activations, cross-category vs Strike+Strike combos (Q-D3 watch).
@@ -38,6 +38,7 @@
 - [ ] **Nico's game (2026-05-28) is paper-only.** Prototype comes into use for playtests after that.
 - [ ] Evaluate after Nico's session: does the JSON export cover what we need for playtest analysis?
 - [ ] Potential improvements backlogged: move history log per turn, undo last move, note which skill was activated per turn.
+- [x] **Feedback form updated** (Session 21) — all questions aligned to high-concept investigation findings. Section G (first-game) expanded to match paper onboarding form.
 
 ## Priority 5 — Hold Stack B (Bodyguard Fix)
 
