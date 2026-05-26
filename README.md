@@ -18,7 +18,7 @@ A 2-player abstract-tactical board game in active development. Two players comma
 | Re-enter the project after a gap | [`game-state/STATUS.md`](game-state/STATUS.md) |
 | Read the per-session narrative log | [`game-state/SESSION_LOG.md`](game-state/SESSION_LOG.md) |
 | See the full testing plan | [`docs/test-scenarios/TESTING_PLAN.pdf`](docs/test-scenarios/TESTING_PLAN.pdf) |
-| Print materials for the next playtest | [`docs/test-scenarios/stack-a-cleverness/`](docs/test-scenarios/stack-a-cleverness/) |
+| Print materials for the next playtest | [`WHAT_TO_PRINT.md`](WHAT_TO_PRINT.md) |
 | See what has been tried and why | [`docs/mechanics-log/mechanics-evaluated.md`](docs/mechanics-log/mechanics-evaluated.md) |
 | See future visual/identity direction | [`docs/game-identity-visual-naming.md`](docs/game-identity-visual-naming.md) |
 | Read the full game history | [`old-game-versions/README.md`](old-game-versions/README.md) |
@@ -33,10 +33,14 @@ board-game-project/
 │
 ├── README.md                        ← you are here
 ├── CLAUDE.md                        ← project conventions for Claude Code
+├── WHAT_TO_PRINT.md                 ← print checklist for every game session
 │
 ├── game-state/                      ← living documents — always up to date
+│   ├── STATUS.md                    ← one-screen re-entry doc (read first after a gap)
 │   ├── NEXT_STEPS.md                ← prioritised action items
-│   └── OPEN_QUESTIONS.md            ← every unresolved question with status + triggers
+│   ├── OPEN_QUESTIONS.md            ← live design questions
+│   ├── OPEN_QUESTIONS_ARCHIVE.md    ← resolved / closed / parked questions
+│   └── SESSION_LOG.md               ← per-session narrative log (newest first)
 │
 ├── docs/
 │   ├── design-principles.md         ← rules to design by (5 principles, constraints, methodology)
@@ -47,23 +51,31 @@ board-game-project/
 │   ├── test-scenarios/              ← printable rule sheets + feedback forms (Typst → PDF)
 │   │   ├── build-pdfs.sh            ← run this to rebuild all PDFs
 │   │   ├── TESTING_PLAN.typ/.pdf    ← decision tree: which stack to run next
-│   │   ├── shared/                  ← reusable Typst components
+│   │   ├── shared/                  ← reusable Typst components + shared print materials
 │   │   │   ├── template.typ         ← shared styling
-│   │   │   ├── baseline-sections.typ ← parameterless baseline section functions
-│   │   │   ├── feedback-baseline.typ ← feedback form template
-│   │   │   └── game-tracking.typ    ← per-player in-game tracking sheet
-│   │   ├── baseline/                ← canonical ruleset (source of truth for rule text)
+│   │   │   ├── baseline-sections.typ ← canonical rule section functions (source of truth for rule text)
+│   │   │   ├── feedback-baseline.typ ← feedback form template (copy for each new stack)
+│   │   │   ├── feedback-onboarding.typ ← first-game onboarding feedback form
+│   │   │   ├── game-tracking.typ    ← per-player in-game tracking sheet
+│   │   │   ├── skill-cards.typ      ← printable skill reference cards (15 skills)
+│   │   │   └── teacher-vocab-checklist.typ ← facilitator self-check (Q-D1 bias correction)
+│   │   ├── baseline/                ← canonical ruleset (compiled from baseline-sections.typ)
 │   │   ├── stack-a-cleverness/      ← READY TO PLAY: attack nerf + combo bonus
-│   │   ├── stack-b-guards/          ← READY TO PLAY: bodyguard fix
+│   │   ├── stack-b-guards/          ← DE-PRIORITISED: bodyguard fix
 │   │   └── stack-g-structure/       ← DRAFT: unified AP framework
 │   │
 │   ├── research/                    ← Perplexity research exports + playtest analyses
 │   └── mechanics-log/
 │       └── mechanics-evaluated.md   ← decision registry: every mechanic considered + status
 │
+├── prototype/
+│   └── index.html                   ← digital prototype PWA (10×10 board, full game loop)
+│
 ├── playtest-results/                ← photos of handwritten feedback + game logs
 │   ├── elias-vs-pasco-31_10_25/
-│   └── elias-vs-jonathan-24_04_26/
+│   ├── elias-vs-jonathan-24_04_26/
+│   ├── elias-vs-mario-17_05_26/
+│   └── elias-vs-nico-28_05_26/
 │
 ├── images/                          ← skill card images (15 skills)
 │
@@ -89,50 +101,34 @@ board-game-project/
 **Win condition**: Capture the enemy King  
 
 ### Pieces (per player)
-| Piece | Count | Speed | Skills | HP |
-|---|---|---|---|---|
-| King | 1 | 1 | 2 slots | 2 |
-| Champion | 5 | 1 | 2 slots | 2 |
-| Guard | 6 | 2 | — | 2 |
+| Piece | Count | Speed | Skills |
+|---|---|---|---|
+| King | 1 | 1 | 2 slots |
+| Champion | 5 | 1 | 2 slots |
+| Guard | 6 | 2 | — |
+
+*For current HP values and full piece stats: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf)*
 
 ### How a Turn Works
 1. **Movement Phase** — move up to 2 pieces (each piece once)
 2. **Action Phase** — activate up to N skills (limited by Skill Slots, paid in Runes)
 
 ### Key Systems
-- **Runes** — currency. Start 6, gain +2/turn from Round 2 (scaling). Spend to activate skills.
+- **Runes** — currency for activating skills. Scales over rounds.
 - **Skills** — equipped during pre-game draft. 2 slots per Champion/King. Line-of-sight paths blocked by all pieces.
 - **2 HP** — Normal → Injured → Removed. Injured reduces Guard speed and skill range.
 - **Bodyguard** — Guard adjacent to an attacked Champion/King can intercept standard attacks.
-- **Standard Attack** — move onto enemy tile = 1 DMG (baseline, accepted Session 15).
+- **Standard Attack** — move onto enemy tile = 1 DMG.
 
 Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf)
 
 ---
 
-## Current Status (Session 20)
+## Current Status
 
 See [`game-state/STATUS.md`](game-state/STATUS.md) for the one-screen re-entry doc.
 
-**Current focus**: High-concept investigation closed (ADR-004: "Two minds, one puzzle"). Print packet for Nico's first game (2026-05-28, Stack A G2). Chassis-volume stacks (H/I/J/K) queued for after G2.
-
-**Stack pipeline**:
-
-| Stack | Topic | Status |
-|---|---|---|
-| Layer 1 — Economy Fix | 6 start Runes, +2/turn | **ACCEPTED** (Playtest 2) |
-| Standard Attack 1 DMG | Attack nerf | **ACCEPTED** (Playtest 3) |
-| **Stack A — Cleverness** | G1 nerf accepted; G2 combo bonus next | **G2 ready to play** |
-| Stack B — Guards | Bodyguard adjacency fix | De-prioritised (may be obsolete after P3) |
-| Stack C — Pacing | King Lifetime HP · Armor Decay | Trigger: first kill > R20 in G2 |
-| Stack D — Board | 8×10 · 8×8 · Hex | Trigger: after Stack A |
-| Stack E — Draft | Pool draft, placement order | Trigger: after Stack A |
-| Stack F — Cleverness II | Cascade · Pin/Threatened · Sente | Trigger: Stack A G2 results |
-| Stack G — Structure | Unified AP framework | Draft written |
-| **Stack H — Armor chassis** | Cap 3→2 + Armorsmith +1→+2 (bundled) | Queued (gated on G2) |
-| Stack I — Armor rollback | Cap 3→2 only | Conditional on Stack H stalling |
-| **Stack J — Injured downsides** | Remove speed cap + Range −1 | Queued (gated on G2 + H) |
-| **Stack K — Chassis minimisation** | 8×8 then 8×8 + 3+3+1 pieces | Queued (gated on G2) |
+See [`docs/test-scenarios/TESTING_PLAN.pdf`](docs/test-scenarios/TESTING_PLAN.pdf) for the full stack pipeline and decision tree.
 
 ---
 
