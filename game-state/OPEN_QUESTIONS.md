@@ -15,6 +15,7 @@
 - **P3 update (Session 15)**: Bodyguard organically activated under Stack A nerf without any adjacency-rule change. The dead-Bodyguard problem may be a *symptom* of the standoff problem (now solved). Stack B may be solving an already-solved problem.
 - **Attacker movement on intercept**: RULED — attacker moves 1 tile toward target (stops before Guard). Applied to baseline.
 - **Re-entry trigger**: Re-evaluate after Stack A G2. If Bodyguard keeps triggering organically, close as resolved-by-side-effect.
+- **Framing-B watch-flag (added Session 20, Q-C2 finding)**: Bodyguard is the most chess-coded mechanic in the chassis — confirmed combo-irrelevant in P3 (Mario's usage was trade-up defensive screening, not combo-positioning). Not actionable today, but if a future stack proposes simplifying/removing Bodyguard for chassis-volume reasons, Framing B (ADR-004) is one of the supporting arguments. See Q-C2 in `docs/research/high-concept-open-questions.md`.
 
 ### OQ-34: Rune Theft Balance — INCONCLUSIVE
 **Mode A** (opponent at 0 Runes): Rune Theft is a normal-range Strike skill (1 DMG, no theft effect). Not dominant.
@@ -28,6 +29,7 @@
 - Buff skills targeting your own pieces do NOT count.
 - Blade Call stacks with combo bonus (separate effects).
 - Strike-only for Stack A G2 (decided Session 16). Cross-category scope reconsidered after G2 data.
+- **Sharpened framing (Session 20, Q-D3)**: The risk to watch is not just "does the bonus enable combos?" but "does its narrow scope *crowd out* the cross-category combos that already worked organically?" P3 saw Elias do an organic Air Blast → Hook Pull cross-piece combo *without* any bonus active. If Stack A G2 produces a Strike+Strike monoculture and *fewer* cross-category combos than P3, the bonus has hurt the engine's breadth. Add a Stack A G2 feedback question probing this counterfactual: "Did you find yourself reaching for Strike+Strike combinations more than other shapes? Did any cross-category combos (Move-into-Strike, Buff-then-Strike) feel less attractive than they would have without the bonus?"
 - **Status**: Stack A Game 2.
 
 ---
@@ -61,6 +63,25 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 - **Solution space**: starting-formation swaps (backpocket); central-attractor mechanics (overlaps OQ-52); sente threat skills targeting the King; mobility/safety asymmetry.
 - **Re-entry trigger**: Brainstorm session before Stack F, OR a dedicated King-role design session.
 
+### OQ-11: Armor Cap — REOPENED (chassis-volume framing, Session 20)
+`[System: Health & Armor] [Affects: Combo-loop visibility, parallel-puzzle attention]`
+**Reopened from archive 2026-05-26.** Originally closed Session 15 as "RPS loop functions." High-concept audit (Angle 2) flagged Health & Armor as strongest chassis-bloat candidate. The question is now *volume*, not *balance* — does the Armor↔Armor-Breaker loop draw attention away from the combo loop both players are trying to discover (Framing B)?
+- **P3 evidence**: Mario granted ~20 Armor across the game; Elias used Armor Breaker ~6 times. Real chunk of game-time.
+- **Test plan (Q-C1, decided Session 20)**: Stack H will bundle **C1b** — cap 3→2 *and* Armorsmith +1→+2. Bundled because coupled (per `design-principles.md` § Incremental Testing Methodology — coupling documented). Risky-path-first: if Armor stalling becomes dominant under C1b, rollback to **C1a** (cap 3→2 only, Armorsmith unchanged) as Stack I.
+- **Trigger**: After Stack A G2 — need to know whether multi-Champion combo bonus creates faster-than-Armor kill paths. If yes: stalling risk is mitigated; Stack H proceeds. If no AND combos can't overrun Armor: Stack H may auto-resolve (chassis volume reduced as side effect of stronger combos) OR escalate.
+- **Reversal/dissolve criterion**: If Stack A G2 shows combos reliably overrun Armor, Q-C1 may dissolve without a stack. Re-evaluate after G2.
+- **Watch-question for Nico onboarding (2026-05-28)**: "How much of your turn-time felt like managing Armor vs. setting up combos?" — adds external data on volume perception independent of designer's read.
+- **Connected to**: Q-C1 in `docs/research/high-concept-open-questions.md`; ADR-004 (Framing B); OQ-38 (combo bonus).
+
+### OQ-57: Injured State — Mechanical Downsides Carry Their Weight? (chassis-volume framing, Session 20)
+`[System: Health & Armor] [Affects: Combat texture, teaching cost, combo grammar]`
+**Opened 2026-05-26** from Q-B5 reframing. Original question was "should Injured be hidden for first-game teaching?" — reframed via user pushback to "should Injured have any mechanical downsides at all?" That's a stack candidate, not a teaching-protocol tweak.
+- **Chassis volume claim**: Injured carries non-trivial teaching cost (speed cap, Range −1, "doesn't affect self/adjacent" carve-out, Range-modifier chaining for Range−1 skills on Injured pieces). Multiple rule clarifications during play stem from it.
+- **Test plan (Stack J)**: Remove Injured's mechanical downsides entirely. State persists as HP-tracker (2 HP → 1 HP → 0 HP) but Injured pieces have no speed cap and no Range −1.
+- **Trigger / gating**: After Stack A G2 *and* Stack H. G2 changes combo lethality (interacts with whether Injured pieces still threaten meaningfully); H reduces Armor-side chassis volume (so Stack J reads cleaner against an already-trimmed baseline).
+- **Recognised risk**: Could scale up to baseline-change candidate if it plays well — that's accepted as part of the stack's scope, not a misframing.
+- **Connected to**: Q-B5 in `docs/research/high-concept-open-questions.md`; chassis/engine lens in `design-principles.md`.
+
 ### OQ-56: Draft Entry Complexity + Skill Permanence — OPEN
 `[System: Skill Drafting] [Affects: New player onboarding, Mid-game adaptability]`
 **Three linked problems**:
@@ -77,6 +98,7 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
   - For C1: physical skill cards (low-risk UX fix). **SHIPPED Session 18** (`shared/skill-cards.pdf`).
   - For C2: lower equipped-slot count (Stack D / OQ-27 territory); force loadout overlap (smaller draft pool, duplicates across Champions); tiered catalogue (also helps A).
 - **Re-entry trigger**: After Stack A G2 + Nico's first game (2026-05-28). Onboarding feedback form (`shared/feedback-onboarding.pdf`) will provide the data for A and C2 decisions. A/B/C2 decisions deferred until that data lands.
+- **Update 2026-05-26 (Session 19, Q-B1)**: Of the candidates for A, "simplified starter loadouts" has been shaped further — under ADR-004 (Framing B), the loadout is committed to be a **single shared loadout for both players** (not mirrored or asymmetric), composed around Focus Strike + a Strike + a setup-move, designed to teach combo *grammar* without spoiling combo *discovery*. Execution still gated on Nico's data. Card hints (Q-B2) explicitly **rejected** to preserve emergent discovery. Standard Attack reframing (Q-B4) **shipped** — see `mechanics-evaluated.md` row "Standard Attack reframed as 'a Move that ends on an enemy tile'".
 
 ---
 
@@ -100,6 +122,7 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 - **Target**: ~25 skills total. Distribution: ~9 Strike / 6 Shield / 5 Move / 5 Mystic.
 - **Tension with OQ-56 Problem A**: Larger catalogue = harder draft for new players. Tiered "core vs. advanced" catalogue is one way to reconcile.
 - **Trigger for expansion**: Stack F or dedicated session after Stack A/B confirm combat balance is stable. Do not expand mid-combat-testing.
+- **Q-E1 update (Session 20)**: When this triggers, evaluate the *intervention type* — replace-for-breadth (swap an under-performing skill for a new combo shape; count flat) vs. expand-catalogue (add on top; count up). The two have very different newcomer costs. See Q-E1 in `docs/research/high-concept-open-questions.md` for the symptom-trigger framing ("experienced players report combos exhausted").
 
 ### OQ-22: Defensive Skill Viability
 **Improved in Playtest 2.** Armorsmith, Rust Shield, Field Medic all used meaningfully. Re-evaluate after future stacks if defense feels unviable again.
@@ -124,14 +147,15 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 ## Deferred (concrete trigger required)
 
 ### OQ-27: Piece Count and Ratio — DEFERRED
-**Current: 5 Champions + 6 Guards + 1 King.** Proposed (Stack D): 3 Champions + 3 Guards + 1 King.
+**Current: 5 Champions + 6 Guards + 1 King.** Proposed (Stack K): 3 Champions + 3 Guards + 1 King.
 - Bundled with board size. Both are "scale it down" changes. Must preserve per-turn decision depth.
 - **Re-entry trigger**: After Stack A/B — if first Champion kill is still past R15, becomes Priority 1.
+- **Test plan (Session 20)**: now operationalised as **Stack K** in `TESTING_PLAN.typ` — two-game session unbundling board (G1) from piece count (G2). Trigger: post-Stack-A G2.
 
 ### OQ-1b: 8×8 Board Test — DEFERRED (residual of OQ-1)
 **10×10 confirmed viable; 8×8 not yet tested. Would tighter geometry reduce empty-board feel in opening?**
 - Bundled with OQ-27 (piece count) — both are "scale it down" levers.
-- **Re-entry trigger**: Stack D scope. Same trigger as OQ-27.
+- **Re-entry trigger**: Stack K scope (Session 20). Tested as Game 1 of the two-game chassis-minimisation session.
 - **History**: see OQ-1 in `OPEN_QUESTIONS_ARCHIVE.md`.
 
 ### OQ-35: Skill Pool Draft Variant — DEFERRED

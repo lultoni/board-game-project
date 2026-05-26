@@ -25,6 +25,10 @@ A *stack* = a group of 1–3 test scenarios that all push toward the same experi
   [*E*], [Improve drafting experience], [Pool draft (OQ-35) · Placement order (OQ-36+48)], [Not yet written],
   [*F*], [More levers for clever plays], [Cascade trigger · Pin/Threatened · Sente skills (10 candidates staged)], [Not yet written — gated on OQ-52/53 brainstorm],
   [*G*], [Radical structure redesign], [Unified AP framework (no separate Movement/Action phases)], [Draft written — not yet tested],
+  [*H*], [Reduce Armor chassis volume], [Cap 3→2 + Armorsmith +1→+2 (bundled)], [Not yet written — gated on Stack A G2],
+  [*I*], [Armor rollback (if Stack H stalls)], [Cap 3→2 only, Armorsmith unchanged], [Not yet written — conditional on Stack H result],
+  [*J*], [Reduce Injured chassis volume], [Remove Injured speed cap + Range −1 (state persists as HP-tracker)], [Not yet written — gated on Stack A G2 + Stack H],
+  [*K*], [Chassis-minimisation session], [Two-game session: G1 = 8×8 board (current pieces); G2 = 8×8 + reduced pieces (3+3+1)], [Not yet written — gated on Stack A G2; needs two experienced players for one full session],
 )
 
 #hr
@@ -56,6 +60,10 @@ A *stack* = a group of 1–3 test scenarios that all push toward the same experi
   [*E*], [After Stack B (Layer 3) is accepted. Independent of combat system.],
   [*F*], [After Stack A combo bonus data. Dependent on combo ceiling AND standoff persistence. Gated on Stack A/B combat balance confirmation.],
   [*G*], [After Stacks A, B, and C stabilise. Radical change — do not test alongside other active experiments.],
+  [*H*], [After Stack A G2 confirms whether the multi-Champion combo bonus creates faster-than-Armor kill paths. If combos overrun Armor reliably, Stack H may auto-resolve (Q-C1 dissolves). Otherwise: bundled cap 3→2 + Armorsmith +1→+2 test. Risky-path-first per session-19 decision.],
+  [*I*], [Conditional on Stack H result. Run only if Stack H shows Armor stalling becomes dominant (build cheaper than break). Single-variable rollback: cap 3→2, Armorsmith unchanged.],
+  [*J*], [After Stack A G2 + Stack H. Combo lethality (from G2) must be confirmed before testing whether Injured pieces still threaten meaningfully at full range; Armor chassis-volume reduction (H) trims baseline first so Injured-volume signal reads cleaner.],
+  [*K*], [After Stack A G2. Two-game session in one sitting: G1 = 8×8 board with current piece count (single-variable: board); G2 = 8×8 with 3 Champions + 3 Guards + 1 King (single-variable: piece count, on top of G1's board). Maps OQ-1b + OQ-27 (previously bundled in archive). Needs two experienced players, full session.],
 )
 
 #hr

@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-25 — end of Session 19.*
+*Last updated: 2026-05-26 — end of Session 20.*
 
 ---
 
@@ -31,16 +31,18 @@ You are my board game design co-creator and systems architect. We are working on
 5. Read `game-state/OPEN_QUESTIONS.md` (live design questions only — archive lives in `OPEN_QUESTIONS_ARCHIVE.md`).
 6. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 19 complete, 2026-05-25)
+### Where We Are (Session 20 complete, 2026-05-26)
 
-- **Digital prototype shipped.** Single-file offline PWA at `prototype/index.html`, deployed to GitHub Pages (repo now public). Full game loop: 10×10 board, drag-and-drop, piece state (armor/injured/skill icons), rune tracking, end-turn notes, post-game feedback form, JSON export. All 15 skill icons base64-embedded — fully offline once cached.
-- **iOS touch fixed.** Rewrote Touch Events → Pointer Events API. Combined 10px distance + 100ms time threshold before committing drag; `setPointerCapture` for routing; `requestAnimationFrame` for iOS 17.4 repaint compat. Tap-to-modal and drag-to-move confirmed working on iPad.
-- **Prototype is for after Nico's game.** Nico's 2026-05-28 playtest is paper-only. Prototype comes into use after that data lands.
-- **2026-05-28 print packet unchanged**: same Priority 1 items from Session 18.
+- **High-concept investigation closed.** All 11 questions in `docs/research/high-concept-open-questions.md` resolved. ADR-004 accepted: framing is **"Two minds, one puzzle" (Framing B)** — 2-player nature load-bearing, opponent is a fellow puzzle-solver.
+- **Two new design-principles sections.** `§ High-Concept Framing` (ADR-004) and `§ Chassis and Engine` (diagnostic lens) now in `design-principles.md`. Chassis/engine becomes canonical project vocabulary.
+- **Q-B4 baseline change shipped.** Standard Attack reframed as "a Move that ends on an enemy tile"; survival-stop strengthened with explicit attacker-speed cases. BASELINE_VERSION → 2026-05-26.
+- **Stack pipeline expanded.** Stacks H (Armor cap+Armorsmith bundle), I (Armor rollback), J (Injured-downsides removal), K (chassis-minimisation: 8×8 then 8×8 + 3+3+1 pieces) queued in `TESTING_PLAN.typ`. All gated on Stack A G2 results.
+- **OQ-11 reopened, OQ-57 added.** Both under chassis-volume framing. Live entries in `OPEN_QUESTIONS.md`.
+- **2026-05-28 print packet unchanged in priority** — Nico still plays standard baseline. Add `teacher-vocab-checklist.pdf` to facilitator side.
 
 ### Immediate Next Action
 
-**Print the 2026-05-28 packet.** Per Priority 1 in `NEXT_STEPS.md`: `stack-a-game2-attack-nerf-combo.pdf` ×2 + `shared/skill-cards.pdf` ×2 + `shared/feedback-onboarding.pdf` ×1 (Nico) + `stack-a-feedback.pdf` ×2 + `shared/game-tracking.pdf` ×2. Run `/playtest 4` next session to analyse.
+**Print the 2026-05-28 packet.** Per Priority 1 in `NEXT_STEPS.md`: `stack-a-game2-attack-nerf-combo.pdf` ×2 + `shared/skill-cards.pdf` ×2 + `shared/feedback-onboarding.pdf` ×1 (Nico) + `shared/teacher-vocab-checklist.pdf` ×1 (facilitator) + `stack-a-feedback.pdf` ×2 + `shared/game-tracking.pdf` ×2. Run `/playtest 4` next session to analyse.
 
 ### Key Files
 

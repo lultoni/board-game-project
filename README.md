@@ -110,11 +110,11 @@ Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scen
 
 ---
 
-## Current Status (Session 18)
+## Current Status (Session 20)
 
 See [`game-state/STATUS.md`](game-state/STATUS.md) for the one-screen re-entry doc.
 
-**Current focus**: Print packet for Nico's first game (2026-05-28, Stack A G2). Skill cards and onboarding feedback form shipped this session.
+**Current focus**: High-concept investigation closed (ADR-004: "Two minds, one puzzle"). Print packet for Nico's first game (2026-05-28, Stack A G2). Chassis-volume stacks (H/I/J/K) queued for after G2.
 
 **Stack pipeline**:
 
@@ -129,6 +129,10 @@ See [`game-state/STATUS.md`](game-state/STATUS.md) for the one-screen re-entry d
 | Stack E — Draft | Pool draft, placement order | Trigger: after Stack A |
 | Stack F — Cleverness II | Cascade · Pin/Threatened · Sente | Trigger: Stack A G2 results |
 | Stack G — Structure | Unified AP framework | Draft written |
+| **Stack H — Armor chassis** | Cap 3→2 + Armorsmith +1→+2 (bundled) | Queued (gated on G2) |
+| Stack I — Armor rollback | Cap 3→2 only | Conditional on Stack H stalling |
+| **Stack J — Injured downsides** | Remove speed cap + Range −1 | Queued (gated on G2 + H) |
+| **Stack K — Chassis minimisation** | 8×8 then 8×8 + 3+3+1 pieces | Queued (gated on G2) |
 
 ---
 

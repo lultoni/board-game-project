@@ -6,7 +6,19 @@
 
 ---
 
-### May 25, 2026 — Session 19: Digital Playtest Prototype — PWA Shipped, iOS Touch Fixed
+### May 26, 2026 — Session 20: High-Concept Open Questions Sweep — All 11 Resolved
+
+Worked through every question in `docs/research/high-concept-open-questions.md` (Q-A1 through Q-F1) with discussion-then-decision per question. ADR-004 written and accepted: high-concept framing is **"Two minds, one puzzle" (Framing B)** — 2-player nature is load-bearing, opponent is a fellow puzzle-solver, asymmetry biased against. New `§ High-Concept Framing` and `§ Chassis and Engine` sections added to `design-principles.md`; chassis/engine becomes canonical project vocabulary as a companion lens to the Justification Rule.
+
+Q-B4 executed in baseline: Standard Attack reworded as *"a Move that ends on an enemy tile"*; Movement Phase intro and survival-stop rule strengthened with explicit attacker-speed cases. BASELINE_VERSION bumped to 2026-05-26. Q-B1 design intent set (single shared loadout for both players in game 1, gated on Nico's data); Q-B2 (combo hints on cards) rejected to preserve emergent discovery; Q-B3 resolved as entailment from Q-B1.
+
+Q-D1 resolution criteria locked in (signal definitions + ≥2/4 strong-signal threshold + teacher-vocab-checklist as bias correction); `shared/teacher-vocab-checklist.typ/pdf` shipped. ADR-004's reversal criterion updated via Q-D2 to read against combined Q-D1 + Q-D2 result.
+
+Five new test artefacts queued in `TESTING_PLAN.typ`: **Stack H** (Armor cap 3→2 + Armorsmith +1→+2 bundled, gated on Stack A G2), **Stack I** (Armor rollback if H stalls), **Stack J** (Injured downsides removal, gated on G2 + H), **Stack K** (two-game chassis-minimisation session: 8×8 then 8×8 + 3+3+1 pieces). OQ-11 reopened from archive under chassis-volume framing; OQ-57 (Injured chassis volume) added; OQ-21, OQ-27, OQ-1b, OQ-12, OQ-38, OQ-39 cross-linked to the new resolutions. Q-C2 finding logged: Bodyguard is chess-coded behaviorally (Mario's P3 usage = trade-up screening), Framing-B watch-flag added.
+
+---
+
+### May 25, 2026 — Session 19: Digital Prototype PWA + iOS Touch Fix
 
 Built and deployed a single-file offline PWA prototype at GitHub Pages (repo made public). The prototype covers the full game loop: 10×10 board with drag-and-drop piece movement, piece state tracking (armor pips, injured dot, 2 skill slots with icons), rune tracking per player, end-turn notes panel, post-game feedback form (multi-select scale questions + notes), and JSON export per game. All 15 skill icons are base64-embedded so the file runs fully offline once cached. Board and all piece content scale dynamically via `--cell` CSS custom property.
 

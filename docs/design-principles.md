@@ -1,6 +1,6 @@
 # Design Principles
 
-*The rules we design by. Every proposed change must pass these. Last updated: 2026-05-17.*
+*The rules we design by. Every proposed change must pass these. Last updated: 2026-05-26.*
 
 ---
 
@@ -22,6 +22,23 @@ Practical consequences:
 - Future mechanical decisions are evaluated partly on whether they support the framing (soft preference for B-aligned over A-aligned when otherwise equal).
 
 This is design intent, not a mechanical mandate. No immediate rule changes follow from it. See ADR-004 in `mechanics-log/mechanics-evaluated.md` for the alternatives considered and the reversal criterion.
+
+## Chassis and Engine
+
+*Established Session 20 (2026-05-26). Diagnostic lens introduced during Angle 2 of the high-concept investigation.*
+
+The game has two layers:
+
+- **Chassis** — the spatial, movement, health, economy, and combat infrastructure that exists *so that skills can be played*. The 10x10 board, piece movement, Standard Attacks, Health/Armor, the Rune economy, Bodyguard, the Movement Phase. The chassis is necessary but not what the game *is about*.
+- **Engine** — the skill catalogue, draft system, Skill Slots, Skill Path/Range, and combo bonus. This is where the Core Fantasy lives. Combo discovery and execution happen here.
+
+**How to use the lens:**
+- *Diagnosis*: "Is this system louder than it needs to be?" If a chassis system consumes more attention or game-time than its strategic contribution warrants, it's *chassis bloat* (e.g. Q-C1's reading of the Armor↔Armor-Breaker loop). Reducing chassis volume makes the engine more audible.
+- *Design evaluation*: "Does this proposal add to the chassis or the engine?" Engine additions get easier justification (they directly serve combo discovery). Chassis additions need to clear a higher bar — they must enable the engine to do something it couldn't before, not just add texture.
+
+**Worked example:** Stack H (Q-C1) drops Armor cap 3→2 and changes Armorsmith from +1 to +2. That's a *chassis-volume reduction*, not an engine change — Armor itself stays, the RPS structure stays, but the loop's iterations are compressed. The engine becomes proportionally louder without any direct engine work.
+
+The lens is a companion to the Justification Rule: every chassis change should answer "what is this enabling the engine to do?", and every engine change should answer "what combo shape does this open up?"
 
 ## North Star
 

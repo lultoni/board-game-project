@@ -79,10 +79,10 @@
 - **Remaining watch**: The rule requires chaining three lines of text — not explicit at the table. OQ-54 tracks whether "Range-1" language causes confusion in practice.
 - **Status**: Closed. Severity is evaluatable; watch OQ-54 for wording clarity.
 
-### OQ-11: Armor Cap — CONFIRMED WORKING (Playtest 3, RPS loop functions)
-- Keep at 3.
-- **P3 update (Session 15)**: Mario stacked Armor heavily; Elias drafted Armor Breaker as the counter and used it effectively. The RPS loop **functions as designed**. Elias Q17: Armor "slightly extended / well balanced."
-- **Status**: Confirmed working at cap 3. Watch for re-emergence with two experienced players.
+### OQ-11: Armor Cap — REOPENED (Session 20, chassis-volume framing)
+- Originally closed Session 15 as "RPS loop functions, keep at 3."
+- **Reopened 2026-05-26**: high-concept audit (Angle 2) flagged Health & Armor as the strongest chassis-bloat candidate. New question is *volume*, not *balance*. Live entry now in `OPEN_QUESTIONS.md`.
+- See Q-C1 in `docs/research/high-concept-open-questions.md` for full reasoning.
 
 ---
 

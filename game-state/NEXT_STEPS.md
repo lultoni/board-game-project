@@ -2,7 +2,7 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-05-25 — Session 19 (Digital prototype PWA shipped; iOS touch fixed).*
+*Last updated: 2026-05-26 — Session 20 (High-concept questions all resolved; ADR-004 accepted; Stacks H/I/J/K queued).*
 
 ---
 
@@ -12,31 +12,36 @@
   - `docs/test-scenarios/stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf` ×2
   - `docs/test-scenarios/shared/skill-cards.pdf` ×2 (one per player)
   - `docs/test-scenarios/shared/feedback-onboarding.pdf` ×1 (Nico only, fill first)
+  - `docs/test-scenarios/shared/teacher-vocab-checklist.pdf` ×1 (facilitator self-check, Q-D1 bias correction)
   - `docs/test-scenarios/stack-a-cleverness/stack-a-feedback.pdf` ×2 (both players, fill after onboarding form)
   - `docs/test-scenarios/shared/game-tracking.pdf` ×2
 - [ ] **No rule changes for Nico** — full standard baseline draft. Decision logged in memory (`project_nico_first_game.md`).
-- [ ] Track explicitly: Champion kill timing, combo bonus activations, cross-category vs Strike+Strike combos.
+- [ ] Track explicitly: Champion kill timing, combo bonus activations, cross-category vs Strike+Strike combos (Q-D3 watch).
 - [ ] Watch Rune Theft for Mode B (OQ-34).
+- [ ] Q-D1 / Q-D2 evaluation: read against ADR-004 reversal criterion (combined signal across Nico's first game + her game 2).
 
 ## Priority 2 — Run `/playtest 4` after 2026-05-28 game
 
 - [ ] Transcribe + analyse Stack A G2 results and Nico's onboarding feedback form.
 - [ ] Use results to decide next stack (see TESTING_PLAN.pdf decision tree).
+- [ ] Evaluate ADR-004 reversal criterion against combined Q-D1 + Q-D2 results (per Session 20 update).
 
-## Priority 3 — Digital prototype improvements (post-Nico's-game)
+## Priority 3 — Chassis-volume stacks (post-G2)
+
+- [ ] **Stack H (Armor)** — bundled cap 3→2 + Armorsmith +1→+2. Risky-path-first. Trigger: Stack A G2 confirms combo bonus reliably overruns Armor.
+- [ ] **Stack I (Armor rollback)** — conditional on Stack H showing Armor-stalling dominance.
+- [ ] **Stack J (Injured downsides removal)** — gated on Stack A G2 + Stack H.
+- [ ] **Stack K (chassis-minimisation session)** — two-game: 8×8 then 8×8 + 3+3+1 pieces. Trigger: post-G2; needs two experienced players.
+
+## Priority 4 — Digital prototype improvements (post-Nico's-game)
 
 - [ ] **Nico's game (2026-05-28) is paper-only.** Prototype comes into use for playtests after that.
 - [ ] Evaluate after Nico's session: does the JSON export cover what we need for playtest analysis?
 - [ ] Potential improvements backlogged: move history log per turn, undo last move, note which skill was activated per turn.
 
-## Priority 4 — Hold Stack B (Bodyguard Fix)
+## Priority 5 — Hold Stack B (Bodyguard Fix)
 
 - [ ] **De-prioritised.** Playtest 3 showed Bodyguard activates organically once standoff dissolves. Re-evaluate after Stack A G2.
-
-## Priority 5 — Decide next stack after Stack A G2
-
-- [ ] Follow `TESTING_PLAN.pdf` decision tree once G2 data lands.
-- [ ] Likely candidates: Stack F (Cleverness II — sente skills), or a dedicated stack addressing OQ-52 / OQ-53.
 
 ## Priority 6 — Skill Balance (carry-over watches)
 
@@ -87,6 +92,17 @@
 - [x] **More physical writing space** — feedback forms converted to `#v(1fr)` distribution (Session 18).
 
 ---
+
+## Recently completed (Session 20)
+
+- All 11 high-concept open questions (Q-A1 → Q-F1) resolved with discussion-then-decision per question.
+- ADR-004 written and accepted: "Two minds, one puzzle" (Framing B) becomes canonical design intent.
+- New `§ High-Concept Framing` and `§ Chassis and Engine` sections in `design-principles.md`.
+- Q-B4 baseline change shipped: Standard Attack reframed as "a Move that ends on an enemy tile"; survival-stop strengthened. BASELINE_VERSION → 2026-05-26.
+- Q-D1 resolution criteria locked in (≥2/4 strong-signal threshold + teacher-vocab-checklist as bias correction).
+- `shared/teacher-vocab-checklist.typ/pdf` shipped.
+- Stacks H (Armor bundle), I (Armor rollback), J (Injured-downsides removal), K (chassis-minimisation session) queued.
+- OQ-11 reopened (chassis-volume framing); OQ-57 added; OQ-21, OQ-27, OQ-1b, OQ-12, OQ-38 cross-linked.
 
 ## Recently completed (Session 19)
 

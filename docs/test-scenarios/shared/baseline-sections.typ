@@ -17,7 +17,7 @@
 // this constant rather than restating a date. Bump when an accepted mechanic
 // modifies any baseline section function below.
 
-#let BASELINE_VERSION = "2026-05-24"
+#let BASELINE_VERSION = "2026-05-26"
 
 // ── INTRODUCTION ──────────────────────────────────────────────────────────────
 
@@ -136,7 +136,7 @@ You may use 0 slots in either phase.
 == Movement Phase
 
 #block(breakable: false)[
-You have *2 Move Slots* per turn. Spend 1 Move Slot to move one piece. *Each piece may only be moved once per Movement Phase.*
+You have *2 Move Slots* per turn. Spend 1 Move Slot to move one piece — either *into empty space* (normal movement) or *into an enemy tile* (a Standard Attack — see next section). *Each piece may only be moved once per Movement Phase.*
 
 #table(
   columns: (1fr, auto, auto),
@@ -158,13 +158,15 @@ You have *2 Move Slots* per turn. Spend 1 Move Slot to move one piece. *Each pie
 == Standard Attack
 
 #block(breakable: false)[
-To attack, spend a Move Slot to move your piece *onto a tile occupied by an enemy piece.*
+A *Standard Attack* is a Move that ends on an enemy tile. Spend 1 Move Slot to move your piece *onto a tile occupied by an enemy piece.*
 
 - Deal *1 DMG* to the enemy.
-- *If the enemy is removed:* your piece occupies the tile.
-- *If the enemy survives* (Armor absorbed the damage): your piece stops on the tile immediately before the target. (_If there are multiple paths toward the target then you are allowed to choose which one you want to take (important for Bodyguard Rule)_)
+- *If the enemy is removed:* your piece occupies the tile (the attack consumed the move; remaining unused movement tiles do not carry over).
+- *If the enemy survives* (Armor absorbed the damage): your piece *stops on the tile immediately before the target.* This applies to *every* attacker — a Guard with speed 2 ends up having moved only 1 tile; a Champion or King with speed 1 does not move at all. Either way the damage is dealt. (_If multiple paths reach the target, you choose which one — important for the Bodyguard Rule._)
 
 You may attack with one Move Slot and move a different piece with the other Move Slot in the same turn.
+
+_Standard Attacks are how pieces deal damage with movement alone. Skills — activated in the Action Phase — are the other way pieces affect each other, and use different rules (Skill Path, Range, Runes)._
 ]
 ]
 
