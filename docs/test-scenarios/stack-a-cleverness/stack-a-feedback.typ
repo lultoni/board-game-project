@@ -50,7 +50,9 @@ _One form per player. Fill out after the game._
 
 #fq("3")[
   *Did the combo bonus feel like a meaningful reward for coordination?*\
-  Very rewarding — Somewhat — Neutral — Barely noticeable — Never triggered
+  Very rewarding — Somewhat — Neutral — Barely noticeable — Never triggered\
+  _When it triggered, was that something you had planned in advance — or did it happen more by coincidence?_\
+  Planned — Bit of both — Coincidence
 ]
 #v(1fr)
 
@@ -79,7 +81,8 @@ _One form per player. Fill out after the game._
 == C — Systems & Overall Feel
 
 #fq("7")[
-  *Skill Drafting:* Did the draft feel fair and engaging? Clear plan, or just picked what seemed good?
+  *Skill Drafting:* Did the draft feel fair and engaging? Clear plan, or just picked what seemed good?\
+  _Did you draft with specific skill pairings in mind — thinking about how skills could work together — or did you evaluate each skill individually for what it does on its own?_
 ]
 #v(1fr)
 
@@ -101,8 +104,9 @@ _One form per player. Fill out after the game._
 #v(1fr)
 
 #fq("11")[
-  *Bodyguard Rule:* Did it trigger? Did you actively reposition Guards to use it?\
-  Triggered \_\_\_\_\_ times. #h(8pt) Repositioned for it: Yes / No / Sometimes
+  *Bodyguard Rule:* Did it trigger? Did you reposition Guards because of it?\
+  Triggered \_\_\_\_\_ times. #h(8pt) Repositioned Guards: Yes / No / Sometimes\
+  _When you repositioned Guards, was it mainly to protect a piece from being attacked — or to open up a line of sight for a skill? Or both?_
 ]
 
 #pagebreak()
@@ -115,7 +119,9 @@ _One form per player. Fill out after the game._
 
 #fq("13")[
   *Armor:* Did either player stack Armor heavily? Did it feel well-balanced or did it slow the game?\
-  Slowed game noticeably — Slightly extended — Well balanced — Armor rarely mattered
+  Slowed game noticeably — Slightly extended — Well balanced — Armor rarely mattered\
+  _Did tracking and managing Armor take up a noticeable part of your mental focus — time you might otherwise have spent planning skill combos?_\
+  Yes, a lot — Somewhat — Not really — No
 ]
 #v(1fr)
 
@@ -130,7 +136,14 @@ _One form per player. Fill out after the game._
 ]
 #v(1fr)
 
+// ADR-004 (Framing B) — parallel puzzle signal
 #fq("16")[
+  *Opponent's game:* Did you feel like you and your opponent were both solving a similar kind of puzzle — figuring out the same game from opposite sides? Or more of a direct "stop them from winning" contest?\
+  Same puzzle — Bit of both — Direct contest — Hard to say
+]
+#v(1fr)
+
+#fq("17")[
   *Most confusing or frustrating rule or moment:*
 ]
 #v(1fr)

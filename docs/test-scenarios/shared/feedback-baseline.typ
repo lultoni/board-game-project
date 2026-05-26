@@ -108,7 +108,7 @@ _These questions cover the full game — not just the stack being tested. Identi
 // ── STANDARD SKELETON (keep in all stacks) ──────────────────────────────────
 
 #fq("N")[
-  *Skill Drafting:* Did the draft feel fair and engaging? Did you have a clear plan going in, or did you just pick what seemed good?\
+  *Skill Drafting:* Did the draft feel fair and engaging? Did you draft with specific skill pairings in mind — thinking about how skills could work together — or did you evaluate each skill individually for what it does on its own?\
   \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
 #v(1fr)
@@ -148,9 +148,13 @@ _These questions cover the full game — not just the stack being tested. Identi
 #v(1fr)
 
 // OQ-11 (Armor Cap — did armor extend games or feel well-balanced?)
+// OQ-11 Armor: ask about ATTENTIONAL COST, not just pacing.
+// Add second line: "Did tracking Armor take focus away from planning skill combos?"
 #fq("N")[
   *Armor:* Did either player stack a lot of Armor? Did Armor feel like it slowed the game down, or was it a fair tradeoff?\
-  Slowed game noticeably — Slightly extended — Well balanced — Armor rarely mattered
+  Slowed game noticeably — Slightly extended — Well balanced — Armor rarely mattered\
+  _Did tracking and managing Armor take up a noticeable part of your mental focus — time you might otherwise have spent planning skill combos?_\
+  Yes, a lot — Somewhat — Not really — No
 ]
 #v(1fr)
 
@@ -171,8 +175,15 @@ _These questions cover the full game — not just the stack being tested. Identi
 //  Delete this comment and insert the actual fq() block.]
 
 #fq("N")[
-  *Favorite moment of the game:*\
+  *Favorite moment of the game — describe what happened:*\
   \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+]
+#v(1fr)
+
+// ADR-004 (Framing B) — parallel puzzle signal. Keep in all stacks.
+#fq("N")[
+  *Opponent's game:* Did you feel like you and your opponent were both solving a similar kind of puzzle — figuring out the same game from opposite sides? Or more of a direct "stop them from winning" contest?\
+  Same puzzle — Bit of both — Direct contest — Hard to say
 ]
 #v(1fr)
 
