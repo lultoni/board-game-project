@@ -147,8 +147,9 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 ## Deferred (concrete trigger required)
 
 ### OQ-27: Piece Count and Ratio — DEFERRED
-**Current: 5 Champions + 6 Guards + 1 King.** Proposed (Stack K): 3 Champions + 3 Guards + 1 King.
+**Current: 5 Champions + 6 Guards + 1 King.** Proposed (Stack K G2): 3 Champions + 4 Guards + 1 King.
 - Bundled with board size. Both are "scale it down" changes. Must preserve per-turn decision depth.
+- **Ratio rationale**: 4G+3C keeps a stronger bodyguard/screen function while shrinking the combo engine to 3 Champions — fewer slots to evaluate, less option-overwhelm, same chassis feel.
 - **Re-entry trigger**: After Stack A/B — if first Champion kill is still past R15, becomes Priority 1.
 - **Test plan (Session 20)**: now operationalised as **Stack K** in `TESTING_PLAN.typ` — two-game session unbundling board (G1) from piece count (G2). Trigger: post-Stack-A G2.
 
@@ -156,6 +157,7 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 **10×10 confirmed viable; 8×8 not yet tested. Would tighter geometry reduce empty-board feel in opening?**
 - Bundled with OQ-27 (piece count) — both are "scale it down" levers.
 - **Re-entry trigger**: Stack K scope (Session 20). Tested as Game 1 of the two-game chassis-minimisation session.
+- **Follow-up (OQ-1c, contingent)**: If 8×8 shows positive returns (denser play, less empty-board feel, shorter games), next step is **6×6 + 3C+4G+1K** as a bundled further reduction. Hypothesis: does shrinking further produce a more compact, combo-focused experience with less option-overwhelm? Coupling is deliberate (board size and piece count are not independent at 6×6 — you can't fit the full piece set). Gated strictly behind positive 8×8 data.
 - **History**: see OQ-1 in `OPEN_QUESTIONS_ARCHIVE.md`.
 
 ### OQ-35: Skill Pool Draft Variant — DEFERRED

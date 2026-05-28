@@ -715,6 +715,22 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ---
 
+## [TO DISCUSS] 6×6 Board + 3C+4G+1K — Extreme Chassis Minimisation (Session 21 idea)
+
+**What it fixes / improves**: Same hypothesis as Stack K (8×8 + piece reduction), pushed one step further. Does shrinking the board and army to their minimum practical size produce a more compact, combo-focused game where players spend less time navigating space and more time discovering and executing skill combinations? Specifically: reduces option-overwhelm (fewer pieces = fewer slots to evaluate), shortens game length, and tightens the decision density so both players are in "interesting choices" territory more of the time.
+
+**Coupling note**: Board size and piece count are NOT independent at 6×6 — the full 12-piece army doesn't fit a 6×6 board without overcrowding the setup. This is why they must be bundled (unlike 8×8 where either variable can be tested alone). The coupling is deliberate and documented; this is not a methodology violation but an accepted constraint.
+
+**Piece count rationale (4G+3C+1K)**: More Guards relative to Champions keeps the bodyguard/screen function meaningful while reducing the combo engine to 3 Champions — fewer skill slots in play, less catalogue knowledge required at once, same team-identity feel.
+
+**Trigger / gating**: Strictly contingent on 8×8 (Stack K G1) AND 8×8 + 3C+4G+1K (Stack K G2) both showing positive returns (denser play, shorter game, better combo focus). Do not test if either prior step shows neutral or negative results — it would not be informative. Operationalised as Stack K G3.
+
+**Risks**: At 6×6, even 8 pieces per side may feel overcrowded at opening. Formation design would need revisiting (current `--GGGG--/--CCKCC--` layout assumes a wider board). Game may feel more like a puzzle-box than a tactical game — evaluate after G2 data.
+
+**Status**: `[TO DISCUSS]` — staged follow-up to Stack K. See OQ-1b (follow-up note) and OQ-27 for context.
+
+---
+
 ## [TO DISCUSS] Starting-Formation Swap to Expose King (Session 15 idea)
 
 **What it fixes / improves**: addresses OQ-53 (King isn't a real target) by changing the *starting* geometry so the King is more open from turn 1 — without changing what the King *is*. Specifically: swap the centre 2 Champions with the Guards in front of them, OR swap King + adjacent Champion with their fronting Guards, OR similar formation tweaks that reduce the King's screen. Lightweight to test (no rule changes — only initial setup).

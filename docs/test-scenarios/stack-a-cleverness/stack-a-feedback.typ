@@ -149,7 +149,7 @@ _One form per player. Fill out after the game._
 #v(1fr)
 
 #rating-row("Game length:")[
-  1 (way too short) — 2 (a bit short) — 3 (just right) — 4 (a bit long) — 5 (way too long) #h(8pt) Circle: *1 · 2 · 3 · 4 · 5*
+  1 (way too short) — 2 (a bit short) — 3 (just right) — 4 (a bit long) — 5 (way too long)
 ]
 
 #rating-row("Combat feel vs Playtest 2:")[

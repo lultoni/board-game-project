@@ -31,7 +31,7 @@
 - [ ] **Stack H (Armor)** — bundled cap 3→2 + Armorsmith +1→+2. Risky-path-first. Trigger: Stack A G2 confirms combo bonus reliably overruns Armor.
 - [ ] **Stack I (Armor rollback)** — conditional on Stack H showing Armor-stalling dominance.
 - [ ] **Stack J (Injured downsides removal)** — gated on Stack A G2 + Stack H.
-- [ ] **Stack K (chassis-minimisation session)** — two-game: 8×8 then 8×8 + 3+3+1 pieces. Trigger: post-G2; needs two experienced players.
+- [ ] **Stack K (chassis-minimisation session)** — three-game ladder: 8×8 (G1), then 8×8 + 3C+4G+1K pieces (G2), then 6×6 + 3C+4G+1K (G3) if G1/G2 show positive density returns. Trigger: post-G2; needs two experienced players.
 
 ## Priority 4 — Digital prototype improvements (post-Nico's-game)
 
