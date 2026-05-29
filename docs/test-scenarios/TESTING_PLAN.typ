@@ -1,35 +1,177 @@
 #import "./shared/template.typ": *
-#show: template.with(title: "(GAME NAME) — Testing Plan & Decision Tree")
+#show: template.with(title: "(GAME NAME) — Testing Plan")
 
-= Testing Plan — Dynamic Stack System
+= Testing Plan
 
-_Last updated: 2026-05-19. Updated by Claude at end of each session._
+_Last updated: 2026-05-29 (Session 22, post-Playtest-4). Updated by Claude at end of each session._
 
 #note-box[
-  *How to use this document:* After each playtest, read the decision tree on the next page to find which stack to run next. Pick the stack that addresses the most pressing issue the playtest surfaced. PDFs for all available tests are in their stack folder.
+  *How to read this document:*
+  + Top section: *the current Active stack* — the one being run next.
+  + Then: *Queued* (next in line, prioritised), *Dormant* (waiting on a trigger), *Resolved* (done or withdrawn).
+  + Each stack has a *stable letter ID* (Stack H, Stack A G3, etc.) used by OQs and historical docs, plus a *descriptive name* (Armor Trim, Dual-Counter Combo).
+  + Routing rules — "if result X, advance stack Y" — live with each stack, not in a separate decision tree.
 ]
 
 #hr
 
-== Testing Stacks
+== Active
 
-A *stack* = a group of 1–3 test scenarios that all push toward the same experience outcome. Stacks are independent — run them in any order based on what the game needs most.
+_Exactly one stack is Active at a time — the one prepping to run, or running. Don't open a second._
+
+=== Stack H — Armor Trim
+
+*Targets:* OQ-11 chassis-volume hypothesis. Armor↔Armor-Breaker loop crowds out the combo loop (P4-confirmed).
+
+*Variants (within-stack doses):*
+- *Bundled (lead)*: Armor cap 3→2 *and* Armorsmith +1→+2 (one-shot fortify, not stack-grind).
+- *Smaller dose (rollback)*: Armor cap 3→2 only, Armorsmith unchanged. Run as next iteration of Stack H if the bundled dose stalls (build cheaper than break).
+
+*Status:* Rule sheet not yet written. Folder pending: `docs/test-scenarios/stack-h-armor-trim/`.
+
+*Entry conditions:* Two experienced players required (chassis-volume read needs both players able to plan combos). Standard Attack 1 DMG (Layer 1 Stack A G1) and current combo bonus (Stack A G2) carry forward as baseline.
+
+*What "good" looks like:*
+- Armor granted total per game drops noticeably from P4 baseline (P4: 14 / 22).
+- Mid-game Armor-stack arc (P4 R15-R21 cluster) shortens or disappears.
+- Q13 mental-focus self-report drops vs P4 ("Yes, a lot" → "Slightly" or lower).
+- Combo loops fire mid-game, not only after a 7-round Armor consolidation.
+
+*Routing on result:*
+- *Bundled works (Armor volume drops, exchange-pit pattern softens)* → resolve OQ-11 + watch OQ-58. Next Active = *Stack A G3 — Dual-Counter Combo*.
+- *Bundled stalls (Armor stalling becomes dominant — build cheaper than break)* → run smaller dose as iteration. Same OQ, smaller variable.
+- *Bundled works, exchange-pit pattern persists* → confirms OQ-58 is independent of Armor volume. Next Active = *Stack A G3*.
+- *Bundled works, first kill jumps past R20* → unlikely but watch. Next Active = *Stack C — Pacing*.
+
+*Cross-refs:* OQ-11, OQ-57 (gated behind H), OQ-58 (watched under H), Q-C1, P3 + P4 evidence in `docs/research/playtest-3-analysis.md` and `playtest-4-analysis.md`.
+
+#hr
+
+== Queued
+
+_Stacks gated on a specific other stack's result, ordered by priority._
+
+=== Q1. Stack A G3 — Dual-Counter Combo *(gated on Stack H)*
+
+*Targets:* OQ-38 scope-not-strength reframe + OQ-58 exchange-pit + OQ-59 (esp. 59b endgame conversion gap).
+
+*Mechanic summary* (full design in `docs/backpocket.md`):
+- *Target counter* (kept from G2): different friendly Champions hit same enemy target → bonus on 2nd+ hit.
+- *Attacker counter* (new): same friendly Champion hits different enemy targets → bonus on 2nd+ hit.
+- Both counters live in parallel; if a hit qualifies for both, both fire (intuitive stacking — rare in practice).
+- Scope widened: any skill that hits an enemy piece counts. Standard Attacks excluded.
+- Multi-target skills (Blade Tempest) tick the counter on every hit piece. Watch flag — first rollback if dual-counter proves OP.
+
+*Justifications:*
+- (a) Cross-category crowd-out (P4 #3, Q-D3-risk).
+- (b) Late-game offensive lockout (P4 #6 — Elias verbatim "I did not have any other attack champs left").
+- (c) Mid-game exchange-pit pattern (P4 OQ-58 — attacker counter rewards distributing pressure across multiple fronts, not one-piece-at-a-time attrition).
+
+*Teaching-cost flag (G4 / OQ-60):* two parallel counters is strictly more complex than current Stack A G2 — will likely need physical tokens or board-side trackers. Watched for cognitive-load violation.
+
+*Routing on result:*
+- *Exchange-pit dissolves* → resolve OQ-58 + OQ-38 dual-counter accepted. Next: monitor OQ-59 (opening + endgame dead-air).
+- *Exchange-pit persists, dual-counter scope OK* → keep dual-counter, advance to *Stack F — Sente Skills* for a different mechanism.
+- *Cognitive load too high (G4 violation)* → roll back to single-counter widened scope (Option A: Move-into-Strike).
+
+=== Q2. Stack K — Piece Count Reduction *(gated on Stack H)*
+
+*Targets:* OQ-27 piece density. *Decoupled from board geometry as of Session 22* — Stack D owns board size.
+
+*Variant:* Current board (10×10 today) with 3 Champions + 3 Guards + 1 King per side (vs current 5+6+1).
+
+*Entry conditions:* Two experienced players, full session.
+
+*Routing on result:*
+- *Density feels right, decisions sharper* → OQ-27 leans toward fewer pieces. Folds into Phase B baseline candidate.
+- *Game gets too thin / too short* → density was load-bearing. Revisit only with smaller board (Stack D 8×8) bundled.
+
+=== Q3. Stack J — Injured Trim *(gated on Stack H)*
+
+*Targets:* OQ-57 — does Injured's mechanical chassis (speed cap, Range −1, self/adjacent carve-out) pay for itself in game-feel?
+
+*Variant:* Remove Injured's mechanical downsides. State persists as HP-tracker only.
+
+*Why gated on H:* Armor chassis-volume reduction must land first so Injured-volume signal reads cleaner.
+
+*Routing on result:*
+- *Game still reads well, no downside felt* → Injured-as-HP-tracker becomes baseline candidate. Volume cost was unjustified.
+- *Injured pieces feel structureless (no threat/penalty)* → keep current Injured rules. OQ-57 closes negative.
+
+#hr
+
+== Dormant
+
+_Waiting on a trigger that hasn't been hit. No internal ordering._
+
+=== Stack C — Pacing
+
+*Trigger:* First Champion kill past Round 20 in any future stack.
+
+*Variants:* King Lifetime HP (unkillable-King → fixed length); Armor Decay (Armor breaks down each round).
+
+*Status:* Rule sheet not yet written. P4 first-kill = R13 → not triggered. OQ-19, OQ-41.
+
+=== Stack D — Board Geometry
+
+*Trigger:* Board size or geometry surfaces as a bottleneck in any future stack.
+
+*Variants:* 8×10 (OQ-52 narrower board), 8×8, hex grid (gated on `/research hex vs square grid in tactical games` per OQ-42).
+
+*Status:* Rule sheet not yet written.
+
+=== Stack E — Draft Flow
+
+*Trigger:* Draft feels stale or under-explored after Stack A G3 lands.
+
+*Variants:* Pool draft (OQ-35 — draft pool first, assign after); placement order (OQ-36 + OQ-48 — equip skills first, then place on board).
+
+*Status:* Rule sheet not yet written.
+
+=== Stack F — Sente Skills
+
+*Trigger:* *Stack A G3 ran but exchange-pit pattern persists.* Sente threats are a different mechanism for the same problem (forcing forward commitment) — not a duplicate.
+
+*Variants:* Cascade trigger (+1 Skill Slot on kill, OQ-51), Pin / Threatened restriction, midline pressure skills (10 candidates staged in `docs/backpocket.md`).
+
+*Status:* Rule sheet not yet written. Sequenced after Stack A G3 per Session 22 decision.
+
+=== Stack G — Unified AP
+
+*Trigger:* Core systems stable across A G3, H, J, K. Radical structural change — do not test alongside other active experiments.
+
+*Variant:* 3 AP/turn unified action-point model, replacing separate Movement and Action phases.
+
+*Status:* Draft written, not yet run. OQ-26.
+
+#hr
+
+== Resolved
+
+_Outcome known. Listed for historical cross-reference; not active work._
 
 #table(
-  columns: (auto, auto, 1fr, auto),
-  table.header([Stack], [Outcome], [Scenarios in Stack], [Status]),
-  [*A*], [Make cleverness rewarding], [L2-G1: Attack nerf · L2-G2: + Combo bonus], [*G1 confirmed (P3) · G2 ready (pending pre-work)*],
-  [*B*], [Make Guards matter more], [L3: Bodyguard fix (defender-only)], [*De-prioritised — may be obsolete after P3*],
-  [*C*], [Shorten games / accelerate kills], [King Lifetime HP · Armor Decay], [Not yet written],
-  [*D*], [Optimise board feel and scale], [8×10 board (new — OQ-52) · 8×8 · Piece count · Hex grid (gated on `/research`)], [Not yet written],
-  [*E*], [Improve drafting experience], [Pool draft (OQ-35) · Placement order (OQ-36+48)], [Not yet written],
-  [*F*], [More levers for clever plays], [Cascade trigger · Pin/Threatened · Sente skills (10 candidates staged)], [Not yet written — gated on OQ-52/53 brainstorm],
-  [*G*], [Radical structure redesign], [Unified AP framework (no separate Movement/Action phases)], [Draft written — not yet tested],
-  [*H*], [Reduce Armor chassis volume], [Cap 3→2 + Armorsmith +1→+2 (bundled)], [Not yet written — gated on Stack A G2],
-  [*I*], [Armor rollback (if Stack H stalls)], [Cap 3→2 only, Armorsmith unchanged], [Not yet written — conditional on Stack H result],
-  [*J*], [Reduce Injured chassis volume], [Remove Injured speed cap + Range −1 (state persists as HP-tracker)], [Not yet written — gated on Stack A G2 + Stack H],
-  [*K*], [Chassis-minimisation session], [Two-game session: G1 = 8×8 board (current pieces); G2 = 8×8 + reduced pieces (3+3+1)], [Not yet written — gated on Stack A G2; needs two experienced players for one full session],
+  columns: (auto, 1fr, 1fr),
+  table.header([Stack], [Outcome], [Source]),
+  [*Stack A G1 — Attack Nerf*], [*Accepted into baseline (P3, 2026-05-17).* Standard attack 1 DMG. First Champion kill moved R26 → R11. Standoff dissolved.], [`playtest-3-analysis.md`],
+  [*Stack A G2 — Combo Bonus*], [*Confirmed in mechanics, design-aligned in feel (P4, 2026-05-28).* Multi-Champion Strike-only counter scales +0/+1/+2. Stays in baseline. Scope-widening discussion produced *Stack A G3* — see Queued.], [`playtest-4-analysis.md` + Session 22 discussion],
+  [*Stack B — Bodyguard Fix*], [*Withdrawn (Session 22, 2026-05-29).* Defender-only adjacency change. P4 confirmed Bodyguard tracks standoff state, not the rule (0 triggers when Armor stalling returned). Different solutions would be on the table even if Bodyguard remains broken post-Stack-H. The stack as drafted is not the right fix.], [P4 evidence; Session 22 designer call],
+  [*Stack I — Armor Rollback*], [*Folded into Stack H (Session 22, 2026-05-29).* Was a contingency dose, not a distinct stack. Now lives as the smaller dose within Stack H.], [Session 22 restructure],
 )
+
+#hr
+
+== Carry-Forward Baseline (in every future stack)
+
+#table(
+  columns: (auto, auto, 1fr),
+  table.header([Layer], [Status], [What it adds]),
+  [Layer 1: Economy fix], [*Accepted* (P2, 2026-04-24)], [6 start Runes · +2/turn · +1 every 5 rounds],
+  [Stack A G1: Standard Attack 1 DMG], [*Accepted* (P3, 2026-05-17)], [Standard attack deals 1 DMG (was 2). Skills become primary damage source.],
+  [Stack A G2: Multi-Champion Combo Bonus], [*Accepted* (P4, 2026-05-28)], [+0/+1/+2 counter on 2nd+ Strike on same target by different Champions same turn.],
+)
+
+_All future stacks must include these. Use `section-setup(start-runes: 6, layer1-accepted: true)` and `section-resource-economy(start-runes: 6, layer1-accepted: true)` in `baseline-sections.typ`._
 
 #hr
 
@@ -37,149 +179,56 @@ A *stack* = a group of 1–3 test scenarios that all push toward the same experi
 
 #table(
   columns: (auto, 1fr, auto),
-  table.header([File], [Contents], [Stack]),
-  [`stack-a-cleverness/stack-a-game1-attack-nerf.pdf`], [Standard attack 1 DMG. Play FIRST.], [A],
-  [`stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf`], [Same + multi-Champion combo bonus. Play SECOND.], [A],
-  [`stack-a-cleverness/stack-a-feedback.pdf`], [Feedback form — fill out after both Stack A games.], [A],
-  [`stack-b-guards/stack-b-bodyguard-fix.pdf`], [Bodyguard adjacency: defender only.], [B],
-  [`stack-b-guards/stack-b-feedback.pdf`], [Feedback form — fill out after Stack B.], [B],
+  table.header([File], [Contents], [State]),
   [`shared/game-tracking.pdf`], [Per-player in-game tracking sheet. Print 1 per player per game.], [—],
+  [`shared/skill-cards.pdf`], [15 skill reference cards (one per skill, 2×2 range matrix).], [—],
+  [`shared/feedback-onboarding.pdf`], [First-game-only feedback form. Stack-independent.], [—],
+  [`shared/feedback-baseline.pdf`], [Template for stack-specific feedback forms.], [—],
 )
+
+_Stack-specific PDFs (Stack H rule sheet + feedback) will be added here once written._
 
 #hr
 
-== Entry Conditions Per Stack
+== How to Create a New Stack
 
-#table(
-  columns: (auto, 1fr),
-  table.header([Stack], [When to enter]),
-  [*A*], [Always first — foundation for all other stacks. Results drive most downstream decisions.],
-  [*B*], [Any time. Independent of Stack A combat results. Run whenever Guard utility feels low.],
-  [*C*], [If first Champion kill still past Round 20 after Stack A. Two candidates: King Lifetime HP (unkillable-King) and Armor Decay (infinite-cycling). Independent of Stack B.],
-  [*D*], [If Stack A + B data shows board size or piece density as bottleneck. Hex variant gated on running `/research hex vs square grid` first.],
-  [*E*], [After Stack B (Layer 3) is accepted. Independent of combat system.],
-  [*F*], [After Stack A combo bonus data. Dependent on combo ceiling AND standoff persistence. Gated on Stack A/B combat balance confirmation.],
-  [*G*], [After Stacks A, B, and C stabilise. Radical change — do not test alongside other active experiments.],
-  [*H*], [After Stack A G2 confirms whether the multi-Champion combo bonus creates faster-than-Armor kill paths. If combos overrun Armor reliably, Stack H may auto-resolve (Q-C1 dissolves). Otherwise: bundled cap 3→2 + Armorsmith +1→+2 test. Risky-path-first per session-19 decision.],
-  [*I*], [Conditional on Stack H result. Run only if Stack H shows Armor stalling becomes dominant (build cheaper than break). Single-variable rollback: cap 3→2, Armorsmith unchanged.],
-  [*J*], [After Stack A G2 + Stack H. Combo lethality (from G2) must be confirmed before testing whether Injured pieces still threaten meaningfully at full range; Armor chassis-volume reduction (H) trims baseline first so Injured-volume signal reads cleaner.],
-  [*K*], [After Stack A G2. Two-game session in one sitting: G1 = 8×8 board with current piece count (single-variable: board); G2 = 8×8 with 3 Champions + 3 Guards + 1 King (single-variable: piece count, on top of G1's board). Maps OQ-1b + OQ-27 (previously bundled in archive). Needs two experienced players, full session.],
-)
-
-#hr
-
-== Current Priority Sequence
-
-_Result-driven — this ordering updates after each playtest. Last confirmed: Session 16 (2026-05-19, pre-Stack-A-G2 prep complete)._
-
-#table(
-  columns: (auto, 1fr, 1fr),
-  table.header([Priority], [Action], [Trigger to advance]),
-  [*P1*], [Run Stack A Game 2 — ready to print], [Two experienced players, data in hand],
-  [*P2*], [Brainstorm OQ-52 (centre attractor) + OQ-53 (King as real target) — combined session], [Solution candidates staged or scoped],
-  [*P3*], [Evaluate Stack A G2 → choose next stack via decision tree], [G2 data in hand],
-  [*P4*], [Skill balance monitoring (Rune Theft Mode A/B, Shadow Shift, Blade Call)], [Ongoing during P1–P3],
-  [*P5*], [Digital prototype ADR — decide yes/no], [Sleep-on-it period elapsed],
-)
-
-#note-box[
-  *After P3*: the decision tree on the next page determines which of Stacks C, D, E, F, or G is next. There is no fixed ordering beyond this point — it depends on playtest results.
-]
-
-#pagebreak()
-
-== Decision Tree
-
-_After each playtest, follow the branch that matches your result to find the highest-value next stack._
-
-=== Phase 1: Stack A + B Evaluation
-
-#table(
-  columns: (auto, auto, 1fr, auto),
-  table.header([After], [Result], [Meaning], [Next]),
-  table.hline(),
-  [*Stack A*], [Champion kill before R15], [Combo ceiling raised — attack nerf + bonus working], [Check standoff ↓],
-  [], [Champion kill R15–R20], [Partial improvement — monitor], [Check standoff ↓],
-  [], [Champion kill after R20], [Pacing problem confirmed — kills too slow], [*→ Stack C*],
-  table.hline(),
-  [Standoff?], [Yes — standoff persists], [Players still won't commit forward], [*→ Stack F*],
-  [], [No — engagement healthy], [Attack nerf dissolved the gap], [*→ Stack B*],
-  table.hline(),
-  [*Stack B*], [Bodyguard triggers ≥ 3], [Stack B accepted — Guards are useful screens], [Evaluate A+B ↓],
-  [], [Bodyguard triggers 1–2], [Partial — consider attacker-only variant], [Evaluate A+B ↓],
-  [], [Bodyguard triggers 0], [Still broken — investigate root cause], [Evaluate A+B ↓],
-  table.hline(),
-  [*A+B done*], [Kill still past R20], [Game too long despite combo bonus], [*→ Stack C*],
-  [], [Combo ceiling still low], [Skills still don't feel dominant], [*→ Stack F*],
-  [], [Board feels cramped/empty], [Spatial problems surfaced], [*→ Stack D*],
-  [], [Draft feels stale], [Not enough variety/agency in draft], [*→ Stack E*],
-  [], [Core stable — no urgent issues], [Ready for radical structure test], [*→ Stack G*],
-)
-
-#pagebreak()
-
-=== Phase 2: Stack C → G Evaluation
-
-#table(
-  columns: (auto, auto, 1fr, auto),
-  table.header([After], [Result], [Meaning], [Next]),
-  table.hline(),
-  [*Stack C*], [Game ends under R25], [Pacing solved], [→ next issue below],
-  [_(Pacing)_], [Game still R25+], [Board size / piece count is the problem], [*→ Stack D*],
-  table.hline(),
-  [*Stack F*], [Standoff dissolved + clever plays rewarded], [Skill variety working], [→ next issue below],
-  [_(Cleverness II)_], [Partially — some improvement], [Need more sente skills], [*Iterate in F*],
-  [], [No — standoff persists], [Deploy fallback: midline bonus or generators], [→ next issue below],
-  table.hline(),
-  [*Stack D*], [Board feel improved], [Accept new board config], [→ next issue below],
-  [_(Board)_], [Tradeoffs / not improved], [Try other variant (hex, piece count)], [*Iterate in D*],
-  table.hline(),
-  [*Stack E*], [Draft experience improved], [Accept draft change], [*→ Stack G*],
-  [_(Draft)_], [Not improved], [Iterate within E], [*Iterate in E*],
-  table.hline(),
-  [*Stack G*], [AP system is an improvement], [Accept — becomes new baseline], [Done],
-  [_(Structure)_], [AP system not better], [Keep current two-phase turn structure], [Done],
-)
-
-#v(1em)
-
-*"Next issue" routing after any stack:*
-- Kill timing still past R20 → *Stack C*
-- Combo ceiling / standoff → *Stack F*
-- Board cramped → *Stack D*
-- Draft stale → *Stack E*
-- Core stable → *Stack G*
-
-#hr
-
-#note-box[
-  *Session 16 context (2026-05-19):* All pre-Stack-A-G2 prep complete. Rule clarifications: Range system refined (default = 2 unless "self"/"adjacent" explicit; Range modifiers apply from default; self/adjacent targeting cannot be shifted inward by buffs). Focus Strike note added. Tracking sheet redesigned (R+, SS, Atk columns pre-filled). Rule document restructured (Introduction + Simple Overview pages; dependency-correct section order). Designer-box style added for facilitator notes. Stack A G2 rule sheets updated and ready to print.
-
-  *Session 15 context (2026-05-18):* Playtest 3 confirmed Stack A Game 1 (standard attack 1 DMG) — accepted into baseline. Bodyguard activated organically without Stack B's adjacency fix → Stack B de-prioritised. Two new OQs raised: OQ-52 (centre-of-board has no attractor, flank-drift problem) and OQ-53 (attrition vs regicide — King is incidental, not a target). These are gating Stack F. Stack D gained 8×10 narrower board as a new candidate.
-
-  *Session 11 context (2026-04-29):* Checkmate win condition killed — King Lifetime HP replaces it as Stack C's lead mechanic. Sente skill design chosen as primary standoff solution (affects Stack F). 10 skill candidates staged in `docs/backpocket.md`. G8 guardrail added: "Players must always want to do more than they can execute." All future stack evaluations should check G8 compliance.
-]
-
-#hr
-
-== Accepted Layers (Carry Forward Into All Future Sheets)
-
-#table(
-  columns: (auto, auto, 1fr),
-  table.header([Layer], [Status], [What it adds]),
-  [1: Economy fix], [*Accepted* (Playtest 2, 24.04.2026)], [6 start Runes · +2/turn · +1 every 5 rounds],
-  [Standard Attack 1 DMG], [*Accepted* (Playtest 3, 17.05.2026)], [Standard attack deals 1 DMG (was 2). Skills become primary damage source. Standoff dissolved.],
-)
-
-_All future layers must include Layer 1 economy values. Use `section-setup(start-runes: 6, layer1-accepted: true)` and `section-resource-economy(start-runes: 6, layer1-accepted: true)` in baseline-sections.typ._
-
-#hr
-
-== How to Create a New Test Stack
-
-+ Identify which stack the new variant belongs to.
-+ Create folder: `docs/test-scenarios/stack-X-<slug>/`
-+ Write `stack-X-<desc>.typ` — import `baseline-sections.typ`, call section functions for unchanged rules. For Quick Reference, prefer `#section-quick-reference(overrides: (...), extra-rows: (...))` over inlining the table.
++ Identify which OQ(s) the new stack targets.
++ Pass the *Justification Rule check*: what specific problem does this fix, or what game-feel improvement does it deliver?
++ Create folder: `docs/test-scenarios/stack-X-<descriptive-slug>/` (e.g. `stack-h-armor-trim/`).
++ Write `stack-X-<slug>.typ` — import `baseline-sections.typ`, call section functions for unchanged rules. For Quick Reference, prefer `#section-quick-reference(overrides: (...), extra-rows: (...))` over inlining the table.
 + Write `stack-X-feedback.typ` — copy `shared/feedback-baseline.typ`, fill `[STACK: ...]` placeholders, add OQ-monitoring questions for this stack's active OQs.
 + Run `zsh docs/test-scenarios/build-pdfs.sh` — the script auto-discovers new `.typ` files; no list maintenance needed.
-+ Update this TESTING_PLAN.typ: add the new scenario to the stack table, entry conditions, and decision tree.
++ Update this `TESTING_PLAN.typ`: add the stack to *Active* (replacing the previous Active) or *Queued*, depending on its gate state.
+
+#hr
+
+== Naming Convention
+
+Stacks have a *stable letter ID* and a *descriptive name*. The letter ID is what OQs, mechanics-evaluated.md, and historical playtest analyses cross-reference — never renumber, never recycle. The descriptive name is what humans read in this doc and in conversation.
+
+Format in references: `Stack H — Armor Trim` or `Armor Trim (Stack H)`.
+
+Letter IDs are immutable once assigned. Names can be refined; if a name changes, log it in the Resolved table or a Session note.
+
+#hr
+
+== Session Notes
+
+_Latest at top._
+
+#note-box[
+  *Session 22 (2026-05-29) — restructure:*
+  - Stack I dropped — folded into Stack H as the smaller dose. Same OQ, same hypothesis.
+  - Stack B withdrawn — defender-only adjacency is not the right fix even if Bodyguard remains broken post-Stack-H.
+  - Stack K decoupled from Stack D — K now owns Piece Count Reduction; D owns Board Geometry.
+  - Stack A G3 (Dual-Counter Combo) added to Queued — drafted from P4 design discussion.
+  - Decision tree (Phase 1 / Phase 2) replaced with per-stack routing rules.
+  - State lifecycle: Active / Queued / Dormant / Resolved.
+  - Stacks renamed for legibility; letter IDs preserved as stable cross-reference keys.
+
+  *Session 16 (2026-05-19) — historical:* Pre-Stack-A-G2 prep complete. Range system clarification, Focus Strike note, tracking sheet redesign, dependency-correct rule order.
+
+  *Session 15 (2026-05-18) — historical:* P3 confirmed Stack A G1. Bodyguard activated organically without Stack B → Stack B de-prioritised (later withdrawn in Session 22). OQ-52, OQ-53 raised.
+
+  *Session 11 (2026-04-29) — historical:* Checkmate win condition killed. King Lifetime HP becomes Stack C lead. Sente skill design chosen as primary standoff solution (Stack F). G8 guardrail added.
+]

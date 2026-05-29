@@ -41,8 +41,9 @@ Update each of these files. Only modify sections that changed this session.
 - Add any new mechanics that were proposed, accepted, deferred, or withdrawn this session.
 
 ### `docs/test-scenarios/TESTING_PLAN.typ`
-- Update the decision tree tables if any stack results came in or entry conditions changed.
-- Update stack statuses in the Testing Stacks table.
+- Move stacks between *Active* / *Queued* / *Dormant* / *Resolved* sections as their state changes this session. Exactly one stack should be Active at a time.
+- Update the per-stack *Status*, *Entry conditions*, *What "good" looks like*, and *Routing on result* blocks for any stack whose situation changed.
+- Refresh the Session Notes entry at the bottom with a one-line summary of the change.
 - After editing, run `zsh docs/test-scenarios/build-pdfs.sh` to rebuild TESTING_PLAN.pdf.
 
 ### `README.md`

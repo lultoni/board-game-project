@@ -220,31 +220,36 @@ After writing the analysis, update the following living documents:
 ### `game-state/SESSION_LOG.md`
 - Add a sub-section under the current session entry noting the playtest analysis.
 
-## Step 5: Decision Tree Routing
+## Step 5: Routing — Which Stack Next?
 
-Read `docs/test-scenarios/TESTING_PLAN.typ` — specifically the "Entry Conditions Per Stack" table and the "Decision Tree" tables (Phase 1 and Phase 2). **TESTING_PLAN.typ is the source of truth for routing thresholds — consult it directly rather than relying on numbers cached in this skill.**
+Read `docs/test-scenarios/TESTING_PLAN.typ`. Each stack has its own *Routing on result* block listing the conditions under which it advances to a specific next stack. **TESTING_PLAN.typ is the source of truth — consult it directly rather than relying on numbers cached in this skill.** The doc structure as of Session 22:
 
-Map the playtest metrics to the decision tree's branching criteria:
+- *Active* section: the stack just played (or being prepped).
+- *Queued* section: stacks gated on the Active stack's result, with explicit gate conditions.
+- *Dormant* section: stacks waiting on a trigger (e.g. "first Champion kill past R20" → Stack C).
+- *Resolved* section: accepted, withdrawn, or superseded — historical only.
 
-1. **Champion kill round** — extract from Block A tracking data. Compare against the thresholds defined in TESTING_PLAN.typ (currently: before R15 strong, R15–R20 partial, after R20 pacing urgent → Stack C — verify these are still current).
-2. **Standoff persistence** — extract from Block B behavioral patterns (first contact round, evidence of standoff, forward movement timing). If standoff persists → Stack F.
-3. **Bodyguard triggers** — extract from feedback form or game log. Compare against TESTING_PLAN's accepted/partial/broken thresholds.
-4. **Any other routing criteria** mentioned in the entry conditions table (combo ceiling, board feel, draft staleness).
+Map the playtest metrics to the Active stack's *Routing on result* rules and the *Dormant* trigger conditions:
+
+1. **Champion kill round** — extract from Block A tracking data. If past R20, *Stack C — Pacing* trigger fires.
+2. **Mid-game stickiness / "exchange pit"** — extract from Block B behavioral patterns (first contact round, whether action concentrates in one cluster, pieces taken one-by-one). Connects to OQ-58 — informs whether *Stack A G3 — Dual-Counter Combo* or *Stack F — Sente Skills* is the next lever.
+3. **Bodyguard triggers** — extract from feedback form or game log. Note: OQ-21 covaries with standoff state (P4 confirmed) — 0 triggers when stalling returns is *not* a Bodyguard problem; it's a movement-volume problem.
+4. **Any other routing criteria** named in the Active stack's *What "good" looks like* and *Routing on result* blocks.
 
 Write a routing block:
 
 ```markdown
-## Decision Tree Routing
+## Routing — Which Stack Next?
 
-**Key metrics for routing:**
-- First Champion kill: Round [N] → [before R15 / R15–R20 / after R20]
-- Standoff observed: [yes/no — describe]
-- Bodyguard triggers: [N]
-- Combo attempts: [N successful / N attempted]
+**Key metrics:**
+- First Champion kill: Round [N] → [trigger fires / does not fire for Stack C]
+- Exchange-pit pattern: [yes/no — describe]
+- Bodyguard triggers: [N] (note covariance with standoff)
+- [Other Active-stack-specific metrics]
 
-**Decision tree path:** [Stack X] → [result branch] → recommended next: **[Stack Y]**
+**Routing recommendation:** [Active stack] result → next Active = **[Stack X — Name]**.
 
-**Reasoning:** [1-2 sentences explaining why this branch applies based on the data]
+**Reasoning:** [1-2 sentences citing the specific Routing on result rule from TESTING_PLAN.typ that this falls under. If the literal routing output is overridden by diagnosis (e.g. P4: literal output Stack F, but diagnosis pointed to Stack H), explain why.]
 ```
 
 Include this section in the analysis doc before the final summary.
@@ -255,5 +260,5 @@ Output a concise summary to the user:
 1. Top 3–5 findings (one sentence each, with source — self-reported or behavioral).
 2. Which OQ verdicts changed (resolved/updated).
 3. Key behavioral pattern not captured in any feedback form question.
-4. **Decision tree recommendation**: which stack to run next, citing the specific metric that drives the routing.
+4. **Decision tree recommendation**: which stack to run next, citing the specific metric and the *Routing on result* rule that drives it. If diagnosis overrides the literal rule, explain why.
 5. Any pre-staged responses from `docs/backpocket.md` that are now triggered by the results.

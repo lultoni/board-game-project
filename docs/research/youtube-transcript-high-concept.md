@@ -278,7 +278,7 @@ Paragraph-length expansion (for when someone asks the follow-up):
 
 ### Step 4: Clarity — what would the test look like?
 
-The pitch test from the video maps directly onto the playtest results we already have: when new players (Nico, the P1/P2/P3 testers) describe the game *back* after playing it, do they describe it in skill/combo terms, or in chess/movement terms? If they say *"it's like chess with spells,"* the high concept hasn't landed — they're seeing the chassis, not the engine. If they say *"it's about finding the right spell sequence,"* it has landed.
+The pitch test from the video maps directly onto the playtest results we already have: when new players (Niko, the P1/P2/P3 testers) describe the game *back* after playing it, do they describe it in skill/combo terms, or in chess/movement terms? If they say *"it's like chess with spells,"* the high concept hasn't landed — they're seeing the chassis, not the engine. If they say *"it's about finding the right spell sequence,"* it has landed.
 
 This is worth checking against existing playtest analyses before drafting the next stack.
 
@@ -317,7 +317,7 @@ Four candidate threads to pull on, in order of recommended sequencing. Each one 
 
 **Why first:** Cheapest, most diagnostic. Free signal from data we already have. The answer reframes everything else: if combo-first, the high concept is real and the rest of the work is refinement; if chassis-first, the high concept hasn't landed *for actual humans* and the rest of the work changes character.
 
-**Inputs:** `docs/research/playtest-1-analysis.md`, `playtest-2-analysis.md`, `playtest-3-analysis.md`, anything from Nico's session.
+**Inputs:** `docs/research/playtest-1-analysis.md`, `playtest-2-analysis.md`, `playtest-3-analysis.md`, anything from Niko's session.
 
 **Output:** A short verdict — landed / partially landed / not landed — with quotes/observations as evidence. Saved into this file as a new section.
 
@@ -355,7 +355,7 @@ Four candidate threads to pull on, in order of recommended sequencing. Each one 
 
 ## Angle 1 — Verdict: did the high concept land?
 
-**Data sources:** `playtest-1-analysis.md` (Elias vs Pasco, 2025-10-31, baseline), `playtest-2-analysis.md` (Elias vs Jonathan, 2026-04-24, Layer 1 economy fix), `playtest-3-analysis.md` (Elias vs Mario, 2026-05-17, Stack A 1-DMG nerf). Nico's session (2026-05-28) hasn't happened yet — folder is empty.
+**Data sources:** `playtest-1-analysis.md` (Elias vs Pasco, 2025-10-31, baseline), `playtest-2-analysis.md` (Elias vs Jonathan, 2026-04-24, Layer 1 economy fix), `playtest-3-analysis.md` (Elias vs Mario, 2026-05-17, Stack A 1-DMG nerf). Niko's session (2026-05-28) hasn't happened yet — folder is empty.
 
 The high concept being tested: *"a 2-player perfect-information board game where the only thing that matters is finding clever skill combos before your opponent does."*
 
@@ -417,19 +417,19 @@ Three implications, calibrated to what the data actually says:
 
 1. **The high concept is unconfirmed for anyone but the designer.** This isn't a crisis — it's where the project genuinely is. The Core Fantasy might be exactly right; we just don't yet know if it's reaching the table for fresh eyes. Treat it as a hypothesis under test, not a verified property.
 
-2. **Nico's session (2026-05-28) is the most important data point we'll collect in the near term.** Three independent data points isn't enough to read a trend. Four with one fresh first-timer in the current rule state would be a real signal. *The session must be designed to capture this carefully* — see the discipline note below.
+2. **Niko's session (2026-05-28) is the most important data point we'll collect in the near term.** Three independent data points isn't enough to read a trend. Four with one fresh first-timer in the current rule state would be a real signal. *The session must be designed to capture this carefully* — see the discipline note below.
 
 3. **The accepted design changes were the right changes for the right reasons, even though we don't have independent confirmation yet.** Quieting the chassis (faster economy, lower attack damage) is theoretically aligned with combo-first design. We made those changes because they made *Elias's* experience better; whether they made *new players'* experiences better is still open. They might have. They might also have just made the chassis quieter for the one person who already had the engine in his head.
 
-### Discipline note for Nico's session and beyond
+### Discipline note for Niko's session and beyond
 
 Knowing this circularity exists changes how to run the next session:
 
-- **Don't lead with the high concept.** Don't tell Nico the game is "about clever combos." Let him describe it back in his own words after playing.
+- **Don't lead with the high concept.** Don't tell Niko the game is "about clever combos." Let him describe it back in his own words after playing.
 - **Q20 (favorite moment) and Q14 (most confusing rule) are the highest-signal questions** for this purpose — they reveal what the *player* noticed, not what the player thinks the designer wants to hear.
-- **In the analysis, separate Elias's quotes from Nico's quotes more rigidly than was done in P2/P3.** Elias's language is project documentation; Nico's language is data.
-- **Watch for borrowed vocabulary.** If Nico uses words like "combo" or "setup" or "skill chain," check whether they were used during rule explanation. If they were taught, they prove nothing about whether the game generated them.
-- **Look for unprompted descriptions in player-native language.** The strongest evidence would be Nico describing the game using a phrase he was never given — that means it came from the experience, not the briefing.
+- **In the analysis, separate Elias's quotes from Niko's quotes more rigidly than was done in P2/P3.** Elias's language is project documentation; Niko's language is data.
+- **Watch for borrowed vocabulary.** If Niko uses words like "combo" or "setup" or "skill chain," check whether they were used during rule explanation. If they were taught, they prove nothing about whether the game generated them.
+- **Look for unprompted descriptions in player-native language.** The strongest evidence would be Niko describing the game using a phrase he was never given — that means it came from the experience, not the briefing.
 
 ### Confidence
 
@@ -520,12 +520,12 @@ If we tentatively adopt Framing B as the pitch (without yet committing it to des
 - **Q-B1 (starter loadouts):** Framing B argues for a *single* shared starter loadout for game 1, not two different ones — both players solve literally the same puzzle in their first game. Framing A would argue for mirrored-but-different loadouts (each player gets their own puzzle).
 - **Q-B2 (combo hints on cards):** Framing B makes this more important — opponent legibility matters, so card text that telegraphs combo structure helps *both* players read the board.
 - **Q-A1 (the framing decision itself):** this discussion is the input to that question. The answer that emerges here is what feeds into the eventual ADR or the one-paragraph design-principles.md edit.
-- **Q-D1 (does the high concept land for new players?):** the framing changes what we're listening for in Nico's session. Framing A: "did Nico say he found a clever combo?" Framing B: "did Nico say something about *both players* exploring, racing, recognising each other's plays?" The second is a higher bar — but it's what the design is reaching for.
+- **Q-D1 (does the high concept land for new players?):** the framing changes what we're listening for in Niko's session. Framing A: "did Niko say he found a clever combo?" Framing B: "did Niko say something about *both players* exploring, racing, recognising each other's plays?" The second is a higher bar — but it's what the design is reaching for.
 - **Phase B (Q-F1 — theme):** Framing B gives the theme brief. *Two minds, one combinatorial space* — divination, parallel oracle, dual-readers-of-the-same-text, mirrored mages. Framing A points toward more soloist themes (one wizard, one puzzle, opponent as antagonist).
 
 ### The "decide now or wait for data" question (deferred per user)
 
-Holding this open as the user requested. The substantive question is whether Framing A vs B can be decided *from design intent alone*, or whether it should wait for Nico (and possibly more first-timer sessions) to tell us which framing the game actually delivers in practice. There's a real argument for each:
+Holding this open as the user requested. The substantive question is whether Framing A vs B can be decided *from design intent alone*, or whether it should wait for Niko (and possibly more first-timer sessions) to tell us which framing the game actually delivers in practice. There's a real argument for each:
 
 - **Decide now:** the framing is a designer's call about *what we're trying to build*, not an empirical measurement of *what the game currently delivers*. Waiting for data to "tell us" the framing risks the data telling us only what the chassis is currently doing — which may be Framing A by default, even though the design wants B.
 - **Wait for data:** Framing B is a stronger claim and unconfirmed for any independent player. Adopting it now means treating an aspiration as a commitment, which then drives downstream design choices that may overshoot what the game can actually deliver.
@@ -534,7 +534,7 @@ We'll resolve this when we work through the open-questions doc — specifically 
 
 ### Status
 
-**Discussion logged.** No commitment yet. Working assumption: Framing B is where the game is reaching, and the chassis is partly set up for it. Whether to formalise that as a design-principles.md edit, an ADR, or to wait for Nico's data is open and will be decided when we work the open-questions list.
+**Discussion logged.** No commitment yet. Working assumption: Framing B is where the game is reaching, and the chassis is partly set up for it. Whether to formalise that as a design-principles.md edit, an ADR, or to wait for Niko's data is open and will be decided when we work the open-questions list.
 
 **Connected to:** Q-A1 (framing decision), Q-D1 (validation), Q-B1 / Q-B2 (on-ramp specifics that change with framing), Q-F1 (Phase B theme brief).
 

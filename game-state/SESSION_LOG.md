@@ -6,6 +6,52 @@
 
 ---
 
+### May 29, 2026 — Session 22: Playtest 4 — Stack A G2 + Niko's first game
+
+Niko (P1, first-time player) beat Elias (P2) on 2026-05-28 in a 28-29 round Stack A G2 game (~2h30). Elias surrendered on T29 after Niko's third consecutive Strike+Strike kill round.
+
+Project-wide rename **Nico → Niko** (44 occurrences) executed first via sed: README, STATUS, OPEN_QUESTIONS, NEXT_STEPS, SESSION_LOG, HANDOVER, research docs, plus memory file and pointer in MEMORY.md. User finalised image transcriptions across 11 files in `playtest-results/elias-vs-niko-28_05_26/`. `/playtest` skill executed end-to-end with multi-agent isolation: two independent agents transcribed each player's materials separately to prevent cross-contamination of behavioural reads.
+
+**Synthesis written**: `docs/research/playtest-4-analysis.md`. Combo bonus (OQ-38) **confirmed in mechanics**: Elias R11 margin "1. ever combo!!" (his first multi-Champion combo across all 4 playtests); Niko's R26-R28 = textbook 3-turn Strike+Strike kill loop (Blade Tempest + Rune Theft + Focus). **Weak in feel**: neither player rated the bonus "Very rewarding" — read it as a normal damage modifier. Cross-category crowd-out (Q-D3 risk) **partially confirmed** — Elias circled Rarely AND Never, Niko circled Sometimes. Bonus stays into baseline pending one more experienced-player game.
+
+**Mid-game stalling returned despite Stack A nerf** — both players ran identical Armor-stack arcs (R15-R21 Niko / R15-R18 Elias), no Atk during the cluster. Elias D-notes: *"a lot of turns where we both didn't really know what to do."* OQ-11 / Q-C1 chassis-volume hypothesis received its **best evidence yet**: Elias Q13 "Yes, a lot" mental focus + game "Slowed noticeably" + verbatim *"armor was a part of combo calcs but it just felt like you were not able to do your combos because of it."* Niko's split read (Q13 "Not really" + "Slightly extended") suggests cost is asymmetric across skill levels.
+
+**Stack H promoted to Priority 1.** Decision-tree literal output was Stack F (standoff persists), but the standoff observed is *Armor-driven mid-game stalling*, not opening-engagement standoff that Stack F's sente skills target. Stack H's pre-condition test ("does combo bonus auto-resolve Q-C1?") returned NO — Niko's combos overran Armor only after a 7-round stall. Chassis volume is the lever.
+
+**Q-D1 reading contaminated.** Elias did not honour the teacher-vocab-checklist commitment ("I just used the words to make it clear what the game is about"; pitch box: "explained a lot of my experience and good combos"). Niko's engine vocabulary ("combinations", "skill combos", "stacking of skills") may be borrowed. The ≥2/4 strong-signal threshold is NOT met by this session alone. **Process fix required before next first-timer session**: either pre-game initials per word OR read-rules-from-document protocol. Tracked in `NEXT_STEPS.md` as Priority 2.
+
+Other findings: Niko's Q15 favourite moment — *"killing powerful champion by surprise and also stealing runes to prevent skills next turn"* — is exact cleverness-over-attrition language, ADR-003 Principle 4 landing for a first-time player. OQ-21 Bodyguard regressed to 0 triggers (covariate with stalling, not independent signal). OQ-19 not triggered (first Champion kill R13 < R20). OQ-41 closes — length problem is chassis volume, not damage nerf. OQ-34 Mode B confirmed dominant.
+
+Cascade updates: OPEN_QUESTIONS.md (8 OQ verdicts), NEXT_STEPS.md (Stack H Priority 1, Q-D1 process fix Priority 2), mechanics-evaluated.md (combo bonus + Stack H evidence pointers), systems-and-mechanics.md (P4 evidence on Combat / Skill / Health-Armor sections), STATUS.md (re-entry update).
+
+**Post-analysis design discussion (Session 22 second half).** Designer pushed back on the initial synthesis: combo-bonus Q3 softness ("Somewhat/Neutral", "Bit of both") is **design-aligned**, not a problem — the bonus is by design a few-times-a-game payoff, not "do or lose." The lever is **scope, not strength**. Walked through every analysis finding for designer reaction; multiple reframes landed:
+
+- **#6 reframed**: Elias's late-game Blade Tempest spam was not a behavioural choice between "use the bonus loop" vs "single-Champ burst" — his Strike-equipped Champions were dead. *"I did not have any other attack champs left."* Structural offensive lockout, not preference.
+- **Must-pick density softer than initial read**: Focus is equipped 1/2 across the army (not per-Champion); Armor 2/3 across the army. The catalogue pressure is per-loadout, not per-piece. Initial framing was overstated.
+- **Q-D1 teacher-vocab-checklist deferred**, not made Priority 2. Lower-priority lever surfaced: skill names were shortened or replaced with natural words at the table — vocabulary barrier could be reduced by **renaming**, not just by stricter teaching. Bundled with Phase B naming pass.
+- **"Don't know what to do" pattern decomposed** into two distinct windows: (a) early-game positioning (no Strike skills firing in opening — only Defense), and (b) post-mid-game-exchange endgame (after first big exchange, neither player knows how to convert position into win). Two sub-problems, not one.
+
+**Dual-counter combo design drafted.** Replaces the simpler scope-widening (Option A, Move-into-Strike inclusion) with a richer mechanic: two parallel counters per turn — **target counter** (different friendly Champions hitting the same enemy target, current rule kept) plus **attacker counter** (same friendly Champion hitting different enemy targets). Both counters live in parallel; if a hit qualifies for both, both fire (intuitive stacking — rare in real play, reward when it lands). Multi-target skills (Blade Tempest) tick the counter on every hit piece, with a watch flag for OP rollback. Standard Attacks excluded from both counters. Scope widened to any skill that hits an enemy piece (not Strike-only). Justifications: cross-category crowd-out (#3), late-game offensive lockout (#6), and the **exchange-pit** mid-game pattern (one cluster, pieces taken one-by-one — attacker counter rewards distributing pressure across multiple fronts).
+
+**Path A methodology decision.** Stack H ships first. Stack A G3 (dual-counter combo + widened scope) is queued behind it. Reason: incremental testing methodology requires changing one structural variable at a time. Combo scope and Armor volume both affect mid-game pacing; bundling them blurs the read. If Stack H trims Armor and the exchange-pit pattern persists, dual-counter is the targeted fix. If Stack H accidentally fixes the exchange-pit pattern (chassis volume was masking it), dual-counter may not be needed in this form. Designer agreed with the methodology argument: *"yes i agree that it is very complex, especially at the current game size so i agree we first lower the complexity of the game and then think about this."*
+
+**Three new OQs opened (full text in `game-state/OPEN_QUESTIONS.md`):**
+- **OQ-58 — Mid-game stickiness / "exchange pit"**: once an exchange starts, all action concentrates in one cluster, pieces taken one-by-one. Watched under Stack H.
+- **OQ-59 — Opening + endgame "don't know what to do" pattern**: 59a opening chassis-skew (no Strike skills firing in opening), 59b endgame conversion gap.
+- **OQ-60 — Cognitive load**: real concern or acceptable? G4 guardrail watch — informs how complex Stack A G3 dual-counter can afford to be.
+
+**Six new backpocket entries** (each with Justification Rule writeup): Combo Bonus Dual-Counter (Stack A G3), Plague skill (Mystic, Range 2, ~3 Runes, inflicts Injured ignoring Armor, no kill), Lucky/Star Strike (Mystic, target anywhere on board), Focus replacement ("any skill +1 Rune for +1 Range" baseline rule, removing the Focus skill), Lance Thrust + Rune Theft merge (single skill: 1 DMG + optional Rune steal), "Runes" rename candidate (Phase B bundle).
+
+Cascade updates (second half): OPEN_QUESTIONS.md (OQ-38 reframe, OQ-11 designer note re Armor Breaker died early, OQ-12 must-pick softer note, OQ-58/59/60 added), backpocket.md (6 new entries), NEXT_STEPS.md (Priority 2 → Stack A G3 dual-counter gated on Stack H, teacher-vocab-checklist moved to deferred backlog, Recently Completed expanded with discussion outputs).
+
+**TESTING_PLAN.typ rewritten (Session 22 third pass).** Designer flagged the doc's structure as confusing: ordering signals contradicted, gate logic scattered across three sections, Stack A G2 status stale, post-P4 routing missing, Stack A G3 unrepresented. Rewrite outcomes: stacks renamed for legibility (H = Armor Trim, A G3 = Dual-Counter Combo, K = Piece Count Reduction, F = Sente Skills) with letter IDs preserved as stable cross-reference keys; **Stack I dropped** (folded into Stack H as the smaller within-stack dose — rollback is contingency, not a separate stack); **Stack B withdrawn** (defender-only adjacency — P4 confirmed Bodyguard tracks standoff state, different solutions on the table even if Bodyguard remains broken post-Stack-H); **Stack K decoupled from Stack D** (K owns piece-count reduction; D owns board geometry — independent variables); **Stack F sequenced after Stack A G3** (both target the exchange-pit pattern via different mechanisms); state lifecycle introduced (Active / Queued / Dormant / Resolved — exactly one Active at a time); Phase 1/Phase 2 decision tree replaced with per-stack *Routing on result* blocks. Cascaded to OPEN_QUESTIONS.md (OQ-11 / OQ-21 / OQ-27 / OQ-1b cross-refs), mechanics-evaluated.md (Bodyguard adjacency moved to Withdrawn, Stack I rollback note collapsed, board-8x8 deferred row updated), NEXT_STEPS.md and STATUS.md (new stack names + dormant/withdrawn lists).
+
+**Skill sweep.** Updated `/playtest` Step 5 (Decision Tree Routing → "Routing — Which Stack Next?", Active/Queued/Dormant/Resolved structure, per-stack routing rules); `/scenario` Step 5 (TESTING_PLAN section now requires placing the new stack in the appropriate state section with the per-stack required fields); `/wrapup` Step 2 TESTING_PLAN block (decision tree tables → state lifecycle moves + per-stack *Routing on result* updates). `/research` and `/adr` verified clean (no stack vocabulary).
+
+**Stack H re-discussion gate.** Designer flagged Stack H bundled-dose framing for re-discussion before any rule sheet work begins. NEXT_STEPS.md Priority 1 and STATUS.md Next Action both now lead with the re-discussion item; rule sheet drafting is explicitly downstream of that conversation.
+
+---
+
 ### May 26, 2026 — Session 21: Feedback Forms — High-Concept Alignment
 
 Audited all three feedback forms (`feedback-onboarding.typ`, `stack-a-feedback.typ`, `feedback-baseline.typ`) against the high-concept investigation findings (Sessions 19–20). Identified gaps: no Q-D1 combo-discovery signal questions, no Framing B parallel-puzzle coverage, stale question framings (Armor only asked about pacing, not attentional cost; Bodyguard asked frequency not chess-vs-combo type; draft asked "did you have a plan" not "were pairings in mind"), no chassis-vs-engine confusion distinction.
@@ -20,7 +66,7 @@ Audited all three feedback forms (`feedback-onboarding.typ`, `stack-a-feedback.t
 
 Worked through every question in `docs/research/high-concept-open-questions.md` (Q-A1 through Q-F1) with discussion-then-decision per question. ADR-004 written and accepted: high-concept framing is **"Two minds, one puzzle" (Framing B)** — 2-player nature is load-bearing, opponent is a fellow puzzle-solver, asymmetry biased against. New `§ High-Concept Framing` and `§ Chassis and Engine` sections added to `design-principles.md`; chassis/engine becomes canonical project vocabulary as a companion lens to the Justification Rule.
 
-Q-B4 executed in baseline: Standard Attack reworded as *"a Move that ends on an enemy tile"*; Movement Phase intro and survival-stop rule strengthened with explicit attacker-speed cases. BASELINE_VERSION bumped to 2026-05-26. Q-B1 design intent set (single shared loadout for both players in game 1, gated on Nico's data); Q-B2 (combo hints on cards) rejected to preserve emergent discovery; Q-B3 resolved as entailment from Q-B1.
+Q-B4 executed in baseline: Standard Attack reworded as *"a Move that ends on an enemy tile"*; Movement Phase intro and survival-stop rule strengthened with explicit attacker-speed cases. BASELINE_VERSION bumped to 2026-05-26. Q-B1 design intent set (single shared loadout for both players in game 1, gated on Niko's data); Q-B2 (combo hints on cards) rejected to preserve emergent discovery; Q-B3 resolved as entailment from Q-B1.
 
 Q-D1 resolution criteria locked in (signal definitions + ≥2/4 strong-signal threshold + teacher-vocab-checklist as bias correction); `shared/teacher-vocab-checklist.typ/pdf` shipped. ADR-004's reversal criterion updated via Q-D2 to read against combined Q-D1 + Q-D2 result.
 
@@ -38,17 +84,17 @@ iOS touch handling was broken (instant drag on any touch, modal unreachable). Re
 
 ### May 24, 2026 — Session 18: Pre-Playtest Tooling — Skill Cards, Onboarding Form, Focus+Move Ruling
 
-Two artifacts shipped under `docs/test-scenarios/shared/` ahead of the 2026-05-28 playtest with Nico (first-time player). `skill-cards.typ/pdf` is a printable A4 sheet of 15 physical reference cards — one per skill, color-coded by category, with a 2×2 range matrix per card showing reach in four states (Default / +Focus / Injured / Inj.+Focus) and per-skill Focus footnotes on Move cards. Resolves OQ-56 problem C1 (in-game lookup friction). `feedback-onboarding.typ/pdf` is a 2-page first-game-only feedback form covering rules absorption, draft thinking, in-game confusion, and player anchoring — independent of stack, fills before the standard stack form.
+Two artifacts shipped under `docs/test-scenarios/shared/` ahead of the 2026-05-28 playtest with Niko (first-time player). `skill-cards.typ/pdf` is a printable A4 sheet of 15 physical reference cards — one per skill, color-coded by category, with a 2×2 range matrix per card showing reach in four states (Default / +Focus / Injured / Inj.+Focus) and per-skill Focus footnotes on Move cards. Resolves OQ-56 problem C1 (in-game lookup friction). `feedback-onboarding.typ/pdf` is a 2-page first-game-only feedback form covering rules absorption, draft thinking, in-game confusion, and player anchoring — independent of stack, fills before the standard stack form.
 
 Major ruling: Focus Strike on Move skills lets the caster choose, at activation, whether the +1 applies to activation range OR effect range (not both). Documented in `baseline-sections.typ` (Skill Reference + Quick Reference), on every Move skill card, and in `mechanics-evaluated.md`. Resolves the ambiguity that surfaced while building the cards.
 
 Lance Thrust effective Range 0 while Injured ruled "cannot fire" — the chained derivation from baseline rules IS the ruling, not ambiguity to be resolved. User correction: never reframe a derivation as "let's make a ruling — it already is one." Memory `feedback_baseline_is_authoritative.md` written. OQ-54 (Lance Thrust wording rewrite) closed: keep "Range−1" — the modifier preserves a real interaction the "Adjacent" rewrite would obscure.
 
-Decision logged for 2026-05-28: Nico plays the standard baseline draft. No starter loadout, no simplified pool, no rule changes for first-time players. Onboarding data comes from the new form, not from changing the game. Memory `project_nico_first_game.md`.
+Decision logged for 2026-05-28: Niko plays the standard baseline draft. No starter loadout, no simplified pool, no rule changes for first-time players. Onboarding data comes from the new form, not from changing the game. Memory `project_niko_first_game.md`.
 
 Forms cleanup: Stack A, Stack B, and feedback-baseline forms converted from fixed `#v(2.7cm)` to `#v(1fr)` distribution (eliminates dead-zone empty pages). Build script gained zsh guard. Hygiene principle 7 expanded with the `1fr`-over-`#v(Ncm)` sub-rule. BASELINE_VERSION bumped to 2026-05-24.
 
-Deferred from end-of-session: one-page player-facing intro, rule sheet ordering audit, tiered-catalogue ADR. Backlogged in NEXT_STEPS until Nico's onboarding feedback lands and informs reorder priorities.
+Deferred from end-of-session: one-page player-facing intro, rule sheet ordering audit, tiered-catalogue ADR. Backlogged in NEXT_STEPS until Niko's onboarding feedback lands and informs reorder priorities.
 
 ---
 

@@ -96,9 +96,9 @@ Include a comparison rating row labelling the dimension being compared (e.g. "Gu
 ## Step 5: Update Living Documents
 
 ### `docs/test-scenarios/TESTING_PLAN.typ`
-- Add the new stack to its row in the Testing Stacks table.
-- Add it to the "Ready to print now" table if PDFs are built.
-- Update the Mermaid decision tree if the new stack creates a new branch or decision point.
+- Place the new stack in the appropriate state section: *Active* (replacing the previous Active — exactly one Active at a time), *Queued* (gated on a specific other stack's result), or *Dormant* (waiting on a trigger condition).
+- Each stack entry must include: stable letter ID + descriptive name, what it targets (OQ refs), variants/doses, status, entry conditions, *What "good" looks like*, *Routing on result*.
+- Add a Session Notes entry at the bottom explaining the change.
 - Run `zsh docs/test-scenarios/build-pdfs.sh` to rebuild TESTING_PLAN.pdf.
 
 ### `docs/systems-and-mechanics.md`

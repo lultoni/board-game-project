@@ -42,6 +42,95 @@ Players must always want to do more than they can execute. Early game: Runes lim
 
 ---
 
+## Combo Bonus — Dual-Counter + Widened Scope (Stack A G3) — Session 22
+
+**What it fixes / improves**: Three confirmed P4 problems at once.
+1. **Cross-category crowd-out (OQ-38 G2 finding)**: Strike-only scope crowded out organic Move-into-Strike combos (P3 had them; P4 didn't). Widening the target counter to "any skill that hits an enemy piece" restores cross-category combo grammar.
+2. **Late-game offensive lockout (P4 #6)**: Elias's verbatim *"i did not have any other attack champs left"*. With single-counter + Strike-only, when Strike-equipped Champs die, the bonus is locked away. The proposed **attacker counter** (one Champion hitting *different* targets in one turn) gives a single surviving offensive Champion access to the bonus by spreading hits.
+3. **Exchange-pit / mid-game stickiness (OQ-58)**: P4's mid-game collapsed into one cluster; pieces removed one-by-one in a single region. Attacker counter structurally rewards **distributing pressure** across multiple fronts — the antidote to one-pit convergence.
+
+**Pre-thought design**:
+- **Target counter** (existing G2 mechanic, widened): on each enemy piece, count how many *different* friendly Champions have hit this target this turn. Bonus on 2nd+ hit. **Scope widened**: any skill that hits an enemy piece counts (Strike + hit-causing Move skills). Standard Attacks excluded (free → would over-cheapen).
+- **Attacker counter** (new): on each friendly Champion, count how many *different* enemy targets this Champion has hit this turn. Bonus on 2nd+ hit on a different target.
+- **Stacking**: intuitive — both counters fire if both qualify on the same hit. If 4 attack skills are made by 2 different Champs hitting 2 different targets, both bonuses can trigger; rare in practice, reward when it lands.
+- **Multi-target skills (Blade Tempest)**: tick the counter on each hit piece for now. **Watch flag** — first surgical rollback if dual-counter proves OP, since AOE + dual-counter is the highest-risk interaction.
+- **Standard Attacks excluded**: still no counter ticks from Move-onto-tile. Free movement shouldn't earn bonus access.
+
+**Teaching cost (G4 guardrail)**: dual-counter is strictly more complex than current G2. Two parallel counters per turn need a physical tracking solution — board-side trackers or per-piece tokens. Budget for this in the Stack A G3 rule sheet.
+
+**Methodology gating**: Stack H (Armor volume) runs first. Reasoning: chassis-volume is the *confirmed* P4 problem; combo scope is solving an articulated structural problem (exchange-pit) but hasn't been isolated in a single-variable test. Test Armor first → cleaner baseline for evaluating dual-counter.
+
+**Trigger**: Stack A G3 follows Stack H. If Stack H accidentally dissolves the exchange-pit pattern (chassis volume was masking it), dual-counter may not be needed. If exchange-pit persists post-H, dual-counter is the targeted fix.
+
+---
+
+## Plague Skill — Inflict Injured, Bypass Armor — Session 22
+
+**What it fixes / improves**: Provides a non-killing Injured-state-as-payload skill — analogous to Armor Breaker but for HP state. Currently the only path to Injured is "deal 1 DMG to a non-Armored piece" or "deal 2 DMG total." A skill that inflicts Injured while ignoring Armor opens combat texture P4 lacked.
+
+**Connects to OQ-57 (Injured state) finding**: P4 showed Injured pieces "lingered briefly then died shortly afterwards." Plague would create a different Injured-pattern — pieces that get Injured *without* a kill setup, forcing the opponent to decide between healing and finishing. Adds tactical weight to the Injured state without making it more punishing mechanically.
+
+**Pre-thought design**: Mystic skill, cost TBD (~3 Runes), Range 2. Effect: target enemy piece becomes Injured (loses 1 HP, ignoring Armor). Cannot kill — if target is already at 1 HP, no effect (or alternative: target loses one Armor instead, designer's call at stack design time).
+
+**Trigger**: Skill catalogue expansion (post-Stack-H, post-G3). Bundle with other catalogue additions; do not introduce as standalone stack.
+
+---
+
+## Lucky Strike / Star Strike — Mystic Targeting Anywhere — Session 22
+
+**What it fixes / improves**: Designer note: *"a 'lucky strike' or a 'star strike' that is mystic and allows one skill to be used targeted at any opponent piece on the board (like striking from above)."* No problem-statement attached — flagged as design idea pending Justification Rule writeup.
+
+**Possible justifications to evaluate before staging properly**:
+- **Bypasses LoS / blockers** — could be a counter to the "front-pieces-block-everything" issue and add a sente-style threat element (Stack F territory).
+- **Range 2 is restrictive for combo setup** — a board-wide skill expands combo geometry.
+- **Risk**: too flexible — universal "hit anything anywhere" skill may dominate must-pick lists or invalidate positional play.
+
+**Status**: idea logged, no design done. Re-evaluate when skill catalogue expansion is unblocked. Justification Rule must pass before backpocket-graduation.
+
+---
+
+## Focus Replacement — "Pay More for +1 Range" Mechanic — Session 22
+
+**What it fixes / improves**: P4 confirmed Focus Strike is must-pick (in Q10 lists) but most armies only equip Focus 1-2× *total* (Session 22 correction). Suggests Focus is a *bottleneck* rather than a mass-pick problem — players want it on at least one Champion but rarely on more. Replacing the skill-slot version with a baseline "spend +1 Rune for +1 Range on any skill" mechanic frees that slot for combo variety while preserving the +Range tactical lever.
+
+**Pre-thought design**: remove Focus Strike from the skill catalogue. Add a baseline rule: *"any skill activation may pay +1 Rune to gain +1 Range on either activation or effect range (caster's choice, same constraint as the existing Focus + Move ruling)."* Maintains current Focus mechanics, just unties them from the slot.
+
+**Risk**: makes every skill effectively Range 3 if Runes available; could destabilise the combat-distance balance the Range 2 default is calibrated for.
+
+**Connects to**: OQ-12 (catalogue density); OQ-56 (must-pick density softer than thought, but Focus specifically still bottleneck-ish).
+
+**Trigger**: bundle with skill catalogue expansion or as a dedicated mini-stack. Justification Rule satisfied: removes a must-pick bottleneck while preserving the tactical lever.
+
+---
+
+## Lance Thrust + Rune Theft — Merge Candidate — Session 22
+
+**What it fixes / improves**: Designer note: *"combining lance and theft."* Both skills overlap heavily — Lance Thrust (1 DMG, Range−1) and Rune Theft (1 DMG + steal 1 Rune, Range 2) are cheap-Strike-skill siblings. Lance is rarely picked when Rune Theft exists; Rune Theft is must-pick (P4 confirmed). Merging would (a) free a catalogue slot for new skills and (b) reduce must-pick concentration on Rune Theft specifically.
+
+**Pre-thought design**: replace both with a single skill — name TBD — that does 1 DMG and *optionally* steals 1 Rune (caster's choice at activation). Rune steal becomes a tactical opt-in rather than a mandatory rider on Rune Theft. Range 2 default; Lance's Range−1 dropped (or kept as a Focus-style modifier).
+
+**Risk**: removes the "Rune Theft is the strong one" identity that P4 confirmed players love. Need to confirm the merged skill still delivers the Mode-B tempo feel.
+
+**Connects to**: OQ-34 (Rune Theft Mode B confirmed); OQ-12 (catalogue density).
+
+**Trigger**: skill catalogue expansion / rebalance pass.
+
+---
+
+## Runes — Rename Candidate ("Money" / something more natural) — Session 22
+
+**What it fixes / improves**: OQ-56 onboarding barrier (Niko's first game). "Runes" is a custom term that needs teaching; "money" / "gold" / similar would be self-explanatory and reduce vocabulary load on first read. Pure naming change, no mechanical impact.
+
+**Pre-thought**: candidate names: money, gold, energy, mana. Pick one that aligns with the eventual high-concept aesthetic (Phase B — game identity / visual / naming).
+
+**Risk**: minimal. The custom term may have flavour value for veterans, but vocabulary-cost-for-newcomers is a confirmed P4 issue.
+
+**Trigger**: bundle with the next vocabulary/naming pass. Defer until Phase B (game identity work) or until a first-timer playtest specifically benefits from it.
+
+**Connects to**: OQ-56 (onboarding); designer Session 22 note that "a lot of the names were not used or shortened" by the teacher (Elias) during the actual game — informal renaming already happens at the table.
+
+---
+
 ## Rune Theft — Cost Nerf
 
 **Problem**: Rune Theft (3 Runes: 1 DMG + steal 1 Rune) may be too strong with Layer 1 economy. With +2/turn income, stealing 1 Rune represents ~50% of a turn's income AND deals damage. Creates aggressive "Rune race" dynamics and tempo swings that may dominate decision-making.

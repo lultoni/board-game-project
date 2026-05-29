@@ -66,14 +66,14 @@ The biggest cluster — these questions all share the root cause that the high c
 
 **Origin:** Angle 2 (Skill Drafting findings, headline finding 3, Q3 in audit's open questions).
 **Type:** `on-ramp`
-**Decidability:** `medium` — design 2-3 candidate loadouts, test one in a future first-timer playtest. Could plug straight into Nico's 2026-05-28 session if decided in time.
+**Decidability:** `medium` — design 2-3 candidate loadouts, test one in a future first-timer playtest. Could plug straight into Niko's 2026-05-28 session if decided in time.
 **Why it matters:** The audit identified Drafting's on-ramp problem as the **lowest-cost lever with highest information content**. Newcomers draft before they understand combos; pre-built loadouts trade draft depth for combo legibility on round 1.
 **Open sub-questions:**
 - What does a known-good "intro combo" loadout look like? (Probably contains Focus Strike + a Strike skill + a movement skill for setup.)
 - Should both players get the same starter loadout, mirrored loadouts, or the *same single loadout* (so the asymmetric-information dimension is zero on round 1)?
 - Does using a starter loadout in game 1 reduce the player's combo-discovery joy in game 2 when they draft for the first time? (The "tutorial spoils the puzzle" risk.)
 
-**Status: PARTIALLY RESOLVED 2026-05-26 — design intent set, execution deferred until after Nico.**
+**Status: PARTIALLY RESOLVED 2026-05-26 — design intent set, execution deferred until after Niko.**
 
 **Decided shape (per ADR-004 Framing B):**
 - **Single shared loadout for both players in game 1.** Both players solve literally the same combinatorial puzzle on their first contact. (Pre-ADR-004, mirrored-but-different was a candidate; post-ADR-004, single-shared is the higher-leverage option because Framing B makes parallel-solving load-bearing.)
@@ -82,8 +82,8 @@ The biggest cluster — these questions all share the root cause that the high c
 **Design constraint when the loadout is eventually written:** the loadout must teach the *grammar* of combos (Focus Strike enables a Strike) without handing players the *jokes* — emergent combo discovery in game 1 must remain possible. The starter is scaffolding, not a solution book.
 
 **Use-trigger (when this becomes a "wenn ich gegen neuen Spieler spiele, das nehmen" rule):**
-- After Nico's session (2026-05-28). If Nico lands strong-signal Q-D1, starter loadouts may be unnecessary — keep deferred.
-- If Nico lands weak/no signal, write the loadout and use it in the next first-timer session.
+- After Niko's session (2026-05-28). If Niko lands strong-signal Q-D1, starter loadouts may be unnecessary — keep deferred.
+- If Niko lands weak/no signal, write the loadout and use it in the next first-timer session.
 
 **Connected to:** Q-B2 (originally intended to test in conjunction; now Q-B2 is rejected — see below), Q-D1 (the trigger), ADR-004.
 
@@ -140,7 +140,7 @@ Hints would prescribe what the player should *discover*. The whole point of the 
 - Survival-stop rule strengthened with the explicit attacker-speed cases (Guard speed 2 → 1 tile moved; Champion / King speed 1 → 0 tiles moved; damage dealt either way).
 - Added a closing italic line in the Standard Attack section (in player-facing language, not internal chassis/engine vocabulary): *"Standard Attacks are how pieces deal damage with movement alone. Skills — activated in the Action Phase — are the other way pieces affect each other, and use different rules (Skill Path, Range, Runes)."*
 
-**Effect on Q-D1 reading:** This is one of the few accepted changes specifically aimed at *first-game framing*. If Nico's session and subsequent first-timer sessions show a shift in Q11 vocabulary (more skill-first language) compared to P1/P2/P3, this reframing is plausibly part of that — but separating its effect from Q-B1 (when that ships) and from natural variance across players will require multiple data points.
+**Effect on Q-D1 reading:** This is one of the few accepted changes specifically aimed at *first-game framing*. If Niko's session and subsequent first-timer sessions show a shift in Q11 vocabulary (more skill-first language) compared to P1/P2/P3, this reframing is plausibly part of that — but separating its effect from Q-B1 (when that ships) and from natural variance across players will require multiple data points.
 
 **Connected to:** ADR-004 (skill-first framing serves Framing B), Q-D1 (validation reading).
 
@@ -240,7 +240,7 @@ Questions that can only be answered by getting more data.
 
 **Origin:** Angle 1 verdict (the central finding).
 **Type:** `validation`
-**Decidability:** `medium` — needs Nico's session (2026-05-28) plus ~3 more first-timer sessions to read a trend.
+**Decidability:** `medium` — needs Niko's session (2026-05-28) plus ~3 more first-timer sessions to read a trend.
 **Why it matters:** This is the question Angle 1 set out to answer and *couldn't* — three independent data points (Pasco, Jonathan, Mario), 0.5 / 3 positive. Genuinely unknown.
 
 #### Resolution criteria (decided 2026-05-25)
@@ -257,7 +257,7 @@ The question can't be *answered* in discussion — it's empirical. What was deci
 - **Doesn't land:** 0 of 4 show even *medium* signal.
 - **Unclear:** anything in between → triggers a separate decision about whether to extend the validation window, change the on-ramp, or revisit the high concept itself.
 
-**Data target:** Nico (2026-05-28) + ~3 more first-timers. Rule changes between sessions are *not* frozen — but each session's rule state must be tagged with the data so trend-reading stays honest (already standard; P1/P2/P3 are tagged).
+**Data target:** Niko (2026-05-28) + ~3 more first-timers. Rule changes between sessions are *not* frozen — but each session's rule state must be tagged with the data so trend-reading stays honest (already standard; P1/P2/P3 are tagged).
 
 **Bias-correction mechanism — pre-game teacher checklist:** Per `feedback_designer_is_not_data.md`, the analysis is circular if the teacher seeds combo-vocabulary during teaching. The teacher (Elias) fills out `docs/test-scenarios/shared/teacher-vocab-checklist.pdf` *immediately after teaching, before the game starts*, recording which combo-coded words were used during rule explanation. After the game, the checklist is filed alongside the player's onboarding feedback. Analysis logic:
 - Player said "combo" + teacher did NOT say "combo" → **strong signal** (emerged).
@@ -270,7 +270,7 @@ The question can't be *answered* in discussion — it's empirical. What was deci
 - Q14 (anchoring to other games) is secondary — chassis-coded comparisons (chess, war games) vs. combo-coded comparisons (deckbuilders, combo-card-games) help triangulate.
 - Separate Elias's quotes from independent player quotes rigidly (per `feedback_designer_is_not_data.md`).
 
-**Status:** Open. Highest-priority data need. Resolution arrives after Nico + ~3 more first-timer sessions, read against the criteria above.
+**Status:** Open. Highest-priority data need. Resolution arrives after Niko + ~3 more first-timer sessions, read against the criteria above.
 
 ### Q-D2 — Does game 2 (after the player has seen one combo) shift their language toward combo-first?
 
@@ -375,7 +375,7 @@ Forward-looking — these will become urgent when Phase B (naming, theme, art) s
 
 If/when this becomes a focused design discussion, the natural priority order is:
 
-1. **Q-D1** (does the high concept land for new players?) — the blocking question. Run Nico's session designed to test it (per discipline notes).
+1. **Q-D1** (does the high concept land for new players?) — the blocking question. Run Niko's session designed to test it (per discipline notes).
 2. **Q-A1** (framing decision: combo discovery alone vs. with-opponent-puzzle?) — relatively cheap to decide; unblocks downstream.
 3. **Q-B1 + Q-B2 + Q-B4** (on-ramp interventions: starter loadouts, card hints, attack reframing) — the cheapest, highest-info levers to test the *fixability* of the on-ramp gap.
 4. **Q-C1** (Armor cap 2 vs. 3) — a real candidate test stack.

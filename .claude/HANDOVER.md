@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-26 — end of Session 21.*
+*Last updated: 2026-05-29 — end of Session 22.*
 
 ---
 
@@ -31,17 +31,18 @@ You are my board game design co-creator and systems architect. We are working on
 5. Read `game-state/OPEN_QUESTIONS.md` (live design questions only — archive lives in `OPEN_QUESTIONS_ARCHIVE.md`).
 6. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 21 complete, 2026-05-26)
+### Where We Are (Session 22 complete, 2026-05-29)
 
-- **Feedback forms updated for high-concept alignment.** All three paper forms (`feedback-onboarding`, `stack-a-feedback`, `feedback-baseline`) and the prototype feedback form (Section G + Sections C/D/E) audited and updated. Key additions: Q-D1 combo-discovery signal questions, Framing B parallel-puzzle question (ADR-004), chassis-vs-engine confusion split, stale Armor/Bodyguard/draft questions reworded.
-- **Print packet ready.** Both forms marked for reprint — `feedback-onboarding.pdf` and `stack-a-feedback.pdf` updated. See `WHAT_TO_PRINT.md` Scenario B for the full list.
-- **`WHAT_TO_PRINT.md` added** to repo root — print checklist for all game scenarios (always-print, per-stack, first-timer additions, three named quick-reference packets).
-- **README sanitised.** Live state removed, project structure corrected, prototype/ and all new shared/ files added.
-- **2026-05-28 print packet unchanged in scope** — Nico still plays standard baseline. Both updated forms need reprinting.
+- **Playtest 4 analysed end-to-end.** Niko (P1, first-time) beat Elias (P2) on 2026-05-28 in a 28-29 round Stack A G2 game. Synthesis at `docs/research/playtest-4-analysis.md`. OQ-11 / Q-C1 chassis-volume hypothesis received its strongest evidence yet; Stack H now Priority 1.
+- **Post-analysis design discussion** produced: OQ-38 reframe (combo softness is design-aligned; lever is scope, not strength), dual-counter combo design (Stack A G3, queued behind Stack H), Path A methodology decision, OQ-58 / OQ-59 / OQ-60 opened, six new backpocket entries.
+- **TESTING_PLAN.typ rewritten.** State lifecycle introduced (Active / Queued / Dormant / Resolved — exactly one Active at a time); decision tree replaced with per-stack *Routing on result* blocks; stacks renamed for legibility (Stack H = Armor Trim, A G3 = Dual-Counter Combo, K = Piece Count Reduction); Stack I folded into H; Stack B withdrawn; Stack K decoupled from Stack D; Stack F sequenced after A G3.
+- **Skill sweep.** `/playtest`, `/scenario`, `/wrapup` updated to match the new state lifecycle; `/research` and `/adr` verified clean.
+- **"Nico" → "Niko" rename** completed project-wide (44 occurrences).
+- **Stack H re-discussion gate**: bundled-dose framing flagged for re-discussion before any rule-sheet work.
 
 ### Immediate Next Action
 
-**Print the 2026-05-28 packet.** Per `WHAT_TO_PRINT.md` Scenario B: `stack-a-game2-attack-nerf-combo.pdf` ×2 + `shared/skill-cards.pdf` ×2 + `shared/feedback-onboarding.pdf` ×1 (updated — reprint) + `shared/teacher-vocab-checklist.pdf` ×1 + `stack-a-feedback.pdf` ×2 (updated — reprint) + `shared/game-tracking.pdf` ×2. Run `/playtest 4` next session to analyse.
+**Re-discuss Stack H — Armor Trim before drafting.** Revisit the bundled dose (Armor cap 3→2 + Armorsmith +1→+2), scope, and entry conditions in the next session. Only after that conversation: write the rule sheet at `docs/test-scenarios/stack-h-armor-trim/`, build the print packet (rule sheet + skill-cards + feedback + game-tracking ×2), and schedule two experienced players. Routing rules and within-stack rollback dose live in `TESTING_PLAN.typ`.
 
 ### Key Files
 
@@ -52,7 +53,7 @@ You are my board game design co-creator and systems architect. We are working on
 | `docs/design-principles.md` | 5 principles, hard constraints, methodology |
 | `docs/systems-and-mechanics.md` | All 7 systems: MDA, health scores, open questions |
 | `docs/test-scenarios/baseline/ruleset-baseline.typ` | Canonical player-facing rules |
-| `docs/test-scenarios/TESTING_PLAN.pdf` | Dynamic stack decision tree |
+| `docs/test-scenarios/TESTING_PLAN.pdf` | Active / Queued / Dormant / Resolved stack catalogue + per-stack routing |
 | `docs/test-scenarios/shared/baseline-sections.typ` | Baseline section functions + BASELINE_VERSION |
 | `docs/test-scenarios/stack-a-cleverness/` | Stack A (G2 ready to print) |
 | `docs/test-scenarios/stack-b-guards/` | Stack B (de-prioritised — may be obsolete) |

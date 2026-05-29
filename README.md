@@ -50,7 +50,7 @@ board-game-project/
 │   │
 │   ├── test-scenarios/              ← printable rule sheets + feedback forms (Typst → PDF)
 │   │   ├── build-pdfs.sh            ← run this to rebuild all PDFs
-│   │   ├── TESTING_PLAN.typ/.pdf    ← decision tree: which stack to run next
+│   │   ├── TESTING_PLAN.typ/.pdf    ← stack catalogue (Active / Queued / Dormant / Resolved) + per-stack routing
 │   │   ├── shared/                  ← reusable Typst components + shared print materials
 │   │   │   ├── template.typ         ← shared styling
 │   │   │   ├── baseline-sections.typ ← canonical rule section functions (source of truth for rule text)
@@ -60,8 +60,8 @@ board-game-project/
 │   │   │   ├── skill-cards.typ      ← printable skill reference cards (15 skills)
 │   │   │   └── teacher-vocab-checklist.typ ← facilitator self-check (Q-D1 bias correction)
 │   │   ├── baseline/                ← canonical ruleset (compiled from baseline-sections.typ)
-│   │   ├── stack-a-cleverness/      ← READY TO PLAY: attack nerf + combo bonus
-│   │   ├── stack-b-guards/          ← DE-PRIORITISED: bodyguard fix
+│   │   ├── stack-a-cleverness/      ← G2 ACCEPTED: attack nerf + combo bonus (G3 dual-counter queued)
+│   │   ├── stack-b-guards/          ← WITHDRAWN: bodyguard adjacency rule (Session 22)
 │   │   └── stack-g-structure/       ← DRAFT: unified AP framework
 │   │
 │   ├── research/                    ← Perplexity research exports + playtest analyses
@@ -75,7 +75,7 @@ board-game-project/
 │   ├── elias-vs-pasco-31_10_25/
 │   ├── elias-vs-jonathan-24_04_26/
 │   ├── elias-vs-mario-17_05_26/
-│   └── elias-vs-nico-28_05_26/
+│   └── elias-vs-niko-28_05_26/
 │
 ├── images/                          ← skill card images (15 skills)
 │
@@ -128,7 +128,7 @@ Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scen
 
 See [`game-state/STATUS.md`](game-state/STATUS.md) for the one-screen re-entry doc.
 
-See [`docs/test-scenarios/TESTING_PLAN.pdf`](docs/test-scenarios/TESTING_PLAN.pdf) for the full stack pipeline and decision tree.
+See [`docs/test-scenarios/TESTING_PLAN.pdf`](docs/test-scenarios/TESTING_PLAN.pdf) for the full stack pipeline (Active / Queued / Dormant / Resolved) and per-stack routing rules.
 
 ---
 

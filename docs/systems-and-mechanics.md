@@ -1,6 +1,6 @@
 # Systems & Mechanics
 
-*Per-system design documentation — how each system works, MDA analysis, interactions, design health. Last updated: 2026-05-17.*
+*Per-system design documentation — how each system works, MDA analysis, interactions, design health. Last updated: 2026-05-29 (Session 22, Playtest 4).*
 
 *For player-facing rules: `docs/test-scenarios/baseline/ruleset-baseline.typ`*
 *For design principles: `docs/design-principles.md`*
@@ -44,6 +44,7 @@
 
 - **P1** (31.10.2025): Unlinked movement/action was appreciated — "intuitive."
 - **P2** (24.04.2026): Two-phase structure held up. No complaints. Long think times noted (~R22) — depth is in decisions, not structure.
+- **P4** (28.05.2026): Two-phase structure still held up across an experienced + first-time pairing. Neither player flagged the framework itself; complaints concentrated in mid-game decision quality (chassis volume), not the turn shape.
 
 ---
 
@@ -176,6 +177,7 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 
 - **P1**: Defensive skills underused. Players gravitated to cheap offensive/utility. Blade Call enabled burst.
 - **P2** (Layer 1): Dramatic improvement. Armorsmith, Rust Shield, Field Medic all used extensively. Focus Strike + another skill pattern observed. Rune Theft flagged as soft concern.
+- **P4** (Stack A G2, 28.05.2026): Multi-Champion combo bonus produced Elias's **first ever multi-Champion combo across 4 playtests** (R11 margin: "1. ever combo!!"); Niko's R26-R28 winning loop = 3 consecutive Strike+Strike kill rounds. Bonus is structurally working but not *felt* as a reward — neither player rated it "Very rewarding." Cross-category crowd-out partially confirmed (experienced player Elias circled "Rarely AND Never" for organic cross-category combos; first-timer Niko circled "Sometimes"). Both players' must-pick lists nearly identical (Focus + Armor + Rune Theft) — catalogue's must-pick density problem persists across skill levels. See `docs/research/playtest-4-analysis.md`.
 
 ---
 
@@ -225,6 +227,7 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 
 - **P1**: Bodyguard never triggered. Standard attack dominated — "wait and pounce."
 - **P2** (Layer 1): Bodyguard triggered ~2x. "Two Guards like pawns" blocking lanes at R14. 1 Champion kill in 26 rounds.
+- **P4** (Stack A G2): Bodyguard regressed to **0 triggers** — both players reported it never came up. Diagnosis: tracks standoff state, not the rule. Mid-game Armor-driven stalling reduced Standard-Attack volume; with no Move-attacks happening, there was nothing for Bodyguard to intercept. **OQ-21 confirmed as covariate of OQ-11 / chassis volume — cannot evaluate the rule cleanly until Stack H trims Armor and Standard Attacks return.**
 
 ---
 
@@ -261,12 +264,15 @@ All pieces have **2 HP**: Normal (2) → Injured (1) → Removed (0).
 ### Open Questions
 
 - **OQ-10**: Injured penalty severity — for Champions/King, only Range −1. Is that enough?
-- **OQ-11**: Armor cap — keep at 3, re-evaluate after Stack A.
+- **OQ-11** (reopened): Armor chassis-volume — Stack H queued, P4 confirmed.
+- **OQ-57**: Injured mechanical-downsides removal — Stack J queued, P4 partially confirmed.
 
 ### Playtest Evidence
 
 - **P1**: Injured rarely relevant — 2 DMG standard attack skips it. Armor never used meaningfully.
 - **P2** (Layer 1): Dramatic improvement. Injured state: "Often" relevant. Defensive skills used extensively.
+- **P3** (Stack A G1): Mario granted ~20 Armor across the game; Elias used Armor Breaker ~6 times. Real chunk of game-time. First flag for chassis-volume reopen.
+- **P4** (Stack A G2): **Best evidence for the chassis-volume hypothesis yet.** Total Armor granted 14 (Elias) / 22 (Niko). Both players ran identical mid-game Armor-stack arcs (R15-R21 / R15-R18 = pure Armor cluster, no Atk). Elias Q13: "Yes, a lot" mental focus + game "Slowed noticeably"; verbatim *"armor was a part of combo calcs but it just felt like you were not able to do your combos because of it."* Niko's split read (Q13 "Not really" + "Slightly extended") suggests the chassis cost is **asymmetric across skill levels** — experienced player feels it more because he plans combos around it. Combo bonus did NOT auto-resolve Q-C1: Niko's R26-R28 winning loop overran Armor only after a 7-round Armor consolidation. **Stack H confirmed as next.** Injured: Niko Q12 "Clearly weaker" + listed as confusion source on first read; Elias Q12 "Slightly weaker / Barely noticeable" — chassis volume real for new player, mechanical effect thin for experienced player. Stack J path looks viable. See `docs/research/playtest-4-analysis.md`.
 
 ---
 
