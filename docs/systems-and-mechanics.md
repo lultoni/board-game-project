@@ -12,15 +12,15 @@
 ### How It Works
 
 - **Round** = P1 Turn + P2 Turn.
-- **Turn** = Movement Phase (2 Move Slots) → Action Phase (N Skill Slots).
-- **Move Slots**: Move one piece per slot (speed = tiles moved). Each piece may only be moved once per Movement Phase. Can use 0, 1, or 2 slots.
-- **Skill Slots**: Activate one equipped skill per slot. Must pay Rune cost.
+- **Turn** = Move Phase (2 actions) → Skill Phase (N actions).
+- **Move actions**: Move one piece per slot (speed = tiles moved). Each piece may only be moved once per Move Phase. Can use 0, 1, or 2 actions.
+- **Skill actions**: Activate one equipped skill per slot. Must pay Money cost.
 
 ### MDA Analysis
 
 | | |
 |---|---|
-| **Inputs** | Player decisions, available pieces, Rune supply, board state |
+| **Inputs** | Player decisions, available pieces, Money supply, board state |
 | **Outputs** | Board state changes, resource expenditure |
 | **Interactions** | Feeds into Combat, Skill, and Resource systems |
 | **Feedback loops** | None inherent — neutral framework. Movement and action are unlinked. |
@@ -36,9 +36,9 @@
 
 ### Open Questions
 
-- **OQ-26**: Unified AP system (3 AP/turn) — Stack G. Would merge Movement and Action phases.
-- **OQ-23**: Move Slot count — test 3 Move Slots if AP system is not adopted.
-- **OQ-45**: Starting Player Decision variants (hidden Rune bid, coin flip, mutual agreement). Currently: mutual agreement pre-game.
+- **OQ-26**: Unified AP system (3 AP/turn) — Stack G. Would merge Move and Skill phases.
+- **OQ-23**: Move action count — test 3 actions if AP system is not adopted.
+- **OQ-45**: Starting Player Decision variants (hidden Money bid, coin flip, mutual agreement). Currently: mutual agreement pre-game.
 
 ### Playtest Evidence
 
@@ -48,22 +48,22 @@
 
 ---
 
-## Resource Economy (Runes)
+## Resource Economy (Money)
 
 ### How It Works
 
 - **Canonical numbers**: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-resource-economy()`.
 - **Gain timing**: Collected at the start of each player's own turn. Round 1: no collection.
-- **Rune cap**: None.
-- **Spending**: Runes spent to activate skills. Some skills steal opponent Runes.
+- **Money cap**: None.
+- **Spending**: Money spent to activate skills. Some skills steal opponent Money.
 
 ### MDA Analysis
 
 | | |
 |---|---|
-| **Inputs** | Round counter, skill activations, Rune Theft |
+| **Inputs** | Round counter, skill activations, Steal |
 | **Outputs** | Action tempo — how many skills per turn are affordable |
-| **Interactions** | Directly gates Skill System. Rune Theft creates economy-combat crossover. |
+| **Interactions** | Directly gates Skill System. Steal creates economy-combat crossover. |
 | **Feedback loops** | Neutral (automatic gain, no performance coupling). |
 
 ### Design Health
@@ -72,30 +72,30 @@
 |-----------|------------|-------|
 | Legibility | 4 | Simple income table. Scaling requires reference but is learnable. |
 | Depth | 4 | When to spend vs. save is the core turn-by-turn decision. |
-| Interconnection | 4 | Gates Skill System directly. Rune Theft creates crossover. |
+| Interconnection | 4 | Gates Skill System directly. Steal creates crossover. |
 | Emotional Resonance | 4 | Saving for a big combo turn feels satisfying. |
 
 **Status**: FIXED — Layer 1 accepted (Playtest 2, 24.04.2026). Dead opening eliminated. Skills active from Round 1.
 
 ### Open Questions
 
-- **OQ-8/46**: Rune cap — currently none. Monitor. Cap at 8 is the candidate.
-- **OQ-47**: Performance-based Rune gain — permanently closed. Forces single playstyle; auto-economy is strategy-neutral.
-- **OQ-34**: Rune Theft balance — monitoring. May need cost 4.
+- **OQ-8/46**: Money cap — currently none. Monitor. Cap at 8 is the candidate.
+- **OQ-47**: Performance-based Money gain — permanently closed. Forces single playstyle; auto-economy is strategy-neutral.
+- **OQ-34**: Steal balance — monitoring. May need cost 4.
 
 ### Playtest Evidence
 
 - **P1**: Economy too slow — first ~6 rounds had no skill use. Pasco: "start at +2 gain."
-- **P2** (Layer 1): Economy fix worked. Skills active from Round 1. Skill Slots became the action limiter — as intended.
+- **P2** (Layer 1): Economy fix worked. Skills active from Round 1. Actions became the action limiter — as intended.
 
 ---
 
-## Progression (Skill Slots)
+## Progression (actions)
 
 ### How It Works
 
 - **Canonical numbers**: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-progression()`.
-- Skill Slots do not carry over between turns.
+- Actions do not carry over between turns.
 
 ### MDA Analysis
 
@@ -103,7 +103,7 @@
 |---|---|
 | **Inputs** | Round counter |
 | **Outputs** | Action capacity per turn |
-| **Interactions** | Multiplies Resource Economy (more slots = more Rune spend). |
+| **Interactions** | Multiplies Resource Economy (more actions = more Money spend). |
 | **Feedback loops** | Positive (automatic escalation). Game becomes more lethal in later rounds. |
 
 ### Design Health
@@ -111,19 +111,19 @@
 | Dimension | Score (1–5) | Notes |
 |-----------|------------|-------|
 | Legibility | 5 | Simple table. Easy to track. |
-| Depth | 3 | Automatic — no player decisions. Depth from interaction with Rune economy. |
+| Depth | 3 | Automatic — no player decisions. Depth from interaction with Money economy. |
 | Interconnection | 4 | Multiplies the entire Skill System. |
 | Emotional Resonance | 3 | Escalation feels good as background pressure. |
 
 ### Open Questions
 
-- **OQ-26**: AP system (Stack G) would absorb Skill Slots into unified action-point model.
+- **OQ-26**: AP system (Stack G) would absorb actions into unified action-point model.
 - **OQ-50**: Minor/Major skill slot cost (minor = 1 slot, major = 2 slots).
 
 ### Playtest Evidence
 
-- **P1**: Skill Slots sufficient — Runes were the bottleneck, not Slots.
-- **P2** (Layer 1): Slots became the action limiter in early rounds — exactly as intended.
+- **P1**: Actions sufficient — Money was the bottleneck, not actions.
+- **P2** (Layer 1): Actions became the action limiter in early rounds — exactly as intended.
 
 ---
 
@@ -133,13 +133,13 @@
 
 - Skills are equipped during pre-game draft (2 per Champion/King).
 - Categories: **Strike** (damage), **Shield** (defense/healing), **Move** (repositioning), **Mystic** (buffs/utility).
-- All skills cost 1 Skill Slot + a Rune cost.
+- All skills cost 1 action + a Money cost.
 - A Champion may use its skills multiple times per turn — including the same skill twice.
-- **Skill Path**: Queen-like straight line. Blocked by all pieces (ally and enemy).
-- **Default Skill Range = 2**. Unless the skill's text explicitly names "self" (Range 0) or "adjacent" (Range 1). Skills with a Range modifier (e.g. "Range−1") are still Range 2 skills with a modifier — not treated as adjacent. Self/adjacent targeting cannot be shifted inward by Range buffs.
+- **Path**: Queen-like straight line. Blocked by all pieces (ally and enemy).
+- **Default Range = 2**. Unless the skill's text explicitly names "self" (Range 0) or "adjacent" (Range 1). Skills with a Range modifier (e.g. "Range−1") are still Range 2 skills with a modifier — not treated as adjacent. Self/adjacent targeting cannot be shifted inward by Range buffs.
 - Skills that cause movement do not deal damage.
 - **Injured effect on range**: −1 Range when Injured. Does NOT affect skills that explicitly name "self" or "adjacent" — those always work regardless of Injured status.
-- **Focus Strike note**: +1 Range to next skill. Can boost self → adjacent and adjacent → Range 2. Range and Injured penalties are calculated independently.
+- **Focus note**: +1 Range to next skill. Can boost self → adjacent and adjacent → Range 2. Range and Injured penalties are calculated independently.
 
 ### Current Skill Catalogue
 
@@ -149,9 +149,9 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 
 | | |
 |---|---|
-| **Inputs** | Equipped loadout, Rune supply, Skill Slots, board geometry, line-of-sight |
-| **Outputs** | Damage, healing, repositioning, buffs, Rune theft |
-| **Interactions** | Core nexus — touches every system. Skill Path geometry × positioning. Rune cost × Economy. Slots × Progression. |
+| **Inputs** | Equipped loadout, Money supply, actions, board geometry, line-of-sight |
+| **Outputs** | Damage, healing, repositioning, buffs, Money theft |
+| **Interactions** | Core nexus — touches every system. Path geometry × positioning. Money cost × Economy. Actions × Progression. |
 | **Feedback loops** | Diversity creates balancing loops (Strike ↔ Shield, Mobility ↔ positioning). |
 
 ### Design Health
@@ -168,16 +168,16 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 ### Open Questions
 
 - **OQ-4**: Skills per piece per turn — currently uncapped.
-- **OQ-34**: Rune Theft balance — may need cost 4.
+- **OQ-34**: Steal balance — may need cost 4.
 - **OQ-38**: Multi-Champion combo bonus — Stack A, Game 2.
 - **OQ-49**: Skill path obstruction model (all pieces block vs. only opponents).
 - **OQ-50**: Minor/Major skill slot cost.
 
 ### Playtest Evidence
 
-- **P1**: Defensive skills underused. Players gravitated to cheap offensive/utility. Blade Call enabled burst.
-- **P2** (Layer 1): Dramatic improvement. Armorsmith, Rust Shield, Field Medic all used extensively. Focus Strike + another skill pattern observed. Rune Theft flagged as soft concern.
-- **P4** (Stack A G2, 28.05.2026): Multi-Champion combo bonus produced Elias's **first ever multi-Champion combo across 4 playtests** (R11 margin: "1. ever combo!!"); Niko's R26-R28 winning loop = 3 consecutive Strike+Strike kill rounds. Bonus is structurally working but not *felt* as a reward — neither player rated it "Very rewarding." Cross-category crowd-out partially confirmed (experienced player Elias circled "Rarely AND Never" for organic cross-category combos; first-timer Niko circled "Sometimes"). Both players' must-pick lists nearly identical (Focus + Armor + Rune Theft) — catalogue's must-pick density problem persists across skill levels. See `docs/research/playtest-4-analysis.md`.
+- **P1**: Defensive skills underused. Players gravitated to cheap offensive/utility. Charge enabled burst.
+- **P2** (Layer 1): Dramatic improvement. Plate, Shield, Heal all used extensively. Focus + another skill pattern observed. Steal flagged as soft concern.
+- **P4** (Stack A G2, 28.05.2026): Multi-Champion combo bonus produced Elias's **first ever multi-Champion combo across 4 playtests** (R11 margin: "1. ever combo!!"); Niko's R26-R28 winning loop = 3 consecutive Strike+Strike kill rounds. Bonus is structurally working but not *felt* as a reward — neither player rated it "Very rewarding." Cross-category crowd-out partially confirmed (experienced player Elias circled "Rarely AND Never" for organic cross-category combos; first-timer Niko circled "Sometimes"). Both players' must-pick lists nearly identical (Focus + Armor + Steal) — catalogue's must-pick density problem persists across skill levels. See `docs/research/playtest-4-analysis.md`.
 
 ---
 
@@ -185,15 +185,15 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 
 ### How It Works
 
-**Standard Attack**: Move onto enemy tile = 1 DMG *(accepted into baseline, Playtest 3)*. No Rune cost. Uses a Move Slot. If there are multiple paths toward the target, attacker may choose which to take (relevant for Bodyguard).
+**Move-Attack**: Move onto enemy tile = 1 damage *(accepted into baseline, Playtest 3)*. No Money cost. Uses an action. If there are multiple paths toward the target, attacker may choose which to take (relevant for Bodyguard).
 - If target removed: attacker occupies tile.
 - If target survives: attacker stops on tile immediately before target.
 
-**Skill Attacks**: Typically 1 DMG. Skills always hit directly — Bodyguard does NOT intercept skills.
+**Skill Attacks**: Typically 1 damage. Skills always hit directly — Bodyguard does NOT intercept skills.
 
-**Bodyguard Rule** (baseline): Guard adjacent to both tile-before-target AND defender can intercept Standard Attack on Champion/King. Guard takes damage. Attacker moves 1 tile. Interception is optional.
+**Bodyguard Rule** (baseline): Guard adjacent to both tile-before-target AND defender can intercept Move-Attack on Champion/King. Guard takes damage. Attacker moves 1 tile. Interception is optional.
 
-**Multi-Champion Combo Bonus** (Stack A, Game 2 — pending test): Counter model. Each enemy piece has a combo counter (starts 0, resets end of your turn). Different Champions hitting with Strike skills increment the counter. Bonus DMG = counter value at time of hit.
+**Multi-Champion Combo Bonus** (Stack A, Game 2 — pending test): Counter model. Each enemy piece has a combo counter (starts 0, resets end of your turn). Different Champions hitting with Strike skills increment the counter. Bonus damage = counter value at time of hit.
 
 ### MDA Analysis
 
@@ -208,16 +208,16 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 
 | Dimension | Score (1–5) | Notes |
 |-----------|------------|-------|
-| Legibility | 4 | Standard attack is clear. Bodyguard adds one decision. |
+| Legibility | 4 | Move-Attack is clear. Bodyguard adds one decision. |
 | Depth | 3 | Binary (move on or don't). Depth from setup and reading the board. |
 | Interconnection | 4 | Movement + Health + Guards + Skills intersect here. |
 | Emotional Resonance | 5 | Capturing a piece is decisive. Bodyguard intercepts are dramatic. |
 
-**Critical issue** (Session 7): Standard attack dominance. 2 DMG for free outperformed all skill combos. Stack A Game 1 tested 1 DMG nerf — *accepted into baseline (Playtest 3)*. First Champion kill moved from R26 → R11. Standoff dissolved. Stack A Game 2 (combo bonus) ready to test.
+**Critical issue** (Session 7): Move-attack dominance. 2 damage for free outperformed all skill combos. Stack A Game 1 tested 1 damage nerf — *accepted into baseline (Playtest 3)*. First Champion kill moved from R26 → R11. Standoff dissolved. Stack A Game 2 (combo bonus) ready to test.
 
 ### Open Questions
 
-- **OQ-37**: Standard attack 1 DMG — ~~Stack A, Game 1~~ **ACCEPTED into baseline (P3)**.
+- **OQ-37**: Move-Attack 1 damage — ~~Stack A, Game 1~~ **ACCEPTED into baseline (P3)**.
 - **OQ-38**: Combo bonus — Stack A, Game 2. **Ready to test (Session 16).**
 - **OQ-21**: Bodyguard adjacency to defender only — Stack B.
 - **OQ-40**: Standoff / no-man's-land — tracking in Stack A.
@@ -225,9 +225,9 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 
 ### Playtest Evidence
 
-- **P1**: Bodyguard never triggered. Standard attack dominated — "wait and pounce."
+- **P1**: Bodyguard never triggered. Move-attack dominated — "wait and pounce."
 - **P2** (Layer 1): Bodyguard triggered ~2x. "Two Guards like pawns" blocking lanes at R14. 1 Champion kill in 26 rounds.
-- **P4** (Stack A G2): Bodyguard regressed to **0 triggers** — both players reported it never came up. Diagnosis: tracks standoff state, not the rule. Mid-game Armor-driven stalling reduced Standard-Attack volume; with no Move-attacks happening, there was nothing for Bodyguard to intercept. **OQ-21 confirmed as covariate of OQ-11 / chassis volume — cannot evaluate the rule cleanly until Stack H trims Armor and Standard Attacks return.**
+- **P4** (Stack A G2): Bodyguard regressed to **0 triggers** — both players reported it never came up. Diagnosis: tracks standoff state, not the rule. Mid-game Armor-driven stalling reduced Move-Attack volume; with no Move-attacks happening, there was nothing for Bodyguard to intercept. **OQ-21 confirmed as covariate of OQ-11 / chassis volume — cannot evaluate the rule cleanly until Stack H trims Armor and Move-Attacks return.**
 
 ---
 
@@ -237,9 +237,9 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 
 All pieces have **2 HP**: Normal (2) → Injured (1) → Removed (0).
 
-**Injured effects**: Speed capped at 1 (Guards only — Champions/King already Speed 1). Skill Range −1 (affects Range 2+ only).
+**Injured effects**: Speed capped at 1 (Guards only — Champions/King already Speed 1). Range −1 (affects Range 2+ only).
 
-**Armor**: Max 3 per piece. Each point absorbs 1 DMG then destroyed. Granted by Rust Shield, Armorsmith. Removed by Armor Breaker.
+**Armor**: Max 3 per piece. Each point absorbs 1 damage then destroyed. Granted by Shield, Plate. Removed by Break.
 
 ### MDA Analysis
 
@@ -269,9 +269,9 @@ All pieces have **2 HP**: Normal (2) → Injured (1) → Removed (0).
 
 ### Playtest Evidence
 
-- **P1**: Injured rarely relevant — 2 DMG standard attack skips it. Armor never used meaningfully.
+- **P1**: Injured rarely relevant — 2 damage move-attack skips it. Armor never used meaningfully.
 - **P2** (Layer 1): Dramatic improvement. Injured state: "Often" relevant. Defensive skills used extensively.
-- **P3** (Stack A G1): Mario granted ~20 Armor across the game; Elias used Armor Breaker ~6 times. Real chunk of game-time. First flag for chassis-volume reopen.
+- **P3** (Stack A G1): Mario granted ~20 Armor across the game; Elias used Break ~6 times. Real chunk of game-time. First flag for chassis-volume reopen.
 - **P4** (Stack A G2): **Best evidence for the chassis-volume hypothesis yet.** Total Armor granted 14 (Elias) / 22 (Niko). Both players ran identical mid-game Armor-stack arcs (R15-R21 / R15-R18 = pure Armor cluster, no Atk). Elias Q13: "Yes, a lot" mental focus + game "Slowed noticeably"; verbatim *"armor was a part of combo calcs but it just felt like you were not able to do your combos because of it."* Niko's split read (Q13 "Not really" + "Slightly extended") suggests the chassis cost is **asymmetric across skill levels** — experienced player feels it more because he plans combos around it. Combo bonus did NOT auto-resolve Q-C1: Niko's R26-R28 winning loop overran Armor only after a 7-round Armor consolidation. **Stack H confirmed as next.** Injured: Niko Q12 "Clearly weaker" + listed as confusion source on first read; Elias Q12 "Slightly weaker / Barely noticeable" — chassis volume real for new player, mechanical effect thin for experienced player. Stack J path looks viable. See `docs/research/playtest-4-analysis.md`.
 
 ---

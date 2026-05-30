@@ -29,14 +29,14 @@ This is design intent, not a mechanical mandate. No immediate rule changes follo
 
 The game has two layers:
 
-- **Chassis** — the spatial, movement, health, economy, and combat infrastructure that exists *so that skills can be played*. The 10x10 board, piece movement, Standard Attacks, Health/Armor, the Rune economy, Bodyguard, the Movement Phase. The chassis is necessary but not what the game *is about*.
-- **Engine** — the skill catalogue, draft system, Skill Slots, Skill Path/Range, and combo bonus. This is where the Core Fantasy lives. Combo discovery and execution happen here.
+- **Chassis** — the spatial, movement, health, economy, and combat infrastructure that exists *so that skills can be played*. The 10x10 board, piece movement, Move-Attacks, Health/Armor, the Money economy, Bodyguard, the Move Phase. The chassis is necessary but not what the game *is about*.
+- **Engine** — the skill catalogue, draft system, actions, Path/Range, and combo bonus. This is where the Core Fantasy lives. Combo discovery and execution happen here.
 
 **How to use the lens:**
 - *Diagnosis*: "Is this system louder than it needs to be?" If a chassis system consumes more attention or game-time than its strategic contribution warrants, it's *chassis bloat* (e.g. Q-C1's reading of the Armor↔Armor-Breaker loop). Reducing chassis volume makes the engine more audible.
 - *Design evaluation*: "Does this proposal add to the chassis or the engine?" Engine additions get easier justification (they directly serve combo discovery). Chassis additions need to clear a higher bar — they must enable the engine to do something it couldn't before, not just add texture.
 
-**Worked example:** Stack H (Q-C1) drops Armor cap 3→2 and changes Armorsmith from +1 to +2. That's a *chassis-volume reduction*, not an engine change — Armor itself stays, the RPS structure stays, but the loop's iterations are compressed. The engine becomes proportionally louder without any direct engine work.
+**Worked example:** Stack H (Q-C1) drops Armor cap 3→2 and changes Plate from +1 to +2. That's a *chassis-volume reduction*, not an engine change — Armor itself stays, the RPS structure stays, but the loop's iterations are compressed. The engine becomes proportionally louder without any direct engine work.
 
 The lens is a companion to the Justification Rule: every chassis change should answer "what is this enabling the engine to do?", and every engine change should answer "what combo shape does this open up?"
 
@@ -58,7 +58,7 @@ Multi-Champion combos should be devastating when set up; single-Champion precisi
 
 ### 2. Don't reward symptoms, reward the system (The KPI Principle).
 
-Rewarding "dealing damage" with bonus Runes incentivises the symptom (hitting things) rather than the system (clever play). Like company KPIs: setting wrong targets leads to good-on-paper results with a worse product. Reward the entire cycle, not one metric.
+Rewarding "dealing damage" with bonus Money incentivises the symptom (hitting things) rather than the system (clever play). Like company KPIs: setting wrong targets leads to good-on-paper results with a worse product. Reward the entire cycle, not one metric.
 
 ### 3. Players should be allowed to play how they want.
 
@@ -108,8 +108,8 @@ This is a **conditional** principle. Once the core identity is settled, the Incr
 ## Spending Tension (G8)
 
 Players must always want to do more than they can execute. The economy naturally transitions:
-- **Early game**: Rune-scarce (can't afford all desired skills)
-- **Mid game**: Slot-limited (have Runes but not enough Skill Slots)
+- **Early game**: Money-scarce (can't afford all desired skills)
+- **Mid game**: Slot-limited (have Money but not enough actions)
 - **Late game**: Opportunity-rich (both resources available, decisions about WHICH skills to fire)
 
 If either resource becomes so abundant that spending requires no tradeoff, something is broken. Sente (forced reactive spending) is compatible with this because the tradeoff persists — responding means you can't execute your own plan.
@@ -118,7 +118,7 @@ If either resource becomes so abundant that spending requires no tradeoff, somet
 
 ## Economy Philosophy
 
-- **Encourage spending through attractive options, not by punishing saving.** The cleanest fix for Rune hoarding is making skill usage effective and rewarding, not capping Runes or making them expire.
+- **Encourage spending through attractive options, not by punishing saving.** The cleanest fix for Money hoarding is making skill usage effective and rewarding, not capping Money or making it expire.
 - **Base auto-economy is strategy-neutral.** The guaranteed passive income (+2/turn) must not force a playstyle. However, strategy-specific economy sources (e.g., bonuses tied to aggression, control, or combo play) ARE acceptable — provided (a) multiple strategies each have a viable economy path, and (b) those paths are balanced against each other. The ban is on a single-strategy economy funnel, not on economy variety.
 - **Shortfall never closes** (G1) — players can never fill all skill slots with maximum-cost skills every turn. There's always more they want to do than they can afford.
 
@@ -149,4 +149,4 @@ Players can hold 3–5 simultaneous decision variables before paralysis (Sweller
 
 That's 4 axes — right in the sweet spot. Every new system added must either replace an existing axis or be absorbed into one.
 
-**Important nuance**: This 4-axis model is *aspirational* — it describes what experienced players engage with, not what new players do. Early-experience players primarily process their own available actions ("what can I do?") and check the Rune budget *after* identifying a desired action, not before. Opponent prediction emerges with game knowledge (like chess: low-Elo players play reactively, grandmasters read positions and calculate 5+ turns ahead). Design should support both modes: the game must be playable with just axes 1–3 while axis 4 provides the depth ceiling.
+**Important nuance**: This 4-axis model is *aspirational* — it describes what experienced players engage with, not what new players do. Early-experience players primarily process their own available actions ("what can I do?") and check the Money budget *after* identifying a desired action, not before. Opponent prediction emerges with game knowledge (like chess: low-Elo players play reactively, grandmasters read positions and calculate 5+ turns ahead). Design should support both modes: the game must be playable with just axes 1–3 while axis 4 provides the depth ceiling.

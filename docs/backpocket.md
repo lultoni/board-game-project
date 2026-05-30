@@ -11,10 +11,10 @@
 *Every proposed change must pass these. If a change violates a guardrail, it needs explicit justification or redesign.*
 
 ### G1. Shortfall Never Closes
-Players should *never* be able to fill all their skill slots with Rune-funded activations every turn. The economy is tuned so you always want to do more than you can afford. This scarcity IS the decision engine.
+Players should *never* be able to fill all their skill slots with Money-funded activations every turn. The economy is tuned so you always want to do more than you can afford. This scarcity IS the decision engine.
 
 ### G2. Encourage Spending via Attractiveness, Not Punishment
-If players hoard Runes, the fix is making spending more attractive (better skills, more combo opportunities) — not forcing them to spend via caps or use-it-or-lose-it rules. "Better to invest badly than lose the money entirely" should never describe the player's situation.
+If players hoard Money, the fix is making spending more attractive (better skills, more combo opportunities) — not forcing them to spend via caps or use-it-or-lose-it rules. "Better to invest badly than lose the money entirely" should never describe the player's situation.
 
 ### G3. Skill Cost is Feel, Not Math
 Don't calibrate skill costs by spreadsheet. Calibrate by playtesting: players should never feel "I can't do anything" (too expensive) or "I have no reason to plan" (too cheap). The right cost creates agonising tradeoffs.
@@ -32,7 +32,7 @@ Don't ban strategies — make more strategies viable. If one approach dominates,
 "Does this make skill combos more interesting?" is the test for every system. If a mechanic doesn't serve the combo/cleverness fantasy, it needs to justify its existence on other grounds.
 
 ### G8. Spending Tension
-Players must always want to do more than they can execute. Early game: Runes limit action count. Mid/late game: Skill Slots limit action count while Rune costs force choosing WHICH skills to fire. If either resource becomes so abundant that spending requires no tradeoff, something is broken.
+Players must always want to do more than they can execute. Early game: Money limits action count. Mid/late game: actions limit action count while Money costs force choosing WHICH skills to fire. If either resource becomes so abundant that spending requires no tradeoff, something is broken.
 
 ---
 
@@ -49,8 +49,8 @@ Players must always want to do more than they can execute. Early game: Runes lim
 **Diagnosis** (Session 23, confirmed by user): Armor functions as a **late-game survival tax / mandatory upkeep**, not a strategic choice. User verbatim: *"i 100% agree that armor is like the tax you have to pay. that they are the mandatory upkeep of pieces in the endgame."* The role isn't "absorb hits" — it's "the only thing standing between pieces and instant death in late game." That makes it a chassis tax, not engine identity.
 
 **Two diagnoses ruled out** (so future fixes don't re-litigate):
-- *Rune curve too steep* — killed: starving Runes weakens skills as primary damage and removes fire-and-think tension.
-- *HP too thin* — killed: catalogue audit shows no 2-DMG skills exist (cheapest 2-DMG path costs 0/2/4/6/8 Runes); raising HP just shifts the bottleneck to healing.
+- *Money curve too steep* — killed: starving Money weakens skills as primary damage and removes fire-and-think tension.
+- *HP too thin* — killed: catalogue audit shows no 2-damage skills exist (cheapest 2-damage path costs 0/2/4/6/8 Money); raising HP just shifts the bottleneck to healing.
 
 The shape is wrong, not the magnitude. Future Armor proposals must answer: "does this turn defense into a strategic choice instead of upkeep?"
 
@@ -66,7 +66,7 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 
 **Pre-thought design**: cap on max Armor scales with round number. Sketch: cap = 0 in rounds 1–5, 1 in rounds 6–10, 2 in rounds 11–15, 3 thereafter. Numbers illustrative — real values calibrated against P4 Armor totals (14 / 22 by end-of-game).
 
-**Watch flag**: stacking yet another scaling rule on top of Runes (already scales over rounds) and Skill Slots (already scales) may cross the cognitive-load line. User self-flagged this risk: *"too many things scaling over time may become boring."* Three round-indexed dials is a candidate ceiling.
+**Watch flag**: stacking yet another scaling rule on top of Money (already scales over rounds) and actions (already scales) may cross the cognitive-load line. User self-flagged this risk: *"too many things scaling over time may become boring."* Three round-indexed dials is a candidate ceiling.
 
 **Trigger**: defense redesign work in either pole. Pole-agnostic — applies to Pole A and Pole B alike. If the cross-pole-fixing OQ resolves "test in each pole separately," this entry runs twice.
 
@@ -80,11 +80,11 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 3. **Exchange-pit / mid-game stickiness (OQ-58)**: P4's mid-game collapsed into one cluster; pieces removed one-by-one in a single region. Attacker counter structurally rewards **distributing pressure** across multiple fronts — the antidote to one-pit convergence.
 
 **Pre-thought design**:
-- **Target counter** (existing G2 mechanic, widened): on each enemy piece, count how many *different* friendly Champions have hit this target this turn. Bonus on 2nd+ hit. **Scope widened**: any skill that hits an enemy piece counts (Strike + hit-causing Move skills). Standard Attacks excluded (free → would over-cheapen).
+- **Target counter** (existing G2 mechanic, widened): on each enemy piece, count how many *different* friendly Champions have hit this target this turn. Bonus on 2nd+ hit. **Scope widened**: any skill that hits an enemy piece counts (Strike + hit-causing Move skills). Move-Attacks excluded (free → would over-cheapen).
 - **Attacker counter** (new): on each friendly Champion, count how many *different* enemy targets this Champion has hit this turn. Bonus on 2nd+ hit on a different target.
 - **Stacking**: intuitive — both counters fire if both qualify on the same hit. If 4 attack skills are made by 2 different Champs hitting 2 different targets, both bonuses can trigger; rare in practice, reward when it lands.
-- **Multi-target skills (Blade Tempest)**: tick the counter on each hit piece for now. **Watch flag** — first surgical rollback if dual-counter proves OP, since AOE + dual-counter is the highest-risk interaction.
-- **Standard Attacks excluded**: still no counter ticks from Move-onto-tile. Free movement shouldn't earn bonus access.
+- **Multi-target skills (Tempest)**: tick the counter on each hit piece for now. **Watch flag** — first surgical rollback if dual-counter proves OP, since AOE + dual-counter is the highest-risk interaction.
+- **Move-Attacks excluded**: still no counter ticks from Move-onto-tile. Free movement shouldn't earn bonus access.
 
 **Teaching cost (G4 guardrail)**: dual-counter is strictly more complex than current G2. Two parallel counters per turn need a physical tracking solution — board-side trackers or per-piece tokens. Budget for this in the Stack A G3 rule sheet.
 
@@ -96,11 +96,11 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 
 ## Plague Skill — Inflict Injured, Bypass Armor — Session 22
 
-**What it fixes / improves**: Provides a non-killing Injured-state-as-payload skill — analogous to Armor Breaker but for HP state. Currently the only path to Injured is "deal 1 DMG to a non-Armored piece" or "deal 2 DMG total." A skill that inflicts Injured while ignoring Armor opens combat texture P4 lacked.
+**What it fixes / improves**: Provides a non-killing Injured-state-as-payload skill — analogous to Break but for HP state. Currently the only path to Injured is "deal 1 damage to a non-Armored piece" or "deal 2 damage total." A skill that inflicts Injured while ignoring Armor opens combat texture P4 lacked.
 
 **Connects to OQ-57 (Injured state) finding**: P4 showed Injured pieces "lingered briefly then died shortly afterwards." Plague would create a different Injured-pattern — pieces that get Injured *without* a kill setup, forcing the opponent to decide between healing and finishing. Adds tactical weight to the Injured state without making it more punishing mechanically.
 
-**Pre-thought design**: Mystic skill, cost TBD (~3 Runes), Range 2. Effect: target enemy piece becomes Injured (loses 1 HP, ignoring Armor). Cannot kill — if target is already at 1 HP, no effect (or alternative: target loses one Armor instead, designer's call at stack design time).
+**Pre-thought design**: Mystic skill, cost TBD (~3 Money), Range 2. Effect: target enemy piece becomes Injured (loses 1 HP, ignoring Armor). Cannot kill — if target is already at 1 HP, no effect (or alternative: target loses one Armor instead, designer's call at stack design time).
 
 **Trigger**: Skill catalogue expansion (post-Stack-H, post-G3). Bundle with other catalogue additions; do not introduce as standalone stack.
 
@@ -121,11 +121,11 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 
 ## Focus Replacement — "Pay More for +1 Range" Mechanic — Session 22
 
-**What it fixes / improves**: P4 confirmed Focus Strike is must-pick (in Q10 lists) but most armies only equip Focus 1-2× *total* (Session 22 correction). Suggests Focus is a *bottleneck* rather than a mass-pick problem — players want it on at least one Champion but rarely on more. Replacing the skill-slot version with a baseline "spend +1 Rune for +1 Range on any skill" mechanic frees that slot for combo variety while preserving the +Range tactical lever.
+**What it fixes / improves**: P4 confirmed Focus is must-pick (in Q10 lists) but most armies only equip Focus 1-2× *total* (Session 22 correction). Suggests Focus is a *bottleneck* rather than a mass-pick problem — players want it on at least one Champion but rarely on more. Replacing the skill-slot version with a baseline "spend +1 Money for +1 Range on any skill" mechanic frees that slot for combo variety while preserving the +Range tactical lever.
 
-**Pre-thought design**: remove Focus Strike from the skill catalogue. Add a baseline rule: *"any skill activation may pay +1 Rune to gain +1 Range on either activation or effect range (caster's choice, same constraint as the existing Focus + Move ruling)."* Maintains current Focus mechanics, just unties them from the slot.
+**Pre-thought design**: remove Focus from the skill catalogue. Add a baseline rule: *"any skill activation may pay +1 Money to gain +1 Range on either activation or effect range (caster's choice, same constraint as the existing Focus + Move ruling)."* Maintains current Focus mechanics, just unties them from the slot.
 
-**Risk**: makes every skill effectively Range 3 if Runes available; could destabilise the combat-distance balance the Range 2 default is calibrated for.
+**Risk**: makes every skill effectively Range 3 if Money available; could destabilise the combat-distance balance the Range 2 default is calibrated for.
 
 **Connects to**: OQ-12 (catalogue density); OQ-56 (must-pick density softer than thought, but Focus specifically still bottleneck-ish).
 
@@ -133,23 +133,23 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 
 ---
 
-## Lance Thrust + Rune Theft — Merge Candidate — Session 22
+## Lance + Steal — Merge Candidate — Session 22
 
-**What it fixes / improves**: Designer note: *"combining lance and theft."* Both skills overlap heavily — Lance Thrust (1 DMG, Range−1) and Rune Theft (1 DMG + steal 1 Rune, Range 2) are cheap-Strike-skill siblings. Lance is rarely picked when Rune Theft exists; Rune Theft is must-pick (P4 confirmed). Merging would (a) free a catalogue slot for new skills and (b) reduce must-pick concentration on Rune Theft specifically.
+**What it fixes / improves**: Designer note: *"combining lance and theft."* Both skills overlap heavily — Lance (1 damage, Range−1) and Steal (1 damage + steal 1 Money, Range 2) are cheap-Strike-skill siblings. Lance is rarely picked when Steal exists; Steal is must-pick (P4 confirmed). Merging would (a) free a catalogue slot for new skills and (b) reduce must-pick concentration on Steal specifically.
 
-**Pre-thought design**: replace both with a single skill — name TBD — that does 1 DMG and *optionally* steals 1 Rune (caster's choice at activation). Rune steal becomes a tactical opt-in rather than a mandatory rider on Rune Theft. Range 2 default; Lance's Range−1 dropped (or kept as a Focus-style modifier).
+**Pre-thought design**: replace both with a single skill — name TBD — that does 1 damage and *optionally* steals 1 Money (caster's choice at activation). Money steal becomes a tactical opt-in rather than a mandatory rider on Steal. Range 2 default; Lance's Range−1 dropped (or kept as a Focus-style modifier).
 
-**Risk**: removes the "Rune Theft is the strong one" identity that P4 confirmed players love. Need to confirm the merged skill still delivers the Mode-B tempo feel.
+**Risk**: removes the "Steal is the strong one" identity that P4 confirmed players love. Need to confirm the merged skill still delivers the Mode-B tempo feel.
 
-**Connects to**: OQ-34 (Rune Theft Mode B confirmed); OQ-12 (catalogue density).
+**Connects to**: OQ-34 (Steal Mode B confirmed); OQ-12 (catalogue density).
 
 **Trigger**: skill catalogue expansion / rebalance pass.
 
 ---
 
-## Runes — Rename Candidate ("Money" / something more natural) — Session 22
+## Money — Rename Candidate ("Money" / something more natural) — Session 22
 
-**What it fixes / improves**: OQ-56 onboarding barrier (Niko's first game). "Runes" is a custom term that needs teaching; "money" / "gold" / similar would be self-explanatory and reduce vocabulary load on first read. Pure naming change, no mechanical impact.
+**What it fixes / improves**: OQ-56 onboarding barrier (Niko's first game). "Money" is a custom term that needs teaching; "money" / "gold" / similar would be self-explanatory and reduce vocabulary load on first read. Pure naming change, no mechanical impact.
 
 **Pre-thought**: candidate names: money, gold, energy, mana. Pick one that aligns with the eventual high-concept aesthetic (Phase B — game identity / visual / naming).
 
@@ -161,77 +161,77 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 
 ---
 
-## Rune Theft — Cost Nerf
+## Steal — Cost Nerf
 
-**Problem**: Rune Theft (3 Runes: 1 DMG + steal 1 Rune) may be too strong with Layer 1 economy. With +2/turn income, stealing 1 Rune represents ~50% of a turn's income AND deals damage. Creates aggressive "Rune race" dynamics and tempo swings that may dominate decision-making.
+**Problem**: Steal (3 Money: 1 damage + steal 1 Money) may be too strong with Layer 1 economy. With +2/turn income, stealing 1 Money represents ~50% of a turn's income AND deals damage. Creates aggressive "Money race" dynamics and tempo swings that may dominate decision-making.
 
-**Pre-thought fix**: Raise cost to **4 Runes**.
+**Pre-thought fix**: Raise cost to **4 Money**.
 
 **Net cost analysis**:
-- Current: Pay 3, deal 1 DMG, steal 1 Rune → net cost 2 Runes + 1 DMG
-- Nerfed: Pay 4, deal 1 DMG, steal 1 Rune → net cost 3 Runes + 1 DMG
-- Compared to Lance Thrust: Pay 2, deal 1 DMG → net cost 2 Runes, no steal
-- At cost 4, Rune Theft is still economically neutral (steal 1 back), but costs 4 Runes up front — less spammable, requires more planning
+- Current: Pay 3, deal 1 damage, steal 1 Money → net cost 2 Money + 1 damage
+- Nerfed: Pay 4, deal 1 damage, steal 1 Money → net cost 3 Money + 1 damage
+- Compared to Lance: Pay 2, deal 1 damage → net cost 2 Money, no steal
+- At cost 4, Steal is still economically neutral (steal 1 back), but costs 4 Money up front — less spammable, requires more planning
 
-**Alternative**: Remove the 1 DMG (just theft, no damage, cost 2). Makes it a pure utility/disruption skill — likely weaker and less interesting.
+**Alternative**: Remove the 1 damage (just theft, no damage, cost 2). Makes it a pure utility/disruption skill — likely weaker and less interesting.
 
-**Trigger**: Test in Layer 2 if Rune Theft is still dominant after 3 HP changes. If not dominant, defer further.
+**Trigger**: Test in Layer 2 if Steal is still dominant after 3 HP changes. If not dominant, defer further.
 
 ---
 
-## Blade Tempest — Push Direction Ambiguity
+## Tempest — Push Direction Ambiguity
 
 **Problem**: "Adjacent pieces pushed 1 tile away from target" is ambiguous when a piece is diagonally adjacent to the target. "Away from target" could mean:
-- **Option A**: Along the attacker's Skill Path (the line from caster through target). Pieces not on that axis are not pushed.
+- **Option A**: Along the attacker's Path (the line from caster through target). Pieces not on that axis are not pushed.
 - **Option B**: Radially — each adjacent piece pushed directly away from the target tile (8 possible directions, one per adjacent tile).
 
 **Current rule text**: Option B (radial, all adjacent pieces pushed).
 
-**Pre-thought note on Option A**: Would make Blade Tempest a more linear, directional skill — easier to block by placing a piece behind the target on the skill path. Less chaotic but more readable.
+**Pre-thought note on Option A**: Would make Tempest a more linear, directional skill — easier to block by placing a piece behind the target on the skill path. Less chaotic but more readable.
 
 **Trigger**: If Option B creates consistent confusion at the table, switch to Option A and test in the next available layer.
 
 ---
 
-## Blade Tempest — Blocker Chain
+## Tempest — Blocker Chain
 
-**Observation**: Blade Tempest's radial push could theoretically create interesting chain interactions — a pushed piece could land on another piece's tile. Currently there is no ruling on what happens when a pushed piece lands on an occupied tile.
+**Observation**: Tempest's radial push could theoretically create interesting chain interactions — a pushed piece could land on another piece's tile. Currently there is no ruling on what happens when a pushed piece lands on an occupied tile.
 
 **Pre-thought fix**: Pushed pieces stop on the first unoccupied tile in the push direction (they don't displace other pieces). If there is no unoccupied tile in that direction (e.g., board edge or wall of pieces), the piece is not pushed.
 
-**Trigger**: Add this ruling to Blade Tempest's text when the edge case is first reached at the table.
+**Trigger**: Add this ruling to Tempest's text when the edge case is first reached at the table.
 
 ---
 
-## Blade Call — Extension to Movement Skills
+## Charge — Extension to Movement Skills
 
-**Current**: Blade Call only buffs Strike skills (+1 DMG to a Strike skill this turn).
+**Current**: Charge only buffs Strike skills (+1 damage to a Strike skill this turn).
 
-**Idea**: ~~Allow Blade Call to extend to movement skills as well — "one skill this turn gains +1 Range."~~ **Session 7 correction**: +1 Range duplicates Focus Strike's effect. This idea as stated is invalid. If Blade Call gets a secondary mode, it needs to be something other than Range — possibly +1 push/pull distance, or allowing a Strike to ignore 1 Armor. Needs rethinking.
+**Idea**: ~~Allow Charge to extend to movement skills as well — "one skill this turn gains +1 Range."~~ **Session 7 correction**: +1 Range duplicates Focus's effect. This idea as stated is invalid. If Charge gets a secondary mode, it needs to be something other than Range — possibly +1 push/pull distance, or allowing a Strike to ignore 1 Armor. Needs rethinking.
 
-**Risk**: At cost 3 Runes, any extension to movement skills could be very powerful. Might need cost adjustment.
+**Risk**: At cost 3 Money, any extension to movement skills could be very powerful. Might need cost adjustment.
 
 **Trigger**: Revisit when the skill catalogue is more complete and a broader meta is visible. Candidate for Layer 5+ or a separate skill variant.
 
 ---
 
-## Focus Strike — "Skill Slave" Problem
+## Focus — "Skill Slave" Problem
 
-**Problem**: A Champion equipped with Focus Strike and a second skill becomes a "Skill Slave" — every turn it just fires Focus Strike then the second skill. No positional agency, no interesting choices. The skill effectively hard-locks its carrier's decision space.
+**Problem**: A Champion equipped with Focus and a second skill becomes a "Skill Slave" — every turn it just fires Focus then the second skill. No positional agency, no interesting choices. The skill effectively hard-locks its carrier's decision space.
 
-**Pre-thought fix**: Skill Path Proximity rule — Focus Strike only activates if the caster is within Range 1 of the benefiting skill's caster (i.e., the two pieces must be adjacent or very close). This forces the Focus Strike carrier to position actively near the ally they're buffing, adding movement decisions instead of removing them.
+**Pre-thought fix**: Path Proximity rule — Focus only activates if the caster is within Range 1 of the benefiting skill's caster (i.e., the two pieces must be adjacent or very close). This forces the Focus carrier to position actively near the ally they're buffing, adding movement decisions instead of removing them.
 
-**Alternative**: Focus Strike enhances the *next* skill used by the *same* piece only (not any of your pieces). This eliminates the cross-piece buff entirely. Simpler, but loses the cool ally-combo feel.
+**Alternative**: Focus enhances the *next* skill used by the *same* piece only (not any of your pieces). This eliminates the cross-piece buff entirely. Simpler, but loses the cool ally-combo feel.
 
 **Note**: The current "any of your pieces" ruling was decided as canon. The Skill Slave problem is real but acceptable for now — the proximity fix is a deferred solution if it becomes a dominant play pattern.
 
-**Trigger**: If Focus Strike + one-skill-per-Champion becomes the default "correct" draft in Layer 2+, add the proximity constraint.
+**Trigger**: If Focus + one-skill-per-Champion becomes the default "correct" draft in Layer 2+, add the proximity constraint.
 
 ---
 
 ## Skill Catalogue Expansion — Staged Candidates (Session 11)
 
-**Context**: Research (`docs/research/skill-catalogue-balance.md`) and Playtest 2 draft data show the catalogue's problem is not that defensive skills are underpicked — all 3 Shield skills are heavily used. The problem is **too few distinct strategic identities within Shield and Mystic categories**. All Shield skills are passive (add durability, no pressure). Mystic has a must-pick (Focus Strike) and a never-pick (Blade Call in P2 meta). Research recommends 25-35 skills minimum for meaningful draft variety; we're at 15.
+**Context**: Research (`docs/research/skill-catalogue-balance.md`) and Playtest 2 draft data show the catalogue's problem is not that defensive skills are underpicked — all 3 Shield skills are heavily used. The problem is **too few distinct strategic identities within Shield and Mystic categories**. All Shield skills are passive (add durability, no pressure). Mystic has a must-pick (Focus) and a never-pick (Charge in P2 meta). Research recommends 25-35 skills minimum for meaningful draft variety; we're at 15.
 
 **Design principle for new skills (from Session 11 research)**: Every new skill should pass the **sente test** — does it create a situation the opponent must respond to? Skills that are purely self-serving (passive buffs with no threat) don't dissolve standoffs or create interesting decisions. Dual-purpose skills (defend + create threat) are the ideal.
 
@@ -241,85 +241,85 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 
 ### Shield — New Candidates
 
-**Thorn Armor (Shield, cost 3-4 Runes)**
-Grant +1 Armor to target ally/self. If that armor is destroyed by an attack, deal 1 DMG to attacker.
+**Thorn Armor (Shield, cost 3-4 Money)**
+Grant +1 Armor to target ally/self. If that armor is destroyed by an attack, deal 1 damage to attacker.
 
 - **Sente**: YES — opponent must choose: attack the armored piece and take retaliatory damage, or avoid it entirely.
-- **Balancing needed**: As stated, this is strictly better than Armorsmith (same armor + free damage). Needs constraints:
-  - Higher cost (4 Runes?) so the economy trade is real
+- **Balancing needed**: As stated, this is strictly better than Plate (same armor + free damage). Needs constraints:
+  - Higher cost (4 Money?) so the economy trade is real
   - Thorn only triggers when armor is FULLY broken (not on each hit)
-  - Armor Breaker could explicitly bypass the thorn effect (built-in counter)
-  - OR: thorn replaces existing armor rather than stacking (can't have Armorsmith + Thorn on same piece)
+  - Break could explicitly bypass the thorn effect (built-in counter)
+  - OR: thorn replaces existing armor rather than stacking (can't have Plate + Thorn on same piece)
 - **Status**: Promising concept, needs balancing design before testing.
 
-**Runic Ward (Shield, cost 3 Runes)**
-Grant +1 Armor to target ally/self. If that armor absorbs damage this round, gain +2 Runes at start of next turn.
+**Runic Ward (Shield, cost 3 Money)**
+Grant +1 Armor to target ally/self. If that armor absorbs damage this round, gain +2 Money at start of next turn.
 
 - **Sente**: YES — opponent attacks into it → fuels your economy. Opponent avoids it → your piece is safe. Either outcome benefits caster.
 - **Standoff connection**: Directly incentivises forward positioning — you WANT to be attacked because it's profitable. Walk forward, dare the opponent to hit you.
-- **Balancing**: Net cost = 1 Rune (pay 3, get 2 back IF hit). If never triggered, you paid 3 for +1 Armor (worse than Armorsmith at 3 for +1). Self-balancing: only good in aggressive/forward positions.
+- **Balancing**: Net cost = 1 Money (pay 3, get 2 back IF hit). If never triggered, you paid 3 for +1 Armor (worse than Plate at 3 for +1). Self-balancing: only good in aggressive/forward positions.
 - **Status**: Ready to test. Clean design, clear sente, self-balancing.
 
-**Bulwark (Shield, cost 2 Runes)**
+**Bulwark (Shield, cost 2 Money)**
 Grant +2 Armor to self. This piece cannot use skills for the rest of this turn.
 
 - **Sente**: No — this is a pure defensive commit. Trade: big armor but sacrifice your skill phase.
 - **Use case**: King protection when under pressure. "Hunker down" option when you can't afford to both defend and attack.
-- **Design note**: The self-restriction prevents it from being strictly better than Armorsmith. It's a strategic choice: maximum defense at the cost of offense.
+- **Design note**: The self-restriction prevents it from being strictly better than Plate. It's a strategic choice: maximum defense at the cost of offense.
 - **Status**: Ready to test. Simple design, clear trade-off.
 
 ---
 
 ### Mystic — New Candidates
 
-**Bind (Mystic, cost 3 Runes)**
-Target enemy piece within range: that piece cannot be moved during the next Movement Phase. It CAN still use its own skills.
+**Bind (Mystic, cost 3 Money)**
+Target enemy piece within range: that piece cannot be moved during the next Move Phase. It CAN still use its own skills.
 
-- **Sente**: YES — pinned piece must either accept reduced mobility (can't reposition) or burn a Move skill (Rune cost) to escape.
-- **Counterplay**: Move skills (Quick Dash, Shadow Shift) are the escape. Gives Move category a new defensive role.
+- **Sente**: YES — pinned piece must either accept reduced mobility (can't reposition) or burn a Move skill (Money cost) to escape.
+- **Counterplay**: Move skills (Dash, Swap) are the escape. Gives Move category a new defensive role.
 - **Connects to**: Pin/Threatened concept (Topic 1). Bind is the active/drafted version; Pin/Threatened (if ever implemented) would be the passive/positional version.
 - **Status**: Ready to test. Clear sente, clear counterplay.
 
-**Energize (Mystic, cost 2 Runes)**
-Target ally within range: that piece's next skill activation (this turn OR next turn) costs −2 Runes (minimum 0).
+**Energize (Mystic, cost 2 Money)**
+Target ally within range: that piece's next skill activation (this turn OR next turn) costs −2 Money (minimum 0).
 
 - **Sente**: Partial — enables a cheaper follow-up but opponent can ignore it.
-- **Use case**: Alternative to Focus Strike as an enabler. Focus gives +1 Range; Energize gives −2 Rune cost. Different build identity: "range extension" vs "economy enabler." Breaks Focus Strike's monopoly as the only buff Mystic.
+- **Use case**: Alternative to Focus as an enabler. Focus gives +1 Range; Energize gives −2 Money cost. Different build identity: "range extension" vs "economy enabler." Breaks Focus's monopoly as the only buff Mystic.
 - **Key design**: Must carry over to next turn, otherwise it's "pay 2 now, save 2 later this turn" = net zero within a turn (pointless). Carry-over makes it a setup/investment tool.
 - **Tracking**: One token on the piece indicating "next skill discounted." Removed after use. Minimal overhead.
-- **Status**: Ready to test. Clear alternative to Focus Strike.
+- **Status**: Ready to test. Clear alternative to Focus.
 
-**Skill Drain (Mystic, cost 3-4 Runes)**
-Target enemy Champion within range: their next skill activation this turn costs +2 Runes.
+**Skill Drain (Mystic, cost 3-4 Money)**
+Target enemy Champion within range: their next skill activation this turn costs +2 Money.
 
 - **Sente**: YES — directly taxes opponent's action economy. They must either pay more or change plans entirely.
 - **Mirror of Energize**: Energize helps allies, Skill Drain hurts enemies. Together they create an "economy manipulation" sub-category in Mystic.
-- **Risk**: Could feel oppressive / "unfun" (opponent's plans are disrupted without counterplay beyond "have more Runes"). Monitor carefully in testing.
-- **Balancing**: High cost (4 Runes) makes it an investment — you spend 4 to make them spend +2, net cost to you is 2 Runes for a tempo disruption. Only worthwhile against expensive skills.
+- **Risk**: Could feel oppressive / "unfun" (opponent's plans are disrupted without counterplay beyond "have more Money"). Monitor carefully in testing.
+- **Balancing**: High cost (4 Money) makes it an investment — you spend 4 to make them spend +2, net cost to you is 2 Money for a tempo disruption. Only worthwhile against expensive skills.
 - **Status**: Promising but risky. Test with caution — monitor for "feels bad" feedback.
 
 ---
 
 ### Move — New Candidates
 
-**Mini-Step (Move, cost 2 Runes)**
-Move self 1 tile along Skill Path.
+**Mini-Step (Move, cost 2 Money)**
+Move self 1 tile along Path.
 
 - **Sente**: No — pure self-repositioning. But enables sente plays (adjust LoS for follow-up Strike).
 - **Priority**: LOW — luxury candidate. Only test if sente skills don't already solve game speed. Risk: if efficient, becomes auto-draft and crowds out interesting skills.
-- **Use case**: Cheap LoS adjustment. Fills gap between free movement (Move Phase) and expensive Move skills (Quick Dash = 3 Runes). The "glue" skill that makes combos possible.
-- **Cost decision**: 1 Rune might be too spammable. 2 Runes makes it economy-comparable to other options. Test at 2, reduce to 1 if underused.
+- **Use case**: Cheap LoS adjustment. Fills gap between free movement (Move Phase) and expensive Move skills (Dash = 3 Money). The "glue" skill that makes combos possible.
+- **Cost decision**: 1 Money might be too spammable. 2 Money makes it economy-comparable to other options. Test at 2, reduce to 1 if underused.
 - **Status**: Ready to test. Already in backpocket from Session 8.
 
-**Swap Step (Move, cost 2 Runes)**
+**Swap Step (Move, cost 2 Money)**
 Swap positions of two of your adjacent allied pieces.
 
 - **Sente**: Partial — surprise LoS changes can create unexpected threats. Opponent must re-evaluate which pieces threaten what.
-- **Use case**: Formation rearrangement without burning Move Slots. Put your Strike Champion where your Guard was (and vice versa). Enables surprise combos.
+- **Use case**: Formation rearrangement without burning actions. Put your Strike Champion where your Guard was (and vice versa). Enables surprise combos.
 - **Status**: Ready to test. Simple, clear, enables creativity.
 
-**Ram (Move/Strike hybrid, cost 3 Runes)**
-Move self 1 tile toward target along Skill Path. Push target 1 tile in same direction. If pushed piece hits another piece, that stationary piece takes 1 DMG.
+**Ram (Move/Strike hybrid, cost 3 Money)**
+Move self 1 tile toward target along Path. Push target 1 tile in same direction. If pushed piece hits another piece, that stationary piece takes 1 damage.
 
 - **Sente**: YES — displacement + potential collision damage. Opponent must consider clustering risk.
 - **Connects to**: Collision damage concept (Topic 1). This is the skill-specific version (opt-in via draft, not universal physics).
@@ -338,7 +338,7 @@ The following ideas from earlier sessions remain in the pool but are lower prior
 - **Deflect (Shield/Mystic, cost 2)**: Negate next skill on target. Tracking problem (G4) — "which piece has deflect active?" Creates uncertainty that may not be fun.
 - **Warding Stone (Shield, cost 2)**: Place 1-turn barrier on tile. Temp effect tracking (G4 blocker — needs research from backlog).
 - **Speed Surge (Mystic, cost 2)**: +1 Speed this turn. Not sente. Functional but not exciting.
-- **Disrupt (Mystic, cost 3)**: Target loses 1 Skill Slot. Very powerful / potentially unfun. Superseded by Skill Drain as a gentler economy-tax version.
+- **Disrupt (Mystic, cost 3)**: Target loses 1 action. Very powerful / potentially unfun. Superseded by Skill Drain as a gentler economy-tax version.
 - **Gravity Well (Move, cost 3)**: Pull all pieces within 2 tiles of target tile 1 tile toward it. Affects own pieces too. Sente (formation disruption). Needs more design work — edge cases around tie-breaking, targeting clarity. Move category, not Mystic.
 - **Line Pull / Strömungsruf**: Pull all enemies on a line toward midpoint. Needs elegant rule formulation.
 
@@ -367,8 +367,8 @@ The following ideas from earlier sessions remain in the pool but are lower prior
 ## In-Game Skill Redraft
 
 **Idea (early stage — not a staged fix, just captured for future consideration)**: Allow skills to be changed during the game rather than being locked at draft time. Possible formats:
-- *Shop*: Spend Runes to swap one skill for another during your turn (from a shared pool).
-- *Auction*: Both players bid Runes for skills from a shared pool at fixed milestone rounds.
+- *Shop*: Spend Money to swap one skill for another during your turn (from a shared pool).
+- *Auction*: Both players bid Money for skills from a shared pool at fixed milestone rounds.
 - *Opponent swap*: Exchange one skill with opponent at a negotiated interval.
 - *Fixed-interval redraft*: Partial or full redraft at milestone rounds (e.g. R10, R20).
 
@@ -378,13 +378,13 @@ The following ideas from earlier sessions remain in the pool but are lower prior
 
 ---
 
-## Standard Attack — Retaliation Variant
+## Move-Attack — Retaliation Variant
 
-**Problem**: If the Layer 2 standard attack nerf (1 DMG) makes Guard clearing too slow and extends game length, an alternative approach is needed that keeps standard attacks risky without lowering their raw damage.
+**Problem**: If the Layer 2 move-attack nerf (1 damage) makes Guard clearing too slow and extends game length, an alternative approach is needed that keeps move-attacks risky without lowering their raw damage.
 
-**Pre-thought fix**: Standard attacks deal 2 DMG as before, but the **attacker takes 1 DMG** (retaliation). Melee engagement becomes a mutual exchange. Skills (ranged, no retaliation) become the safe option. Cleverness is rewarded with safety; brute force is punished with self-damage. Common in tactical video games (Fire Emblem, Advance Wars).
+**Pre-thought fix**: Move-attacks deal 2 damage as before, but the **attacker takes 1 damage** (retaliation). Melee engagement becomes a mutual exchange. Skills (ranged, no retaliation) become the safe option. Cleverness is rewarded with safety; brute force is punished with self-damage. Common in tactical video games (Fire Emblem, Advance Wars).
 
-**Trigger**: If Layer 2 testing (standard attack 1 DMG) shows Guard clearing drags and game length increases. This is an alternative to the nerf, not a complement.
+**Trigger**: If Layer 2 testing (move-attack 1 damage) shows Guard clearing drags and game length increases. This is an alternative to the nerf, not a complement.
 
 ---
 
@@ -403,7 +403,7 @@ The following ideas from earlier sessions remain in the pool but are lower prior
 **Problem**: Both playtests showed a "standoff zone" — 2-3 tile gap between formations that neither player wants to cross first because entering attack range risks heavy damage. First player to commit is at a disadvantage because the opponent can react optimally (perfect information makes this worse than in games with randomness).
 
 **Research findings (Session 11 — `docs/research/forward-positioning-incentives.md`)**:
-Five mechanical patterns identified: contested Rune generators (Advance Wars), one-time threshold bonuses, objective/VP scoring (Aristeia!/Kemet), sente skills (Go theory), and underdog bonuses. Key insight: the standoff is an incentive-intent gap — our game makes waiting strictly dominant. The attack nerf addresses entry risk but not the cost of passivity.
+Five mechanical patterns identified: contested Money generators (Advance Wars), one-time threshold bonuses, objective/VP scoring (Aristeia!/Kemet), sente skills (Go theory), and underdog bonuses. Key insight: the standoff is an incentive-intent gap — our game makes waiting strictly dominant. The attack nerf addresses entry risk but not the cost of passivity.
 
 **Primary solution: Sente Skill Design (design principle, not a mechanic)**:
 Rather than adding territory-control mechanics that shift the game's identity, design skills that naturally create threats requiring immediate response from forward positions. The game dissolves standoffs through its OWN systems (skills/combos) rather than bolted-on spatial incentives.
@@ -414,40 +414,40 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 - Doesn't require a separate tracking system — the threat IS the skill effect
 
 **Current skills with sente properties**:
-- Rune Theft: forces economy response
-- Blade Tempest: pushes pieces out of formation, opponent must reposition
+- Steal: forces economy response
+- Tempest: pushes pieces out of formation, opponent must reposition
 - Combo bonus (Stack A): if 2 Champions are in range of a target, opponent MUST deal with one
 
 **Current skills WITHOUT sente properties** (opponent can ignore):
-- Armorsmith, Field Medic: self/ally buffs — no pressure on opponent
-- Focus Strike: setup for your own future action — opponent can wait
+- Plate, Heal: self/ally buffs — no pressure on opponent
+- Focus: setup for your own future action — opponent can wait
 
-**G1/G8 compatibility (Session 11 — researched)**: Sente threats force *reactive* spending — the defender spends Runes/slots to neutralize, not to profit. Both players still feel the shortfall (G1). The attacker's advantage is tempo (they chose when/where), not resources. This is G8-compatible because the tradeoff persists: spending to respond means NOT spending on your own plan. Sente breaks G1 only if responding generates more resources than it costs — avoid that in skill design.
+**G1/G8 compatibility (Session 11 — researched)**: Sente threats force *reactive* spending — the defender spends Money/actions to neutralize, not to profit. Both players still feel the shortfall (G1). The attacker's advantage is tempo (they chose when/where), not resources. This is G8-compatible because the tradeoff persists: spending to respond means NOT spending on your own plan. Sente breaks G1 only if responding generates more resources than it costs — avoid that in skill design.
 
 **Implication for skill catalogue expansion**: Prioritize skills that create "must-respond" threats from mid-range positions. Skills that are purely self-buffing don't dissolve standoffs. See Topic 4 (skill gaps) for specific candidates.
 
 **Fallback hierarchy (if sente skills + attack nerf don't dissolve standoff)**:
-1. One-time midline crossing bonus (+1 Rune per Champion crossing rank 5 for first time) — small, non-compounding
-2. Contested Rune generators (2-3 midfield tiles producing Runes for controller) — shifts identity toward territory control, use only if desperate
+1. One-time midline crossing bonus (+1 Money per Champion crossing rank 5 for first time) — small, non-compounding
+2. Contested Money generators (2-3 midfield tiles producing Money for controller) — shifts identity toward territory control, use only if desperate
 3. VP scoring track (parallel win condition for forward presence) — absolute last resort, conflicts with core fantasy
 
 **Anti-snowball safeguards (if generators ever deployed)**: Fixed-rate nodes, presence-required (piece must stay), recapturable (never locked in), "make winning cost resources."
 
-**Trigger**: Monitor in Stack A playtest. If standoff persists despite 1 DMG attack nerf, escalate. If standoff dissolves, deprioritize entire section.
+**Trigger**: Monitor in Stack A playtest. If standoff persists despite 1 damage attack nerf, escalate. If standoff dissolves, deprioritize entire section.
 
 ---
 
-## Action-Based Rune Economy
+## Action-Based Money Economy
 
-**Idea**: Tie Rune income to board engagement instead of (or in addition to) automatic time-based scaling. Examples: +1 Rune for dealing damage, +2 for capturing a piece, +1/turn for occupying centre tiles.
+**Idea**: Tie Money income to board engagement instead of (or in addition to) automatic time-based scaling. Examples: +1 Money for dealing damage, +2 for capturing a piece, +1/turn for occupying centre tiles.
 
 **Why interesting**: Would reward active play and punish turtling. Creates virtuous cycle: clever play → more resources → more clever play.
 
-**Why dangerous**: Snowball effect (winner gets more Runes → wins harder). KPI problem — rewards the symptom (dealing damage) not the system (clever play). Standard attacks are free AND would be further rewarded, making them even more dominant. Saying "only skill damage counts" feels arbitrary.
+**Why dangerous**: Snowball effect (winner gets more Money → wins harder). KPI problem — rewards the symptom (dealing damage) not the system (clever play). Move-attacks are free AND would be further rewarded, making them even more dominant. Saying "only skill damage counts" feels arbitrary.
 
 **Designer's KPI analogy**: Like company KPIs that reward one metric and cause employees to optimise for it at the expense of the actual product. Must reward the entire cycle/system, not just one part.
 
-**Trigger**: Only if standard attack nerf + combo bonus together don't fix the passive-play problem. Park until post-Layer-2 data. The existing automatic economy may self-correct when standard attacks are nerfed (skills become primary damage tool → Rune spending patterns change naturally).
+**Trigger**: Only if move-attack nerf + combo bonus together don't fix the passive-play problem. Park until post-Layer-2 data. The existing automatic economy may self-correct when move-attacks are nerfed (skills become primary damage tool → Money spending patterns change naturally).
 
 ---
 
@@ -472,7 +472,7 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 - Healing becomes "delay" not "undo" — strategically richer (aligns with G1: shortfall never closes)
 - Zero verification burden (one counter per player, tracked on game-tracking sheet)
 - No arguments about "is this decidable?" — the King simply dies when the counter runs out
-- Incentivises dealing ANY damage to the King (even 1 DMG "snipes" matter over time)
+- Incentivises dealing ANY damage to the King (even 1 damage "snipes" matter over time)
 
 **Open design questions**:
 - **Armor interaction — Model A**: Armor damage does NOT count toward Lifetime HP. Only real HP damage ticks the counter. This means armor is a true shield — extends lifetime. Risk: infinite armor cycling loops remain possible.
@@ -514,7 +514,7 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 **Completely open questions** (not yet explored):
 - When does the swap happen? (Fixed round? Triggered by event? Mutual agreement?)
-- What carries over? (Rune pools? Skill loadouts? HP states? Everything?)
+- What carries over? (Money pools? Skill loadouts? HP states? Everything?)
 - Does this change the win condition? (King capture = instant loss regardless of swap, or do you need to "win both halves"?)
 - Is this a fundamental game mode, or a variant/tournament format?
 
@@ -524,20 +524,20 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ---
 
-## Cascade Trigger — +1 Skill Slot on Kill
+## Cascade Trigger — +1 action on Kill
 
-**Idea**: When one of your pieces kills an enemy piece (by any method — standard attack or skill), you gain +1 Skill Slot for the remainder of that turn.
+**Idea**: When one of your pieces kills an enemy piece (by any method — move-attack or skill), you gain +1 action for the remainder of that turn.
 
-**Why interesting**: Rewards finishing a setup. The bonus is tempo (one more action THIS turn) not resources (no extra Runes). Creates exciting follow-up moments: kill → reposition to safety, kill → chain into a second exposed target. Incentivises committing to an attack rather than poking safely.
+**Why interesting**: Rewards finishing a setup. The bonus is tempo (one more action THIS turn) not resources (no extra Money). Creates exciting follow-up moments: kill → reposition to safety, kill → chain into a second exposed target. Incentivises committing to an attack rather than poking safely.
 
 **Anti-snowball properties**:
 - One-turn-only (doesn't compound across rounds)
-- Still costs Runes to use the extra slot (early-game kills barely benefit because Runes are scarce)
+- Still costs Money to use the extra slot (early-game kills barely benefit because Money is scarce)
 - Opponent lost a piece = fewer future threats anyway; the slot just lets the attacker capitalise immediately rather than waiting a turn
 
-**Backpocketed restriction (if too easy to exploit via standard attacks)**: Limit trigger to skill-kills only. Test this restriction if playtests show free standard-attack kills generating too much tempo.
+**Backpocketed restriction (if too easy to exploit via move-attacks)**: Limit trigger to skill-kills only. Test this restriction if playtests show free move-attack kills generating too much tempo.
 
-**Removal condition**: If playtests show the extra slot is never used (players don't have Runes to spend), remove entirely. No dead rules.
+**Removal condition**: If playtests show the extra slot is never used (players don't have Money to spend), remove entirely. No dead rules.
 
 **Trigger**: Stack F (Cleverness II) or earlier if a natural test opportunity arises.
 
@@ -545,9 +545,9 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## Pin / Threatened Status
 
-**Idea**: A piece that is in the Skill Path (line of sight) of 2+ enemy Champions is "Threatened" — it cannot be moved during the Movement Phase (but CAN still use its own skills, and CAN be moved by Move skills).
+**Idea**: A piece that is in the Path (line of sight) of 2+ enemy Champions is "Threatened" — it cannot be moved during the Move Phase (but CAN still use its own skills, and CAN be moved by Move skills).
 
-**Why interesting**: Rewards surrounding and multi-piece coordination without dealing damage. Creates positional "captures" — you restrict the opponent's options by clever placement. The opponent must use a Move skill (Rune cost) to escape, or reposition the threatening Champions away. Connects to the "restriction as reward" pattern from Hive/Go.
+**Why interesting**: Rewards surrounding and multi-piece coordination without dealing damage. Creates positional "captures" — you restrict the opponent's options by clever placement. The opponent must use a Move skill (Money cost) to escape, or reposition the threatening Champions away. Connects to the "restriction as reward" pattern from Hive/Go.
 
 **Risk**: Could feel oppressive / "control-losing" for the defending player. May make Movement skills a must-pick (interesting but constrains draft freedom).
 
@@ -556,7 +556,7 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 **Open design questions**:
 - Does the King count as a "Champion" for pin purposes? (Probably yes — it has skills.)
 - Can Guards be pinned? (Probably yes — Guards in LoS of 2 Champions can't move. But Guards don't have skills, so pinning a Guard removes ALL its options except being rescued by a Move skill on an ally.)
-- Does "Skill Path" mean direct LoS or does the path need to be unblocked? (Probably unblocked — you must have a clear shot to "threaten.")
+- Does "Path" mean direct LoS or does the path need to be unblocked? (Probably unblocked — you must have a clear shot to "threaten.")
 
 **Trigger**: As its own test layer (Stack F or later). Independent of combat/economy changes.
 
@@ -564,16 +564,16 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## Collision Damage — Universal Rule (speculative)
 
-**Idea**: When a piece is pushed/pulled into a tile occupied by another piece, the stationary piece takes 1 DMG. The pushed piece stops on the tile before (does not displace).
+**Idea**: When a piece is pushed/pulled into a tile occupied by another piece, the stationary piece takes 1 damage. The pushed piece stops on the tile before (does not displace).
 
-**Why interesting**: Makes ALL push/pull skills into positional combo tools. Rewards reading the board and creating "lined up" formations to exploit. Adds depth to Blade Tempest, Air Blast, Precision Thrust, Maelstrom, and any future push/pull skills.
+**Why interesting**: Makes ALL push/pull skills into positional combo tools. Rewards reading the board and creating "lined up" formations to exploit. Adds depth to Tempest, Blast, Shove, Maelstrom, and any future push/pull skills.
 
 **Risk (identified in Session 11 discussion)**:
 - If BOTH pieces take damage: too punishing — creates keep-away zones where nobody advances into push range.
 - If only the stationary piece takes damage: could amplify standoff problem (fear of being pushed into allies for splash damage). Opponent clusters less OR stays far away.
-- Makes push skills potentially very strong relative to their cost (2-3 Runes for damage + displacement + collision damage).
+- Makes push skills potentially very strong relative to their cost (2-3 Money for damage + displacement + collision damage).
 
-**Why deferred**: The standoff problem must be confirmed dissolved FIRST (via Stack A results). If players ARE engaging closely after the standard attack nerf, collision damage adds exciting interactions. If standoff persists, collision damage makes it worse.
+**Why deferred**: The standoff problem must be confirmed dissolved FIRST (via Stack A results). If players ARE engaging closely after the move-attack nerf, collision damage adds exciting interactions. If standoff persists, collision damage makes it worse.
 
 **Trigger**: Test ONLY after standoff is confirmed dissolved (post-Stack A, possibly post-Stack C). Do not test alongside standoff-fixing mechanics — evaluate independently.
 
@@ -581,7 +581,7 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## Collision Damage — Skill-Specific ("Ram" / "Shove")
 
-**Idea**: A new Strike or Move skill where collision damage is the SKILL'S special property, not a universal physics rule. Example: *Ram (Strike, cost 3 Runes)*: Move self 1 tile toward target along Skill Path, push target 1 tile. If target hits another piece, that piece takes 1 DMG.
+**Idea**: A new Strike or Move skill where collision damage is the SKILL'S special property, not a universal physics rule. Example: *Ram (Strike, cost 3 Money)*: Move self 1 tile toward target along Path, push target 1 tile. If target hits another piece, that piece takes 1 damage.
 
 **Why interesting**: Opt-in during drafting (not a universal rule everyone must account for). Counterable (don't cluster pieces). Creates board-reading moments without taxing ALL positioning decisions. Gives the skill a unique identity — "the one that punishes clusters."
 
@@ -593,11 +593,11 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## New Skill Idea — Mini-Step
 
-**Idea (Session 8)**: A cheap micro-repositioning skill. *Mini-Step (Move, cost 1–2 Runes)*: Move self 1 tile along Skill Path.
+**Idea (Session 8)**: A cheap micro-repositioning skill. *Mini-Step (Move, cost 1–2 Money)*: Move self 1 tile along Path.
 
-**Why interesting**: Fills the gap between free movement (Move Phase, free, up to Speed tiles) and expensive Move skills (Quick Dash = 3 Runes for 2 tiles). At 1–2 Runes, it's a low-commitment tactical adjustment — nudge a piece into LoS, escape a threat, or set up a combo next turn without burning a full Move Slot.
+**Why interesting**: Fills the gap between free movement (Move Phase, free, up to Speed tiles) and expensive Move skills (Dash = 3 Money for 2 tiles). At 1–2 Money, it's a low-commitment tactical adjustment — nudge a piece into LoS, escape a threat, or set up a combo next turn without burning a full action.
 
-**Design consideration**: If cost is 1 Rune, it might be too spammable (essentially free repositioning via skills). Cost 2 Runes makes it comparable to Lance Thrust in economy but with no damage — the trade-off is "reposition vs. deal damage."
+**Design consideration**: If cost is 1 Money, it might be too spammable (essentially free repositioning via skills). Cost 2 Money makes it comparable to Lance in economy but with no damage — the trade-off is "reposition vs. deal damage."
 
 **Trigger**: When the skill catalogue is expanded. Candidate for inclusion alongside other gap-filling skills (Ultimate Heal, Push Wave, etc.).
 
@@ -645,7 +645,7 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 **Concept**: Terrain "effects" are permanent objects placed on tiles with 1 HP (destructible). Pieces walk to them to use their effect. Unlike removed terrain (ADR-001), these are player-created via skills — not map features.
 
-**Example — Placeable Armorsmith**: A skill places a "forge" token on a tile. Any friendly piece that moves onto or through that tile can spend Runes to gain Armor (e.g., pay 2 Runes → +1 Armor). Alternatively: upfront investment model (pay 5 Runes to place; any ally on the tile gets +1 Armor for free, unlimited uses until destroyed).
+**Example — Placeable Plate**: A skill places a "forge" token on a tile. Any friendly piece that moves onto or through that tile can spend Money to gain Armor (e.g., pay 2 Money → +1 Armor). Alternatively: upfront investment model (pay 5 Money to place; any ally on the tile gets +1 Armor for free, unlimited uses until destroyed).
 
 **Why interesting**:
 - Creates forward-positioning incentive — you MUST push toward (or protect) your station to benefit
@@ -654,14 +654,14 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 - Solves standoff: places something worth fighting over in the middle of the board
 
 **Ownership model (design decision)**:
-- **Player-spawned**: A skill places the station (costs Runes + a Skill Slot action). Only your pieces benefit. Creates asymmetric board states — your station is your advantage to defend.
+- **Player-spawned**: A skill places the station (costs Money + an action). Only your pieces benefit. Creates asymmetric board states — your station is your advantage to defend.
 - **Neutral / pre-placed**: Stations exist on fixed tiles from game start (or appear at set rounds). Both players can use them. Creates contested zones — whoever controls the tile gets the benefit.
 - Hybrid: neutral stations exist, but a skill lets you "claim" or "corrupt" one (flip it to your side / deny opponent access).
 
 **Open questions**:
 - Does this violate "no terrain" (ADR-001)? Or is it different because it's player-created/contestable, temporary, and destructible?
-- 1 HP = one hit to destroy. Too fragile? Or correct because placement itself cost Runes?
-- What other station types? (Healing font, Rune generator, speed boost tile, LoS blocker?)
+- 1 HP = one hit to destroy. Too fragile? Or correct because placement itself cost Money?
+- What other station types? (Healing font, Money generator, speed boost tile, LoS blocker?)
 - How does this interact with G4 (tracking)? Token on tile = fine. But if effects are conditional (e.g., "first piece each turn"), overhead increases.
 - Does this change the game's identity too much toward territory control?
 
@@ -671,9 +671,9 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## [TO DISCUSS] Laser Beam — Line Damage Skill (Session 12 idea)
 
-**Concept**: A high-cost Strike/Mystic skill that deals 1 DMG to ALL pieces (ally and enemy?) along the Skill Path line. Pierces through blockers — the line keeps going.
+**Concept**: A high-cost Strike/Mystic skill that deals 1 damage to ALL pieces (ally and enemy?) along the Path line. Pierces through blockers — the line keeps going.
 
-**Possible design**: *Laser Beam (Strike, cost 5-6 Runes)*: Choose a direction from caster. Deal 1 DMG to every piece on that line until board edge. Does NOT stop at the first piece (unlike normal Skill Path).
+**Possible design**: *Laser Beam (Strike, cost 5-6 Money)*: Choose a direction from caster. Deal 1 damage to every piece on that line until board edge. Does NOT stop at the first piece (unlike normal Path).
 
 **Why interesting**:
 - Ultimate/expensive skill — high cost makes it a committed investment, not spammable
@@ -684,9 +684,9 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 **Open questions**:
 - Hits own pieces too? (More interesting but harder to use — reward is positioning your pieces OFF the line)
 - Only enemies? (Safer design but less interesting positioning puzzle)
-- Does it ignore Skill Path blockage entirely? (If yes: unique mechanic. If no: it's just multi-target Lance Thrust.)
-- At 5-6 Runes: is it ever worth it vs. multiple cheaper targeted skills? Need to ensure there's a board state where it's the correct play.
-- Blade Call interaction: +1 DMG to ALL targets? (Probably no — Blade Call buffs exactly one Strike.)
+- Does it ignore Path blockage entirely? (If yes: unique mechanic. If no: it's just multi-target Lance.)
+- At 5-6 Money: is it ever worth it vs. multiple cheaper targeted skills? Need to ensure there's a board state where it's the correct play.
+- Charge interaction: +1 damage to ALL targets? (Probably no — Charge buffs exactly one Strike.)
 
 **Trigger**: Discuss as part of skill catalogue expansion (Stack F). Clearly an "ultimate" tier skill — connects to OQ-50 (major skill slot cost) if that's ever implemented.
 
@@ -694,9 +694,9 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## [TO DISCUSS] Wave Push — Line Displacement Skill (Session 12 idea)
 
-**Concept**: A Move skill that pushes ALL pieces on the Skill Path line 1 tile in the cast direction. Like a shockwave traveling down a corridor.
+**Concept**: A Move skill that pushes ALL pieces on the Path line 1 tile in the cast direction. Like a shockwave traveling down a corridor.
 
-**Possible design**: *Wave Push (Move, cost 3-4 Runes)*: Choose a direction from caster along Skill Path. All pieces (ally and enemy) on that line are pushed 1 tile away from caster.
+**Possible design**: *Wave Push (Move, cost 3-4 Money)*: Choose a direction from caster along Path. All pieces (ally and enemy) on that line are pushed 1 tile away from caster.
 
 **Why interesting**:
 - Mass displacement — disrupts entire formations in one action
@@ -711,10 +711,10 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 **Open questions**:
 - Affects both ally and enemy? (More interesting, harder to use, higher skill ceiling)
-- What happens when a piece is pushed into the board edge? (Stays in place? Takes 1 DMG from wall slam?)
+- What happens when a piece is pushed into the board edge? (Stays in place? Takes 1 damage from wall slam?)
 - What happens when pushed into another piece? (Stop before it? Collision damage? See Ram / collision damage section.)
 - Connects to existing "Push Wave" in Previously Listed Ideas (line 218) — this is a more fleshed-out version.
-- Is Wave Pull too strong as a combo setup tool? (Pull 3 enemies into a cluster → Blade Tempest AoE?)
+- Is Wave Pull too strong as a combo setup tool? (Pull 3 enemies into a cluster → Tempest AoE?)
 
 **Trigger**: Discuss as part of skill catalogue expansion (Stack F). Supersedes the earlier "Push Wave" concept in Previously Listed Ideas.
 
@@ -724,9 +724,9 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## [TO DISCUSS] Guard "Skills" — Passive Buff Draft (Session 13 idea)
 
-**What it fixes / improves**: Guards are currently strategically flat — all 6 are mechanically identical, so they're treated as interchangeable bodies. This idea gives Guards their own identity layer (parallel to how skills give Champions identity), so positioning them is a real decision rather than just "where do bodies go." Also opens a new draft axis without adding active-skill cognitive load (buffs are passive — no in-game Rune decisions).
+**What it fixes / improves**: Guards are currently strategically flat — all 6 are mechanically identical, so they're treated as interchangeable bodies. This idea gives Guards their own identity layer (parallel to how skills give Champions identity), so positioning them is a real decision rather than just "where do bodies go." Also opens a new draft axis without adding active-skill cognitive load (buffs are passive — no in-game Money decisions).
 
-**Concept**: Just as Champions equip 2 active skills during draft, Guards could draft passive buffs from a separate pool. These aren't activated with Runes — they're permanent traits that change how the Guard plays.
+**Concept**: Just as Champions equip 2 active skills during draft, Guards could draft passive buffs from a separate pool. These aren't activated with Money — they're permanent traits that change how the Guard plays.
 
 **Example buffs**:
 - *Stalwart*: This Guard has +1 Armor permanently (starts with 1 Armor).
@@ -735,7 +735,7 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 - *Anchor*: This Guard cannot be pushed or pulled by enemy skills.
 
 **Why interesting**:
-- Adds draft depth without adding active-skill cognitive load (Guards don't need Rune spending decisions)
+- Adds draft depth without adding active-skill cognitive load (Guards don't need Money spending decisions)
 - Differentiates Guards from each other — currently all 6 Guards are identical, which is strategically flat
 - Creates formation-building decisions: which buffs go where in your lineup?
 - Connects to OQ-51 (rewarding clever plays) — Guard buffs could reward specific positioning patterns
@@ -760,10 +760,10 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 **Concept**: At set points during the game, something "shifts" — a rule changes, a resource appears, or a constraint activates. Creates natural game phases with distinct feels.
 
 **Example events**:
-- *Round 10 — "The Veil Lifts"*: All pieces gain +1 Skill Slot for the rest of the game. (Accelerates the endgame — more actions per turn, more Rune pressure.)
-- *Round 15 — "Desperation"*: Standard attacks deal 2 DMG again (reverting the nerf). (Forces engagement if stalling.)
-- *First Champion killed — "Blood Price"*: The killer's team loses 2 Runes immediately. (Anti-snowball.)
-- *Midpoint — "Resupply"*: Both players gain a one-time Rune bonus (e.g., +5). (Enables a big skill turn.)
+- *Round 10 — "The Veil Lifts"*: All pieces gain +1 action for the rest of the game. (Accelerates the endgame — more actions per turn, more Money pressure.)
+- *Round 15 — "Desperation"*: Move-attacks deal 2 damage again (reverting the nerf). (Forces engagement if stalling.)
+- *First Champion killed — "Blood Price"*: The killer's team loses 2 Money immediately. (Anti-snowball.)
+- *Midpoint — "Resupply"*: Both players gain a one-time Money bonus (e.g., +5). (Enables a big skill turn.)
 
 **Why interesting**:
 - Creates natural pacing beats — the game feels different at Round 5 vs Round 15
@@ -864,7 +864,7 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## [TO DISCUSS] "Spec the Game for a Programmer" Exercise (Session 15 idea)
 
-**What it fixes / improves**: forces unambiguous rule definitions. Code has no tolerance for "we'll figure it out at the table" — writing an implementation spec exposes every ambiguous interaction (Lance Thrust + Injured, Focus Strike + adjacent self-target, push-into-LoS-blocker, Blade Tempest pushed-onto-occupied-tile, etc.) and forces decisions. Output: a cleaner ruleset with no hidden gaps. Doubles as a foundation for the digital prototype if that goes ahead. Concrete catalyst: Playtest 3's R22 was a wasted turn because Elias couldn't resolve an ambiguity at the table.
+**What it fixes / improves**: forces unambiguous rule definitions. Code has no tolerance for "we'll figure it out at the table" — writing an implementation spec exposes every ambiguous interaction (Lance + Injured, Focus + adjacent self-target, push-into-LoS-blocker, Tempest pushed-onto-occupied-tile, etc.) and forces decisions. Output: a cleaner ruleset with no hidden gaps. Doubles as a foundation for the digital prototype if that goes ahead. Concrete catalyst: Playtest 3's R22 was a wasted turn because Elias couldn't resolve an ambiguity at the table.
 
 **Trigger condition**: anytime; scope-limited (write spec, do not build). Could be a single dedicated session, or a slow background pass while writing baseline updates.
 
@@ -878,11 +878,11 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ## [TO DISCUSS] Digital Playtest Prototype (web / iPad / Tabletop Simulator) (Session 15 idea)
 
-**What it fixes / improves**: faster playtest iteration cycles, cleaner data capture (auto-logged rounds, attacks, armor, runes — fixes the form gaps surfaced in Playtest 3), can play during travel or short windows, and forces rule-disambiguation as a by-product (see "Spec the game for a programmer" entry above). Useful as a *complement* to physical playtests, not a replacement.
+**What it fixes / improves**: faster playtest iteration cycles, cleaner data capture (auto-logged rounds, attacks, armor, money — fixes the form gaps surfaced in Playtest 3), can play during travel or short windows, and forces rule-disambiguation as a by-product (see "Spec the game for a programmer" entry above). Useful as a *complement* to physical playtests, not a replacement.
 
 **Trigger condition**: travel window with a playtest partner (mentioned: Jonathan), OR after 2+ more physical playtests when iteration speed becomes the bottleneck.
 
-**Scope discipline**: minimum viable = drag-and-drop simulator + long-press wheel for Injured/Armor/skill-equip + side-panel rune/round tracking. **No rules enforcement, no AI opponents, no polish.** Treat as a tool, not a product. Decision needs an ADR before any implementation work.
+**Scope discipline**: minimum viable = drag-and-drop simulator + long-press wheel for Injured/Armor/skill-equip + side-panel money/round tracking. **No rules enforcement, no AI opponents, no polish.** Treat as a tool, not a product. Decision needs an ADR before any implementation work.
 
 **Risks**: scope creep (polish is bottomless); risk of "the digital version becomes the game" — defeats the screen-free design intent; rule-state divergence between digital and `ruleset-baseline.typ` (digital must source from baseline, not the other way around).
 
@@ -898,12 +898,12 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ### Pole B "Unstoppable One-Turn Killer" Burst — Session 23
 
-**What it fixes / improves**: Tracks the risk that hoarding skills under Pole B's per-turn-draft rules (no Rune-economy activation gate, only the 12-equipped cap) lets a player set up a single overwhelming turn — drafting passively for several turns then unloading a coordinated burst that the opponent has no read on.
+**What it fixes / improves**: Tracks the risk that hoarding skills under Pole B's per-turn-draft rules (no Money-economy activation gate, only the 12-equipped cap) lets a player set up a single overwhelming turn — drafting passively for several turns then unloading a coordinated burst that the opponent has no read on.
 
 **Status — potential issue, not guardrail.** User verbatim: *"a potential issue that could theoretically occur but is not confirmed to actually exist and hence also not a guard rail."* Logging it preserves the question without committing to a counter that may not be needed.
 
 **Re-evaluate after first Pole B prototype game.** If burst-turns dominate the game-feel, candidate counters include:
-- **Per-turn activation cap** (e.g. max N skill activations per turn regardless of Rune availability).
+- **Per-turn activation cap** (e.g. max N skill activations per turn regardless of Money availability).
 - **Fatigue / cooldown** (a fired skill cannot fire again the following turn).
 - **Skill-use stagger** (drafting a skill imposes a 1-turn delay before it can be activated).
 
@@ -913,7 +913,7 @@ Do not pre-design these. Wait for the prototype data.
 
 ---
 
-### King 3 Skill Slots → Ultimate Stay-Back Support
+### King 3 actions → Ultimate Stay-Back Support
 
 **Risk**: If the King ever gets 3 slots (post-v1 tuning), it could become the ultimate backline healer/buffer — never needing to advance, just stacking heal + buff + buff from safety. This makes the "capture the King" win condition harder to achieve because the King has no reason to be in danger.
 
@@ -925,7 +925,7 @@ Do not pre-design these. Wait for the prototype data.
 
 ### Armor Destruction Skills → Armor Becomes Dead Skill
 
-**Risk**: If anti-Armor skills (Pocket Thief, Rüstungsbrecher) are too strong or too cheap, Armor skills (Armorsmith, Scrap Armor) become a waste of a slot — you spend 3 Runes to grant Armor, opponent spends 2 to strip it instantly.
+**Risk**: If anti-Armor skills (Pocket Thief, Rüstungsbrecher) are too strong or too cheap, Armor skills (Plate, Scrap Armor) become a waste of a slot — you spend 3 Money to grant Armor, opponent spends 2 to strip it instantly.
 
 **Mitigation ideas**: Anti-Armor skills must cost ≥ the Armor they destroy (economy-neutral at best); or Armor grants some residual benefit even when removed (e.g., the piece gets +1 Speed for 1 turn as the "Armor drops off" benefit).
 
@@ -943,16 +943,16 @@ Do not pre-design these. Wait for the prototype data.
 
 ---
 
-### Move Slot Loss as Debuff → Feels OP
+### Move action Loss as Debuff → Feels OP
 
-**Risk**: Restricting the opponent's Move Slots (they move one fewer piece this turn) is an extremely powerful tempo debuff. It directly removes agency and could feel unfair / unfun regardless of balance.
+**Risk**: Restricting the opponent's actions (they move one fewer piece this turn) is an extremely powerful tempo debuff. It directly removes agency and could feel unfair / unfun regardless of balance.
 
-**Mitigation ideas**: Very high Rune cost (5+), or limited to "only when target is Injured" (conditional). Or: don't reduce Move Slots, instead reduce Speed by 1 for that piece (softer, still feels like a debuff, has existing mechanical precedent via Injured).
+**Mitigation ideas**: Very high Money cost (5+), or limited to "only when target is Injured" (conditional). Or: don't reduce actions, instead reduce Speed by 1 for that piece (softer, still feels like a debuff, has existing mechanical precedent via Injured).
 
 **Trigger**: If this debuff type is ever proposed for the skill catalogue.
 
 ---
 
-### Rune Theft Dominance (existing — OQ-34)
+### Steal Dominance (existing — OQ-34)
 
-See existing section above ("Rune Theft — Cost Nerf"). Monitoring in Layer 2.
+See existing section above ("Steal — Cost Nerf"). Monitoring in Layer 2.
