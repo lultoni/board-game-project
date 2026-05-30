@@ -1,5 +1,5 @@
-#import "../shared/template.typ": *
-#import "../shared/baseline-sections.typ": *
+#import "/docs/test-scenarios/shared/template.typ": *
+#import "/docs/test-scenarios/shared/baseline-sections.typ": *
 #show: template.with(title: "Stack A — Game 1: Standard Attack Nerf")
 
 = Stack A — Game 1: Standard Attack Nerf

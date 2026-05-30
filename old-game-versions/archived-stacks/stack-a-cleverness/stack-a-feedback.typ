@@ -1,4 +1,4 @@
-#import "../shared/template.typ": *
+#import "/docs/test-scenarios/shared/template.typ": *
 #show: template.with(title: "Playtest Feedback — Stack A Game 2: Combo Bonus")
 
 = Playtest Feedback — Stack A Game 2: Combo Bonus
