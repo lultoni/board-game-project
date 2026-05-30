@@ -2,7 +2,7 @@
 
 *Three-part reference: (1) Design guardrails — invariants to check every change against. (2) New ideas & staged fixes — hypotheses ready to deploy when triggered. (3) Known potential issues — risks to monitor.*
 
-*Last updated: 2026-05-17*
+*Last updated: 2026-05-30*
 
 ---
 
@@ -39,6 +39,36 @@ Players must always want to do more than they can execute. Early game: Runes lim
 ## New Ideas & Staged Fixes
 
 *Hypotheses ready to test when the relevant problem surfaces. Each has a trigger condition.*
+
+---
+
+## Armor — Current-Role Audit (Diagnosis Anchor) — Session 23
+
+**What it fixes / improves**: Not a candidate fix. This is the **diagnosis anchor** for any future defense redesign — every Armor proposal should be measured against the role Armor actually plays today.
+
+**Diagnosis** (Session 23, confirmed by user): Armor functions as a **late-game survival tax / mandatory upkeep**, not a strategic choice. User verbatim: *"i 100% agree that armor is like the tax you have to pay. that they are the mandatory upkeep of pieces in the endgame."* The role isn't "absorb hits" — it's "the only thing standing between pieces and instant death in late game." That makes it a chassis tax, not engine identity.
+
+**Two diagnoses ruled out** (so future fixes don't re-litigate):
+- *Rune curve too steep* — killed: starving Runes weakens skills as primary damage and removes fire-and-think tension.
+- *HP too thin* — killed: catalogue audit shows no 2-DMG skills exist (cheapest 2-DMG path costs 0/2/4/6/8 Runes); raising HP just shifts the bottleneck to healing.
+
+The shape is wrong, not the magnitude. Future Armor proposals must answer: "does this turn defense into a strategic choice instead of upkeep?"
+
+**Cross-link**: full discussion in `docs/research/path-y-defense-redesign.md`.
+
+**Trigger**: any proposal touching Armor / late-game survival / defensive identity. Read this entry first.
+
+---
+
+## Armor Cap Scales by Round (Pole-Agnostic Candidate) — Session 23
+
+**What it fixes / improves**: Keeps Armor's late-game survival role from compounding into the early game, where pieces should still be fragile enough for cheap kills. Targets the "compounding tax" failure mode of the current flat cap — early-game stacking of Armor reduces the kill-rate window where most strategic decisions live.
+
+**Pre-thought design**: cap on max Armor scales with round number. Sketch: cap = 0 in rounds 1–5, 1 in rounds 6–10, 2 in rounds 11–15, 3 thereafter. Numbers illustrative — real values calibrated against P4 Armor totals (14 / 22 by end-of-game).
+
+**Watch flag**: stacking yet another scaling rule on top of Runes (already scales over rounds) and Skill Slots (already scales) may cross the cognitive-load line. User self-flagged this risk: *"too many things scaling over time may become boring."* Three round-indexed dials is a candidate ceiling.
+
+**Trigger**: defense redesign work in either pole. Pole-agnostic — applies to Pole A and Pole B alike. If the cross-pole-fixing OQ resolves "test in each pole separately," this entry runs twice.
 
 ---
 
@@ -863,6 +893,23 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 ## Known Potential Issues
 
 *Risks to monitor. Not active problems — but if the trigger conditions are met, these become real.*
+
+---
+
+### Pole B "Unstoppable One-Turn Killer" Burst — Session 23
+
+**What it fixes / improves**: Tracks the risk that hoarding skills under Pole B's per-turn-draft rules (no Rune-economy activation gate, only the 12-equipped cap) lets a player set up a single overwhelming turn — drafting passively for several turns then unloading a coordinated burst that the opponent has no read on.
+
+**Status — potential issue, not guardrail.** User verbatim: *"a potential issue that could theoretically occur but is not confirmed to actually exist and hence also not a guard rail."* Logging it preserves the question without committing to a counter that may not be needed.
+
+**Re-evaluate after first Pole B prototype game.** If burst-turns dominate the game-feel, candidate counters include:
+- **Per-turn activation cap** (e.g. max N skill activations per turn regardless of Rune availability).
+- **Fatigue / cooldown** (a fired skill cannot fire again the following turn).
+- **Skill-use stagger** (drafting a skill imposes a 1-turn delay before it can be activated).
+
+Do not pre-design these. Wait for the prototype data.
+
+**Trigger**: Pole B per-turn-draft prototype playtest results.
 
 ---
 

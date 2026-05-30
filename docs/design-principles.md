@@ -1,6 +1,6 @@
 # Design Principles
 
-*The rules we design by. Every proposed change must pass these. Last updated: 2026-05-26.*
+*The rules we design by. Every proposed change must pass these. Last updated: 2026-05-30.*
 
 ---
 
@@ -71,6 +71,24 @@ If a 3-turn setup and a stumble-into-position produce the same result, the game 
 ### 5. The shared-puzzle feel is a byproduct of good design, not a mechanic.
 
 Don't engineer it directly. Make cleverness visible, make both players' puzzles legible, and the shared exploration emerges naturally from perfect information + depth.
+
+---
+
+## Two Additional Principles
+
+*Established Session 23 (2026-05-30).*
+
+### 6. Game length is itself a form of attrition.
+
+Long games burn the player's attention budget *before* they get to make interesting decisions. A 2h30 game where the winner is "whoever didn't burn out first" is attrition at the player layer even if the in-game economy is clever. Game length has been the dominant complaint across three consecutive playtests.
+
+Treat reductions in game length as design wins by default, not as side-effects. Every proposal answers "does this make the game shorter, or longer?" alongside the Justification Rule. This pairs with Principle 4 (cleverness > attrition) — extending it from in-game economy to meta-experience — and with the Chassis/Engine lens, where chassis bloat is now also a length problem.
+
+### 7. While the core identity is unsettled, prefer fundamental shifts over variable tweaking.
+
+When many candidate solutions exist for the same problem, hyper-optimizing the current variable set drifts. Until the core game shape is settled, take bigger swings (new variables in place of old ones) more often than small adjustments (new values for old variables).
+
+This is a **conditional** principle. Once the core identity is settled, the Incremental Testing Methodology (one variable per stack) resumes primacy. While the core is unsettled, "do we even need this variable, and could we add new ones in place of it?" is the better question than "how do we tune this variable to produce better results?" Pole A vs Pole B (see `docs/research/path-y-defense-redesign.md`) is the canonical Session-23 example of this principle in action.
 
 ---
 

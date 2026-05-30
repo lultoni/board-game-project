@@ -6,6 +6,24 @@
 
 ---
 
+### May 30, 2026 — Session 23: Defense redesign + two-pole game framing
+
+Stack H re-discussion gate (set at Session 22 close) opened the session and quickly expanded into a defense + game-shape redesign. Three diagnoses for the late-game Armor problem were tested: (A) Rune curve too steep — **killed** by user (starving Runes removes skill tension); (B) HP magnitude too thin — **killed** by user (no 2-DMG skills exist; raising HP just shifts the bottleneck); (C) Armor's *shape* is wrong, functioning as a **late-game survival tax / mandatory upkeep** — **confirmed**. User verbatim: *"i 100% agree that armor is like the tax you have to pay."*
+
+This crystallised a **two-pole framing** that becomes load-bearing for the project's near-term direction. **Pole A — pre-game-draft** = current game (with possible incremental fixes). **Pole B — per-turn-draft** = radical alternative where skills are added to pieces during play. Pole B mechanics locked: skills are *reusable while equipped* (not removed after use); 12-skill equipped cap per player (6 Champions × 2 slots); shared action slots between moving and drafting; no Rune-economy activation gate. Skill pool effectively infinite — the cap is the constraint.
+
+**Stack L — Pole B Per-Turn-Draft Prototype** becomes the new Active stack, claiming the slot for the 3-week vacation digital-prototype window with Jonathan. **Stack H — Armor Trim** moves to Queued; the bundled dose remains the lead variant, and the "build cheaper than break" risk is bigger than originally framed. Two new design principles promoted: **(6) game length is itself a form of attrition** (long games burn attention budget before the interesting decisions); **(7) while core identity is unsettled, prefer fundamental shifts over variable tweaking** (conditional — once core settles, incremental methodology resumes primacy).
+
+**Pole A draft determinism** raised as OQ-62: sequential drafting drives an "always better to react" pathology. Proposal: simultaneous-reveal drafting (both pick 2 at once, repeat). User accepts limited PI loss *only* in the pre-game window. **Cross-pole fixing methodology** raised as OQ-63: when a fix targets a problem in both poles, test once or per pole? User lean: per pole for cleanness; resolved on first encounter.
+
+Cascade edits performed mid-session per user direction (no edits before plan approval): `docs/research/path-y-defense-redesign.md` written as the canonical writeup; `design-principles.md` (+2 principles, date bumped); `backpocket.md` (+3 entries — Armor diagnosis anchor, Armor-cap-by-round, Pole B one-turn-killer potential); `OPEN_QUESTIONS.md` (+OQ-61/62/63, OQ-11 status updated to Queued); `TESTING_PLAN.typ` (Stack L Active; Stack H Queued; renumbered queued list); `baseline-sections.typ` (combo bonus migrated to baseline as `section-multi-champion-combo()`, BASELINE_VERSION → 2026-05-30, Quick Reference row added); `mechanics-evaluated.md` (combo migration row + new "Methodology / Design Decisions" section).
+
+**Repo housekeeping.** Deleted `stack-b-guards/` (withdrawn Session 22, never played). Archived `stack-a-cleverness/` to `old-game-versions/archived-stacks/` (accepted into baseline). Switched all Typst imports from `../shared/...` to root-relative `/docs/test-scenarios/shared/...` form so files survive future folder moves — the build script already passes `--root $PROJECT_ROOT`. Cleanup sweep updated WHAT_TO_PRINT.md, README.md, HANDOVER.md, scenario skill, baseline-sections docstring.
+
+**Next action:** run the first Pole B per-turn-draft prototype game digitally during the 3-week vacation window. After 2–3 games, compare game-feel vs Pole A and route per Stack L's *Routing on result*.
+
+---
+
 ### May 29, 2026 — Session 22: Playtest 4 — Stack A G2 + Niko's first game
 
 Niko (P1, first-time player) beat Elias (P2) on 2026-05-28 in a 28-29 round Stack A G2 game (~2h30). Elias surrendered on T29 after Niko's third consecutive Strike+Strike kill round.

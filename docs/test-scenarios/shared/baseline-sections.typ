@@ -3,8 +3,8 @@
 // Import this file alongside template.typ in any rule sheet or layer file.
 //
 // Usage:
-//   #import "../shared/template.typ": *
-//   #import "../shared/baseline-sections.typ": *
+//   #import "/docs/test-scenarios/shared/template.typ": *
+//   #import "/docs/test-scenarios/shared/baseline-sections.typ": *
 //
 // Every function renders one section with the current accepted baseline rules.
 // No parameters — functions are intentionally not configurable.
@@ -17,7 +17,7 @@
 // this constant rather than restating a date. Bump when an accepted mechanic
 // modifies any baseline section function below.
 
-#let BASELINE_VERSION = "2026-05-26"
+#let BASELINE_VERSION = "2026-05-30"
 
 // ── INTRODUCTION ──────────────────────────────────────────────────────────────
 
@@ -171,7 +171,17 @@ _Standard Attacks are how pieces deal damage with movement alone. Skills — act
 ]
 
 // ── MULTI-CHAMPION COMBO BONUS ────────────────────────────────────────────────
-// This section does not exist in baseline. Test files inline it directly.
+// Accepted into baseline Session 23 (2026-05-30) following Stack A G2 (Playtest 4)
+// confirmation. Concise version — full worked examples and tracking tables live
+// in the Stack A G3 design (see backpocket.md / TESTING_PLAN.typ) when needed.
+
+#let section-multi-champion-combo() = [
+== Multi-Champion Combo Bonus
+
+#block(breakable: false)[
+Each enemy piece has a *combo counter* (starts at 0, resets at the end of your turn). When a *Strike skill* hits it, deal *+counter DMG*; if the hitter is a *new Champion* (one that didn't already increment this counter this turn), the counter then *+1*. Standard Attacks don't count. Buffs, heals, and movement don't count. Stacks with Blade Call.
+]
+]
 
 // ── ACTION PHASE ──────────────────────────────────────────────────────────────
 
@@ -382,6 +392,7 @@ Only Standard Attacks can be intercepted. Skills always hit directly.
     ("Skill Slots",              [Start at 2/turn. Grow with Progression (Rounds 1–10: 2, 11–20: 3, 21–30: 4, 31+: 5).]),
     ("Focus Strike",             [+1 Range to next skill this turn. Can boost self (→ adjacent) and adjacent (→ Range 2) skills. On Move skills, caster chooses: activation range OR effect range.]),
     ("Blade Call",               [+1 DMG to one Strike skill this turn. Stacks with Combo Bonus.]),
+    ("Combo Bonus",              [Each enemy has a combo counter (resets end of your turn). Strike skill hits enemy → deal *+counter DMG*; if hitter is a *new* Champion, counter +1. Standard Attacks excluded.]),
   )
 
   let resolved = baseline-rows.map(row => {

@@ -32,7 +32,7 @@ docs/test-scenarios/stack-X-<short-slug>/
   stack-X-feedback.typ            ← feedback form (one per stack, shared across games in stack)
 ```
 
-If the stack runs multiple games (e.g. game1, game2), name files `stack-X-game1-<slug>.typ` etc. Check existing `stack-a-cleverness/` for the convention.
+If the stack runs multiple games (e.g. game1, game2), name files `stack-X-game1-<slug>.typ` etc. Check the archived `old-game-versions/archived-stacks/stack-a-cleverness/` for the convention.
 
 After creating the files, the discovery-based `build-pdfs.sh` will pick them up automatically — run `zsh docs/test-scenarios/build-pdfs.sh` to compile PDFs.
 

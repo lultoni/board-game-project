@@ -2,107 +2,117 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-05-29 — Session 22 close (Playtest 4 analysed; TESTING_PLAN.typ rewritten; skill sweep done; Stack H re-discussion gate added before rule-sheet drafting).*
+*Last updated: 2026-05-30 — Session 23 close (Pole framing introduced; Stack L Active; Stack H deprioritised to Queued; combo bonus migrated to baseline; repo housekeeping).*
 
 ---
 
-## Priority 1 — Stack H — Armor Trim (Active)
+## Priority 1 — Stack L — Pole B Per-Turn-Draft Prototype (Active)
 
-P4 confirmed OQ-11 / Q-C1: Armor↔Armor-Breaker loop draws attention away from the combo loop. Elias verbatim: *"armor was a part of combo calcs but it just felt like you were not able to do your combos because of it."* Combo bonus did not auto-resolve — Niko's R26-R28 winning loop overran Armor only after a 7-round mid-game Armor cluster.
+Session 23 design discussion crystallised a two-pole framing: *Pole A* (current pre-game-draft) vs *Pole B* (per-turn-draft, radical alternative). With the 3-week vacation window opening (Jonathan + digital prototype), Stack L claims the active slot to test whether Pole B produces a different game-feel and dissolves the Armor-as-late-game-tax problem at the structural level.
 
-- [ ] **Re-discuss Stack H — Armor Trim before drafting** (designer flag, Session 22): revisit the bundled-dose framing, scope, and entry conditions in the next session before any rule sheet work. Don't start writing the rule sheet until this conversation has happened.
-- [ ] **Write the Stack H rule sheet** (after re-discussion): `docs/test-scenarios/stack-h-armor-trim/` (folder pending). Bundled lead dose: Armor cap 3→2 *and* Armorsmith +1→+2.
-- [ ] **Build print packet** for next experienced-player session: Stack H rule sheet + `shared/skill-cards.pdf` ×2 + `stack-h-feedback.pdf` ×2 + `shared/game-tracking.pdf` ×2.
-- [ ] **Two experienced players required** — sample size for chassis-volume read needs both players able to plan combos.
-- [ ] **Within-stack rollback** (Session 22 restructure): if the bundled dose stalls (Armor build cheaper than break), the next iteration of Stack H runs the smaller dose — cap 3→2 only, Armorsmith unchanged. Same OQ, same hypothesis, smaller variable. (Previously tracked as a separate Stack I — folded into Stack H.)
+Pole B mechanics (full writeup: `docs/research/path-y-defense-redesign.md`):
+- Skills are added to pieces *during play*, not all at once at the start.
+- Skills are *reusable while equipped*. Equipped count cap = 12 per player (6 Champions × 2 slots).
+- Action slots are shared between moving and drafting (drafting a skill onto a piece costs an action slot).
+- No Rune-economy activation gate — activate as many as you want; hoarding is allowed but risky.
+- Skill pool for drafting is effectively infinite; the 12-equipped cap is the constraint.
 
-## Priority 2 — Stack A G3 — Dual-Counter Combo *(Queued; gated on Stack H)*
+- [ ] **Run the first Pole B per-turn-draft prototype game digitally** (3-week vacation window with Jonathan opens). No physical rule sheet for the first 2–3 prototype runs.
+- [ ] **After 2–3 games, compare game-feel vs Pole A** and route per Stack L's *Routing on result* in TESTING_PLAN.
+- [ ] **Watch flags**: Pole B "unstoppable one-turn killer" burst (hoarding into single overwhelming turn — staged in backpocket as potential issue, not guardrail), cognitive load (drafting + playing + reading opponent's likely future picks).
 
-**Designer decision (Session 22, Path A)**: Stack H ships first. Stack A G3 is queued behind it because incremental testing methodology requires changing one structural variable at a time, and chassis volume is the confirmed P4 problem against which combo scope changes must be evaluated.
+## Priority 2 — Stack H — Armor Trim *(Queued; deprioritised Session 23)*
 
-Design summary (full writeup in `docs/backpocket.md` → "Combo Bonus — Dual-Counter + Widened Scope"):
+Stack H still has merit for Pole A (chassis-volume problem from P4 OQ-11 / Q-C1 remains valid), but Pole B may dissolve the Armor-as-tax problem at the source. Stack H runs only if Pole B prototype reveals Pole A is worth keeping as a parallel mode and chassis volume is the dominant remaining issue.
 
-- **Target counter** (current rule, kept): different friendly Champions hitting the same enemy target tick the counter; bonus on 2nd+ hit.
-- **Attacker counter** (new): same friendly Champion hitting different enemy targets ticks an attacker counter; bonus on 2nd+ hit.
-- **Scope widened**: any skill that hits an enemy piece counts (not Strike-only). Standard Attacks excluded.
-- **Multi-target skills** (Blade Tempest): tick the counter on every hit piece. Watch flag — first rollback if dual-counter proves OP.
-- **Stacking**: intuitive / both-trigger. If a hit qualifies for both counters, both fire. Rare in real play; reward it when it lands.
-- **Justification**: solves (a) cross-category crowd-out (#3 P4), (b) late-game offensive lockout when Strike-Champs die (#6 P4 — Elias verbatim "I did not have any other attack champs left"), (c) "exchange pit" mid-game pattern (one cluster, pieces taken one-by-one) by rewarding distributed pressure.
-- **Teaching-cost flag (G4 guardrail)**: two parallel counters is strictly more complex than current Stack A G2. Niko named Injured (one counter on one state) as a confusion source. Stack A G3 will likely need physical tokens or board-side trackers. OQ-60 watches whether cognitive load is acceptable.
+- [ ] **Draft Stack H rule sheet** in `docs/test-scenarios/stack-h-armor-trim/` *only after Pole B prototype data lands*. Bundled lead dose: Armor cap 3→2 *and* Armorsmith +1→+2.
+- [ ] **Build cheaper than break** risk noted as bigger than originally framed (user verbatim Session 23). Track Armor totals vs P4 baseline (14/22) when Stack H runs.
+- [ ] **Within-stack rollback** if bundled dose stalls: cap 3→2 only, Armorsmith unchanged.
 
-- [ ] **Stage in backpocket** (DONE — Session 22).
+## Priority 3 — Stack A G3 — Dual-Counter Combo *(Queued; gated on Stack H)*
+
+Unchanged from Session 22. Design summary in `docs/backpocket.md` → "Combo Bonus — Dual-Counter + Widened Scope". Solves cross-category crowd-out (#3 P4) and late-game offensive lockout (#6 P4). Teaching-cost flag (G4) — two parallel counters; OQ-60 watches whether cognitive load is acceptable.
+
 - [ ] **Draft Stack A G3 rule sheet** in `docs/test-scenarios/stack-a-combo-bonus/` after Stack H result lands. Include teaching aids (counter tokens, examples).
 - [ ] **Run after Stack H** — only if Stack H trim does NOT auto-resolve the exchange-pit pattern (OQ-58).
 
-## Priority 3 — Other Queued stacks (post-Stack-H)
+## Priority 4 — Other Queued stacks
 
-- [ ] **Stack K — Piece Count Reduction** *(Queued)* — single-variable: 3 Champions + 4 Guards + 1 King on current 10×10 board. *Decoupled from board geometry Session 22 — Stack D owns 8×8 etc. independently.* Trigger: post-Stack-H, two experienced players, full session.
-- [ ] **Stack J — Injured Trim** *(Queued)* — gated on Stack H. P4 partially confirmed OQ-57: experienced player barely notices Injured's mechanical effect; new player gets confusion + weak-piece feel. Volume:payoff ratio looks thin.
+- [ ] **Stack K — Piece Count Reduction** *(Queued)* — single-variable: 3 Champions + 4 Guards + 1 King on current 10×10 board.
+- [ ] **Stack J — Injured Trim** *(Queued)* — gated on Stack H. P4 partially confirmed OQ-57.
 
-## Priority 4 — Combo bonus scope follow-up (Session 22 reframe)
+## Priority 5 — Pole A draft determinism (OQ-62)
 
-**Reframe**: Q3 reward-feel softness (Elias "Somewhat/Neutral", Niko "Bit of both") is design-aligned, not a problem — the bonus is by design a few-times-a-game payoff, not "do or lose." The lever is **scope, not strength**. Cross-category crowd-out (#3) and late-game offensive lockout (#6) are the actual problems.
+Session 23 raised that the current sequential draft drives a "deterministic perfect game / always better to react" pathology. Proposal: simultaneous-reveal drafting (both players pick 2 at the same time, repeat). User accepts limited PI loss *only* in the pre-game window.
 
-- [ ] **Stack A G3 dual-counter** (see Priority 2) is the staged solution — gated behind Stack H.
-- [ ] **Re-evaluate after Stack H lands**: chassis trim may shift exchange-pit dynamics enough that dual-counter complexity isn't justified.
-- [ ] **OQ-58 (exchange-pit) watch** under Stack H — if mid-game stickiness persists post-trim, dual-counter is the targeted fix.
+- [ ] **Decide whether this becomes its own stack** or gets bundled into a future Pole A revival run. Wait until after Pole B prototype data lands.
 
-## Priority 5 — Skill Balance carry-over watches
+## Priority 6 — Skill Balance carry-over watches
 
-- [ ] **Rune Theft Mode B confirmed dominant (P4)** — both players pinned it as must-pick / favourite-moment. Hold cost increase until after Stack H. If combat speeds up post-trim, Mode-B value drops naturally.
-- [ ] Confirm **Shadow Shift** Range 2 feels right in play (no P4 data — Shift used once by Niko R20, no signal).
-- [ ] Monitor **Blade Call** + combo bonus interaction (Elias never used Blade Call despite naming it must-pick; Niko used in winning loop).
+- [ ] **Rune Theft Mode B confirmed dominant (P4)** — both players pinned it as must-pick. Hold cost increase pending Pole B data.
+- [ ] Confirm **Shadow Shift** Range 2 feels right in play (no P4 data).
+- [ ] Monitor **Blade Call** + combo bonus interaction (now in baseline).
 
 ---
 
 ## Backlog (no priority — pull when triggered)
 
 **Process / facilitation (deferred):**
-- **Teacher-vocab-checklist enforcement** — DEFERRED (Session 22 designer call). P4 Q-D1 contamination acknowledged but reading not re-attempted. Lower-priority lever: simplify skill names ("Armorsmith", "Lance Thrust" etc. were shortened or replaced with natural words at the table — vocabulary barrier could be reduced by renaming, not just by stricter teaching). Bundle with Phase B naming pass.
+- **Teacher-vocab-checklist enforcement** — DEFERRED (Session 22). Bundle with Phase B naming pass.
 - **"Runes" rename candidate** — staged in backpocket; Phase B item.
 
+**Cross-pole methodology (OQ-63):**
+- When a fix targets a problem present in both poles, decide whether to test it in each pole separately or once-and-carry. User lean: twice for cleanness. Resolved on first encounter.
+
 **Pre-playtest polish (deferred from Session 18):**
-- One-page player-facing intro / pitch (#2 from Session 18 list). Open question: does the intro replace `section-introduction()` in the rule sheet or sit alongside it? Revisit after next first-timer session lands.
-- Rule sheet ordering audit (#3 from Session 18 list). Deferred.
-- ADR on tiered skill catalogue (#5 from Session 18 list). Important but not time-bound.
+- One-page player-facing intro / pitch.
+- Rule sheet ordering audit.
+- ADR on tiered skill catalogue.
 
 **Dormant stacks (waiting on triggers):**
-- **Stack C — Pacing**: King Lifetime HP, Armor Decay — trigger: first Champion kill past R20. P4 R13 → not triggered.
-- **Stack D — Board Geometry**: 8×10 (OQ-52), 8×8 (OQ-1b — moved here from Stack K Session 22), hex (gated on `/research hex vs square grid`, OQ-42).
-- **Stack E — Draft Flow**: pool draft (OQ-35), placement order (OQ-36+48) — trigger: after Stack A G3 lands.
-- **Stack F — Sente Skills**: cascade trigger, Pin/Threatened, midline pressure — *trigger: only if Stack A G3 ran and exchange-pit pattern persists.* Sequenced after A G3 per Session 22 designer call (different mechanism for the same problem).
-- **Stack G — Unified AP**: draft written, run after core stacks stabilise (post H + A G3 + J + K).
-- **OQ-52 / OQ-53 dedicated stack** — may become its own stack rather than living in F.
+- **Stack C — Pacing**: King Lifetime HP, Armor Decay — trigger: first Champion kill past R20.
+- **Stack D — Board Geometry**: 8×10 (OQ-52), 8×8 (OQ-1b), hex (gated on `/research hex vs square grid`, OQ-42).
+- **Stack E — Draft Flow**: pool draft (OQ-35), placement order (OQ-36+48). *May be subsumed or reshaped by OQ-62 simultaneous-reveal work.*
+- **Stack F — Sente Skills**: cascade trigger, Pin/Threatened, midline pressure — trigger: only if Stack A G3 ran and exchange-pit pattern persists.
+- **Stack G — Unified AP**: draft written, run after core stacks stabilise.
 
-**Withdrawn stacks (Session 22):**
-- **Stack B — Bodyguard Fix** (defender-only adjacency). Withdrawn because P4 confirmed Bodyguard tracks standoff state, not the rule. Different solutions would be on the table even if Bodyguard remains broken post-Stack-H. OQ-21 stays open; the originally proposed stack does not.
-- **Stack I — Armor Rollback**. Folded into Stack H as the smaller within-stack dose.
+**Withdrawn / archived:**
+- **Stack B — Bodyguard Fix** — withdrawn Session 22; folder deleted Session 23.
+- **Stack A — Cleverness/Combo** — accepted into baseline Session 22, source archived to `old-game-versions/archived-stacks/stack-a-cleverness/` Session 23.
+- **Stack I — Armor Rollback** — folded into Stack H as the smaller within-stack dose.
 
-**P4 design ideas surfaced (Session 22 — staged in `docs/backpocket.md` with Justification Rule writeups):**
-- **Combo Bonus Dual-Counter + Widened Scope** (Stack A G3) — staged. Priority 2 above.
-- **Plague skill** (Mystic, Range 2, ~3 Runes, inflicts Injured ignoring Armor, no kill) — fixes "Injured-state-as-payload that bypasses Armor stack."
-- **Lucky Strike / Star Strike** (Mystic, target anywhere on board) — justification TBD; staged for further design pass.
-- **Focus replacement** ("any skill +1 Rune for +1 Range" baseline rule, removing the Focus skill) — fixes catalogue must-pick density.
-- **Lance Thrust + Rune Theft merge** (single skill: 1 DMG + optional Rune steal) — fixes catalogue redundancy and per-loadout pressure.
-- **"Runes" rename** — vocab/barrier-of-entry pass; Phase B bundle.
-- Elias: **paid Focus extension** (+1 Rune to widen activation/effect range). Justification open.
-- Elias: **"rusty thief" piece-design idea**. No justification yet.
-- Elias: **small mini pre-game for new players**. Connects to OQ-56 Problem A.
+**P4 design ideas surfaced (Session 22 — staged in `docs/backpocket.md`):**
+- **Plague skill** — fixes "Injured-state-as-payload that bypasses Armor stack."
+- **Lucky Strike / Star Strike** — staged for further design pass.
+- **Focus replacement** — fixes catalogue must-pick density.
+- **Lance Thrust + Rune Theft merge** — fixes catalogue redundancy.
+- **"Runes" rename** — Phase B bundle.
+- Elias: paid Focus extension, "rusty thief" piece-design idea, small mini pre-game for new players.
 
-**New OQs opened in Session 22 (full text in `game-state/OPEN_QUESTIONS.md`):**
-- **OQ-58 — Mid-game stickiness / "exchange pit"**: once an exchange starts, all action concentrates in one cluster, pieces taken one-by-one. Watched under Stack H.
-- **OQ-59 — Opening + endgame "don't know what to do" pattern** (sub-problems 59a opening chassis-skew = no Strike skills firing in opening, only Defense; 59b endgame conversion gap after first big mid-game exchange).
-- **OQ-60 — Cognitive load**: real concern or acceptable? G4 guardrail watch — informs how complex Stack A G3 dual-counter can afford to be.
+**Session 23 design ideas (staged in `docs/backpocket.md`):**
+- **Armor cap scales by round** (Pole-agnostic candidate) — keeps Armor's late-game role from compounding into the early game. Watch flag: yet another scaling rule on top of Runes/Skill Slots may cross the cognitive-load line.
+- **Items as defensive option** (cross-pole concern) — take a slot where a skill would otherwise sit; could be drafted, bought, or picked mid-game.
 
-**Research / brainstorm:**
-- `/research` on hex vs. square grid (OQ-42) — before any hex stack proposed.
+**OQs opened in Session 22:**
+- **OQ-58** — Mid-game stickiness / "exchange pit". Watched under Stack H.
+- **OQ-59** — Opening + endgame "don't know what to do" pattern.
+- **OQ-60** — Cognitive load.
+
+**OQs opened in Session 23:**
+- **OQ-61** — Two-pole parallel design: Pole A vs Pole B (modes vs experiment-that-could-replace).
+- **OQ-62** — Pole A draft information (sequential vs simultaneous reveal).
+- **OQ-63** — Cross-pole fixing methodology.
+
+**Research / brainstorm (deferred per Session 23 user direction):**
+- How comparable games handle in-game skill acquisition.
+- Defensive identity without HP/Armor walls.
+- `/research` on hex vs. square grid (OQ-42).
 - `/research` on how board games track temporary effects on pieces.
-- Brainstorm: Adjacency synergies / piece compatibility — connects OQ-51.
 
 **Catalogue / system expansion:**
-- Skill catalogue expansion — 10 new candidates staged in `docs/backpocket.md`. Target ~25 total. Gated on Stack H combat balance confirmation.
-- First-player advantage mitigation (OQ-13b watch — P4 added one P1-win + Niko's own E16 flag, still 1-of-1).
-- In-game skill redraft (shop/auction/interval) — connects OQ-56 Problem B.
+- Skill catalogue expansion — 10 new candidates staged in `docs/backpocket.md`. Target ~25 total.
+- First-player advantage mitigation (OQ-13b watch).
+- In-game skill redraft (shop/auction/interval) — note: Pole B *is* a form of in-game skill redraft; OQ-56 Problem B may be partially answered by Pole B prototype data.
 
 **Tooling improvements:**
 - Improve `/playtest` skill: add draft-pick extraction and analysis as standard step.
@@ -120,62 +130,35 @@ Design summary (full writeup in `docs/backpocket.md` → "Combo Bonus — Dual-C
 
 ---
 
+## Recently completed (Session 23)
+
+- **`docs/research/path-y-defense-redesign.md` written** — full canonical writeup of the Session 23 defense + game-shape redesign discussion. Three diagnoses tested (A: Rune curve — killed; B: HP magnitude — killed; C: Armor-as-late-game-tax — confirmed). Pole A vs Pole B framing. Pole B mechanics corrected and locked. Open risks tracked.
+- **Two new design principles** added to `design-principles.md`: (6) game length is itself a form of attrition; (7) while core identity is unsettled, prefer fundamental shifts over variable tweaking (conditional — incremental methodology resumes primacy once core is settled).
+- **Three new OQs**: OQ-61 (two-pole framing), OQ-62 (Pole A draft determinism), OQ-63 (cross-pole fixing methodology). OQ-11 status updated to Queued.
+- **Three new backpocket entries**: Armor diagnosis anchor, Armor cap scales by round, Pole B one-turn-killer potential issue.
+- **TESTING_PLAN.typ restructured**: Stack L — Pole B Per-Turn-Draft Prototype is the new Active. Stack H deprioritised to Queued. Per-stack routing preserved.
+- **Multi-Champion Combo Bonus migrated into baseline** (`baseline-sections.typ` → `section-multi-champion-combo()`). BASELINE_VERSION → 2026-05-30. Quick Reference table updated.
+- **`mechanics-evaluated.md` updated**: combo migration logged; new "Methodology / Design Decisions" section with Diagnosis A/B/C verdict and Pole framing.
+- **Repo housekeeping**: deleted `stack-b-guards/` (withdrawn never-played), archived `stack-a-cleverness/` to `old-game-versions/archived-stacks/`, switched all Typst imports to root-relative form (`/docs/test-scenarios/shared/...`) so files survive future folder moves.
+- **WHAT_TO_PRINT.md, README.md, HANDOVER.md, scenario skill** all cleaned of stale Stack A/B references.
+
 ## Recently completed (Session 22)
 
-- Playtest 4 analysed end-to-end: 11 transcription files, `docs/research/playtest-4-analysis.md` synthesis, OQ verdicts cascaded to OPEN_QUESTIONS.md, mechanics-evaluated.md updated.
-- "Nico" → "Niko" project-wide rename (44 occurrences across README, STATUS, OPEN_QUESTIONS, NEXT_STEPS, SESSION_LOG, HANDOVER, research docs, memory).
-- OQ-11 confirmed via P4 evidence; Stack H promoted to Priority 1.
-- OQ-21 confirmed as covariate (tracks standoff state, not the rule).
-- OQ-19 not triggered (first Champion kill R13). OQ-41 closed (length problem is chassis volume, not damage nerf).
-- Q-D1 reading downgraded to contaminated; teacher-vocab-checklist process fix DEFERRED per designer (lower-priority natural-naming lever instead).
-- **Post-analysis design discussion (Session 22)**:
-  - **OQ-38 reframed**: combo bonus Q3 softness is design-aligned (few-times-a-game payoff, not "do or lose"). Lever is **scope, not strength**.
-  - **Dual-counter combo design** drafted: target counter + attacker counter, both stack, multi-target skills tick all hits, Standard Attacks excluded. Staged as Stack A G3.
-  - **Path A methodology decision**: Stack H first, Stack A G3 after (one structural variable per stack).
-  - **3 new OQs opened**: OQ-58 (exchange-pit), OQ-59 (opening+endgame don't-know-what-to-do), OQ-60 (cognitive load watch).
-  - **6 new backpocket entries**: Combo Bonus Dual-Counter (Stack A G3), Plague skill, Lucky/Star Strike, Focus replacement, Lance/Rune-Theft merge, Runes rename.
-  - **#6 reframe** (Elias's late-game): not behavioural-choice but structural lockout — Strike-equipped Champs were dead. Justifies attacker counter.
-  - **Must-pick density softer** than initial read: Focus 1/2 across army, Armor 2/3 across army (not per-Champion). Catalogue pressure is per-loadout, not per-piece.
-- **TESTING_PLAN.typ rewritten** (Session 22 second pass):
-  - Stacks renamed for legibility: H = Armor Trim, A G3 = Dual-Counter Combo, K = Piece Count Reduction, F = Sente Skills, etc. Letter IDs preserved as stable cross-reference keys.
-  - **Stack I dropped** (Armor rollback) — folded into Stack H as the smaller dose. Same OQ, same hypothesis.
-  - **Stack B withdrawn** (defender-only adjacency) — P4 confirmed Bodyguard tracks standoff state, not the rule. Different solutions would be on the table; the originally drafted stack is not the right fix.
-  - **Stack K decoupled from Stack D** — K owns Piece Count Reduction (3+3+1); D owns Board Geometry (8×10, 8×8, hex). Independent variables.
-  - **Stack F sequenced after Stack A G3** — both target the exchange-pit pattern via different mechanisms; A G3 first, F only if A G3 doesn't dissolve it.
-  - State lifecycle introduced: Active / Queued / Dormant / Resolved.
-  - Phase 1 / Phase 2 decision tree replaced with per-stack routing rules.
+- Playtest 4 analysed end-to-end: 11 transcription files, `docs/research/playtest-4-analysis.md` synthesis, OQ verdicts cascaded, mechanics-evaluated.md updated.
+- "Nico" → "Niko" project-wide rename (44 occurrences).
+- OQ-11 confirmed via P4 evidence; Stack H promoted to Priority 1 (later deprioritised Session 23).
+- OQ-21 confirmed as covariate; OQ-19 not triggered; OQ-41 closed; Q-D1 reading downgraded to contaminated.
+- Post-analysis design discussion: OQ-38 reframed; dual-counter combo design drafted; Path A methodology decision; 3 new OQs (OQ-58/59/60); 6 new backpocket entries.
+- TESTING_PLAN.typ rewritten: state lifecycle introduced (Active / Queued / Dormant / Resolved); decision tree replaced with per-stack routing.
 
 ## Recently completed (Session 21)
 
-- All 3 feedback forms (`feedback-onboarding.typ`, `stack-a-feedback.typ`, `feedback-baseline.typ`) audited and updated for high-concept alignment.
-- New questions: aha discovery moment, chassis-vs-engine confusion split, Framing B parallel-puzzle, Bodyguard chess-vs-combo distinction.
+- All 3 feedback forms audited and updated for high-concept alignment.
 - WHAT_TO_PRINT.md added; README sanitised; Section G in prototype feedback form brought to parity with paper.
 
 ## Recently completed (Session 20)
 
-- All 11 high-concept open questions (Q-A1 → Q-F1) resolved with discussion-then-decision per question.
+- All 11 high-concept open questions (Q-A1 → Q-F1) resolved.
 - ADR-004 written and accepted: "Two minds, one puzzle" (Framing B) becomes canonical design intent.
-- New `§ High-Concept Framing` and `§ Chassis and Engine` sections in `design-principles.md`.
-- Q-B4 baseline change shipped: Standard Attack reframed as "a Move that ends on an enemy tile"; survival-stop strengthened. BASELINE_VERSION → 2026-05-26.
-- Q-D1 resolution criteria locked in (≥2/4 strong-signal threshold + teacher-vocab-checklist as bias correction).
+- Q-B4 baseline change shipped (Standard Attack reframed as "a Move that ends on an enemy tile"). BASELINE_VERSION → 2026-05-26 (now 2026-05-30 with combo migration).
 - `shared/teacher-vocab-checklist.typ/pdf` shipped.
-- Stacks H (Armor bundle), I (Armor rollback), J (Injured-downsides removal), K (chassis-minimisation session) queued.
-- OQ-11 reopened (chassis-volume framing); OQ-57 added; OQ-21, OQ-27, OQ-1b, OQ-12, OQ-38 cross-linked.
-
-## Recently completed (Session 19)
-
-- Digital prototype PWA built and deployed to GitHub Pages (`prototype/index.html`).
-- Full game loop: 10×10 board, drag-and-drop, piece state (armor/injured/skill icons), rune tracking, end-turn notes, post-game feedback form, JSON export.
-- All 15 skill icons base64-embedded — fully offline once cached.
-- iOS touch rewritten: Pointer Events API, combined distance+time threshold, `setPointerCapture`, `requestAnimationFrame` for iOS 17.4 compatibility. Confirmed working on iPad.
-
-## Recently completed (Session 18)
-
-- Physical skill cards shipped (`shared/skill-cards.pdf`): 15 cards on A4, 2×2 range matrix per card showing Default / +Focus / Injured / Inj.+Focus, per-skill Focus footnotes on Move cards.
-- First-game onboarding feedback form shipped (`shared/feedback-onboarding.pdf`).
-- **Ruling**: Focus Strike on Move skills — caster chooses activation OR effect range (not both). Documented in baseline-sections, skill cards, mechanics-evaluated.
-- Lance Thrust effective Range 0 while Injured = cannot fire (derivation, not ambiguity). Memory written.
-- Stack A + Stack B feedback forms + feedback-baseline converted from fixed `#v(2.7cm)` to `#v(1fr)`.
-- Build script gained zsh guard.
-- Hygiene principle 7 expanded with `1fr` over `#v(Ncm)` sub-rule.
-- Decision logged: Niko plays standard baseline draft on 2026-05-28; onboarding data via the new form only.

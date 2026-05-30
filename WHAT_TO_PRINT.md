@@ -20,10 +20,12 @@ Consult `TESTING_PLAN.pdf` if unsure which stack to run.
 | Stack | Rule sheet | Feedback form | Copies of feedback |
 |---|---|---|---|
 | Baseline (no changes) | `baseline/ruleset-baseline.pdf` | `shared/feedback-baseline.pdf` | 1 per player |
-| Stack A G2 (combo bonus) | `stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf` | `stack-a-cleverness/stack-a-feedback.pdf` | 1 per player |
-| Stack B (Bodyguard fix) | `stack-b-guards/stack-b-bodyguard-fix.pdf` | `stack-b-guards/stack-b-feedback.pdf` | 1 per player |
 
-*For stacks H, I, J, K — not yet created. Check `TESTING_PLAN.pdf` when they're ready.*
+*Active stack (Session 23): **Stack L — Pole B Per-Turn-Draft Prototype**. Digital prototype only — no print packet yet. See `TESTING_PLAN.pdf` and `docs/research/path-y-defense-redesign.md`.*
+
+*Stack A G2 (combo bonus) is now part of baseline — print `baseline/ruleset-baseline.pdf` instead. Stack A historical rule sheets are archived at `old-game-versions/archived-stacks/stack-a-cleverness/` (do not print for new sessions).*
+
+*Stacks H, J, K are Queued — rule sheets not yet written. Check `TESTING_PLAN.pdf` when they're ready.*
 
 ---
 
@@ -38,19 +40,19 @@ Consult `TESTING_PLAN.pdf` if unsure which stack to run.
 
 ## Quick-reference: full packet per scenario
 
-### Scenario A — Two experienced players, Stack A G2
-- `stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf` ×2
+### Scenario A — Two experienced players, baseline (no active print stack yet)
+- `baseline/ruleset-baseline.pdf` ×2
 - `shared/skill-cards.pdf` ×2
 - `shared/game-tracking.pdf` ×2
-- `stack-a-cleverness/stack-a-feedback.pdf` ×2
+- `shared/feedback-baseline.pdf` ×2
 
-### Scenario B — One experienced + one new player, Stack A G2
-- `stack-a-cleverness/stack-a-game2-attack-nerf-combo.pdf` ×2
+### Scenario B — One experienced + one new player, baseline
+- `baseline/ruleset-baseline.pdf` ×2
 - `shared/skill-cards.pdf` ×2
 - `shared/game-tracking.pdf` ×2
 - `shared/feedback-onboarding.pdf` ×1 *(new player only)*
 - `shared/teacher-vocab-checklist.pdf` ×1 *(facilitator only)*
-- `stack-a-cleverness/stack-a-feedback.pdf` ×2
+- `shared/feedback-baseline.pdf` ×2
 
 ### Scenario C — Two new players, baseline rules
 - `baseline/ruleset-baseline.pdf` ×2

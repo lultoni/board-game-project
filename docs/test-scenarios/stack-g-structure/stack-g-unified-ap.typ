@@ -1,5 +1,5 @@
-#import "../shared/template.typ": *
-#import "../shared/baseline-sections.typ": *
+#import "/docs/test-scenarios/shared/template.typ": *
+#import "/docs/test-scenarios/shared/baseline-sections.typ": *
 #show: template.with(title: "Test Layer 4: Unified Action Point System")
 
 = Test Layer 4: Unified Action Point System

@@ -60,8 +60,6 @@ board-game-project/
 │   │   │   ├── skill-cards.typ      ← printable skill reference cards (15 skills)
 │   │   │   └── teacher-vocab-checklist.typ ← facilitator self-check (Q-D1 bias correction)
 │   │   ├── baseline/                ← canonical ruleset (compiled from baseline-sections.typ)
-│   │   ├── stack-a-cleverness/      ← G2 ACCEPTED: attack nerf + combo bonus (G3 dual-counter queued)
-│   │   ├── stack-b-guards/          ← WITHDRAWN: bodyguard adjacency rule (Session 22)
 │   │   └── stack-g-structure/       ← DRAFT: unified AP framework
 │   │
 │   ├── research/                    ← Perplexity research exports + playtest analyses
@@ -83,7 +81,8 @@ board-game-project/
 │   ├── README.md                    ← The Ultimate Game Timeline (2023–present)
 │   ├── v1-realm-of-elements/
 │   ├── v2-project-roe/
-│   └── v3-first-board-game/
+│   ├── v3-first-board-game/
+│   └── archived-stacks/                ← frozen test-stack source (e.g. Stack A — accepted into baseline)
 │
 └── .claude/                         ← Claude Code project config
     ├── HANDOVER.md                  ← session bookmark (paste into new session)

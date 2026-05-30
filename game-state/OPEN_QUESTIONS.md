@@ -10,7 +10,7 @@
 
 ### OQ-21: Bodyguard Rule — COVARIATE WITH STANDOFF (P4 inconclusive)
 **Hypothesis**: Bodyguard triggers more frequently with adjacent-to-defender-only rule.
-- Original test artefact: `docs/test-scenarios/stack-b-guards/stack-b-bodyguard-fix.typ` (Stack B — *withdrawn Session 22*; the defender-only adjacency change is no longer the proposed solution).
+- Original test artefact: previously at `docs/test-scenarios/stack-b-guards/stack-b-bodyguard-fix.typ` — *deleted Session 23*. Stack B was withdrawn Session 22 (defender-only adjacency change is no longer the proposed solution). The original rule sheet is no longer kept on disk; see the Withdrawn row in `docs/mechanics-log/mechanics-evaluated.md` for the historical record.
 - **P2 update**: Bodyguard triggered 2x under baseline adjacency rule.
 - **P3 update (Session 15)**: Bodyguard organically activated under Stack A nerf — standoff dissolved was the actual cause.
 - **P4 update (`docs/research/playtest-4-analysis.md`)**: 0 triggers (regression). Both players: "didn't trigger / not so many move-attacks / even less kills." **Confirms Bodyguard tracks standoff state, not the rule.** When mid-game stalling returned (Armor-driven), Move-attack volume dropped, and Bodyguard had nothing to intercept. OQ-21 cannot be evaluated cleanly while standoff/stalling is a moving variable.
@@ -78,6 +78,35 @@
 - **Re-entry trigger**: re-evaluate after Stack H + Stack A G3 + Stack K. The dead-air windows may shrink as chassis volume drops and combo grammar widens. If they persist, dedicated stack(s).
 - **Connected to**: OQ-52 (centre attractor); OQ-53 (King role); OQ-1b (8×8); OQ-38 (combo scope); OQ-58 (exchange-pit — pairs with this).
 
+### OQ-61: Two-Pole Parallel Design — Pole A vs Pole B — OPEN (Session 23)
+`[System: Project methodology / Game shape]`
+**Should the project carry both versions forward indefinitely as game *modes*, or is Pole B (per-turn-draft) an experiment that *replaces* Pole A (pre-game-draft) if it lands?**
+- **Origin**: Session 23 discussion — see `docs/research/path-y-defense-redesign.md`. User crystallised two parallel game versions rather than continuing to tweak variables inside a single rule set.
+- **Pole A** = pre-game-draft (current game). **Pole B** = per-turn-draft (skills added during play; 12-equipped cap; shared action slots; no Rune activation gate).
+- **Current user lean (Session 23)**: experiment-that-could-replace, with both alive while we learn. User: *"i do not wanna abandon somethign that might serve a different game feel. so like if we see that both rule versions create different feels and stuff then we should maybe think about having 2 modes for the game."*
+- **Resolution criteria**: after first 2–3 Pole B prototype games, compare game-feel against Pole A. If Pole B clearly produces a different (good) feel → consider 2-modes. If Pole B feels like a clear upgrade in the same direction → Pole B replaces. If Pole B fails → Pole A track resumes.
+- **Re-entry trigger**: after 2–3 Pole B prototype playtests on the digital prototype.
+- **Connected to**: OQ-62 (Pole A draft information); OQ-63 (cross-pole fixing methodology); OQ-11 (Armor — diagnosed in Pole A, may persist in Pole B).
+
+### OQ-62: Pole A Draft Information — Sequential vs Simultaneous Reveal — OPEN (Session 23)
+`[System: Skill Drafting / Strategic determinism]`
+**Does the current sequential pre-game draft cause a "deterministic perfect game / always better to react" pathology, and does simultaneous-reveal drafting fix it without breaking perfect-information-during-play?**
+- **Origin**: Session 23 — user identified that sequential draft makes counter-picking always strictly better than committing to a strategy. *"there is no fundamental strategy picking as it is always better to react instead of doubling down."*
+- **Proposal**: *"both players pick 2 skills at the same time when both are ready and repeat."* Tunable: pick-size per round (2 vs N), reveal cadence.
+- **Information-loss carve-out**: User accepts limited PI loss **only** in the pre-game draft window: *"i accept losing a tiny bit of perfect information in the 'pre game part' if we uphold perfect information later on."* The in-game commitment to perfect information stands.
+- **Scope**: Pole A only. Pole B has its own draft model (per-turn) and this question doesn't apply there directly.
+- **Re-entry trigger**: any Pole A stack work that touches drafting; or post-Pole-B-prototype, when Pole A is re-evaluated against the new data point.
+- **Connected to**: OQ-34 (Rune Theft — affected by draft visibility); OQ-56 (draft entry complexity); OQ-16 (skill drafting fairness).
+
+### OQ-63: Cross-Pole Fixing Methodology — OPEN (Session 23)
+`[System: Project methodology]`
+**When a problem (e.g. Armor's role) exists in both poles, do we run the fix in each pole separately, or once and carry across?**
+- **User lean (Session 23)**: *"its cleaner if we have to run it twice, once per pole, but i also say that it could be confusng if we do not clearly seperate both poles from one another."* Two-pole-twice is the default lean, with confusion as the explicit risk.
+- **Resolution criteria**: encountered first time on a real shared fix; method choice locks in then. Don't pre-decide in the abstract.
+- **First likely encounter**: Armor / defense redesign (Pole-agnostic candidate in `backpocket.md`). When it triggers, the cross-pole methodology resolves.
+- **Re-entry trigger**: first shared-fix proposal that applies cleanly to both poles.
+- **Connected to**: OQ-61 (two-pole framing); OQ-11 (Armor — first likely shared-fix surface).
+
 ### OQ-60: Cognitive Load — Real Concern or Acceptable? — WATCH (P4 finding, Session 22)
 `[System: Whole-game / G4 guardrail]`
 **Both players reported the game required heavy thinking. Elias Q15 was crossed out with a "/" and the comment *"it all felt like a lot of thinking after a long day at work."* Niko's A1: "strategy not easy though."**
@@ -122,7 +151,7 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 - **Solution space**: starting-formation swaps (backpocket); central-attractor mechanics (overlaps OQ-52); sente threat skills targeting the King; mobility/safety asymmetry.
 - **Re-entry trigger**: Brainstorm session before Stack F, OR a dedicated King-role design session.
 
-### OQ-11: Armor Cap — CONFIRMED chassis-volume problem (P4 → Stack H now)
+### OQ-11: Armor Cap — CONFIRMED chassis-volume problem; STACK H QUEUED (P4 → Session 23)
 `[System: Health & Armor] [Affects: Combo-loop visibility, parallel-puzzle attention]`
 **Reopened from archive 2026-05-26.** Originally closed Session 15 as "RPS loop functions." High-concept audit (Angle 2) flagged Health & Armor as strongest chassis-bloat candidate. The question is now *volume*, not *balance* — does the Armor↔Armor-Breaker loop draw attention away from the combo loop both players are trying to discover (Framing B)?
 - **P3 evidence**: Mario granted ~20 Armor across the game; Elias used Armor Breaker ~6 times. Real chunk of game-time.
@@ -135,8 +164,9 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
   - Niko's split read (Q13 "Not really" + "Slightly extended") suggests cost is **asymmetric across skill levels** — experienced player feels it more because he plans combos around it.
   - Reversal criterion check: did combos *reliably* overrun Armor? Niko's R26-R28 loop did, BUT only after a 7-round Armor consolidation. **Cannot dissolve Q-C1.**
 - **Test plan (Q-C1, decided Session 20; restructured Session 22)**: Stack H bundles **C1b** as the lead dose — cap 3→2 *and* Armorsmith +1→+2. Risky-path-first: smaller dose **C1a** (cap 3→2 only) runs as the next iteration of Stack H if the bundled dose stalls. (Previously this was tracked as a separate Stack I — collapsed into Stack H Session 22.)
-- **Status**: **PROCEED — Stack H is now Priority 1.**
-- **Connected to**: Q-C1 in `docs/research/high-concept-open-questions.md`; ADR-004 (Framing B); OQ-38 (combo bonus); OQ-58 (exchange-pit / mid-game stickiness — separate problem).
+- **Session 23 update — DEPRIORITISED to Queued.** Pole B per-turn-draft prototype claims the Active slot during the 3-week vacation digital-prototype window (see OQ-61). Stack H bundled dose remains the **lead variant** when Stack H runs; within-stack rollback (cap-only) is the contingency. **"Build cheaper than break" risk is bigger than originally framed** — user verbatim: *"if it is way easier to stack armor then it is to get rid of it... the change can exponetiallise this even more."* When Stack H runs, Armor totals must be tracked vs P4 baseline (14/22) and the rollback dose triggered if totals climb.
+- **Status**: **QUEUED** — runs after Pole B prototype data lands (or earlier if Pole B fails fast).
+- **Connected to**: Q-C1 in `docs/research/high-concept-open-questions.md`; ADR-004 (Framing B); OQ-38 (combo bonus); OQ-58 (exchange-pit / mid-game stickiness — separate problem); OQ-61 (Pole B claims active slot); OQ-63 (cross-pole fixing — Armor is the likely first shared-fix encounter).
 
 ### OQ-57: Injured State — Mechanical Downsides Carry Their Weight? — PARTIALLY CONFIRMED (P4)
 `[System: Health & Armor] [Affects: Combat texture, teaching cost, combo grammar]`

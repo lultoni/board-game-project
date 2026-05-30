@@ -1,9 +1,9 @@
-#import "./shared/template.typ": *
+#import "/docs/test-scenarios/shared/template.typ": *
 #show: template.with(title: "(GAME NAME) — Testing Plan")
 
 = Testing Plan
 
-_Last updated: 2026-05-29 (Session 22, post-Playtest-4). Updated by Claude at end of each session._
+_Last updated: 2026-05-30 (Session 23, post-Pole-framing). Updated by Claude at end of each session._
 
 #note-box[
   *How to read this document:*
@@ -19,7 +19,45 @@ _Last updated: 2026-05-29 (Session 22, post-Playtest-4). Updated by Claude at en
 
 _Exactly one stack is Active at a time — the one prepping to run, or running. Don't open a second._
 
-=== Stack H — Armor Trim
+=== Stack L — Pole B Per-Turn-Draft Prototype
+
+*Pole framing (Session 23):* Pole A = pre-game-draft (current game). Pole B = per-turn-draft (this stack). See `docs/research/path-y-defense-redesign.md` for the full design discussion.
+
+*Targets:* The defense-as-tax problem (OQ-11 from a different angle), game length (Principle 6 — length is attrition), drafting determinism (OQ-62). Tests whether moving the draft into the game flow changes the game-feel enough to justify the radical shape change.
+
+*Mechanic summary* (full design in `docs/research/path-y-defense-redesign.md`):
+- Skills are *added to pieces during play*, not all at once at the start.
+- Skills still *fire once per use* but are *reusable while equipped*.
+- *Equipped count cap = 12 skills per player* (6 Champions × 2 slots; King doesn't change the count).
+- *Shared action slots* — phase 1 (movement) and skill phase use the same pool. Spending a slot to draft a new skill onto a piece is a tempo cost (vs. moving / acting).
+- *No Rune-economy activation gate.* Activate as many skills as Runes allow per turn; no per-turn cap. Hoarding is allowed (and risky — see backpocket "unstoppable one-turn killer" potential issue).
+- *Effectively infinite skill pool* for drafting. The 12-equipped cap is the constraint, not the pool size.
+
+*Entry conditions:* Digital prototype only for the first 2–3 games — 3-week vacation window with Jonathan is the cheap testing surface for a radical shift. No physical rule sheet for the first prototype runs; rules carried in shared digital state.
+
+*What "good" looks like:*
+- Game-feel measurably different from Pole A (whether better or worse — the comparison is the point).
+- Game length drops vs P4 baseline (28-29 rounds, ~2h30).
+- Drafting-determinism reads less "always better to react." Players make commitments early and the game rewards them.
+- Cognitive load stays inside G4 budget (drafting *and* playing *and* opponent-drafting reads is the worry).
+
+*Routing on result:*
+- *Game-feel improves and length drops* → run 1–2 more, then design Pole B v2 with iteratively patched issues. Resolves OQ-61 partially toward "Pole B replaces."
+- *Cognitive load too high or burst-turns dominate* → log learnings, restore *Stack H — Armor Trim* to Active, return to Pole A track. Resolves OQ-61 toward "Pole A continues."
+- *Mixed result (some axes improved, some worse)* → design Pole B v2 to address the worst issue; do not simultaneously change another variable. OQ-61 stays open.
+- *Cross-pole shared problem surfaces (e.g. defense-as-tax persists in Pole B too)* → that's the trigger to resolve OQ-63 (cross-pole fixing methodology).
+
+*Cross-refs:* OQ-61 (two-pole framing), OQ-62 (Pole A draft information — Pole B is the alternative axis), OQ-63 (cross-pole fixing), OQ-11 (Armor — diagnosed in Pole A, may persist in Pole B), Principle 6 (game length as attrition), Principle 7 (fundamental shifts while core unsettled). Full design discussion: `docs/research/path-y-defense-redesign.md`.
+
+*Status:* No rule sheet yet. The prototype runs digitally; if it survives 2–3 games, draft a rule sheet at `docs/test-scenarios/stack-l-per-turn-draft/`.
+
+#hr
+
+== Queued
+
+_Stacks gated on a specific other stack's result, ordered by priority._
+
+=== Q1. Stack H — Armor Trim *(Pole A track; deprioritised Session 23)*
 
 *Targets:* OQ-11 chassis-volume hypothesis. Armor↔Armor-Breaker loop crowds out the combo loop (P4-confirmed).
 
@@ -27,9 +65,11 @@ _Exactly one stack is Active at a time — the one prepping to run, or running. 
 - *Bundled (lead)*: Armor cap 3→2 *and* Armorsmith +1→+2 (one-shot fortify, not stack-grind).
 - *Smaller dose (rollback)*: Armor cap 3→2 only, Armorsmith unchanged. Run as next iteration of Stack H if the bundled dose stalls (build cheaper than break).
 
-*Status:* Rule sheet not yet written. Folder pending: `docs/test-scenarios/stack-h-armor-trim/`.
+*Status:* Rule sheet not yet written. Folder pending: `docs/test-scenarios/stack-h-armor-trim/`. *Deprioritised Session 23* — Pole B per-turn-draft prototype claims the active slot. Stack H bundled dose remains the lead variant for when Stack H runs.
 
 *Entry conditions:* Two experienced players required (chassis-volume read needs both players able to plan combos). Standard Attack 1 DMG (Layer 1 Stack A G1) and current combo bonus (Stack A G2) carry forward as baseline.
+
+*"Build cheaper than break" risk* — bigger than originally framed (user verbatim Session 23): *"if it is way easier to stack armor then it is to get rid of it... the change can exponetiallise this even more."* Within-stack rollback (cap-only) is the contingency if Armor totals climb past P4 baseline (14 / 22).
 
 *What "good" looks like:*
 - Armor granted total per game drops noticeably from P4 baseline (P4: 14 / 22).
@@ -45,13 +85,7 @@ _Exactly one stack is Active at a time — the one prepping to run, or running. 
 
 *Cross-refs:* OQ-11, OQ-57 (gated behind H), OQ-58 (watched under H), Q-C1, P3 + P4 evidence in `docs/research/playtest-3-analysis.md` and `playtest-4-analysis.md`.
 
-#hr
-
-== Queued
-
-_Stacks gated on a specific other stack's result, ordered by priority._
-
-=== Q1. Stack A G3 — Dual-Counter Combo *(gated on Stack H)*
+=== Q2. Stack A G3 — Dual-Counter Combo *(gated on Stack H)*
 
 *Targets:* OQ-38 scope-not-strength reframe + OQ-58 exchange-pit + OQ-59 (esp. 59b endgame conversion gap).
 
@@ -74,7 +108,7 @@ _Stacks gated on a specific other stack's result, ordered by priority._
 - *Exchange-pit persists, dual-counter scope OK* → keep dual-counter, advance to *Stack F — Sente Skills* for a different mechanism.
 - *Cognitive load too high (G4 violation)* → roll back to single-counter widened scope (Option A: Move-into-Strike).
 
-=== Q2. Stack K — Piece Count Reduction *(gated on Stack H)*
+=== Q3. Stack K — Piece Count Reduction *(gated on Stack H)*
 
 *Targets:* OQ-27 piece density. *Decoupled from board geometry as of Session 22* — Stack D owns board size.
 
@@ -86,7 +120,7 @@ _Stacks gated on a specific other stack's result, ordered by priority._
 - *Density feels right, decisions sharper* → OQ-27 leans toward fewer pieces. Folds into Phase B baseline candidate.
 - *Game gets too thin / too short* → density was load-bearing. Revisit only with smaller board (Stack D 8×8) bundled.
 
-=== Q3. Stack J — Injured Trim *(gated on Stack H)*
+=== Q4. Stack J — Injured Trim *(gated on Stack H)*
 
 *Targets:* OQ-57 — does Injured's mechanical chassis (speed cap, Range −1, self/adjacent carve-out) pay for itself in game-feel?
 
@@ -217,6 +251,15 @@ Letter IDs are immutable once assigned. Names can be refined; if a name changes,
 _Latest at top._
 
 #note-box[
+  *Session 23 (2026-05-30) — pole framing introduced:*
+  - Two-pole game shape declared: *Pole A* (pre-game-draft, current game) and *Pole B* (per-turn-draft, radical alternative).
+  - *Stack L — Pole B Per-Turn-Draft Prototype* added as the new Active stack. First 2–3 runs are digital-prototype only (3-week vacation testing window with Jonathan).
+  - *Stack H — Armor Trim* deprioritised from Active to Queued. Bundled dose remains the lead variant for when Stack H runs. "Build cheaper than break" risk noted as bigger than originally framed.
+  - Cross-pole testing question (do shared fixes run twice or once?) raised as OQ-63 — resolved on first encounter, not in advance.
+  - Two new design principles promoted: (6) game length is itself a form of attrition; (7) while core identity is unsettled, prefer fundamental shifts over variable tweaking. See `docs/design-principles.md`.
+  - *Multi-Champion Combo Bonus* (Stack A G2) migrated into baseline — concise version of the rule now lives in `shared/baseline-sections.typ` as `section-multi-champion-combo()`.
+  - Full design discussion: `docs/research/path-y-defense-redesign.md`.
+
   *Session 22 (2026-05-29) — restructure:*
   - Stack I dropped — folded into Stack H as the smaller dose. Same OQ, same hypothesis.
   - Stack B withdrawn — defender-only adjacency is not the right fix even if Bodyguard remains broken post-Stack-H.
