@@ -251,12 +251,11 @@ Letter IDs are immutable once assigned. Names can be refined; if a name changes,
 _Latest at top._
 
 #note-box[
-  *Session 24 (2026-05-31) — Pole B rule sheet drafted:*
-  - First standalone rule sheet for Stack L written at `docs/test-scenarios/stack-l-per-turn-draft/`. Fully inline (does not reference `baseline-sections.typ`) so it stands on its own as the prototype ruleset.
-  - *Vocabulary*: "Build Phase" renamed to "Draft Phase" — aligns with the existing "draft" verb already used for skill-pool selection.
-  - *Phase structure*: turn split into three distinct phases — Move Phase → Draft Phase → Skill Phase. Move and Draft share a 4-action pool; Skill Phase is free.
-  - *Skill-activation model* (active prototype): drafted skills are *consumable* — exhaust on activation, return to the shared pool.
+  *Session 24 (2026-05-31) — three-goal session: Pole B + vocabulary + template:*
+  - *Project-wide vocabulary simplification.* "Runes" → "Money" (existing player-facing rename), plus a broader pass across docs, skills, research, mechanics-evaluated, and Typst rule sheets to remove jargon and align terminology between files. 6 commits.
+  - *Pole B rule sheet written* (`docs/test-scenarios/stack-l-per-turn-draft/`). Standalone — does not reference `baseline-sections.typ`. Vocabulary "Build Phase" → "Draft Phase". Three-phase turn (Move → Draft → Skill); Move and Draft share a 4-action pool; Skill Phase is free with consumable activations. Bodyguard sits between Move and Draft.
   - Backpocket entries added for Pole B variants: skills-cost-a-resource, per-Skill-Phase activation cap, permanently-equipped (non-consumable) drafted skills. See `docs/backpocket.md`.
+  - *PDF template redesign.* Canonical `shared/template.typ` rebuilt from sample-variant feedback: H1 = 28pt Inter Display title (no eyebrow); H2 = numbered presence with calmer teal numerals + tight SECTION/title pair, sticky to following content; tables = cool grey header + charcoal hairline + light alt rows; new `sk("Lance")` chip helper for in-text skill references (light tinted pill + category-color outline + icon). Pagination fix: outer `breakable: false` wraps removed from `baseline-sections.typ` and `stack-l` (they were forcing half-empty pages); lists/enums now block-unbreakable so sentences don't split mid-bullet. `#hr` separators removed from rule docs (kept in feedback forms / game-tracking).
 
   *Session 23 (2026-05-30) — pole framing introduced:*
   - Two-pole game shape declared: *Pole A* (pre-game-draft, current game) and *Pole B* (per-turn-draft, radical alternative).

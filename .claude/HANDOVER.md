@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-30 — end of Session 23.*
+*Last updated: 2026-05-31 — end of Session 24.*
 
 ---
 
@@ -32,19 +32,18 @@ You are my board game design co-creator and systems architect. We are working on
 6. Read `docs/research/path-y-defense-redesign.md` (Session 23 canonical writeup — Pole framing + Pole B mechanics live here).
 7. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 23 complete, 2026-05-30)
+### Where We Are (Session 24 complete, 2026-05-31)
 
-- **Two-pole framing introduced.** *Pole A* = pre-game-draft (current game). *Pole B* = per-turn-draft (radical alternative — skills added during play, reusable while equipped, 12-equipped cap per player, shared action slots, no Money activation gate). Full discussion captured in `docs/research/path-y-defense-redesign.md`.
-- **Stack L — Pole B Per-Turn-Draft Prototype is the new Active stack**, claiming the slot for the 3-week vacation digital-prototype window with Jonathan. **Stack H — Armor Trim** deprioritised to Queued; bundled dose remains lead variant when it runs.
-- **Two new design principles promoted**: (6) game length is itself a form of attrition; (7) while core identity is unsettled, prefer fundamental shifts over variable tweaking (conditional).
-- **Three Armor diagnoses tested**: A (Money curve) and B (HP magnitude) killed by user; C (Armor-as-late-game-tax) confirmed.
-- **Multi-Champion Combo Bonus migrated into baseline.** `BASELINE_VERSION → 2026-05-30`.
-- **Three new OQs**: OQ-61 (two-pole framing), OQ-62 (Pole A draft determinism / simultaneous-reveal), OQ-63 (cross-pole fixing methodology). OQ-11 status updated to Queued.
-- **Repo housekeeping**: deleted `stack-b-guards/`, archived `stack-a-cleverness/` to `old-game-versions/archived-stacks/`, switched all Typst imports to root-relative form (`/docs/test-scenarios/shared/...`).
+- **Stack L — Pole B Per-Turn-Draft Prototype** is the Active stack with a standalone rule sheet now at `docs/test-scenarios/stack-l-per-turn-draft/stack-l-per-turn-draft.pdf`. Three-phase turn: Move → Draft → Skill. Move and Draft share a 4-action pool. Skill Phase is free; activations consume the skill back to the shared pool.
+- **Pole framing remains current.** *Pole A* = pre-game-draft (current game). *Pole B* = per-turn-draft (radical alternative, now playable). Full discussion: `docs/research/path-y-defense-redesign.md`.
+- **Stack H — Armor Trim** still Queued.
+- **Project-wide vocabulary simplification** completed — broad rename pass across docs/skills/Typst rule sheets to align terminology and reduce jargon for new players.
+- **PDF template redesigned** (Session 24). Inter typography, numbered H2 with teal numerals, new `sk("Lance")` skill-chip helper, redesigned callout boxes, pagination fixed (lists/enums no longer split mid-bullet; outer `breakable: false` wraps removed from baseline-sections + stack-l). All PDFs rebuild clean.
+- **`BASELINE_VERSION` = 2026-05-30** (unchanged from Session 23).
 
 ### Immediate Next Action
 
-**Run the first Pole B per-turn-draft prototype game digitally** (3-week vacation window with Jonathan opens). No physical rule sheet for the first 2–3 prototype runs. After 2–3 games, compare game-feel vs Pole A and route per Stack L's *Routing on result* in `TESTING_PLAN.pdf`.
+**Run the first Pole B per-turn-draft prototype game digitally** with Jonathan (3-week vacation window open). Use `docs/test-scenarios/stack-l-per-turn-draft/stack-l-per-turn-draft.pdf` as the rule sheet. After 2–3 games, compare game-feel vs Pole A and route per Stack L's *Routing on result* in `TESTING_PLAN.pdf`.
 
 ### Key Files
 

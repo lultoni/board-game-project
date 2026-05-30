@@ -6,6 +6,20 @@
 
 ---
 
+### May 31, 2026 — Session 24: Pole B rules + project-wide vocabulary + template redesign
+
+Three sequential goals tackled. **(1) Project-wide vocabulary simplification.** Broad rename pass across top-level docs, design-principles, systems, backpocket, mechanics-evaluated, research files, game-state, images README, skill files, and Typst rule sheets — 6 commits. Aligns terminology between files and removes jargon for both the designer and new players.
+
+**(2) Pole B rule sheet written.** Standalone rule sheet for Stack L now lives at `docs/test-scenarios/stack-l-per-turn-draft/stack-l-per-turn-draft.typ/.pdf`. Fully inline (does not reference `baseline-sections.typ`) so the prototype reads as its own ruleset. Vocabulary: "Build Phase" → "Draft Phase". Three-phase turn: *Move Phase → Draft Phase → Skill Phase*. Move and Draft share a 4-action pool; Skill Phase is free with consumable activations (drafted skills exhaust on activation and return to the shared pool). Bodyguard sits between Move Phase and Draft Phase. Backpocket entries added for the three obvious Pole B variants — skills-cost-a-resource, per-Skill-Phase activation cap, permanently-equipped (non-consumable) drafted skills.
+
+**(3) PDF template redesign.** User unhappy with prior template; ran a 2-round template-experiment process (3 fresh variants A/B/C, then 3 refined variants D/E/F based on round-1 feedback) before converging. Canonical `shared/template.typ` rebuilt with merged choices: H1 = 28pt Inter Display title (eyebrow dropped — was static "Rule sheet"); H2 = numbered presence (big numeral + "SECTION" eyebrow + bold title) with calmer teal numerals so headings support rather than dominate the rules; H3 = small-caps teal eyebrow; tables = cool grey header + charcoal hairline + light alt rows; new `sk("Lance")` chip helper for in-text skill references — light tinted pill with category-color outline + visible icon, vertically centered; callouts = note (teal) / changed (amber, no longer red) / designer (muted grey).
+
+**Pagination fix.** Outer `#block(breakable: false)[...]` wraps were forcing half-empty pages when long sections didn't fit the remaining space. Removed from `baseline-sections.typ` (12 wraps) and `stack-l` (10 wraps) via Python script. H2 heading block kept `breakable: false, sticky: true` so SECTION + title never split and never get stranded. Lists/enums set to `block(breakable: false)` so bullets and sentences don't split mid-content. `#hr` separators removed from rule docs (kept in feedback forms / game-tracking where they separate fillable form sections). Scratch experimentation directory `template-experiments/` deleted; build script SKIP list trimmed back.
+
+**Next action**: Run the first Pole B per-turn-draft prototype game digitally with Jonathan during the 3-week vacation window. Use `stack-l-per-turn-draft.pdf` as the rule sheet.
+
+---
+
 ### May 30, 2026 — Session 23: Defense redesign + two-pole game framing
 
 Stack H re-discussion gate (set at Session 22 close) opened the session and quickly expanded into a defense + game-shape redesign. Three diagnoses for the late-game Armor problem were tested: (A) Rune curve too steep — **killed** by user (starving Runes removes skill tension); (B) HP magnitude too thin — **killed** by user (no 2-DMG skills exist; raising HP just shifts the bottleneck); (C) Armor's *shape* is wrong, functioning as a **late-game survival tax / mandatory upkeep** — **confirmed**. User verbatim: *"i 100% agree that armor is like the tax you have to pay."*

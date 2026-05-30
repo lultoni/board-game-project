@@ -2,22 +2,18 @@
 
 *Prioritised action items. Update after each session.*
 
-*Last updated: 2026-05-30 — Session 23 close (Pole framing introduced; Stack L Active; Stack H deprioritised to Queued; combo bonus migrated to baseline; repo housekeeping).*
+*Last updated: 2026-05-31 — Session 24 close (project-wide vocabulary simplification; Pole B rule sheet written; PDF template redesigned).*
 
 ---
 
 ## Priority 1 — Stack L — Pole B Per-Turn-Draft Prototype (Active)
 
-Session 23 design discussion crystallised a two-pole framing: *Pole A* (current pre-game-draft) vs *Pole B* (per-turn-draft, radical alternative). With the 3-week vacation window opening (Jonathan + digital prototype), Stack L claims the active slot to test whether Pole B produces a different game-feel and dissolves the Armor-as-late-game-tax problem at the structural level.
+Session 23 design discussion crystallised a two-pole framing: *Pole A* (current pre-game-draft) vs *Pole B* (per-turn-draft, radical alternative). Session 24 wrote the standalone rule sheet — the prototype is now playable with a printable ruleset. With the 3-week vacation window opening (Jonathan + digital prototype), Stack L claims the active slot to test whether Pole B produces a different game-feel and dissolves the Armor-as-late-game-tax problem at the structural level.
 
-Pole B mechanics (full writeup: `docs/research/path-y-defense-redesign.md`):
-- Skills are added to pieces *during play*, not all at once at the start.
-- Skills are *reusable while equipped*. Equipped count cap = 12 per player (6 Champions × 2 slots).
-- Action slots are shared between moving and drafting (drafting a skill onto a piece costs an action slot).
-- No Money-economy activation gate — activate as many as you want; hoarding is allowed but risky.
-- Skill pool for drafting is effectively infinite; the 12-equipped cap is the constraint.
+Pole B rule sheet: `docs/test-scenarios/stack-l-per-turn-draft/stack-l-per-turn-draft.pdf` (standalone — does not import baseline-sections). Three-phase turn (Move → Draft → Skill); Move and Draft share a 4-action pool; Skill Phase is free with consumable activations; Bodyguard between Move and Draft.
 
-- [ ] **Run the first Pole B per-turn-draft prototype game digitally** (3-week vacation window with Jonathan opens). No physical rule sheet for the first 2–3 prototype runs.
+- [x] **Rule sheet written** (Session 24).
+- [ ] **Run the first Pole B per-turn-draft prototype game digitally** with Jonathan (3-week vacation window).
 - [ ] **After 2–3 games, compare game-feel vs Pole A** and route per Stack L's *Routing on result* in TESTING_PLAN.
 - [ ] **Watch flags**: Pole B "unstoppable one-turn killer" burst (hoarding into single overwhelming turn — staged in backpocket as potential issue, not guardrail), cognitive load (drafting + playing + reading opponent's likely future picks).
 
@@ -129,6 +125,16 @@ Session 23 raised that the current sequential draft drives a "deterministic perf
 - [x] **More physical writing space** — feedback forms converted to `#v(1fr)` distribution (Session 18).
 
 ---
+
+## Recently completed (Session 24)
+
+- **Project-wide vocabulary simplification** — broad rename pass across top-level docs, design-principles, systems, backpocket, mechanics-evaluated, research, game-state, images README, skill files, and Typst rule sheets. 6 commits. Aligns terminology between files and reduces jargon for both designer and new players.
+- **Pole B (Stack L) standalone rule sheet** — `docs/test-scenarios/stack-l-per-turn-draft/stack-l-per-turn-draft.typ/.pdf`. Three-phase turn (Move → Draft → Skill); Move + Draft share a 4-action pool; Bodyguard between Move and Draft; Skill Phase free with consumable activations. Standalone (does not import baseline-sections).
+- **Backpocket: three Pole B variants staged** — skills-cost-a-resource, per-Skill-Phase activation cap, permanently-equipped (non-consumable) drafted skills.
+- **PDF template redesigned** (canonical `shared/template.typ` rebuilt). Inter typography throughout; H1 = 28pt display title (eyebrow dropped); H2 = numbered presence with calmer teal numerals + tight SECTION/title pair, sticky to following content; H3 = small-caps teal eyebrow; tables = cool grey header + charcoal hairline + light alt rows; new `sk("Lance")` chip helper for in-text skill references; callouts redesigned (note teal / changed amber, no longer red / designer muted).
+- **Pagination fixes** — outer `breakable: false` wraps removed from `baseline-sections.typ` (12 wraps) and `stack-l` (10 wraps) — they were forcing half-empty pages. H2 heading kept `breakable: false, sticky: true` so SECTION + title never strand. Lists/enums set to `block(breakable: false)` so bullets don't split mid-content.
+- **`#hr` separators removed from rule docs** (kept in feedback forms / game-tracking where they separate fillable form sections).
+- **Scratch `template-experiments/` directory removed** after convergence; build script SKIP list trimmed back.
 
 ## Recently completed (Session 23)
 
