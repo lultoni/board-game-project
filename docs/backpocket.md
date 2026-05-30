@@ -896,6 +896,40 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 
 ---
 
+### Pole B Variant — Skills Cost a Resource to Activate — Session 24
+
+**What it fixes / improves**: Reintroduces an activation gate to Pole B if the free-activation Skill Phase produces feel problems — e.g. burst-turns, no-cost spam, or "I activate everything I drafted, every turn" predictability. The first Pole B prototype runs with no resource cost on activation; this entry is the "add cost back" lever if the absence of a cost reads badly.
+
+**Pre-thought design**: revive a Money-style economy (or a fresh per-turn pool) gating skill activations. Costs would be calibrated to whatever Pole B-specific economy is built — not necessarily the Pole A Money curve. Could also be a non-Money cost (e.g. spend a future action, sacrifice an Equip Slot temporarily).
+
+**Trigger**: Pole B prototype shows free Skill Phase feels too cheap / too predictable / too burst-prone. Re-evaluate the moment the data lands.
+
+---
+
+### Pole B Variant — Per-Skill-Phase Activation Cap — Session 24
+
+**What it fixes / improves**: A simpler counter to Pole B's free Skill Phase than introducing a resource economy. Caps how many drafted skills can be activated in one Skill Phase, regardless of how many are equipped. Forces players to choose *which* skills to fire on a turn instead of dumping the whole loadout.
+
+**Pre-thought design**: cap = 2 or 3 activations per Skill Phase. Numbers illustrative — calibrate against actual prototype data. Cleaner than a cost system because it adds no new resource to track.
+
+**Connects to**: same problem as the "Unstoppable One-Turn Killer" entry below. The cap is the simplest counter; resource cost is the richer counter; pick one based on what the prototype actually breaks.
+
+**Trigger**: Pole B prototype shows hoarding-then-dumping is the dominant pattern.
+
+---
+
+### Pole B Variant — Permanently Equipped (Non-Consumable) Drafted Skills — Session 24
+
+**What it fixes / improves**: Alternative interpretation of the per-turn-draft mechanic — drafted skills stay equipped after activation rather than being exhausted and returning to the pool. Tests a different game-feel along the same Pole B axis: skills are *commitments* (once drafted, always available), not *charges* (drafted, used, gone).
+
+**Pre-thought design**: same as the active Pole B prototype, but skills are not removed on activation. The 12-skill equipped cap (6 Champions × 2 slots) becomes the structural constraint instead of consumption + repool. Drafting becomes a long-term identity choice; the Skill Phase is unconstrained reuse of what you have.
+
+**Why staged separately**: Session 24 user verdict — *"your idea is also worth keeping in the backpocket but it is not what i wanted"*. The consumable model is the active prototype; the permanent model is the alternative-axis variant for if the consumable feel reads as too churny / too pool-mediated.
+
+**Trigger**: Pole B consumable prototype completes 2–3 games. If feel issues point toward "I can't build a coherent identity because skills keep cycling," test the permanent variant as Pole B v2.
+
+---
+
 ### Pole B "Unstoppable One-Turn Killer" Burst — Session 23
 
 **What it fixes / improves**: Tracks the risk that hoarding skills under Pole B's per-turn-draft rules (no Money-economy activation gate, only the 12-equipped cap) lets a player set up a single overwhelming turn — drafting passively for several turns then unloading a coordinated burst that the opponent has no read on.

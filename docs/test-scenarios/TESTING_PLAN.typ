@@ -29,7 +29,7 @@ _Exactly one stack is Active at a time — the one prepping to run, or running. 
 - Skills are *added to pieces during play*, not all at once at the start.
 - Skills still *fire once per use* but are *reusable while equipped*.
 - *Equipped count cap = 12 skills per player* (6 Champions × 2 slots; King doesn't change the count).
-- *Shared actions* — Move Phase, Build Phase, and Skill Phase use the same action pool. Spending an action to draft a new skill onto a piece is a tempo cost (vs. moving / casting).
+- *Shared actions* — Move Phase and Draft Phase use the same action pool. Spending an action to draft a new skill onto a piece is a tempo cost (vs. moving). Skill Phase is free (no action cost). _(Vocabulary note Session 24: "Build Phase" renamed to "Draft Phase" to align with the existing "draft" terminology used elsewhere.)_
 - *No Money-economy activation gate.* Activate as many skills as Money allows per turn; no per-turn cap. Hoarding is allowed (and risky — see backpocket "unstoppable one-turn killer" potential issue).
 - *Effectively infinite skill pool* for drafting. The 12-equipped cap is the constraint, not the pool size.
 
@@ -251,6 +251,13 @@ Letter IDs are immutable once assigned. Names can be refined; if a name changes,
 _Latest at top._
 
 #note-box[
+  *Session 24 (2026-05-31) — Pole B rule sheet drafted:*
+  - First standalone rule sheet for Stack L written at `docs/test-scenarios/stack-l-per-turn-draft/`. Fully inline (does not reference `baseline-sections.typ`) so it stands on its own as the prototype ruleset.
+  - *Vocabulary*: "Build Phase" renamed to "Draft Phase" — aligns with the existing "draft" verb already used for skill-pool selection.
+  - *Phase structure*: turn split into three distinct phases — Move Phase → Draft Phase → Skill Phase. Move and Draft share a 4-action pool; Skill Phase is free.
+  - *Skill-activation model* (active prototype): drafted skills are *consumable* — exhaust on activation, return to the shared pool.
+  - Backpocket entries added for Pole B variants: skills-cost-a-resource, per-Skill-Phase activation cap, permanently-equipped (non-consumable) drafted skills. See `docs/backpocket.md`.
+
   *Session 23 (2026-05-30) — pole framing introduced:*
   - Two-pole game shape declared: *Pole A* (pre-game-draft, current game) and *Pole B* (per-turn-draft, radical alternative).
   - *Stack L — Pole B Per-Turn-Draft Prototype* added as the new Active stack. First 2–3 runs are digital-prototype only (3-week vacation testing window with Jonathan).

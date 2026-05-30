@@ -87,6 +87,8 @@ Capture the opponent's *King*. The game ends immediately when a King is removed 
 
 *Per player:* 1 King · 5 Champions · 6 Guards
 
+*Champions and the King have 2 Equip Slots each.* Skills are equipped into these slots. Guards have no Equip Slots and carry no skills.
+
 *Shared (Prototype):* 10x10 grid board · Skill cards · Injured markers · Armor pieces
 ]
 
@@ -100,7 +102,7 @@ Capture the opponent's *King*. The game ends immediately when a King is removed 
 - *Piece placement:* Each player places pieces on their own back two rows:
   - Back row (row 1/10): King in the centre, Champions fill the remaining 5 spaces.
   - Second row (row 2/9): All 6 Guards.
-- *Skill Draft:* Alternating picks. P1 picks 2 skills from the pool and assigns them freely to any of their Champions or King, then P2. Repeat until all Champions and the King on each side have 2 skills each (12 per player). Duplicates allowed.
+- *Skill Draft:* Alternating picks. P1 picks 2 skills from the pool and assigns them freely to any of their Champions or King, then P2. Repeat until both Equip Slots on every Champion and King are filled (12 skills per player). Duplicates allowed.
 - *Starting Money:* Each player starts with *6 Money*.
 - P1 begins Round 1.
 ]
@@ -217,7 +219,7 @@ The same Champion can activate multiple skills (also the same one) in one turn i
 
 *Default Range = 2.* Unless a skill explicitly names "self" or "adjacent" in its effect text. A skill with a Range modifier (e.g. "Range -1") is still a Range 2 skill with a modifier applied — it is not treated as adjacent or self.
 
-*Self vs. adjacent:* "Self" skills (Range 0) target only the caster — they cannot target adjacent pieces, even with a Range buff. "Adjacent" skills (Range 1) target only neighbouring pieces — they cannot target the caster, even with a Range buff. Range buffs (e.g. Focus) shift the targeting window outward; they do not collapse it inward.
+*Self vs. adjacent:* "Self" skills (Range 0) target only the caster — they cannot target adjacent pieces by default. "Adjacent" skills (Range 1) target only neighbouring pieces — they cannot target the caster, even with a Range buff. Range buffs (e.g. Focus) shift the targeting window outward. A Range buff on a Self skill *extends* its reach: Self + Focus → Range 1. Range buffs do not collapse Adjacent skills inward toward Self.
 
 *Injured Range penalty:* Injured pieces have Range -1. Skills that explicitly name "self" or "adjacent" in their text are unaffected — they always work regardless of Injured status.
 
