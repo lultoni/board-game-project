@@ -69,7 +69,7 @@ The biggest cluster — these questions all share the root cause that the high c
 **Decidability:** `medium` — design 2-3 candidate loadouts, test one in a future first-timer playtest. Could plug straight into Niko's 2026-05-28 session if decided in time.
 **Why it matters:** The audit identified Drafting's on-ramp problem as the **lowest-cost lever with highest information content**. Newcomers draft before they understand combos; pre-built loadouts trade draft depth for combo legibility on round 1.
 **Open sub-questions:**
-- What does a known-good "intro combo" loadout look like? (Probably contains Focus Strike + a Strike skill + a movement skill for setup.)
+- What does a known-good "intro combo" loadout look like? (Probably contains Focus + a Strike skill + a movement skill for setup.)
 - Should both players get the same starter loadout, mirrored loadouts, or the *same single loadout* (so the asymmetric-information dimension is zero on round 1)?
 - Does using a starter loadout in game 1 reduce the player's combo-discovery joy in game 2 when they draft for the first time? (The "tutorial spoils the puzzle" risk.)
 
@@ -77,9 +77,9 @@ The biggest cluster — these questions all share the root cause that the high c
 
 **Decided shape (per ADR-004 Framing B):**
 - **Single shared loadout for both players in game 1.** Both players solve literally the same combinatorial puzzle on their first contact. (Pre-ADR-004, mirrored-but-different was a candidate; post-ADR-004, single-shared is the higher-leverage option because Framing B makes parallel-solving load-bearing.)
-- Loadout content target: at minimum Focus Strike + 1 Strike skill + 1 movement skill that sets up combos (Air Blast or Hook Pull). Final composition deferred until execution.
+- Loadout content target: at minimum Focus + 1 Strike skill + 1 movement skill that sets up combos (Blast or Hook). Final composition deferred until execution.
 
-**Design constraint when the loadout is eventually written:** the loadout must teach the *grammar* of combos (Focus Strike enables a Strike) without handing players the *jokes* — emergent combo discovery in game 1 must remain possible. The starter is scaffolding, not a solution book.
+**Design constraint when the loadout is eventually written:** the loadout must teach the *grammar* of combos (Focus enables a Strike) without handing players the *jokes* — emergent combo discovery in game 1 must remain possible. The starter is scaffolding, not a solution book.
 
 **Use-trigger (when this becomes a "wenn ich gegen neuen Spieler spiele, das nehmen" rule):**
 - After Niko's session (2026-05-28). If Niko lands strong-signal Q-D1, starter loadouts may be unnecessary — keep deferred.
@@ -113,16 +113,16 @@ Hints would prescribe what the player should *discover*. The whole point of the 
 **Origin:** Angle 2 (Skill Drafting net assessment).
 **Type:** `on-ramp`
 **Decidability:** `cheap` to decide as a teaching protocol; `medium` if it becomes a formal "tutorial mode" rule.
-**Why it matters:** New players draft *before* they have combo intuition, so first-time drafts default to chassis-flavored picks (Mario's 2× Armorsmith). Deferring drafting to game 2 means the first game is purely about *experiencing* combos, the second game is about *building toward* them.
+**Why it matters:** New players draft *before* they have combo intuition, so first-time drafts default to chassis-flavored picks (Mario's 2× Plate). Deferring drafting to game 2 means the first game is purely about *experiencing* combos, the second game is about *building toward* them.
 **Tradeoff:** Removes the strategic on-ramp's hardest decision from round 1 — but also removes a key part of the game from the first experience entirely.
 **Status:** RESOLVED 2026-05-26 (Session 20) — entailment from Q-B1. When the starter loadout ships, the draft is skipped in game 1 by construction (both players get the same preset, nothing to draft). Teaching protocol: *mention* drafting exists during game 1 rules explanation, signpost it as "this is what you'll do in game 2 with the full system." Reasons: (a) respects the player's intelligence, (b) creates anticipation for game 2 — which intersects Q-D2's question about whether the engine becomes audible after one full game. Q-B3 will not be tracked as an independent question going forward.
 
-### Q-B4 — Could the Standard Attack be reframed in the rule text to plant skill-first thinking?
+### Q-B4 — Could the Move-Attack be reframed in the rule text to plant skill-first thinking?
 
 **Origin:** Angle 2 (Combat findings, Q4 in audit's open questions).
 **Type:** `framing` / `on-ramp`
 **Decidability:** `cheap` — text edit in `baseline-sections.typ`.
-**Why it matters:** Standard Attack is currently presented as a sub-clause of the Movement Phase ("spend a Move Slot to attack"). That rule placement teaches "attacking is a chassis verb." The mechanic is fine post-Stack-A; the *framing* is the lever.
+**Why it matters:** Move-Attack is currently presented as a sub-clause of the Move Phase ("spend an action to attack"). That rule placement teaches "attacking is a chassis verb." The mechanic is fine post-Stack-A; the *framing* is the lever.
 **Open sub-questions:**
 - Could attacks become their own short section *between* Movement and Action, signposting the transition from chassis-verbs to engine-verbs?
 - Or: does attack belong inside the Combat section, called out from Movement only by reference?
@@ -130,15 +130,15 @@ Hints would prescribe what the player should *discover*. The whole point of the 
 
 **Status: RESOLVED 2026-05-26 — executed.**
 
-**Decision:** Keep Standard Attack inside its existing standalone section, but reword both the Movement Phase intro and the Standard Attack opening to make the move-attack unity *explicit* and signal the chassis→engine transition without introducing internal jargon.
+**Decision:** Keep Move-Attack inside its existing standalone section, but reword both the Move Phase intro and the Move-Attack opening to make the move-attack unity *explicit* and signal the chassis→engine transition without introducing internal jargon.
 
 **Why this shape (not "promote to its own section between Movement and Action"):** the user pushed back on the "own section" option because attacking *is* done via movement — splitting them risks players parsing them as separate verbs and getting confused about the survival-stop rule (Guard speed 2 attacking a survivor only moves 1 tile; Champion speed 1 attacking a survivor doesn't move at all). Unity of the verb is more important than pedagogical signposting. Reword instead.
 
 **What changed in `baseline-sections.typ` (BASELINE_VERSION 2026-05-26):**
-- Movement Phase intro now says: *"Spend 1 Move Slot to move one piece — either into empty space (normal movement) or into an enemy tile (a Standard Attack — see next section)."*
-- Standard Attack section opens with: *"A Standard Attack is a Move that ends on an enemy tile."*
+- Move Phase intro now says: *"Spend 1 action to move one piece — either into empty space (normal movement) or into an enemy tile (a Move-Attack — see next section)."*
+- Move-Attack section opens with: *"A Move-Attack is a Move that ends on an enemy tile."*
 - Survival-stop rule strengthened with the explicit attacker-speed cases (Guard speed 2 → 1 tile moved; Champion / King speed 1 → 0 tiles moved; damage dealt either way).
-- Added a closing italic line in the Standard Attack section (in player-facing language, not internal chassis/engine vocabulary): *"Standard Attacks are how pieces deal damage with movement alone. Skills — activated in the Action Phase — are the other way pieces affect each other, and use different rules (Skill Path, Range, Runes)."*
+- Added a closing italic line in the Move-Attack section (in player-facing language, not internal chassis/engine vocabulary): *"Move-Attacks are how pieces deal damage with movement alone. Skills — activated in the Skill Phase — are the other way pieces affect each other, and use different rules (Path, Range, Money)."*
 
 **Effect on Q-D1 reading:** This is one of the few accepted changes specifically aimed at *first-game framing*. If Niko's session and subsequent first-timer sessions show a shift in Q11 vocabulary (more skill-first language) compared to P1/P2/P3, this reframing is plausibly part of that — but separating its effect from Q-B1 (when that ships) and from natural variance across players will require multiple data points.
 
@@ -149,8 +149,8 @@ Hints would prescribe what the player should *discover*. The whole point of the 
 **Origin:** Angle 2 (Health & Armor findings, Q5 in audit's open questions).
 **Type:** `on-ramp`
 **Decidability:** `medium` — needs a playtest with Injured-hidden teaching to compare.
-**Why it matters:** Injured carries non-trivial teaching cost (penalties, range modifiers, edge cases like "doesn't affect 'self'/'adjacent' skills"). For a first-time player who'll mostly see 1-DMG damage anyway, the *concept* of an Injured intermediate state may be more rules-overhead than gameplay-payoff.
-**Tradeoff:** Hiding Injured for first games could simplify the on-ramp dramatically — but the moment the new player takes 1 DMG, the rule has to be explained mid-game. Or pieces just track HP without naming the state.
+**Why it matters:** Injured carries non-trivial teaching cost (penalties, range modifiers, edge cases like "doesn't affect 'self'/'adjacent' skills"). For a first-time player who'll mostly see 1-damage damage anyway, the *concept* of an Injured intermediate state may be more rules-overhead than gameplay-payoff.
+**Tradeoff:** Hiding Injured for first games could simplify the on-ramp dramatically — but the moment the new player takes 1 damage, the rule has to be explained mid-game. Or pieces just track HP without naming the state.
 **Status:** RESOLVED 2026-05-26 (Session 20) — reframed and parked as Stack H candidate.
 
 **Reframing:** The original framing was "teaching protocol" (hide Injured for game 1 only). User pushed back: the right test isn't *explained vs. hidden*, it's *with vs. without*. Cleaner experiment, and the result generalises beyond onboarding — if Injured-downsides-removed plays well for experienced players, it becomes a baseline-change candidate, not just a first-game variant.
@@ -161,7 +161,7 @@ Hints would prescribe what the player should *discover*. The whole point of the 
 
 **What it tests:**
 - Game length / pacing (no Injured speed cap on Guards = faster mid-game repositioning).
-- Combo grammar effects (Focus Strike + Injured Range−1 interaction disappears — some combo-enabler shapes simplify, some lose texture).
+- Combo grammar effects (Focus + Injured Range−1 interaction disappears — some combo-enabler shapes simplify, some lose texture).
 - First-game teaching-cost reduction (real, but a side effect — not the experiment's purpose).
 
 **Trigger / gating:** Park behind Stack A G2 *and* Stack H. Reasons: (a) Stack A G2 changes combo lethality, which interacts with whether Injured pieces still threaten meaningfully at full range; (b) Stack H reduces chassis volume on the Armor side, so Stack J's chassis-volume reduction reads cleaner against an already-trimmed baseline.
@@ -183,9 +183,9 @@ These ask whether parts of the game are louder than they need to be.
 **Open sub-questions:**
 - Does a cap-of-2 still create the "presence" effect (P3: Armor "gave presence")?
 - Does it weaken Armor too much against multi-skill combo turns?
-- Is the right lever the cap *or* the per-application amount (e.g., Armorsmith grants +1, but maybe it should grant +2 with the cap held)?
+- Is the right lever the cap *or* the per-application amount (e.g., Plate grants +1, but maybe it should grant +2 with the cap held)?
 **Status:** RESOLVED 2026-05-26 (Session 20) — parked as Stack H candidate, gated on Stack A G2 results. OQ-11 reopened under chassis-volume framing.
-**Decision:** Stack H will bundle C1b (cap 3→2 *and* Armorsmith +1→+2). Bundled because the two changes are coupled — C1b's volume-reduction effect depends on the cap, and the Armorsmith change depends on the cap to constrain it. Documented as a legitimate coupling per `design-principles.md` § Incremental Testing Methodology. If Stack H shows Armor stalling becomes dominant (build cheaper than break with no faster-than-Armor kill path), rollback to C1a (cap 3→2 only, Armorsmith unchanged) as Stack I. Trigger: after Stack A G2 confirms whether the multi-Champion combo bonus reliably creates faster-than-Armor kill paths. If combos overrun Armor reliably, the chassis-volume problem may auto-reduce and Q-C1 may dissolve.
+**Decision:** Stack H will bundle C1b (cap 3→2 *and* Plate +1→+2). Bundled because the two changes are coupled — C1b's volume-reduction effect depends on the cap, and the Plate change depends on the cap to constrain it. Documented as a legitimate coupling per `design-principles.md` § Incremental Testing Methodology. If Stack H shows Armor stalling becomes dominant (build cheaper than break with no faster-than-Armor kill path), rollback to C1a (cap 3→2 only, Plate unchanged) as Stack I. Trigger: after Stack A G2 confirms whether the multi-Champion combo bonus reliably creates faster-than-Armor kill paths. If combos overrun Armor reliably, the chassis-volume problem may auto-reduce and Q-C1 may dissolve.
 **Connected to:** OQ-11 (reopened under chassis-volume framing in `OPEN_QUESTIONS.md`).
 
 ### Q-C2 — Is Bodyguard's strategic value combo-relevant or chess-relevant?
@@ -295,7 +295,7 @@ The question can't be *answered* in discussion — it's empirical. What was deci
 **Origin:** Playtest 3 analysis (already in `OPEN_QUESTIONS.md` as OQ-38), surfaced again by Angle 2 audit of Combat.
 **Type:** `validation`
 **Decidability:** `medium` — Stack A Game 2 playtest.
-**Why it matters:** P3 saw Elias do an organic Air Blast → Hook Pull cross-piece combo *without* the bonus active. The pending bonus mechanic only triggers on Strike+Strike sequences from different Champions. Risk: the bonus creates a Strike+Strike monoculture and *crowds out* the cross-category combo behavior that already emerged organically.
+**Why it matters:** P3 saw Elias do an organic Blast → Hook cross-piece combo *without* the bonus active. The pending bonus mechanic only triggers on Strike+Strike sequences from different Champions. Risk: the bonus creates a Strike+Strike monoculture and *crowds out* the cross-category combo behavior that already emerged organically.
 **Status:** RESOLVED 2026-05-26 (Session 20) — sharpened framing added to OQ-38 in `OPEN_QUESTIONS.md`. Q-D3 will not be tracked as an independent question. Stack A G2 feedback will include a counterfactual probe: "Did the Strike+Strike bonus draw you away from cross-category combos that you'd otherwise have built?"
 
 ---
@@ -309,10 +309,10 @@ These ask whether the engine itself has enough content to deliver the high conce
 **Origin:** Angle 1 (initial open questions), Angle 2 (Skill System net assessment).
 **Type:** `design`
 **Decidability:** `medium` — needs a playtest where draft variety is the explicit watch item.
-**Why it matters:** P3 saw Mario draft 2× Armorsmith and never build a combo-shaped loadout. Partly bad draft luck, partly catalogue shape: with 15 skills and only some of them being combo-shaped pairs, it's possible to draft a chassis-only army. If the catalogue is too narrow, the engine has thin content; if it's too wide, drafts have too much variance.
+**Why it matters:** P3 saw Mario draft 2× Plate and never build a combo-shaped loadout. Partly bad draft luck, partly catalogue shape: with 15 skills and only some of them being combo-shaped pairs, it's possible to draft a chassis-only army. If the catalogue is too narrow, the engine has thin content; if it's too wide, drafts have too much variance.
 **Open sub-questions:**
 - How many *distinct combo shapes* does the catalogue actually support? (e.g., Strike+Strike, Move-into-Strike, Buff-then-Strike, Setup-then-Combo.)
-- Would adding 2-3 explicitly combo-shaped skills (e.g., a "next ally piece's skill costs −1 Rune" enabler) widen the engine without breaking balance?
+- Would adding 2-3 explicitly combo-shaped skills (e.g., a "next ally piece's skill costs −1 Money" enabler) widen the engine without breaking balance?
 **Status:** RESOLVED 2026-05-26 (Session 20) — parked with symptom trigger.
 
 **Trigger:** "Experienced players report games becoming repetitive / combo space feeling exhausted." User-facing symptom-based trigger, per Justification Rule. Not a timing trigger.

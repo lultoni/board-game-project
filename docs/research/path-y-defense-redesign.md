@@ -28,11 +28,11 @@ The chassis-volume hypothesis (OQ-11 / Q-C1) is not abandoned — it is **deprio
 
 ### Specific decisions about Stack H content
 
-- **Rust Shield** stays unchanged for the bundled dose. User: *"i don't think it is teribly bad and we should try it with +2 first. maybe in the future if it lands and rust shield is too nieche or whatever we just remove it and change armor smith to allow self targeting on focus (mabye, but this would open up a whole nother discussion so we only note down that the idea exists before anything else."* The "self-target Armorsmith on Focus" idea is logged as a future option only.
+- **Shield** stays unchanged for the bundled dose. User: *"i don't think it is teribly bad and we should try it with +2 first. maybe in the future if it lands and rust shield is too nieche or whatever we just remove it and change armor smith to allow self targeting on focus (mabye, but this would open up a whole nother discussion so we only note down that the idea exists before anything else."* The "self-target Plate on Focus" idea is logged as a future option only.
 
-- **Bundled dose stays.** User: *"i think lets just go with the risk - if the games no fun we just stop playing sooner and move on."* The original Session 22 reasoning (cap 3→2 + Armorsmith +1→+2 together, so Armorsmith stays viable inside a tighter cap) is accepted.
+- **Bundled dose stays.** User: *"i think lets just go with the risk - if the games no fun we just stop playing sooner and move on."* The original Session 22 reasoning (cap 3→2 + Plate +1→+2 together, so Plate stays viable inside a tighter cap) is accepted.
 
-- **"Build cheaper than break" risk is bigger, not smaller, than I had framed.** User: *"if it is way easier to stack armor then it is to get rid of it (currently the issue if you do not have armor breaker or standard attacks) the change can exponetiallise this even more."* User's catalogue audit lands the point: if your Armor Breaker champion dies, your only Armor-removal options are 4-Rune Blade Tempest (wasted on full-armor pieces) or Standard Attacks. Within-stack rollback (cap-only, Armorsmith unchanged) is the right contingency *if* Stack H runs and Armor totals climb past the P4 baseline (14 Elias / 22 Niko).
+- **"Build cheaper than break" risk is bigger, not smaller, than I had framed.** User: *"if it is way easier to stack armor then it is to get rid of it (currently the issue if you do not have armor breaker or standard attacks) the change can exponetiallise this even more."* User's catalogue audit lands the point: if your Break champion dies, your only Armor-removal options are 4-Money Tempest (wasted on full-armor pieces) or Move-Attacks. Within-stack rollback (cap-only, Plate unchanged) is the right contingency *if* Stack H runs and Armor totals climb past the P4 baseline (14 Elias / 22 Niko).
 
 - **Abort signal — deferred.** User: *"i feel like this is arguing about symptoms instead of thinking about the root - lets discuss the other things first before we come back to this."* Root-cause discussion took over the rest of the session; the abort signal is still owed to Stack H whenever it returns to active.
 
@@ -42,18 +42,18 @@ The chassis-volume hypothesis (OQ-11 / Q-C1) is not abandoned — it is **deprio
 
 Three role-statements explored in turn, with user pushback.
 
-**1. "Allow defensive strategy."** User agreed with the conclusion that Armor is *a* defensive option, but not necessarily *the right* one. Defense could equally be positional (formations, screens, LoS-blocking), recovery (Field Medic), disruption (Rune Theft), or threat-based (sente skills). Armor is the HP-bar version — closest to D&D / video-game defense, the simplest model, but not necessarily the one that serves the Core Fantasy of combo discovery.
+**1. "Allow defensive strategy."** User agreed with the conclusion that Armor is *a* defensive option, but not necessarily *the right* one. Defense could equally be positional (formations, screens, LoS-blocking), recovery (Heal), disruption (Steal), or threat-based (sente skills). Armor is the HP-bar version — closest to D&D / video-game defense, the simplest model, but not necessarily the one that serves the Core Fantasy of combo discovery.
 
 **2. "Pieces feel vulnerable."** User: *"currently i would say that armor 3 really does make a piece feel like number 3 - it cannot die without exessive investment from the opponent (ie you get a major tempo advantage or just major presence from the piece jsut having armor). and the issue is with unprotected pieces: if we get into the later stages of the game (later mid game and end game) it is almost trivial to deal 2 damage, like you get the runes to do that every single turn so in the later stages you need to have your pieces protected to have them not just fly off the board."*
 
-This is the diagnosis. Armor is **a late-game survival prerequisite, not a strategic choice.** In early game pieces can be unarmored because nobody has Rune-fueled offense yet. In mid-late game, an unarmored piece is one that dies on the opponent's next turn. So players don't *choose* defense; they *must* armor up to keep pieces alive long enough to do anything. Armorsmith and Rust Shield aren't strategic picks — they're mandatory upkeep.
+This is the diagnosis. Armor is **a late-game survival prerequisite, not a strategic choice.** In early game pieces can be unarmored because nobody has Money-fueled offense yet. In mid-late game, an unarmored piece is one that dies on the opponent's next turn. So players don't *choose* defense; they *must* armor up to keep pieces alive long enough to do anything. Plate and Shield aren't strategic picks — they're mandatory upkeep.
 
 User confirmation: *"i 100% agree that armor is like the tax you have to pay. that they are the mandatory upkeep of pieces in the endgame."* And: *"Armor is the only thing standing between pieces and instant death in late game. That's the role."*
 
 That role-statement explains:
 - Why both P4 players ran near-identical Armor arcs (R1–5 build, R15–21 re-build) — both paying the same tax at the same time, not strategy convergence.
-- Why must-pick density centres on Focus + Armor + Rune Theft. Focus and Theft are offense; Armor is required to survive offense. The catalogue lacks alternative survival mechanisms.
-- Why mid-game stalls collapse into Armor clusters when offensive Rune economy outpaces engagement opportunities.
+- Why must-pick density centres on Focus + Armor + Steal. Focus and Steal are offense; Armor is required to survive offense. The catalogue lacks alternative survival mechanisms.
+- Why mid-game stalls collapse into Armor clusters when offensive Money economy outpaces engagement opportunities.
 - Why removing Armor entirely without replacement would be catastrophic — pieces would evaporate in late game.
 
 **3. "Pre-battle prep."** User landed cleanly: *"yes this is exactly what i wanted. i wanted players to decide with their draft what kinda srtategy they will do. so like 'i choose movement because i want to flank and zoom around the board' or 'i choose armor (bad example but it shows defense for this point) so i stay back and wait for the opponent to attack me so i can try and counter instead' and so on and so forth - all emergent just based on the skills they choose. i don't want skills to be like 'yeah i had to choose this as this is meta, otherwise i will just be in disadvantage all the time'."*
@@ -66,17 +66,17 @@ Defense should be a **draft identity**, not a mid-game upkeep tax.
 
 Three competing fixes were tested. Two were killed; one confirmed.
 
-### Diagnosis A — The Rune economy curves too fast (KILLED)
+### Diagnosis A — The Money economy curves too fast (KILLED)
 
-Hypothesis: the +1 every 5 rounds compounding makes late-game offense overwhelm any reasonable HP system. Flatten the Rune curve and pieces would survive on raw HP alone.
+Hypothesis: the +1 every 5 rounds compounding makes late-game offense overwhelm any reasonable HP system. Flatten the Money curve and pieces would survive on raw HP alone.
 
 User pushback (kills A): *"if we do not give a lot of runes however it would make executing skills happen less often and make the skills in turn weaker as you only have so many activations and really have to think 'is it worth it to fire my skills now and not be able to do that again for like 3 turns?' so we have to be carefull to not remove using skills entirely as that is still the core mechani in the game."*
 
-Starving Runes guts the engine. Spending tension (G8) and skill-as-primary-damage source both depend on the current scale. A is a non-starter.
+Starving Money guts the engine. Spending tension (G8) and skill-as-primary-damage source both depend on the current scale. A is a non-starter.
 
 ### Diagnosis B — HP is too thin (2 is too few) (KILLED)
 
-Hypothesis: 2 HP means any 2-DMG skill = instant kill. If pieces had 3 or 4 HP, Armor's "extends life" job becomes redundant.
+Hypothesis: 2 HP means any 2-damage skill = instant kill. If pieces had 3 or 4 HP, Armor's "extends life" job becomes redundant.
 
 User pushback (kills B), with catalogue audit: *"there are no 2 dmg skills. what does exist is either damage buffing or just using the same skill twice. so dealing 2 damage costs 0 (2 standard attacks), 2 (1 attack, 1 lance), 4 (2 lance, really rare tho), 6 (2 normal strike skills) or 8 (2 times blade tempest)."*
 
@@ -138,7 +138,7 @@ The radical alternative. Skills are added to pieces *during* play, not all at on
 
 - **Shared action slots.** "Movement phase" and "action phase" become **phase 1** and **skill phase** (placeholder names — needs renaming later). Action slots are spent on either *moving a piece* or *drafting a new skill onto a piece*. Choosing to draft is a tempo cost paid against movement. User: *"you get x action slots and can either use them to move pieces or draft skills."*
 
-- **No Rune-economy activation gate.** Activate as many equipped skills as you want per turn. User: *"activte as many as you want - i don't care. you will just then not have them in the following turns. so you can hoard them if you feel like it but of course run the risk of losing pieces."* Hoarding-into-burst (the "unstoppable one-turn killer" risk) is a known potential issue, not a guardrail — see Open risks below.
+- **No Money-economy activation gate.** Activate as many equipped skills as you want per turn. User: *"activte as many as you want - i don't care. you will just then not have them in the following turns. so you can hoard them if you feel like it but of course run the risk of losing pieces."* Hoarding-into-burst (the "unstoppable one-turn killer" risk) is a known potential issue, not a guardrail — see Open risks below.
 
 - **Effectively infinite skill pool for drafting.** *"i would for now just assume that there are infinite skills for equiping, but the amount of skills you do get is the limiting factor."* The 12-equipped cap is the constraint, not pool exhaustion.
 
@@ -164,7 +164,7 @@ Items take a slot where a skill would otherwise sit. A piece could be loaded wit
 
 **Acquisition is open.** User: *"items do not directly have to be drafted (they are rn, but this is ofc subject to change) - they could also be bought or picked during the game. this is all very possible if we just change the systems around it."* A shop / mid-game-acquisition option is on the table but not committed; per Incremental Testing Methodology, items-as-draft-only would be tested first, with the shop layer added only after.
 
-Why items matter: defense becomes a **draft decision**, not a turn decision — directly serving the game-length principle. You don't spend mid-game turns or Runes on Armorsmith; your loadout *is* your defensive identity.
+Why items matter: defense becomes a **draft decision**, not a turn decision — directly serving the game-length principle. You don't spend mid-game turns or Money on Plate; your loadout *is* your defensive identity.
 
 Risks (acknowledged by user):
 - **Cognitive load** — more identities to track per piece. *"yes, real."*
@@ -179,7 +179,7 @@ User idea (from the deep-dive section): *"max armor scales with point in the gam
 Property: accepts Armor's late-game survival role and ties it explicitly to the game timeline. Early game becomes lethal (engagement happens fast), late-game survival kicks in when offense is overwhelming. Directly serves the game-length principle.
 
 Risks (called out by user themselves):
-- Stacking another scaling rule on top of Runes and Skill Slots = three things scaling = cognitive load.
+- Stacking another scaling rule on top of Money and actions = three things scaling = cognitive load.
 - More rules, not fewer — opposite of trimming chassis.
 - May not solve "Armor as easy default" — once cap is reached, players still default to filling it.
 
@@ -209,7 +209,7 @@ Sente threats remain on the table as a Stack F concept (already Dormant in `TEST
 
 ## Open risks (tracked, not blocking)
 
-- **Pole B "unstoppable one-turn killer" turn.** Hoarding equipped skills with no Rune gate could let a player set up a single overwhelming turn. User stance: *"a potential issue that could theoretically occur but is not confirmed to actually exist and hence also not a guard rail."* In `backpocket.md` as a known potential issue. Re-evaluate after first Pole B prototype game. Possible counters if it surfaces: per-turn activation cap, fatigue, skill-use cooldown.
+- **Pole B "unstoppable one-turn killer" turn.** Hoarding equipped skills with no Money gate could let a player set up a single overwhelming turn. User stance: *"a potential issue that could theoretically occur but is not confirmed to actually exist and hence also not a guard rail."* In `backpocket.md` as a known potential issue. Re-evaluate after first Pole B prototype game. Possible counters if it surfaces: per-turn activation cap, fatigue, skill-use cooldown.
 
 - **Pole B cognitive load.** Drafting *and* playing *and* tracking the opponent's likely future picks (poker-like read). User flagged this as real complexity. G4 guardrail watch.
 

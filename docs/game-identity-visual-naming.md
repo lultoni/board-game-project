@@ -18,7 +18,7 @@ The visual/naming phase should *reinforce* this, not contradict it.
 
 When a Champion is equipped with skills, the *combination* creates an archetype identity — not the Champion itself. Design implications:
 
-- **Skill visuals should suggest archetypes when combined.** Example: Rune Theft could have a "vampiric suck" visual. A Champion equipped with Rune Theft + Blade Call starts *looking* like a dark assassin — not because it was pre-named "Vampire," but because the skills together evoke that archetype.
+- **Skill visuals should suggest archetypes when combined.** Example: Steal could have a "vampiric suck" visual. A Champion equipped with Steal + Charge starts *looking* like a dark assassin — not because it was pre-named "Vampire," but because the skills together evoke that archetype.
 - **Physical skill slots on pieces should be designed to show the combination's emerging identity.** The piece IS the sum of its skills — the way cards/tokens slot onto the piece should make this visible.
 - **The board state should feel like a living composition**, not a chess position. Each player's army has a visual personality that they created through draft choices.
 
@@ -27,7 +27,7 @@ When a Champion is equipped with skills, the *combination* creates an archetype 
 ## Naming Direction
 
 - **No pre-set Champion names.** Champions are numbered or coloured, not named.
-- **Skills carry the flavour.** Skill names should be evocative: "Rune Theft" → suggests a dark archetype; "Field Medic" → suggests a support archetype; "Blade Tempest" → suggests a warrior archetype.
+- **Skills carry the flavour.** Skill names should be evocative: "Steal" → suggests a dark archetype; "Heal" → suggests a support archetype; "Tempest" → suggests a warrior archetype.
 - **The game name** is still undecided. Leave open until the visual identity crystallises.
 - **King naming / Spirit Mage concept**: The win-condition piece (King) could receive a distinct name that gives it narrative identity beyond "the important one." Reserved for this phase — not a mechanical change.
 
