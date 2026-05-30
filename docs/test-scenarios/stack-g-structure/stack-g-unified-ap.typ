@@ -22,8 +22,6 @@ _Version: 2026-04-25 framework. To be finalised after Layers 1–3 are tested._
 - Are "pure caster" turns (0 movement, 3 skills) viable and interesting?
 - Is 3 AP the right number?
 
-#hr
-
 #section-goal()
 
 == Components
@@ -104,8 +102,6 @@ _[FROM LAYER 1 results.]_
 + Which piece freedom model did you test? How did it feel?
 + Do you miss the two-phase structure? Or is unified AP better?
 + Should AP increase in later rounds, or is 3 flat the right number?
-
-#hr
 
 == Layer 5: Board Size & Piece Count (Placeholder)
 

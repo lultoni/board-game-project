@@ -20,8 +20,6 @@
 
 _Version: 2026-05-31. Standalone — does not reference any other rule document._
 
-#hr
-
 == Introduction
 
 You and your opponent each command an army of *Guards*, *Champions*, and a *King* on a 10×10 grid board. There is no luck — no dice, no hidden information.
@@ -33,8 +31,6 @@ In this version of the game, *you do not pick your skills before the game starts
 *Turn flow:*
 + *Move Phase + Draft Phase* — share a pool of *4 actions*. Spend each action to either move a piece or draft a skill onto one of your Champions or King.
 + *Skill Phase* — activate any equipped skills you want. Each activation removes the skill from the piece and returns it to the pool.
-
-#hr
 
 == Goal
 
@@ -69,7 +65,6 @@ A *Round* = P1's Turn + P2's Turn.
 
 == Turn Structure
 
-#block(breakable: false)[
 Each turn has three phases, in this order:
 
 + *Move Phase* — spend actions from your shared pool to move pieces.
@@ -79,11 +74,9 @@ Each turn has three phases, in this order:
 The *Move Phase and Draft Phase share a pool of 4 actions.* You decide how many to spend on movement before advancing to the Draft Phase; any actions left over are available to draft. Once you advance from one phase to the next, you cannot return.
 
 You may use 0 actions in any phase. Unused actions are *lost* — they do not carry into the next turn.
-]
 
 == Move Phase
 
-#block(breakable: false)[
 Spend actions from your shared 4-action pool to move pieces. *Each piece may only be moved once per turn.* Each action moves *one* piece.
 
 A move can either go *into empty space* (normal movement) or *into an enemy tile* (a Move-Attack — see below).
@@ -109,11 +102,9 @@ A move can either go *into empty space* (normal movement) or *into an enemy tile
 You may attack with one action and move a different piece with another action in the same phase.
 
 When you advance to the Draft Phase, any unused actions from your pool carry over and can be spent on drafting.
-]
 
 == Bodyguard Rule
 
-#block(breakable: false)[
 When you make a *Move-Attack* against an opponent's Champion or King, the defender may choose to have a Guard intercept — *if* a friendly Guard is on a tile adjacent to *both the tile immediately before the target (along the attack path) and the defending piece.*
 
 *Interception:*
@@ -124,11 +115,9 @@ When you make a *Move-Attack* against an opponent's Champion or King, the defend
 *Interception is optional.* The defender may decline even if a Guard is eligible, and may choose which Guard intercepts if multiple are eligible.
 
 Only Move-Attacks can be intercepted. Skills always hit directly.
-]
 
 == Draft Phase
 
-#block(breakable: false)[
 Spend any remaining actions from your shared 4-action pool to *draft skills from the shared pool onto one of your Champions or King*. Each action drafts *one* skill.
 
 To draft:
@@ -144,11 +133,9 @@ The skill is now *equipped* on that piece. Equipped skills are *not* used immedi
 *The skill pool is effectively infinite.* You cannot run out of skills to draft. Duplicates of the same skill are allowed (on the same piece or on different pieces).
 
 When you advance to the Skill Phase, any unused actions are *lost*.
-]
 
 == Skill Phase
 
-#block(breakable: false)[
 After the Draft Phase ends, you enter the Skill Phase.
 
 *You may activate any of your equipped skills, in any order, with no per-turn cap and no resource cost.* You can activate one, several, or all of them. You can activate zero — the Skill Phase is optional.
@@ -161,11 +148,9 @@ To activate one equipped skill:
 The same Champion can activate multiple equipped skills in one Skill Phase. Each activation exhausts and removes that one skill instance.
 
 A skill that is removed this way is back in the pool — it can be drafted again on a future turn (by you or by your opponent).
-]
 
 == Skill System
 
-#block(breakable: false)[
 *Path:* Skills travel in a *straight line* (horizontal, vertical, or diagonal) from the caster, like a chess Queen.
 
 *Blocking:* The Path is blocked by *all pieces* — ally and opponent alike. The skill cannot reach past the first piece in its path.
@@ -182,11 +167,9 @@ A skill that is removed this way is back in the pool — it can be drafted again
 *Injured Range penalty:* Injured pieces have Range −1. Skills that explicitly name "self" or "adjacent" in their text are unaffected — they always work regardless of Injured status.
 
 *Skills that move pieces do not deal damage.* Movement-via-skill (Dash, Swap, Retreat) does not count as a Move-Attack and deals no damage on arrival — you are instead stopped from moving the piece further in that direction.
-]
 
 == Combo Bonus
 
-#block(breakable: false)[
 Each enemy piece carries a *combo counter* — starts at 0 at the beginning of your turn and resets to 0 at the end of your turn.
 
 When one of your *Strike* skills hits an enemy piece:
@@ -197,11 +180,9 @@ When one of your *Strike* skills hits an enemy piece:
 *What does not count:* Move-Attacks, Move skills, Shield skills, Mystic skills.
 
 The Charge skill (+1 damage to one Strike this turn) stacks on top of the combo bonus.
-]
 
 == Health & Armor
 
-#block(breakable: false)[
 *All pieces have 2 HP:* Normal → Injured → Removed.
 
 #table(
@@ -218,11 +199,9 @@ The Charge skill (+1 damage to one Strike this turn) stacks on top of the combo 
 - 2 damage to Normal → Removed instantly (Injured state is skipped).
 
 *Armor:* Max 3 points per piece. Each absorbs 1 damage, then is destroyed. Resolves before HP damage. *Does not prevent Injured status.*
-]
 
 == Skill Reference
 
-#block(breakable: false)[
 #skill-table(
   columns: (auto, auto, auto, auto),
   table.header([], [Cat.], [Name], [Effect]),
@@ -242,13 +221,11 @@ The Charge skill (+1 damage to one Strike this turn) stacks on top of the combo 
   skill-icon("focus_strike"), [Mystic], [Focus], [The next skill used by *any of your pieces* this turn gains +1 Range. _(On Move skills: caster picks at activation whether the +1 applies to the activation range or the effect range. Not both.)_],
   skill-icon("blade_call"), [Mystic], [Charge], [One Strike skill used by *any of your pieces* this turn deals +1 damage.],
 )
-]
 
 #pagebreak()
 
 == Quick Reference
 
-#block(breakable: false)[
 #table(
   columns: (auto, auto),
   table.header([Concept], [Rule]),
@@ -310,7 +287,6 @@ The Charge skill (+1 damage to one Strike this turn) stacks on top of the combo 
   [Focus],
   [+1 Range to next skill this turn. On Move skills: choose at activation whether +1 applies to the activation range OR the effect range.],
 )
-]
 
 /*
   Internal — for the playtest pair only. Not for player consumption.

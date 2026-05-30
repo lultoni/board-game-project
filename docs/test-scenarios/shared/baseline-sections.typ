@@ -122,7 +122,6 @@ At the *start of each player's turn* (before they do anything), that player coll
 #let section-turn-structure() = [
 == Turn Structure
 
-#block(breakable: false)[
 Each *Turn* has two phases, in order:
 
 - *Move Phase* — spend actions to move pieces (and attack).
@@ -130,14 +129,12 @@ Each *Turn* has two phases, in order:
 
 You may use 0 actions in either phase.
 ]
-]
 
 // ── MOVE PHASE ────────────────────────────────────────────────────────────────
 
 #let section-move-phase() = [
 == Move Phase
 
-#block(breakable: false)[
 You have *2 actions* per turn. Spend 1 action to move one piece — either *into empty space* (normal movement) or *into an enemy tile* (a Move-Attack — see next section). *Each piece may only be moved once per Move Phase.*
 
 #table(
@@ -152,14 +149,12 @@ You have *2 actions* per turn. Spend 1 action to move one piece — either *into
 *Pieces block movement:* A moving piece cannot pass through any other piece, ally or opponent.
 - _Exception:_ A piece may go around a blocking piece if total tiles moved stays within speed (e.g. a Guard using 2 diagonal moves to go around a piece directly in the way).
 ]
-]
 
 // ── MOVE-ATTACK ───────────────────────────────────────────────────────────────
 
 #let section-move-attack() = [
 == Move-Attack
 
-#block(breakable: false)[
 A *Move-Attack* is a Move that ends on an enemy tile. Spend 1 action to move your piece *onto a tile occupied by an enemy piece.*
 
 - Deal *1 damage* to the enemy.
@@ -170,7 +165,6 @@ You may attack with one action and move a different piece with the other action 
 
 _Move-Attacks are how pieces deal damage with movement alone. Skills — activated in the Skill Phase — are the other way pieces affect each other, and use different rules (Path, Range, Money)._
 ]
-]
 
 // ── MULTI-CHAMPION COMBO BONUS ────────────────────────────────────────────────
 // Accepted into baseline Session 23 (2026-05-30) following Stack A G2 (Playtest 4)
@@ -180,9 +174,7 @@ _Move-Attacks are how pieces deal damage with movement alone. Skills — activat
 #let section-multi-champion-combo() = [
 == Multi-Champion Combo Bonus
 
-#block(breakable: false)[
 Each enemy piece has a *combo counter* (starts at 0, resets at the end of your turn). When a *Strike skill* hits it, deal *+counter damage*; if the hitter is a *new Champion* (one that didn't already increment this counter this turn), the counter then *+1*. Move-Attacks don't count. Buffs, heals, and movement don't count. Stacks with Charge.
-]
 ]
 
 // ── SKILL PHASE ───────────────────────────────────────────────────────────────
@@ -190,7 +182,6 @@ Each enemy piece has a *combo counter* (starts at 0, resets at the end of your t
 #let section-skill-phase() = [
 == Skill Phase
 
-#block(breakable: false)[
 You have *2 actions* per turn (at the start (see Progression)).
 
 Spend 1 action to activate one equipped skill on one of your Champions or King:
@@ -200,14 +191,12 @@ Spend 1 action to activate one equipped skill on one of your Champions or King:
 
 The same Champion can activate multiple skills (also the same one) in one turn if you have actions remaining.
 ]
-]
 
 // ── SKILL SYSTEM ──────────────────────────────────────────────────────────────
 
 #let section-skill-system() = [
 == Skill System
 
-#block(breakable: false)[
 *Path:* Skills travel in a *straight line* (horizontal, vertical, or diagonal) from the caster, like a chess Queen.
 
 *Blocking:* The Path is blocked by *all pieces* — ally and opponent alike. The skill cannot reach past the first piece in its path.
@@ -229,7 +218,6 @@ The same Champion can activate multiple skills (also the same one) in one turn i
 
 All skills cost 1 action unless noted otherwise.
 ]
-]
 
 // ── RESOURCE ECONOMY ──────────────────────────────────────────────────────────
 // Layer 1 accepted — Playtest 2, 24.04.2026
@@ -237,7 +225,6 @@ All skills cost 1 action unless noted otherwise.
 #let section-resource-economy() = [
 == Money
 
-#block(breakable: false)[
 *Starting Money:* 6 per player.
 
 Money income is collected at the *start of each player's own turn:*
@@ -254,14 +241,12 @@ Money income is collected at the *start of each player's own turn:*
 
 *No Money cap.*
 ]
-]
 
 // ── HEALTH & ARMOR ────────────────────────────────────────────────────────────
 
 #let section-health-armor() = [
 == Health & Armor
 
-#block(breakable: false)[
 *All pieces have 2 HP:* Normal → Injured → Removed.
 
 #table(
@@ -279,14 +264,12 @@ Money income is collected at the *start of each player's own turn:*
 
 *Armor:* Max 3 points per piece. Each absorbs 1 damage, then destroyed. Resolves before HP damage. *Does not prevent Injured status.*
 ]
-]
 
 // ── BODYGUARD RULE ────────────────────────────────────────────────────────────
 
 #let section-bodyguard() = [
 == Bodyguard Rule
 
-#block(breakable: false)[
 When you make a *Move-Attack* against an opponent's Champion or King, the defender may choose to have a Guard intercept — *if* a friendly Guard is on a tile adjacent to *both the tile immediately before the target (along the attack path) and the defending piece.*
 
 *Interception:*
@@ -298,19 +281,16 @@ When you make a *Move-Attack* against an opponent's Champion or King, the defend
 
 Only Move-Attacks can be intercepted. Skills always hit directly.
 ]
-]
 
 // ── SKILL DRAFTING ────────────────────────────────────────────────────────────
 
 #let section-skill-drafting() = [
 == Skill Drafting
 
-#block(breakable: false)[
 - Lay out all available skills face-up as a shared pool.
 - Alternating draft: P1 picks 2 skills from the pool and assigns them freely to any of their Champions or King → P2 picks 2 skills and assigns freely → repeat.
 - Continue until all 5 Champions and the King on each side have 2 skills.
 - Both players draft from the same pool. Duplicates are allowed.
-]
 ]
 
 // ── PROGRESSION ───────────────────────────────────────────────────────────────
@@ -318,7 +298,6 @@ Only Move-Attacks can be intercepted. Skills always hit directly.
 #let section-progression() = [
 == Progression
 
-#block(breakable: false)[
 #table(
   columns: (auto, auto),
   table.header([Round], [Actions per Skill Phase]),
@@ -328,14 +307,12 @@ Only Move-Attacks can be intercepted. Skills always hit directly.
   [31+], [5 (+1 every 10 rounds)],
 )
 ]
-]
 
 // ── SKILL REFERENCE ───────────────────────────────────────────────────────────
 
 #let section-skill-reference() = [
 == Skill Reference
 
-#block(breakable: false)[
 #skill-table(
   columns: (auto, auto, 1fr, auto, 2fr),
   table.header([], [Cat.], [Name], [Cost], [Effect]),
@@ -355,7 +332,6 @@ Only Move-Attacks can be intercepted. Skills always hit directly.
   skill-icon("focus_strike"), [Mystic], [Focus], [1], [The next skill used by *any of your pieces* this turn gains +1 Range. _(Note: can boost self and adjacent skills — Range 0 → 1, Range 1 → 2.)_ #h(0pt) *Move skills:* the caster chooses, when activating the Move skill, whether the +1 applies to its *activation range* (how far the skill can target) or its *effect range* (how far it moves/pushes). Not both.],
   skill-icon("blade_call"), [Mystic], [Charge], [3], [One Strike skill used by *any of your pieces* this turn deals +1 damage.],
 )
-]
 ]
 
 // ── QUICK REFERENCE ───────────────────────────────────────────────────────────
@@ -406,7 +382,7 @@ Only Move-Attacks can be intercepted. Skills always hit directly.
   [
 == Quick Reference
 
-#block(breakable: false)[
+#block(breakable: true)[
 #table(
   columns: (1fr, 1.5fr),
   table.header([Concept], [Rule]),
