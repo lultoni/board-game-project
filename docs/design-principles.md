@@ -120,7 +120,7 @@ If either resource becomes so abundant that spending requires no tradeoff, somet
 
 - **Encourage spending through attractive options, not by punishing saving.** The cleanest fix for Money hoarding is making skill usage effective and rewarding, not capping Money or making it expire.
 - **Base auto-economy is strategy-neutral.** The guaranteed passive income (+2/turn) must not force a playstyle. However, strategy-specific economy sources (e.g., bonuses tied to aggression, control, or combo play) ARE acceptable — provided (a) multiple strategies each have a viable economy path, and (b) those paths are balanced against each other. The ban is on a single-strategy economy funnel, not on economy variety.
-- **Shortfall never closes** (G1) — players can never fill all skill slots with maximum-cost skills every turn. There's always more they want to do than they can afford.
+- **Shortfall never closes** (G1) — players can never spend all their actions on maximum-cost skills every turn. There's always more they want to do than they can afford.
 
 ---
 

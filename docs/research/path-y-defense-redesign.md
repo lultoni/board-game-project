@@ -136,7 +136,7 @@ The radical alternative. Skills are added to pieces *during* play, not all at on
 
 - **Equipped count cap = 12 skills per player.** 6 Champions × 2 slots each. The King's slots don't change the count. User: *"you have 6 champs (or 5 and 1 king, but does not matter). so you have 12 skills per player."*
 
-- **Shared action slots.** "Movement phase" and "action phase" become **phase 1** and **skill phase** (placeholder names — needs renaming later). Action slots are spent on either *moving a piece* or *drafting a new skill onto a piece*. Choosing to draft is a tempo cost paid against movement. User: *"you get x action slots and can either use them to move pieces or draft skills."*
+- **Shared actions.** Pole B uses three phases — *Move Phase*, *Build Phase*, *Skill Phase* — but the action pool is shared. Actions are spent on either *moving a piece*, *drafting a new skill onto a piece* (Build Phase), or *activating an equipped skill* (Skill Phase). Choosing to draft is a tempo cost paid against movement and casting. User: *"you get x action slots and can either use them to move pieces or draft skills."*
 
 - **No Money-economy activation gate.** Activate as many equipped skills as you want per turn. User: *"activte as many as you want - i don't care. you will just then not have them in the following turns. so you can hoard them if you feel like it but of course run the risk of losing pieces."* Hoarding-into-burst (the "unstoppable one-turn killer" risk) is a known potential issue, not a guardrail — see Open risks below.
 

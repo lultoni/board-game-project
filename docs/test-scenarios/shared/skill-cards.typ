@@ -8,7 +8,7 @@
 // Print recommendation: print twice for two-set play (one per player).
 // Cuts: along the page grid lines. Card size: ~63mm × 55mm.
 //
-// SOURCE OF TRUTH: skill data must match `baseline-sections.typ` lines 328–342.
+// SOURCE OF TRUTH: skill data must match `baseline-sections.typ` skill table.
 // If a skill's cost/text changes there, update it here too.
 
 #set document(title: "Skill Cards")
@@ -36,21 +36,21 @@
 }
 
 #let icon-name(name) = {
-  if name == "Lance Thrust" { "lance_thrust" }
-  else if name == "Hook Pull" { "hook_pull" }
-  else if name == "Armor Breaker" { "armor_breaker" }
-  else if name == "Rune Theft" { "rune_theft" }
-  else if name == "Blade Tempest" { "blade_tempest" }
-  else if name == "Rust Shield" { "rust_shield" }
-  else if name == "Field Medic" { "field_medic" }
-  else if name == "Armorsmith" { "armor_smith" }
-  else if name == "Quick Dash" { "quick_dash" }
-  else if name == "Air Blast" { "air_blast" }
-  else if name == "Precision Thrust" { "precision_thrust" }
-  else if name == "Shadow Shift" { "shadow_shift" }
-  else if name == "Retreat Plan" { "retreat_plan" }
-  else if name == "Focus Strike" { "focus_strike" }
-  else if name == "Blade Call" { "blade_call" }
+  if name == "Lance" { "lance_thrust" }
+  else if name == "Hook" { "hook_pull" }
+  else if name == "Break" { "armor_breaker" }
+  else if name == "Steal" { "rune_theft" }
+  else if name == "Tempest" { "blade_tempest" }
+  else if name == "Shield" { "rust_shield" }
+  else if name == "Heal" { "field_medic" }
+  else if name == "Plate" { "armor_smith" }
+  else if name == "Dash" { "quick_dash" }
+  else if name == "Blast" { "air_blast" }
+  else if name == "Shove" { "precision_thrust" }
+  else if name == "Swap" { "shadow_shift" }
+  else if name == "Retreat" { "retreat_plan" }
+  else if name == "Focus" { "focus_strike" }
+  else if name == "Charge" { "blade_call" }
 }
 
 // ── RANGE GRID ──────────────────────────────────────────────────────────────
@@ -119,9 +119,9 @@
 // reach in any cell still fits on-grid.
 #let kind-data(kind) = {
   if kind == "self" {
-    // Self skills are immune to Injured and to Focus Strike Range buffs.
+    // Self skills are immune to Injured and to Focus Range buffs.
     // (Per baseline: Range buffs do not collapse Self skills inward, but
-    //  Focus Strike DOES extend a Self skill: "Range 0 → 1" per baseline
+    //  Focus DOES extend a Self skill: "Range 0 → 1" per baseline
     //  Quick Reference. So +Focus on Self → Range 1.)
     (
       radius: 1,
@@ -155,7 +155,7 @@
       ),
     )
   } else if kind == "minus1" {
-    // Lance Thrust: default Range 2 with -1 modifier → effective 1.
+    // Lance: default Range 2 with -1 modifier → effective 1.
     // +Focus → 2. Injured → effective 0 (self), but the skill targets others
     // and does not name "self" in its text, so it cannot fire while Injured.
     // Inj+Focus → effective 1 (back in range).
@@ -169,7 +169,7 @@
       ),
     )
   } else if kind == "plus1" {
-    // Precision Thrust: default Range 3, +Focus → 4, Injured → 2, Inj+Focus → 3.
+    // Shove: default Range 3, +Focus → 4, Injured → 2, Inj+Focus → 3.
     (
       radius: 4,
       cells: (
@@ -180,7 +180,7 @@
       ),
     )
   } else if kind == "plus1-self" {
-    // Retreat Plan: Self with Range+1 path. Self skill so Injured doesn't apply.
+    // Retreat: Self with Range+1 path. Self skill so Injured doesn't apply.
     // The "+1" governs how far the path can extend. We render the grid based
     // on path length (default 3, +Focus 4 — same as plus1).
     (
@@ -284,34 +284,34 @@
   gutter: 2mm,
 
   // Row 1 — Strike
-  card("Lance Thrust",  "Strike", 2, [Target within Range −1 takes 1 DMG.], "minus1"),
-  card("Hook Pull",     "Strike", 3, [Target takes 1 DMG, pulled 1 tile toward caster along Skill Path.], "default"),
-  card("Armor Breaker", "Strike", 2, [Remove 1 Armor from target. _(No HP-damage unless boosted by Blade Call.)_], "default"),
+  card("Lance",   "Strike", 2, [Target within Range −1 takes 1 damage.], "minus1"),
+  card("Hook",    "Strike", 3, [Target takes 1 damage, pulled 1 tile toward caster along the Path.], "default"),
+  card("Break",   "Strike", 2, [Remove 1 Armor from target. _(No HP-damage unless boosted by Charge.)_], "default"),
 
   // Row 2 — Strike + Shield
-  card("Rune Theft",    "Strike", 3, [Target takes 1 DMG. Steal 1 Rune from opponent.], "default"),
-  card("Blade Tempest", "Strike", 4, [Target takes 1 DMG. All pieces adjacent to the target are pushed 1 tile away. Caster unaffected.], "default"),
-  card("Rust Shield",   "Shield", 2, [Self: gain +1 Armor.], "self"),
+  card("Steal",   "Strike", 3, [Target takes 1 damage. Steal 1 Money from opponent.], "default"),
+  card("Tempest", "Strike", 4, [Target takes 1 damage. All pieces adjacent to the target are pushed 1 tile away. Caster unaffected.], "default"),
+  card("Shield",  "Shield", 2, [Self: gain +1 Armor.], "self"),
 
   // Row 3 — Shield + Move
-  card("Field Medic",   "Shield", 3, [Remove Injured from one adjacent ally.], "adjacent"),
-  card("Armorsmith",    "Shield", 3, [Adjacent ally gains +1 Armor.], "adjacent"),
-  card("Quick Dash",    "Move",   3, [Self: move up to 2 tiles along Skill Path.], "self",
+  card("Heal",    "Shield", 3, [Remove Injured from one adjacent ally.], "adjacent"),
+  card("Plate",   "Shield", 3, [Adjacent ally gains +1 Armor.], "adjacent"),
+  card("Dash",    "Move",   3, [Self: move up to 2 tiles along the Path.], "self",
     focus-note: "+Focus: cast on adjacent ally, or move 3 tiles instead of 2."),
 
   // Row 4 — Move
-  card("Air Blast",     "Move",   2, [Push target enemy 1 tile directly away from caster.], "default",
+  card("Blast",   "Move",   2, [Push target enemy 1 tile directly away from caster.], "default",
     focus-note: "+Focus: cast at Range 3, or push 2 tiles instead of 1."),
-  card("Precision Thrust", "Move", 3, [Push target enemy 1 tile in any direction (caster chooses). *Range +1.*], "plus1",
+  card("Shove",   "Move",   3, [Push target enemy 1 tile in any direction (caster chooses). *Range +1.*], "plus1",
     focus-note: "+Focus: cast at Range 4, or push 2 tiles instead of 1."),
-  card("Shadow Shift",  "Move",   4, [Swap position with an allied piece. Requires unobstructed Skill Path.], "default",
+  card("Swap",    "Move",   4, [Swap position with an allied piece. Requires unobstructed Path.], "default",
     focus-note: "+Focus: swap with ally up to Range 3 (no effect-range option)."),
 
   // Row 5 — Move + Mystic
-  card("Retreat Plan",  "Move",   4, [Self: move along Skill Path to land adjacent to one of your Guards. *Range +1.*], "plus1-self",
+  card("Retreat", "Move",   4, [Self: move along the Path to land adjacent to one of your Guards. *Range +1.*], "plus1-self",
     focus-note: "+Focus: path length 4 instead of 3."),
-  card("Focus Strike",  "Mystic", 1, [The next skill used by *any of your pieces* this turn gains +1 Range.], "mystic"),
-  card("Blade Call",    "Mystic", 3, [One Strike skill used by *any of your pieces* this turn deals +1 DMG.], "mystic"),
+  card("Focus",   "Mystic", 1, [The next skill used by *any of your pieces* this turn gains +1 Range.], "mystic"),
+  card("Charge",  "Mystic", 3, [One Strike skill used by *any of your pieces* this turn deals +1 damage.], "mystic"),
 )
 
 // ── LEGEND PAGE ─────────────────────────────────────────────────────────────
@@ -351,7 +351,7 @@
 #text(size: 11pt, weight: "bold", "The 2×2 range matrix")
 #v(2mm)
 
-The four mini-grids on each card show the skill's reach in four states. Each grid is centered on the *caster* and shows every tile the skill could target along a queen-line (horizontal, vertical, or diagonal). Skill paths are blocked by any piece in the way.
+The four mini-grids on each card show the skill's reach in four states. Each grid is centered on the *caster* and shows every tile the skill could target along a queen-line (horizontal, vertical, or diagonal). Paths are blocked by any piece in the way.
 
 #v(3mm)
 
@@ -361,15 +361,15 @@ The four mini-grids on each card show the skill's reach in four states. Each gri
   row-gutter: 3mm,
 
   [*Default*],     [Full health, no buffs active.],
-  [*+ Focus*],     [Caster's side has activated Focus Strike (+1 Range to next skill).],
-  [*Injured*],     [Caster is Injured (Skill Range −1). Self and Adjacent skills are unaffected.],
+  [*+ Focus*],     [Caster's side has activated Focus (+1 Range to next skill).],
+  [*Injured*],     [Caster is Injured (Range −1). Self and Adjacent skills are unaffected.],
   [*Inj. +Focus*], [Both effects combined.],
 )
 
 #v(4mm)
 
 #text(size: 9pt, fill: rgb("#444"))[
-  *Move skills + Focus Strike:* On Move skills, the caster chooses, when activating the skill, whether the +1 applies to the *activation range* (how far the skill can target) or the *effect range* (how far it moves/pushes). Not both. The matrix on each Move card shows the activation-range outcome; the italic note under the effect text spells out both options for that specific skill.
+  *Move skills + Focus:* On Move skills, the caster chooses, when activating the skill, whether the +1 applies to the *activation range* (how far the skill can target) or the *effect range* (how far it moves/pushes). Not both. The matrix on each Move card shows the activation-range outcome; the italic note under the effect text spells out both options for that specific skill.
 ]
 
 #v(6mm)
@@ -392,5 +392,5 @@ The four mini-grids on each card show the skill's reach in four states. Each gri
   [*Not reachable* — off the queen-line or out of range.],
 
   box(width: 6mm, height: 6mm, fill: rgb("#666"), stroke: 0.3pt + rgb("#888"), align(center + horizon, text(size: 6pt, fill: white, weight: "bold", "✕"))),
-  [*Cannot fire.* The whole grid is greyed out — the skill cannot be cast in that state. (Lance Thrust while Injured.)],
+  [*Cannot fire.* The whole grid is greyed out — the skill cannot be cast in that state. (Lance while Injured.)],
 )

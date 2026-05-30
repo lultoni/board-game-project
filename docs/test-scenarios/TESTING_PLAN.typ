@@ -29,8 +29,8 @@ _Exactly one stack is Active at a time — the one prepping to run, or running. 
 - Skills are *added to pieces during play*, not all at once at the start.
 - Skills still *fire once per use* but are *reusable while equipped*.
 - *Equipped count cap = 12 skills per player* (6 Champions × 2 slots; King doesn't change the count).
-- *Shared action slots* — phase 1 (movement) and skill phase use the same pool. Spending a slot to draft a new skill onto a piece is a tempo cost (vs. moving / acting).
-- *No Rune-economy activation gate.* Activate as many skills as Runes allow per turn; no per-turn cap. Hoarding is allowed (and risky — see backpocket "unstoppable one-turn killer" potential issue).
+- *Shared actions* — Move Phase, Build Phase, and Skill Phase use the same action pool. Spending an action to draft a new skill onto a piece is a tempo cost (vs. moving / casting).
+- *No Money-economy activation gate.* Activate as many skills as Money allows per turn; no per-turn cap. Hoarding is allowed (and risky — see backpocket "unstoppable one-turn killer" potential issue).
 - *Effectively infinite skill pool* for drafting. The 12-equipped cap is the constraint, not the pool size.
 
 *Entry conditions:* Digital prototype only for the first 2–3 games — 3-week vacation window with Jonathan is the cheap testing surface for a radical shift. No physical rule sheet for the first prototype runs; rules carried in shared digital state.
@@ -62,12 +62,12 @@ _Stacks gated on a specific other stack's result, ordered by priority._
 *Targets:* OQ-11 chassis-volume hypothesis. Armor↔Armor-Breaker loop crowds out the combo loop (P4-confirmed).
 
 *Variants (within-stack doses):*
-- *Bundled (lead)*: Armor cap 3→2 *and* Armorsmith +1→+2 (one-shot fortify, not stack-grind).
-- *Smaller dose (rollback)*: Armor cap 3→2 only, Armorsmith unchanged. Run as next iteration of Stack H if the bundled dose stalls (build cheaper than break).
+- *Bundled (lead)*: Armor cap 3→2 *and* Plate +1→+2 (one-shot fortify, not stack-grind).
+- *Smaller dose (rollback)*: Armor cap 3→2 only, Plate unchanged. Run as next iteration of Stack H if the bundled dose stalls (build cheaper than break).
 
 *Status:* Rule sheet not yet written. Folder pending: `docs/test-scenarios/stack-h-armor-trim/`. *Deprioritised Session 23* — Pole B per-turn-draft prototype claims the active slot. Stack H bundled dose remains the lead variant for when Stack H runs.
 
-*Entry conditions:* Two experienced players required (chassis-volume read needs both players able to plan combos). Standard Attack 1 DMG (Layer 1 Stack A G1) and current combo bonus (Stack A G2) carry forward as baseline.
+*Entry conditions:* Two experienced players required (chassis-volume read needs both players able to plan combos). Move-Attack 1 damage (Layer 1 Stack A G1) and current combo bonus (Stack A G2) carry forward as baseline.
 
 *"Build cheaper than break" risk* — bigger than originally framed (user verbatim Session 23): *"if it is way easier to stack armor then it is to get rid of it... the change can exponetiallise this even more."* Within-stack rollback (cap-only) is the contingency if Armor totals climb past P4 baseline (14 / 22).
 
@@ -93,8 +93,8 @@ _Stacks gated on a specific other stack's result, ordered by priority._
 - *Target counter* (kept from G2): different friendly Champions hit same enemy target → bonus on 2nd+ hit.
 - *Attacker counter* (new): same friendly Champion hits different enemy targets → bonus on 2nd+ hit.
 - Both counters live in parallel; if a hit qualifies for both, both fire (intuitive stacking — rare in practice).
-- Scope widened: any skill that hits an enemy piece counts. Standard Attacks excluded.
-- Multi-target skills (Blade Tempest) tick the counter on every hit piece. Watch flag — first rollback if dual-counter proves OP.
+- Scope widened: any skill that hits an enemy piece counts. Move-Attacks excluded.
+- Multi-target skills (Tempest) tick the counter on every hit piece. Watch flag — first rollback if dual-counter proves OP.
 
 *Justifications:*
 - (a) Cross-category crowd-out (P4 #3, Q-D3-risk).
@@ -166,7 +166,7 @@ _Waiting on a trigger that hasn't been hit. No internal ordering._
 
 *Trigger:* *Stack A G3 ran but exchange-pit pattern persists.* Sente threats are a different mechanism for the same problem (forcing forward commitment) — not a duplicate.
 
-*Variants:* Cascade trigger (+1 Skill Slot on kill, OQ-51), Pin / Threatened restriction, midline pressure skills (10 candidates staged in `docs/backpocket.md`).
+*Variants:* Cascade trigger (+1 action on kill, OQ-51), Pin / Threatened restriction, midline pressure skills (10 candidates staged in `docs/backpocket.md`).
 
 *Status:* Rule sheet not yet written. Sequenced after Stack A G3 per Session 22 decision.
 
@@ -174,7 +174,7 @@ _Waiting on a trigger that hasn't been hit. No internal ordering._
 
 *Trigger:* Core systems stable across A G3, H, J, K. Radical structural change — do not test alongside other active experiments.
 
-*Variant:* 3 AP/turn unified action-point model, replacing separate Movement and Action phases.
+*Variant:* 3 actions/turn unified action-point model, replacing separate Move and Skill phases.
 
 *Status:* Draft written, not yet run. OQ-26.
 
@@ -187,7 +187,7 @@ _Outcome known. Listed for historical cross-reference; not active work._
 #table(
   columns: (auto, 1fr, 1fr),
   table.header([Stack], [Outcome], [Source]),
-  [*Stack A G1 — Attack Nerf*], [*Accepted into baseline (P3, 2026-05-17).* Standard attack 1 DMG. First Champion kill moved R26 → R11. Standoff dissolved.], [`playtest-3-analysis.md`],
+  [*Stack A G1 — Attack Nerf*], [*Accepted into baseline (P3, 2026-05-17).* Move-Attack 1 damage. First Champion kill moved R26 → R11. Standoff dissolved.], [`playtest-3-analysis.md`],
   [*Stack A G2 — Combo Bonus*], [*Confirmed in mechanics, design-aligned in feel (P4, 2026-05-28).* Multi-Champion Strike-only counter scales +0/+1/+2. Stays in baseline. Scope-widening discussion produced *Stack A G3* — see Queued.], [`playtest-4-analysis.md` + Session 22 discussion],
   [*Stack B — Bodyguard Fix*], [*Withdrawn (Session 22, 2026-05-29).* Defender-only adjacency change. P4 confirmed Bodyguard tracks standoff state, not the rule (0 triggers when Armor stalling returned). Different solutions would be on the table even if Bodyguard remains broken post-Stack-H. The stack as drafted is not the right fix.], [P4 evidence; Session 22 designer call],
   [*Stack I — Armor Rollback*], [*Folded into Stack H (Session 22, 2026-05-29).* Was a contingency dose, not a distinct stack. Now lives as the smaller dose within Stack H.], [Session 22 restructure],
@@ -200,12 +200,12 @@ _Outcome known. Listed for historical cross-reference; not active work._
 #table(
   columns: (auto, auto, 1fr),
   table.header([Layer], [Status], [What it adds]),
-  [Layer 1: Economy fix], [*Accepted* (P2, 2026-04-24)], [6 start Runes · +2/turn · +1 every 5 rounds],
-  [Stack A G1: Standard Attack 1 DMG], [*Accepted* (P3, 2026-05-17)], [Standard attack deals 1 DMG (was 2). Skills become primary damage source.],
+  [Layer 1: Economy fix], [*Accepted* (P2, 2026-04-24)], [6 start Money · +2/turn · +1 every 5 rounds],
+  [Stack A G1: Move-Attack 1 damage], [*Accepted* (P3, 2026-05-17)], [Move-Attack deals 1 damage (was 2). Skills become primary damage source.],
   [Stack A G2: Multi-Champion Combo Bonus], [*Accepted* (P4, 2026-05-28)], [+0/+1/+2 counter on 2nd+ Strike on same target by different Champions same turn.],
 )
 
-_All future stacks must include these. Use `section-setup(start-runes: 6, layer1-accepted: true)` and `section-resource-economy(start-runes: 6, layer1-accepted: true)` in `baseline-sections.typ`._
+_All future stacks must include these. Use `section-setup(start-money: 6, layer1-accepted: true)` and `section-resource-economy(start-money: 6, layer1-accepted: true)` in `baseline-sections.typ`._
 
 #hr
 
@@ -269,7 +269,7 @@ _Latest at top._
   - State lifecycle: Active / Queued / Dormant / Resolved.
   - Stacks renamed for legibility; letter IDs preserved as stable cross-reference keys.
 
-  *Session 16 (2026-05-19) — historical:* Pre-Stack-A-G2 prep complete. Range system clarification, Focus Strike note, tracking sheet redesign, dependency-correct rule order.
+  *Session 16 (2026-05-19) — historical:* Pre-Stack-A-G2 prep complete. Range system clarification, Focus note, tracking sheet redesign, dependency-correct rule order.
 
   *Session 15 (2026-05-18) — historical:* P3 confirmed Stack A G1. Bodyguard activated organically without Stack B → Stack B de-prioritised (later withdrawn in Session 22). OQ-52, OQ-53 raised.
 

@@ -11,7 +11,7 @@
 *Every proposed change must pass these. If a change violates a guardrail, it needs explicit justification or redesign.*
 
 ### G1. Shortfall Never Closes
-Players should *never* be able to fill all their skill slots with Money-funded activations every turn. The economy is tuned so you always want to do more than you can afford. This scarcity IS the decision engine.
+Players should *never* be able to spend all their actions on Money-funded activations every turn. The economy is tuned so you always want to do more than you can afford. This scarcity IS the decision engine.
 
 ### G2. Encourage Spending via Attractiveness, Not Punishment
 If players hoard Money, the fix is making spending more attractive (better skills, more combo opportunities) — not forcing them to spend via caps or use-it-or-lose-it rules. "Better to invest badly than lose the money entirely" should never describe the player's situation.
@@ -187,7 +187,7 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 
 **Current rule text**: Option B (radial, all adjacent pieces pushed).
 
-**Pre-thought note on Option A**: Would make Tempest a more linear, directional skill — easier to block by placing a piece behind the target on the skill path. Less chaotic but more readable.
+**Pre-thought note on Option A**: Would make Tempest a more linear, directional skill — easier to block by placing a piece behind the target on the Path. Less chaotic but more readable.
 
 **Trigger**: If Option B creates consistent confusion at the table, switch to Option A and test in the next available layer.
 
@@ -688,7 +688,7 @@ Rather than adding territory-control mechanics that shift the game's identity, d
 - At 5-6 Money: is it ever worth it vs. multiple cheaper targeted skills? Need to ensure there's a board state where it's the correct play.
 - Charge interaction: +1 damage to ALL targets? (Probably no — Charge buffs exactly one Strike.)
 
-**Trigger**: Discuss as part of skill catalogue expansion (Stack F). Clearly an "ultimate" tier skill — connects to OQ-50 (major skill slot cost) if that's ever implemented.
+**Trigger**: Discuss as part of skill catalogue expansion (Stack F). Clearly an "ultimate" tier skill — connects to OQ-50 (major skill action cost) if that's ever implemented.
 
 ---
 

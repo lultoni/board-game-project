@@ -196,7 +196,7 @@ These ask whether parts of the game are louder than they need to be.
 **Why it matters:** Bodyguard is the most chess-coded sub-system in the game. It works strategically but speaks war-chess vocabulary. If the strategic value comes from *combo-relevant decisions* (positioning Guards to enable skill setups), it's quietly combo-serving despite the framing. If it's *chess-relevant* (defensive screening), it may be reinforcing chassis-first thinking even when working as designed.
 **Open sub-questions:**
 - In P3, when Bodyguard triggered "way more often" (Elias), what kinds of combo-adjacent decisions emerged from that? (Need to look at game logs.)
-- Is there a way to *test* this — e.g., a stack where Bodyguard interacts with skills (not just standard attacks) to see if the combo-relevant version is preferred?
+- Is there a way to *test* this — e.g., a stack where Bodyguard interacts with skills (not just Move-Attacks) to see if the combo-relevant version is preferred?
 - Could Bodyguard's vocabulary be reframed without touching mechanics? (e.g., a non-chess name)
 **Status:** RESOLVED 2026-05-26 (Session 20) — sub-q1 answered, sub-q2 deferred to Phase B, new watch-flag surfaced.
 

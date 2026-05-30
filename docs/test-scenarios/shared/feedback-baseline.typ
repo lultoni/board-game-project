@@ -33,12 +33,12 @@
 //     affected, or basically fine until they're killed?"
 //   OQ-11 (Armor Cap) → "Did either player stack a lot of Armor? Did it feel
 //     like Armor slowed the game down?"
-//   OQ-34 (Rune Theft dominance) → "Did any skill feel like a must-pick or
+//   OQ-34 (Steal dominance) → "Did any skill feel like a must-pick or
 //     consistently dominant?" (ask INDIRECTLY — let player name it)
 //   OQ-40 (Standoff) → "Were you reluctant to move pieces forward?"
 //   OQ-41 (Game length vs. nerf) → captured by kill-round fields in Section A
-//   OQ-46 (Rune hoarding) → "Did you ever feel like you were sitting on Runes
-//     with nothing good to spend them on?"
+//   OQ-46 (Money hoarding) → "Did you ever feel like you were sitting on Money
+//     with nothing good to spend it on?"
 //
 // Keep the standard Section C skeleton (Skill Drafting, Turn Flow, Skills Balance,
 // Bodyguard, Favorite Moment, Most Confusing Moment, rating rows) as the base.
@@ -74,7 +74,7 @@ _One form per player. Fill out independently after the game._
 
 == A — Observational Data
 
-_Reference your tracking sheet for round-by-round Rune and skill data._
+_Reference your tracking sheet for round-by-round Money and skill data._
 
 // [STACK: Add factual fields tied to what this stack is testing + standard kill
 //  timing fields (always include these — they feed OQ-19, OQ-37, OQ-41 kill timing).]
@@ -114,7 +114,7 @@ _These questions cover the full game — not just the stack being tested. Identi
 #v(1fr)
 
 #fq("N")[
-  *Turn flow:* Did Move Slots and Skill Slots feel intuitive to manage together?\
+  *Turn flow:* Did Move Phase actions and Skill Phase actions feel intuitive to manage together?\
   Very intuitive — Mostly yes — Sometimes confusing — Often confusing
 ]
 #v(1fr)
@@ -126,7 +126,7 @@ _These questions cover the full game — not just the stack being tested. Identi
 ]
 #v(1fr)
 
-// OQ-34 (Rune Theft dominance — ask INDIRECTLY, don't name the skill)
+// OQ-34 (Steal dominance — ask INDIRECTLY, don't name the skill)
 #fq("N")[
   *Must-pick skills:* Did any skill feel like everyone should always pick it — like skipping it would be a mistake?\
   Yes: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ #h(8pt) No — Why: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
@@ -158,11 +158,11 @@ _These questions cover the full game — not just the stack being tested. Identi
 ]
 #v(1fr)
 
-// OQ-46 (Rune hoarding — saving for a plan vs. nothing to spend on)
+// OQ-46 (Money hoarding — saving for a plan vs. nothing to spend on)
 #fq("N")[
-  *Rune spending:* Did you ever sit on a lot of Runes with nothing good to spend them on — or were you always wanting to spend more than you had?\
-  Always more to spend than Runes — Balanced — Sometimes nothing to spend on — Often sat on Runes\
-  If sitting on Runes, why? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+  *Money spending:* Did you ever sit on a lot of Money with nothing good to spend it on — or were you always wanting to spend more than you had?\
+  Always more to spend than Money — Balanced — Sometimes nothing to spend on — Often sat on Money\
+  If sitting on Money, why? \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 ]
 #v(1fr)
 

@@ -30,7 +30,7 @@ _Version: 2026-04-25 framework. To be finalised after Layers 1–3 are tested._
 
 - *Board:* [FROM LAYER results — likely 10×10, no terrain.]
 - *Per player:* [Current piece count — likely 5 Champions + 6 Guards + 1 King unless changed.]
-- *Shared:* Skill tokens/cards, Rune tokens, Round tracker.
+- *Shared:* Skill tokens/cards, Money tokens, Round tracker.
 
 == Setup
 
@@ -40,19 +40,19 @@ _[Same as current after Layer 1–3 results.]_
 
 #changed-box[
   *Old system (two phases):*
-  + Movement Phase: 2 Move Slots
-  + Action Phase: N Skill Slots
+  + Move Phase: 2 actions
+  + Skill Phase: N actions
 
   *New system (unified):*
 
   Each turn you receive *3 Action Points (AP).* You may spend each AP on one of:
   - *Move:* Move one piece (by its speed).
-  - *Skill:* Activate one equipped skill on a Champion or King (pay Rune cost).
-  - *Attack:* Perform a Standard Attack (move onto enemy tile, deal 1 DMG).
+  - *Skill:* Activate one equipped skill on a Champion or King (pay Money cost).
+  - *Attack:* Perform a Move-Attack (move onto enemy tile, deal 1 damage).
 
   You may use 0, 1, 2, or 3 AP. Unused AP are lost — no banking.
 
-  *The concept of Skill Slots is removed.* Each skill activation costs 1 AP + its Rune cost. The former Skill Slot progression (was +1 every 10 rounds) is replaced by the flat 3 AP per turn. If the game needs late-game escalation, consider increasing AP to 4 after Round 15 (test separately).
+  *The separate per-phase action budgets are removed.* Each skill activation costs 1 AP + its Money cost. The former Skill Phase progression (was +1 every 10 rounds) is replaced by the flat 3 AP per turn. If the game needs late-game escalation, consider increasing AP to 4 after Round 15 (test separately).
 ]
 
 === Piece Freedom — Test All Four Models
@@ -72,7 +72,7 @@ _[Same as current after Layer 1–3 results.]_
 
 _[FROM LAYERS 2–3: Use 3 HP system if accepted. Use simplified Bodyguard if accepted.]_
 
-*Standard Attack:* Spend 1 AP to move your piece onto an enemy-occupied tile. Deal 1 DMG. If target removed, occupy tile. If target survives, your piece stops on the tile before.
+*Move-Attack:* Spend 1 AP to move your piece onto an enemy-occupied tile. Deal 1 damage. If target removed, occupy tile. If target survives, your piece stops on the tile before.
 
 == Resource Economy
 

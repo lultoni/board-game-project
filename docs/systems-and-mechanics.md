@@ -118,7 +118,7 @@
 ### Open Questions
 
 - **OQ-26**: AP system (Stack G) would absorb actions into unified action-point model.
-- **OQ-50**: Minor/Major skill slot cost (minor = 1 slot, major = 2 slots).
+- **OQ-50**: Minor/Major skill action cost (minor = 1 action, major = 2 actions).
 
 ### Playtest Evidence
 
@@ -170,8 +170,8 @@ Canonical: see `docs/test-scenarios/shared/baseline-sections.typ` → `section-s
 - **OQ-4**: Skills per piece per turn — currently uncapped.
 - **OQ-34**: Steal balance — may need cost 4.
 - **OQ-38**: Multi-Champion combo bonus — Stack A, Game 2.
-- **OQ-49**: Skill path obstruction model (all pieces block vs. only opponents).
-- **OQ-50**: Minor/Major skill slot cost.
+- **OQ-49**: Path obstruction model (all pieces block vs. only opponents).
+- **OQ-50**: Minor/Major skill action cost.
 
 ### Playtest Evidence
 
