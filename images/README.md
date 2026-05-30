@@ -10,21 +10,21 @@ One JPG per skill in the current catalogue. Used by the Typst rule sheets via `s
 
 | File | Skill | Category |
 |------|-------|----------|
-| `lance_thrust.jpg` | Lance Thrust | Strike |
-| `hook_pull.jpg` | Hook Pull | Strike |
-| `armor_breaker.jpg` | Armor Breaker | Strike |
-| `rune_theft.jpg` | Rune Theft | Strike |
-| `blade_tempest.jpg` | Blade Tempest | Strike |
-| `rust_shield.jpg` | Rust Shield | Shield |
-| `field_medic.jpg` | Field Medic | Shield |
-| `armor_smith.jpg` | Armorsmith | Shield |
-| `quick_dash.jpg` | Quick Dash | Move |
-| `air_blast.jpg` | Air Blast | Move |
-| `precision_thrust.jpg` | Precision Thrust | Move |
-| `shadow_shift.jpg` | Shadow Shift | Move |
-| `retreat_plan.jpg` | Retreat Plan | Move |
-| `focus_strike.jpg` | Focus Strike | Mystic |
-| `blade_call.jpg` | Blade Call | Mystic |
+| `lance_thrust.jpg` | Lance | Strike |
+| `hook_pull.jpg` | Hook | Strike |
+| `armor_breaker.jpg` | Break | Strike |
+| `rune_theft.jpg` | Steal | Strike |
+| `blade_tempest.jpg` | Tempest | Strike |
+| `rust_shield.jpg` | Shield | Shield |
+| `field_medic.jpg` | Heal | Shield |
+| `armor_smith.jpg` | Plate | Shield |
+| `quick_dash.jpg` | Dash | Move |
+| `air_blast.jpg` | Blast | Move |
+| `precision_thrust.jpg` | Shove | Move |
+| `shadow_shift.jpg` | Swap | Move |
+| `retreat_plan.jpg` | Retreat | Move |
+| `focus_strike.jpg` | Focus | Mystic |
+| `blade_call.jpg` | Charge | Mystic |
 
 For canonical stat blocks (cost, effect, range), see `docs/test-scenarios/shared/baseline-sections.typ` → `section-skill-reference()`.
 

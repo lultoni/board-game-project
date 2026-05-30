@@ -16,20 +16,20 @@
 - **P4 update (`docs/research/playtest-4-analysis.md`)**: 0 triggers (regression). Both players: "didn't trigger / not so many move-attacks / even less kills." **Confirms Bodyguard tracks standoff state, not the rule.** When mid-game stalling returned (Armor-driven), Move-attack volume dropped, and Bodyguard had nothing to intercept. OQ-21 cannot be evaluated cleanly while standoff/stalling is a moving variable.
 - **Attacker movement on intercept**: RULED — attacker moves 1 tile toward target (stops before Guard). Applied to baseline.
 - **Stack B withdrawn (Session 22)**: Defender-only adjacency is unlikely to be the right fix even if Bodyguard remains broken post-Stack-H. Different solutions (e.g. simplify/remove Bodyguard per the Framing-B watch-flag below) would be on the table. The OQ itself stays open; the originally proposed stack does not.
-- **Re-entry trigger**: re-evaluate Bodyguard *behaviour* after Stack H. If Armor trim reduces stalling and Standard Attacks return, Bodyguard becomes triggerable again — only then is the rule itself testable. If a fix is needed at that point, draft a new stack rather than reviving Stack B.
+- **Re-entry trigger**: re-evaluate Bodyguard *behaviour* after Stack H. If Armor trim reduces stalling and Move-Attacks return, Bodyguard becomes triggerable again — only then is the rule itself testable. If a fix is needed at that point, draft a new stack rather than reviving Stack B.
 - **Framing-B watch-flag (added Session 20, Q-C2 finding)**: Bodyguard is the most chess-coded mechanic in the chassis — confirmed combo-irrelevant in P3 (Mario's usage was trade-up defensive screening, not combo-positioning). Not actionable today, but if a future stack proposes simplifying/removing Bodyguard for chassis-volume reasons, Framing B (ADR-004) is one of the supporting arguments. See Q-C2 in `docs/research/high-concept-open-questions.md`.
 
-### OQ-34: Rune Theft Balance — Mode B CONFIRMED DOMINANT (P4)
-**Mode A** (opponent at 0 Runes): Rune Theft is a normal-range Strike skill (1 DMG, no theft effect). Not dominant.
-**Mode B** (opponent has Runes): cheap damage + opponent disabling. Tempo weapon. Disable value time-dependent: early-game high impact, late-game low impact.
-- **P4 evidence**: Elias Q9 *"Rune Theft again feels very strong in some situations"* + must-pick. Niko's R26-R28 winning loop = Blade Tempest + Rune Theft + Focus. Niko Q15 favourite: *"stealing runes to prevent skills next turn"* — celebrating Mode B. Elias R8 actively neutralised Niko's Rune-Theft champ early.
-- **Decision**: hold cost increase until after Stack H. If Stack H trims Armor and combat speeds up, Rune Theft's Mode-B value drops naturally (less time for disable to matter).
+### OQ-34: Steal Balance — Mode B CONFIRMED DOMINANT (P4)
+**Mode A** (opponent at 0 Money): Steal is a normal-range Strike skill (1 damage, no theft effect). Not dominant.
+**Mode B** (opponent has Money): cheap damage + opponent disabling. Tempo weapon. Disable value time-dependent: early-game high impact, late-game low impact.
+- **P4 evidence**: Elias Q9 *"Steal again feels very strong in some situations"* + must-pick. Niko's R26-R28 winning loop = Tempest + Steal + Focus. Niko Q15 favourite: *"stealing money to prevent skills next turn"* — celebrating Mode B. Elias R8 actively neutralised Niko's Steal champ early.
+- **Decision**: hold cost increase until after Stack H. If Stack H trims Armor and combat speeds up, Steal's Mode-B value drops naturally (less time for disable to matter).
 - **Re-entry trigger**: re-evaluate in next experienced-player game post-Stack H. If Mode B still dominant, raise to cost 4.
 
 ### OQ-38: Multi-Champion Combo Bonus — CONFIRMED IN MECHANICS, SCOPE WIDENING QUEUED (P4 + Session 22)
-**+1 DMG on the second+ Strike hit when 2+ different Champions target the same enemy this turn.**
+**+1 damage on the second+ Strike hit when 2+ different Champions target the same enemy this turn.**
 - Buff skills targeting your own pieces do NOT count.
-- Blade Call stacks with combo bonus (separate effects).
+- Charge stacks with combo bonus (separate effects).
 - Strike-only for Stack A G2 (decided Session 16). Cross-category scope reconsidered after G2 data.
 - **P4 evidence (`docs/research/playtest-4-analysis.md`)**:
   - Elias R11 margin "1. ever combo!!" — first multi-Champion combo across 4 playtests (behavioural).
@@ -39,11 +39,11 @@
   - Cross-category crowd-out is a real consequence of Strike-only scope, not a bonus-strength problem.
   - Elias's late-game offensive lockout (#6) — *"i did not have any other attack champs left"* — is a scope-reachability problem too: the bonus was structurally locked away when his Strike-equipped Champs died. Single-Champion offense doesn't trigger the target counter.
 - **Two design moves on the table for Stack A G3 (deferred behind Stack H)**:
-  1. **Widen target counter**: any skill that hits an enemy piece counts (Strike + hit-causing Move skills like Hook Pull). Standard Attacks excluded (free → would over-cheapen the trigger).
-  2. **Add a parallel "attacker counter"**: same Champion hitting *different* targets in one turn → 2nd+ hit gets +1 DMG. Encourages distributing pressure across multiple fronts (anti-exchange-pit; see new OQ on mid-game stickiness). Fixes #6 directly — single surviving offensive Champ can still access bonus by spreading hits.
+  1. **Widen target counter**: any skill that hits an enemy piece counts (Strike + hit-causing Move skills like Hook). Move-Attacks excluded (free → would over-cheapen the trigger).
+  2. **Add a parallel "attacker counter"**: same Champion hitting *different* targets in one turn → 2nd+ hit gets +1 damage. Encourages distributing pressure across multiple fronts (anti-exchange-pit; see new OQ on mid-game stickiness). Fixes #6 directly — single surviving offensive Champ can still access bonus by spreading hits.
   - **Stacking**: intuitive — both counters fire if both qualify on the same hit.
-  - **Multi-target skills (Blade Tempest)**: tick the counter on each hit piece. Watch flag — first surgical rollback if dual-counter proves OP.
-  - **Standard Attacks**: still excluded.
+  - **Multi-target skills (Tempest)**: tick the counter on each hit piece. Watch flag — first surgical rollback if dual-counter proves OP.
+  - **Move-Attacks**: still excluded.
 - **Methodology gating**: Path A chosen — Stack H first (Armor volume), Stack A G3 (combo scope widening) after. Reasoning: Armor volume is the *confirmed* P4 problem; combo scope is solving a problem articulated structurally but not yet isolated in a single-variable test. Testing Armor first gives a cleaner baseline against which to evaluate dual-counter.
 - **Teaching cost flag**: dual-counter is strictly more complex than current G2. Two parallel counters needs physical tracking solution (G4 Cognitive Load guardrail). Budget for tokens / board-side trackers in the Stack A G3 design.
 - **Status**: G2 verdict held — keep into baseline. G3 (dual-counter + widened scope) staged in `backpocket.md` with full Justification Rule writeup, queued behind Stack H.
@@ -70,7 +70,7 @@
 - **P4 evidence**: Elias D-note: *"there were a lot of turns where we both didn't really know what to do."* Designer's Session 22 clarification: this happens specifically (a) at game start before pieces meet and (b) after the central exchange ends, not generically across the whole game.
 - **Distinct from OQ-58 (exchange-pit)**: exchange-pit is "all the action lives in one place during mid-game." This OQ is "before and after the exchange there is no clear strategic gradient."
 - **Distinct from OQ-11 (Armor)**: Armor stalling is *what players do when they have nothing better to do.* This OQ is the underlying *why nothing better is available* — the strategic gradient is flat in those windows.
-- **Sub-problem 59a — Opening incentives skew chassis-ward**: at game start, no Strike skills firing (pieces too far apart for Range 2). Only Defense + occasional Standard Attack. Move skills sit idle despite being equipped. Players move chassis-level (whole pieces forward) rather than skill-level. **Designer note (Session 22)**: *"there are no strike skills at the start ONLY defense (or sometimes standard attacks)."*
+- **Sub-problem 59a — Opening incentives skew chassis-ward**: at game start, no Strike skills firing (pieces too far apart for Range 2). Only Defense + occasional Move-Attack. Move skills sit idle despite being equipped. Players move chassis-level (whole pieces forward) rather than skill-level. **Designer note (Session 22)**: *"there are no strike skills at the start ONLY defense (or sometimes move-attacks)."*
 - **Sub-problem 59b — Endgame conversion gap**: when the central exchange ends, the resulting position should *suggest* a winning plan. P4: it didn't. Both players sat stumped on how to convert.
 - **Candidate levers (no Justification Rule writeups yet — flag only)**:
   - For 59a: Move skill repricing in opening; OQ-1b 8×8 board (Stack K G1) reduces opening distance; combo-bonus widening to include Move skills (OQ-38) — gives Move-into-Strike offensive value early.
@@ -82,7 +82,7 @@
 `[System: Project methodology / Game shape]`
 **Should the project carry both versions forward indefinitely as game *modes*, or is Pole B (per-turn-draft) an experiment that *replaces* Pole A (pre-game-draft) if it lands?**
 - **Origin**: Session 23 discussion — see `docs/research/path-y-defense-redesign.md`. User crystallised two parallel game versions rather than continuing to tweak variables inside a single rule set.
-- **Pole A** = pre-game-draft (current game). **Pole B** = per-turn-draft (skills added during play; 12-equipped cap; shared action slots; no Rune activation gate).
+- **Pole A** = pre-game-draft (current game). **Pole B** = per-turn-draft (skills added during play; 12-equipped cap; shared action slots; no Money activation gate).
 - **Current user lean (Session 23)**: experiment-that-could-replace, with both alive while we learn. User: *"i do not wanna abandon somethign that might serve a different game feel. so like if we see that both rule versions create different feels and stuff then we should maybe think about having 2 modes for the game."*
 - **Resolution criteria**: after first 2–3 Pole B prototype games, compare game-feel against Pole A. If Pole B clearly produces a different (good) feel → consider 2-modes. If Pole B feels like a clear upgrade in the same direction → Pole B replaces. If Pole B fails → Pole A track resumes.
 - **Re-entry trigger**: after 2–3 Pole B prototype playtests on the digital prototype.
@@ -96,7 +96,7 @@
 - **Information-loss carve-out**: User accepts limited PI loss **only** in the pre-game draft window: *"i accept losing a tiny bit of perfect information in the 'pre game part' if we uphold perfect information later on."* The in-game commitment to perfect information stands.
 - **Scope**: Pole A only. Pole B has its own draft model (per-turn) and this question doesn't apply there directly.
 - **Re-entry trigger**: any Pole A stack work that touches drafting; or post-Pole-B-prototype, when Pole A is re-evaluated against the new data point.
-- **Connected to**: OQ-34 (Rune Theft — affected by draft visibility); OQ-56 (draft entry complexity); OQ-16 (skill drafting fairness).
+- **Connected to**: OQ-34 (Steal — affected by draft visibility); OQ-56 (draft entry complexity); OQ-16 (skill drafting fairness).
 
 ### OQ-63: Cross-Pole Fixing Methodology — OPEN (Session 23)
 `[System: Project methodology]`
@@ -154,16 +154,16 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 ### OQ-11: Armor Cap — CONFIRMED chassis-volume problem; STACK H QUEUED (P4 → Session 23)
 `[System: Health & Armor] [Affects: Combo-loop visibility, parallel-puzzle attention]`
 **Reopened from archive 2026-05-26.** Originally closed Session 15 as "RPS loop functions." High-concept audit (Angle 2) flagged Health & Armor as strongest chassis-bloat candidate. The question is now *volume*, not *balance* — does the Armor↔Armor-Breaker loop draw attention away from the combo loop both players are trying to discover (Framing B)?
-- **P3 evidence**: Mario granted ~20 Armor across the game; Elias used Armor Breaker ~6 times. Real chunk of game-time.
+- **P3 evidence**: Mario granted ~20 Armor across the game; Elias used Break ~6 times. Real chunk of game-time.
 - **P4 evidence (`docs/research/playtest-4-analysis.md`)**: best evidence yet for the chassis-volume hypothesis.
   - Elias Q13: **Yes, a lot** mental focus; game **Slowed noticeably**.
   - Elias verbatim: *"armor was a part of combo calcs but it just felt like you were not able to do your combos because of it"* and *"a lot of armor was stacked also because there was nothing better to do"*.
   - Both players ran identical Armor-stack arcs: R15-R21 (Niko) / R15-R18 (Elias) = pure Armor mid-game cluster, no Atk.
   - Total Armor granted: 14 (Elias) / 22 (Niko).
-  - **Session 22 designer note on the 22 vs 14 asymmetry**: Niko stacked more partly because Elias's Armor Breaker champ died early before getting value, removing the chassis-side counter to runaway Armor. The Armor↔Armor-Breaker loop *only* functions when the Armor Breaker piece survives — fragile balancing counterloop.
+  - **Session 22 designer note on the 22 vs 14 asymmetry**: Niko stacked more partly because Elias's Break champ died early before getting value, removing the chassis-side counter to runaway Armor. The Armor↔Break loop *only* functions when the Break piece survives — fragile balancing counterloop.
   - Niko's split read (Q13 "Not really" + "Slightly extended") suggests cost is **asymmetric across skill levels** — experienced player feels it more because he plans combos around it.
   - Reversal criterion check: did combos *reliably* overrun Armor? Niko's R26-R28 loop did, BUT only after a 7-round Armor consolidation. **Cannot dissolve Q-C1.**
-- **Test plan (Q-C1, decided Session 20; restructured Session 22)**: Stack H bundles **C1b** as the lead dose — cap 3→2 *and* Armorsmith +1→+2. Risky-path-first: smaller dose **C1a** (cap 3→2 only) runs as the next iteration of Stack H if the bundled dose stalls. (Previously this was tracked as a separate Stack I — collapsed into Stack H Session 22.)
+- **Test plan (Q-C1, decided Session 20; restructured Session 22)**: Stack H bundles **C1b** as the lead dose — cap 3→2 *and* Plate +1→+2. Risky-path-first: smaller dose **C1a** (cap 3→2 only) runs as the next iteration of Stack H if the bundled dose stalls. (Previously this was tracked as a separate Stack I — collapsed into Stack H Session 22.)
 - **Session 23 update — DEPRIORITISED to Queued.** Pole B per-turn-draft prototype claims the Active slot during the 3-week vacation digital-prototype window (see OQ-61). Stack H bundled dose remains the **lead variant** when Stack H runs; within-stack rollback (cap-only) is the contingency. **"Build cheaper than break" risk is bigger than originally framed** — user verbatim: *"if it is way easier to stack armor then it is to get rid of it... the change can exponetiallise this even more."* When Stack H runs, Armor totals must be tracked vs P4 baseline (14/22) and the rollback dose triggered if totals climb.
 - **Status**: **QUEUED** — runs after Pole B prototype data lands (or earlier if Pole B fails fast).
 - **Connected to**: Q-C1 in `docs/research/high-concept-open-questions.md`; ADR-004 (Framing B); OQ-38 (combo bonus); OQ-58 (exchange-pit / mid-game stickiness — separate problem); OQ-61 (Pole B claims active slot); OQ-63 (cross-pole fixing — Armor is the likely first shared-fix encounter).
@@ -211,16 +211,16 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 
 ## Medium Priority (balance and polish)
 
-### OQ-2: Rune Economy Model
+### OQ-2: Money Economy Model
 **Automatic confirmed.** Stack A baseline accepted. Performance-based is closed (OQ-47). Status: live but no action — kept open as the policy anchor.
 
 ### OQ-4: Skills Per Piece Per Turn
-**Uncapped for now.** Blade Call burst is a skill-specific balance issue, not a structural one.
+**Uncapped for now.** Charge burst is a skill-specific balance issue, not a structural one.
 
-### OQ-6: Skill Slot Cost (Small vs Big)
+### OQ-6: Skill action Cost (Small vs Big)
 *(Unchanged — not directly tested.)* See OQ-50 for the active proposal.
 
-### OQ-8: Rune Cap — superseded
+### OQ-8: Money Cap — superseded
 **No cap initially.** Players naturally spend down. See OQ-46 in archive (closed from monitoring P3). Kept open only as a watch-flag.
 
 ### OQ-12: Skill Catalogue Completeness — RESEARCHED
@@ -228,16 +228,16 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 - **10 new skill candidates staged** in `docs/backpocket.md`.
 - **Target**: ~25 skills total. Distribution: ~9 Strike / 6 Shield / 5 Move / 5 Mystic.
 - **Tension with OQ-56 Problem A**: Larger catalogue = harder draft for new players. Tiered "core vs. advanced" catalogue is one way to reconcile.
-- **P4 update (Session 22)**: must-pick density is **softer than originally framed**. Q10 lists looked nearly identical (Focus + Armor + Rune Theft) but the actual draft distribution was: Focus 1-2 *total* across the army (not per Champion); Armor 2-3 *across all*. Most Champions equip neither. The "Focus + Armor on every Champ" reading was wrong — must-picks are **per-loadout**, not **per-Champion**. Catalogue density problem still exists but is less severe than P4 self-reports made it sound. Down-prioritised vs. chassis-volume work.
+- **P4 update (Session 22)**: must-pick density is **softer than originally framed**. Q10 lists looked nearly identical (Focus + Armor + Steal) but the actual draft distribution was: Focus 1-2 *total* across the army (not per Champion); Armor 2-3 *across all*. Most Champions equip neither. The "Focus + Armor on every Champ" reading was wrong — must-picks are **per-loadout**, not **per-Champion**. Catalogue density problem still exists but is less severe than P4 self-reports made it sound. Down-prioritised vs. chassis-volume work.
 - **Trigger for expansion**: Stack F or dedicated session after Stack A/B confirm combat balance is stable. Do not expand mid-combat-testing.
 - **Q-E1 update (Session 20)**: When this triggers, evaluate the *intervention type* — replace-for-breadth (swap an under-performing skill for a new combo shape; count flat) vs. expand-catalogue (add on top; count up). The two have very different newcomer costs. See Q-E1 in `docs/research/high-concept-open-questions.md` for the symptom-trigger framing ("experienced players report combos exhausted").
-- **Connected**: New skill ideas surfaced in P4 discussion now staged in `backpocket.md` — Plague (Injured-as-payload, ignores Armor); Lucky/Star Strike (Mystic, target any opponent piece on board); Focus-as-paid-scale (replace Focus skill with "spend +1 Rune for +1 Range" mechanic); Lance/Theft merge.
+- **Connected**: New skill ideas surfaced in P4 discussion now staged in `backpocket.md` — Plague (Injured-as-payload, ignores Armor); Lucky/Star Strike (Mystic, target any opponent piece on board); Focus-as-paid-scale (replace Focus skill with "spend +1 Money for +1 Range" mechanic); Lance/Theft merge.
 
 ### OQ-22: Defensive Skill Viability
-**Improved in Playtest 2.** Armorsmith, Rust Shield, Field Medic all used meaningfully. Re-evaluate after future stacks if defense feels unviable again.
+**Improved in Playtest 2.** Plate, Shield, Heal all used meaningfully. Re-evaluate after future stacks if defense feels unviable again.
 
-### OQ-23: Move Slot Count
-**May be superseded by AP system.** If staying with current turn structure, test 3 Move Slots. If moving to AP, this question dissolves.
+### OQ-23: Move action Count
+**May be superseded by AP system.** If staying with current turn structure, test 3 Move actions. If moving to AP, this question dissolves.
 
 ### OQ-24: Skill Card/Rule Clarity
 **Review all skill descriptions for clarity before next playtest.** Connects to OQ-56 Problem C (skill cards on the table).
@@ -247,8 +247,8 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 **→ Move to OPEN_QUESTIONS_ARCHIVE.md next archive pass.**
 
 ### OQ-41: Game Length vs. Damage Nerf Tradeoff — PARTIALLY CONFIRMED (P3 + P4)
-**1-DMG attacks did NOT noticeably extend the game in P3** — Round 24 finish.
-- **P4 update (`docs/research/playtest-4-analysis.md`)**: Stack A G2 game ran 28-29 rounds (~2h30). Both players rated "a bit long" / "way too long." But the length problem is **mid-game Armor stalling**, not the 1-DMG nerf — first Champion kill was R13 (faster than P2's R26). The damage nerf is fine; chassis volume is the lever.
+**1-damage attacks did NOT noticeably extend the game in P3** — Round 24 finish.
+- **P4 update (`docs/research/playtest-4-analysis.md`)**: Stack A G2 game ran 28-29 rounds (~2h30). Both players rated "a bit long" / "way too long." But the length problem is **mid-game Armor stalling**, not the 1-damage nerf — first Champion kill was R13 (faster than P2's R26). The damage nerf is fine; chassis volume is the lever.
 - **Status**: Closed as "nerf does not extend; mid-game stalling is the real culprit, addressed by Stack H." Move to archive next sweep.
 
 ---
@@ -290,15 +290,15 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 **Place pieces after the skill draft, informed by loadout.**
 - **Re-entry trigger**: After Stack A/B accepted, bundled with OQ-36.
 
-### OQ-49: Skill Path Obstruction Model — DEFERRED
+### OQ-49: Path Obstruction Model — DEFERRED
 **Idea 1** (only opponent pieces block) **withdrawn Session 7** (creates turtle meta).
 **Idea 2** (only opponent Guards block) — not yet evaluated. Risk: Guard wall dominant strategy.
 - **Re-entry trigger**: After Stack A/B — if own-piece LoS blockage is consistently frustrating, test Idea 2. Otherwise park.
 
-### OQ-50: Minor/Major Skill Slot Cost — DEFERRED
-**Skills cost different numbers of Skill Slots (minor=1, major=2).**
-- With 2 slots/turn, 2-cost skills are traps unless designed as "ultimate" skills worth the commitment.
-- **Re-entry trigger**: Design 2-3 candidate "ultimate" skills first. Only evaluate as part of Stack 4+ (Skill Slots expand to 3/turn). Connected to OQ-19 (endgame acceleration).
+### OQ-50: Minor/Major Skill action Cost — DEFERRED
+**Skills cost different numbers of actions (minor=1, major=2).**
+- With 2 actions/turn, 2-cost skills are traps unless designed as "ultimate" skills worth the commitment.
+- **Re-entry trigger**: Design 2-3 candidate "ultimate" skills first. Only evaluate as part of Stack 4+ (actions expand to 3/turn). Connected to OQ-19 (endgame acceleration).
 
 ### OQ-51: Mechanical Levers for Rewarding Clever Plays — RESEARCHED
 **Three promising candidates staged in backpocket** (Cascade trigger, Pin/Threatened, Collision damage).
@@ -324,10 +324,10 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 **Note: P4 Niko (P1) won and unprompted flagged "First mover advantage?" on his first-game form. 1-of-1 is not signal — continue watch.**
 - No advantage observed across P1, P2, P3.
 - **Re-entry trigger**: A consistent first-player win rate across many games (5+) with similar player skill.
-- **If triggered**: Apply Go-style komi (P1 starts with fewer Runes), per OQ-45 reasoning.
+- **If triggered**: Apply Go-style komi (P1 starts with less Money), per OQ-45 reasoning.
 - **History**: see OQ-13 in `OPEN_QUESTIONS_ARCHIVE.md`.
 
-### OQ-20b: Default Skill Range 2 — Practical Feel Watch (residual of OQ-20)
+### OQ-20b: Default Range 2 — Practical Feel Watch (residual of OQ-20)
 **Range 2 is the canonical default; question is whether it feels limiting in practice.**
 - No "Range 2 too short" feedback in P2 or P3.
 - **Re-entry trigger**: Player feedback in any future playtest that Range 2 skills feel too constrained.
@@ -336,16 +336,16 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
 ### OQ-16: Skill Drafting Fairness
 - Fair but "decides a lot." Future question: is draft too deterministic? See also OQ-56.
 
-### OQ-54: Lance Thrust — Should Its Text Say "Adjacent" Instead of "Range−1"?
-**Effect text reads "Target within Range−1 takes 1 DMG" — under accepted Range ruling, effective Range 1 = adjacent.**
+### OQ-54: Lance — Should Its Text Say "Adjacent" Instead of "Range−1"?
+**Effect text reads "Target within Range−1 takes 1 damage" — under accepted Range ruling, effective Range 1 = adjacent.**
 - For rewriting: clearer at the table, no mental arithmetic.
 - For keeping "Range−1": preserves the design signal that reduced range is a deliberate tradeoff.
 - **Session 18 ruling**: Keep "Range−1." The derivation chain (default 2 + Range−1 = effective 1) is the rule; the modifier-form preserves the design intent. Confirmed during skill-cards build that Range−1 + Injured = effective 0 = cannot fire — a non-trivial interaction the "Adjacent" rewrite would obscure.
 - **Status**: Closed for now. Re-watch only if Range−1 language causes confusion in further playtests.
 
-### OQ-55: Blade Call — Broader Skill Interaction?
-**Could Blade Call interact with a wider range of skills (e.g. boost Armor gained by Shield skills)?**
-- Broader Blade Call deepens Mystic identity as a "combo enabler."
+### OQ-55: Charge — Broader Skill Interaction?
+**Could Charge interact with a wider range of skills (e.g. boost Armor gained by Shield skills)?**
+- Broader Charge deepens Mystic identity as a "combo enabler."
 - Risk: universal "make your best skill better" button — possibly too flexible.
 - Alternative: introduce a second Mystic skill that amplifies Shield/Move (separate amplifier archetype).
-- **Status**: No action until skill catalogue expansion is unblocked. Justification required: what specific problem does broader Blade Call fix?
+- **Status**: No action until skill catalogue expansion is unblocked. Justification required: what specific problem does broader Charge fix?

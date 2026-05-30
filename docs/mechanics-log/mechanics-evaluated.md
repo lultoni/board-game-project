@@ -62,7 +62,7 @@ Mechanics that may be revisited after core systems are stable.
 | Mechanic | Source OQ | Deferred Since | Condition to Revisit |
 |----------|-----------|---------------|----------------------|
 | Damage escalation after Round X | OQ-19 | Session 1 (ADR-002) | Only if games are still 25+ rounds after Stacks A–C |
-| 3 Move Slots (vs current 2) | OQ-23 | Session 1 / P1 suggestion | May be superseded by AP system (Stack G) |
+| 3 Move actions (vs current 2) | OQ-23 | Session 1 / P1 suggestion | May be superseded by AP system (Stack G) |
 | Restricted movement (straight-line only) | OQ-28 | Session 8 | Layer 6 candidate — would make Move skills stronger. Now parked indefinitely (see archive). |
 | Board 8x8 with fewer pieces | OQ-1b / OQ-27 | Session 1 | Decoupled Session 22: 8x8 lives in Stack D (Board Geometry); piece count reduction lives in Stack K (Piece Count Reduction). Test independently. |
 | Pool draft variant | OQ-35 | Session 8 | Test after Stack A/B accepted |

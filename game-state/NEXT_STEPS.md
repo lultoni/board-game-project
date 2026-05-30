@@ -14,7 +14,7 @@ Pole B mechanics (full writeup: `docs/research/path-y-defense-redesign.md`):
 - Skills are added to pieces *during play*, not all at once at the start.
 - Skills are *reusable while equipped*. Equipped count cap = 12 per player (6 Champions × 2 slots).
 - Action slots are shared between moving and drafting (drafting a skill onto a piece costs an action slot).
-- No Rune-economy activation gate — activate as many as you want; hoarding is allowed but risky.
+- No Money-economy activation gate — activate as many as you want; hoarding is allowed but risky.
 - Skill pool for drafting is effectively infinite; the 12-equipped cap is the constraint.
 
 - [ ] **Run the first Pole B per-turn-draft prototype game digitally** (3-week vacation window with Jonathan opens). No physical rule sheet for the first 2–3 prototype runs.
@@ -25,9 +25,9 @@ Pole B mechanics (full writeup: `docs/research/path-y-defense-redesign.md`):
 
 Stack H still has merit for Pole A (chassis-volume problem from P4 OQ-11 / Q-C1 remains valid), but Pole B may dissolve the Armor-as-tax problem at the source. Stack H runs only if Pole B prototype reveals Pole A is worth keeping as a parallel mode and chassis volume is the dominant remaining issue.
 
-- [ ] **Draft Stack H rule sheet** in `docs/test-scenarios/stack-h-armor-trim/` *only after Pole B prototype data lands*. Bundled lead dose: Armor cap 3→2 *and* Armorsmith +1→+2.
+- [ ] **Draft Stack H rule sheet** in `docs/test-scenarios/stack-h-armor-trim/` *only after Pole B prototype data lands*. Bundled lead dose: Armor cap 3→2 *and* Plate +1→+2.
 - [ ] **Build cheaper than break** risk noted as bigger than originally framed (user verbatim Session 23). Track Armor totals vs P4 baseline (14/22) when Stack H runs.
-- [ ] **Within-stack rollback** if bundled dose stalls: cap 3→2 only, Armorsmith unchanged.
+- [ ] **Within-stack rollback** if bundled dose stalls: cap 3→2 only, Plate unchanged.
 
 ## Priority 3 — Stack A G3 — Dual-Counter Combo *(Queued; gated on Stack H)*
 
@@ -49,9 +49,9 @@ Session 23 raised that the current sequential draft drives a "deterministic perf
 
 ## Priority 6 — Skill Balance carry-over watches
 
-- [ ] **Rune Theft Mode B confirmed dominant (P4)** — both players pinned it as must-pick. Hold cost increase pending Pole B data.
-- [ ] Confirm **Shadow Shift** Range 2 feels right in play (no P4 data).
-- [ ] Monitor **Blade Call** + combo bonus interaction (now in baseline).
+- [ ] **Steal Mode B confirmed dominant (P4)** — both players pinned it as must-pick. Hold cost increase pending Pole B data.
+- [ ] Confirm **Swap** Range 2 feels right in play (no P4 data).
+- [ ] Monitor **Charge** + combo bonus interaction (now in baseline).
 
 ---
 
@@ -59,7 +59,7 @@ Session 23 raised that the current sequential draft drives a "deterministic perf
 
 **Process / facilitation (deferred):**
 - **Teacher-vocab-checklist enforcement** — DEFERRED (Session 22). Bundle with Phase B naming pass.
-- **"Runes" rename candidate** — staged in backpocket; Phase B item.
+- **Resource rename "Runes" → "Money" — DONE** (vocabulary simplification pass).
 
 **Cross-pole methodology (OQ-63):**
 - When a fix targets a problem present in both poles, decide whether to test it in each pole separately or once-and-carry. User lean: twice for cleanness. Resolved on first encounter.
@@ -85,12 +85,12 @@ Session 23 raised that the current sequential draft drives a "deterministic perf
 - **Plague skill** — fixes "Injured-state-as-payload that bypasses Armor stack."
 - **Lucky Strike / Star Strike** — staged for further design pass.
 - **Focus replacement** — fixes catalogue must-pick density.
-- **Lance Thrust + Rune Theft merge** — fixes catalogue redundancy.
-- **"Runes" rename** — Phase B bundle.
+- **Lance + Steal merge** — fixes catalogue redundancy.
+- **Resource rename "Runes" → "Money" — DONE** (vocabulary simplification pass).
 - Elias: paid Focus extension, "rusty thief" piece-design idea, small mini pre-game for new players.
 
 **Session 23 design ideas (staged in `docs/backpocket.md`):**
-- **Armor cap scales by round** (Pole-agnostic candidate) — keeps Armor's late-game role from compounding into the early game. Watch flag: yet another scaling rule on top of Runes/Skill Slots may cross the cognitive-load line.
+- **Armor cap scales by round** (Pole-agnostic candidate) — keeps Armor's late-game role from compounding into the early game. Watch flag: yet another scaling rule on top of Money/actions may cross the cognitive-load line.
 - **Items as defensive option** (cross-pole concern) — take a slot where a skill would otherwise sit; could be drafted, bought, or picked mid-game.
 
 **OQs opened in Session 22:**
@@ -132,7 +132,7 @@ Session 23 raised that the current sequential draft drives a "deterministic perf
 
 ## Recently completed (Session 23)
 
-- **`docs/research/path-y-defense-redesign.md` written** — full canonical writeup of the Session 23 defense + game-shape redesign discussion. Three diagnoses tested (A: Rune curve — killed; B: HP magnitude — killed; C: Armor-as-late-game-tax — confirmed). Pole A vs Pole B framing. Pole B mechanics corrected and locked. Open risks tracked.
+- **`docs/research/path-y-defense-redesign.md` written** — full canonical writeup of the Session 23 defense + game-shape redesign discussion. Three diagnoses tested (A: Money curve — killed; B: HP magnitude — killed; C: Armor-as-late-game-tax — confirmed). Pole A vs Pole B framing. Pole B mechanics corrected and locked. Open risks tracked.
 - **Two new design principles** added to `design-principles.md`: (6) game length is itself a form of attrition; (7) while core identity is unsettled, prefer fundamental shifts over variable tweaking (conditional — incremental methodology resumes primacy once core is settled).
 - **Three new OQs**: OQ-61 (two-pole framing), OQ-62 (Pole A draft determinism), OQ-63 (cross-pole fixing methodology). OQ-11 status updated to Queued.
 - **Three new backpocket entries**: Armor diagnosis anchor, Armor cap scales by round, Pole B one-turn-killer potential issue.
@@ -160,5 +160,5 @@ Session 23 raised that the current sequential draft drives a "deterministic perf
 
 - All 11 high-concept open questions (Q-A1 → Q-F1) resolved.
 - ADR-004 written and accepted: "Two minds, one puzzle" (Framing B) becomes canonical design intent.
-- Q-B4 baseline change shipped (Standard Attack reframed as "a Move that ends on an enemy tile"). BASELINE_VERSION → 2026-05-26 (now 2026-05-30 with combo migration).
+- Q-B4 baseline change shipped (Move-Attack reframed as "a Move that ends on an enemy tile"). BASELINE_VERSION → 2026-05-26 (now 2026-05-30 with combo migration).
 - `shared/teacher-vocab-checklist.typ/pdf` shipped.

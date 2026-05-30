@@ -6,7 +6,7 @@
 
 ## Current focus
 
-**Two-pole framing introduced**: *Pole A* = pre-game-draft (current game). *Pole B* = per-turn-draft (radical alternative — skills added during play, reusable while equipped, 12-equipped cap, shared action slots, no Rune activation gate). **Stack L — Pole B Per-Turn-Draft Prototype is the new Active stack**, claiming the active slot for the 3-week vacation digital-prototype window with Jonathan. Stack H — Armor Trim deprioritised to Queued. Two new design principles promoted: (6) game length is itself a form of attrition; (7) while core identity is unsettled, prefer fundamental shifts over variable tweaking. Stack A G2 (combo bonus) migrated into baseline.
+**Two-pole framing introduced**: *Pole A* = pre-game-draft (current game). *Pole B* = per-turn-draft (radical alternative — skills added during play, reusable while equipped, 12-equipped cap, shared action slots, no Money activation gate). **Stack L — Pole B Per-Turn-Draft Prototype is the new Active stack**, claiming the active slot for the 3-week vacation digital-prototype window with Jonathan. Stack H — Armor Trim deprioritised to Queued. Two new design principles promoted: (6) game length is itself a form of attrition; (7) while core identity is unsettled, prefer fundamental shifts over variable tweaking. Stack A G2 (combo bonus) migrated into baseline.
 
 ## Active OQs (top 4)
 
@@ -17,7 +17,7 @@
 
 ## Last session
 
-2026-05-30 (Session 23): Stack H re-discussion gate expanded into a defense + game-shape redesign. Three Armor diagnoses tested (A: Rune curve, B: HP magnitude — both killed; C: Armor-as-late-game-tax — confirmed). Pole framing crystallised. Full discussion captured in `docs/research/path-y-defense-redesign.md`. Cascade edits: design-principles.md (+2 principles), backpocket.md (+3 entries), OPEN_QUESTIONS.md (+3 OQs, OQ-11 status updated), TESTING_PLAN.typ (Stack L Active, Stack H Queued), baseline-sections.typ (combo migration + BASELINE_VERSION → 2026-05-30), mechanics-evaluated.md (combo migration + Methodology decisions section). Repo housekeeping: deleted `stack-b-guards/` folder, archived `stack-a-cleverness/` to `old-game-versions/archived-stacks/`, switched all Typst imports to root-relative form so files survive folder moves.
+2026-05-30 (Session 23): Stack H re-discussion gate expanded into a defense + game-shape redesign. Three Armor diagnoses tested (A: Money curve, B: HP magnitude — both killed; C: Armor-as-late-game-tax — confirmed). Pole framing crystallised. Full discussion captured in `docs/research/path-y-defense-redesign.md`. Cascade edits: design-principles.md (+2 principles), backpocket.md (+3 entries), OPEN_QUESTIONS.md (+3 OQs, OQ-11 status updated), TESTING_PLAN.typ (Stack L Active, Stack H Queued), baseline-sections.typ (combo migration + BASELINE_VERSION → 2026-05-30), mechanics-evaluated.md (combo migration + Methodology decisions section). Repo housekeeping: deleted `stack-b-guards/` folder, archived `stack-a-cleverness/` to `old-game-versions/archived-stacks/`, switched all Typst imports to root-relative form so files survive folder moves.
 
 ## Next action
 
