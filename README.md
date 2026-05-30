@@ -1,6 +1,6 @@
 # (GAME NAME) — Board Game Design Project
 
-A 2-player abstract-tactical board game in active development. Two players command armies of Guards and Champions led by a King across a 10×10 grid, equipping Champions with skills and spending Runes to activate them. Victory by capturing the enemy King.
+A 2-player abstract-tactical board game in active development. Two players command armies of Guards and Champions led by a King across a 10×10 grid, equipping Champions with skills and spending Money to activate them. Victory by capturing the enemy King.
 
 **Design identity**: The intersection of chess-like spatial tactics and CCG-style build customisation. The core fantasy is discovering and executing clever skill combos. Everything else is chassis.
 
@@ -109,15 +109,15 @@ board-game-project/
 *For current HP values and full piece stats: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf)*
 
 ### How a Turn Works
-1. **Movement Phase** — move up to 2 pieces (each piece once)
-2. **Action Phase** — activate up to N skills (limited by Skill Slots, paid in Runes)
+1. **Move Phase** — move up to 2 pieces (each piece once)
+2. **Skill Phase** — activate up to N skills (limited by actions, paid in Money)
 
 ### Key Systems
-- **Runes** — currency for activating skills. Scales over rounds.
+- **Money** — currency for activating skills. Scales over rounds.
 - **Skills** — equipped during pre-game draft. 2 slots per Champion/King. Line-of-sight paths blocked by all pieces.
 - **2 HP** — Normal → Injured → Removed. Injured reduces Guard speed and skill range.
-- **Bodyguard** — Guard adjacent to an attacked Champion/King can intercept standard attacks.
-- **Standard Attack** — move onto enemy tile = 1 DMG.
+- **Bodyguard** — Guard adjacent to an attacked Champion/King can intercept move-attacks.
+- **Move-Attack** — move onto enemy tile = 1 damage.
 
 Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf)
 

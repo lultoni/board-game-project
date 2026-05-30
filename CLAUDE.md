@@ -42,18 +42,18 @@ old-game-versions/
 
 ## Key Game Systems
 
-For canonical numbers (HP, Rune scaling, Skill Slot scaling, skill catalogue): `docs/test-scenarios/shared/baseline-sections.typ`.
+For canonical numbers (HP, Money scaling, action scaling, skill catalogue): `docs/test-scenarios/shared/baseline-sections.typ`.
 For design rationale, MDA notes, open questions per system: `docs/systems-and-mechanics.md`.
 
 Quick orientation only — never restate numbers here:
 
-1. **Turn Structure** — Round-based (P1 turn → P2 turn). Each turn: Movement Phase → Action Phase. See `section-turn-structure()`.
+1. **Turn Structure** — Round-based (P1 turn → P2 turn). Each turn: Move Phase → Skill Phase. See `section-turn-structure()`.
 2. **Piece Types** — King (1), Champions (5), Guards (6) per player. Champions/King carry skills; Guards do not. See `section-components()`.
 3. **Skill System** — Equipped during pre-game draft. Categories: Strike, Shield, Move, Mystic. Queen-style line-of-sight, blocked by all pieces. See `section-skill-system()` + `section-skill-reference()`.
-4. **Resource Economy** — Runes scale over rounds. See `section-resource-economy()`.
+4. **Resource Economy** — Money scales over rounds. See `section-resource-economy()`.
 5. **Health & Armor** — Normal → Injured → Removed. Armor absorbs first. See `section-health-armor()`.
 6. **Board** — 10x10 grid, no terrain. See `section-setup()`.
-7. **Bodyguard** — Adjacent Guard intercepts Standard Attacks on Champion/King. See `section-bodyguard()`.
+7. **Bodyguard** — Adjacent Guard intercepts Move-Attacks on Champion/King. See `section-bodyguard()`.
 
 ## Conventions
 
@@ -132,7 +132,7 @@ These are the patterns that produced the drift addressed in the Session 17 rewor
 
 5. **Skills must reference real, current paths.** Before adding or editing a skill, verify every file path it reads or writes exists. Skills with ghost references silently fail or create files in the wrong place. Treat skill paths as load-bearing.
 
-6. **Memory is for immutable facts, not current state.** Memories should read as historical claims ("Session 3 ruling: starting Runes was 4 at that time"), not as live state ("starting Runes is 4"). Anything pointing at "current" rots — let project docs own current state.
+6. **Memory is for immutable facts, not current state.** Memories should read as historical claims ("Session 3 ruling: starting Money was 4 at that time"), not as live state ("starting Money is 4"). Anything pointing at "current" rots — let project docs own current state.
 
 7. **Templates that get copy-pasted should be functions instead.** If three stack files copy a 14-row table to edit one row, the template has failed. Parameterize. Apply to: rule sections, feedback forms, anything else with hand-copied boilerplate. Sub-rule for fillable forms: use `#v(1fr)` between question blocks, not fixed `#v(Ncm)` — fixed spacers pile up at page bottoms and create dead-zone empty pages; `1fr` distributes whatever's left on the page evenly. Use `#pagebreak()` to control which questions land on which page.
 
@@ -158,4 +158,4 @@ These are the patterns that produced the drift addressed in the Session 17 rewor
 
 ## Baseline Rule Files (read-only reference)
 
-These are the original pre-migration rule documents in `old-game-versions/v3-first-board-game/md-converted/`. They are outdated (12x12 board, old Rune timing, terrain effects) and exist only for historical reference. Do not treat them as current rules.
+These are the original pre-migration rule documents in `old-game-versions/v3-first-board-game/md-converted/`. They are outdated (12x12 board, old Money timing, terrain effects) and exist only for historical reference. Do not treat them as current rules.

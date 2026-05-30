@@ -20,7 +20,7 @@ For each handwritten document, transcribe with maximum fidelity before interpret
 
 ### Game logs
 
-- Reconstruct **every round row** — Runes (start+gain−spent=end), skills used, events/notes.
+- Reconstruct **every round row** — Money (start+gain−spent=end), skills used, events/notes.
 - Preserve the **exact wording** of all margin notes, exclamations, and annotations — these are named moments and design signals (e.g. "peak move!", "gradients", "stalling — very nice!").
 - Note the **final round played** explicitly — the last row with an entry is the end of the game.
 - Note any **post-game annotations** separately (written after the game ended, not during a round).
@@ -51,19 +51,19 @@ Side-notes (.md files in the playtest folder) are written by the game runner dur
 
 ## Step 2.5: Structured Data Extraction
 
-For each player's tracking sheet and game log, produce two blocks: (A) Rune/Capture data, (B) Behavioral pattern analysis.
+For each player's tracking sheet and game log, produce two blocks: (A) Money/Capture data, (B) Behavioral pattern analysis.
 
 ### Block A — Tracking Data
 
 ```markdown
 ### Tracking Data — [Player name]
 
-**Rune economy**
-- Starting Runes: [value]
+**Money economy**
+- Starting Money: [value]
 - First round a skill was used: Round [N]
-- Rounds where unspent Runes exceeded 6: [list rounds, or "none"]
-- Rounds where all Runes were spent: [list rounds, or "none"]
-- Largest single-turn Rune spend: [N Runes on Round X]
+- Rounds where unspent Money exceeded 6: [list rounds, or "none"]
+- Rounds where all Money was spent: [list rounds, or "none"]
+- Largest single-turn Money spend: [N Money on Round X]
 
 **Captures & key events** (from Events/Notes column)
 | Round | Event |
@@ -85,7 +85,7 @@ This block answers "what were players actually doing?" — extracted from the ga
 **Skill usage frequency**
 | Skill | Times used | Rounds used | Typical context |
 |-------|-----------|-------------|-----------------|
-| [name] | [N] | [R1, R4, R7...] | [e.g. "finisher on Injured piece", "opener every turn", "paired with Blade Call"] |
+| [name] | [N] | [R1, R4, R7...] | [e.g. "finisher on Injured piece", "opener every turn", "paired with Charge"] |
 
 - Most-used skill: [name] ([N] uses)
 - Least-used / never used: [names]
@@ -93,7 +93,7 @@ This block answers "what were players actually doing?" — extracted from the ga
 - Skills used exactly once or twice: [list] — possibly situational or underpowered
 
 **Attack vs. skill balance**
-- Standard attacks made: [N total, estimated from log]
+- Move-attacks made: [N total, estimated from log]
 - Skill activations made: [N total]
 - Attack-to-skill ratio: [N attacks per skill use] — compare against Playtest baseline (P1: high, P2: mid)
 
@@ -115,7 +115,7 @@ This block answers "what were players actually doing?" — extracted from the ga
 - Armor vs. damage ratio: [approx — did armor absorb a meaningful share of incoming damage?]
 ```
 
-**Synthesis note**: After completing both players' Block B, write 3–5 cross-player observations comparing their patterns. Look for: one player offensively dominant while other defends; both players stuck in standoff simultaneously; skill choices that mirror vs. diverge; Rune spending rhythms that synchronise or oppose.
+**Synthesis note**: After completing both players' Block B, write 3–5 cross-player observations comparing their patterns. Look for: one player offensively dominant while other defends; both players stuck in standoff simultaneously; skill choices that mirror vs. diverge; Money spending rhythms that synchronise or oppose.
 
 ## Step 2.8: Independent Per-Player Transcription (Multi-Agent)
 

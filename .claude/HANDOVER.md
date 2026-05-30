@@ -34,10 +34,10 @@ You are my board game design co-creator and systems architect. We are working on
 
 ### Where We Are (Session 23 complete, 2026-05-30)
 
-- **Two-pole framing introduced.** *Pole A* = pre-game-draft (current game). *Pole B* = per-turn-draft (radical alternative — skills added during play, reusable while equipped, 12-equipped cap per player, shared action slots, no Rune activation gate). Full discussion captured in `docs/research/path-y-defense-redesign.md`.
+- **Two-pole framing introduced.** *Pole A* = pre-game-draft (current game). *Pole B* = per-turn-draft (radical alternative — skills added during play, reusable while equipped, 12-equipped cap per player, shared action slots, no Money activation gate). Full discussion captured in `docs/research/path-y-defense-redesign.md`.
 - **Stack L — Pole B Per-Turn-Draft Prototype is the new Active stack**, claiming the slot for the 3-week vacation digital-prototype window with Jonathan. **Stack H — Armor Trim** deprioritised to Queued; bundled dose remains lead variant when it runs.
 - **Two new design principles promoted**: (6) game length is itself a form of attrition; (7) while core identity is unsettled, prefer fundamental shifts over variable tweaking (conditional).
-- **Three Armor diagnoses tested**: A (Rune curve) and B (HP magnitude) killed by user; C (Armor-as-late-game-tax) confirmed.
+- **Three Armor diagnoses tested**: A (Money curve) and B (HP magnitude) killed by user; C (Armor-as-late-game-tax) confirmed.
 - **Multi-Champion Combo Bonus migrated into baseline.** `BASELINE_VERSION → 2026-05-30`.
 - **Three new OQs**: OQ-61 (two-pole framing), OQ-62 (Pole A draft determinism / simultaneous-reveal), OQ-63 (cross-pole fixing methodology). OQ-11 status updated to Queued.
 - **Repo housekeeping**: deleted `stack-b-guards/`, archived `stack-a-cleverness/` to `old-game-versions/archived-stacks/`, switched all Typst imports to root-relative form (`/docs/test-scenarios/shared/...`).

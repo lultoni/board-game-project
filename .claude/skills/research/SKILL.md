@@ -21,7 +21,7 @@ Output a formatted research request the user can paste into Perplexity:
 ```
 RESEARCH REQUEST: [Topic]
 
-Context: We are designing a 2-player perfect-information tactical board game where players command armies on a grid, equipping Champions with skills/spells and spending Runes to activate them. The core fantasy is discovering and executing clever spell/skill combos.
+Context: We are designing a 2-player perfect-information tactical board game where players command armies on a grid, equipping Champions with skills/spells and spending Money to activate them. The core fantasy is discovering and executing clever spell/skill combos.
 
 [Include 2-3 sentences of specific context about which system or question this research relates to, drawn from systems-and-mechanics.md and OPEN_QUESTIONS.md.]
 
