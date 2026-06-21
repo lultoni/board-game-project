@@ -1,161 +1,161 @@
-# (GAME NAME) - Board Game Design Project
+# (GAME NAME) — Board Game Design Project
 
 ## Project Overview
 
-A 2-player abstract-tactical board game where players command armies of Guards and Champions led by a King across a 10x10 grid. Victory comes through tactical superiority and capturing the enemy King. The design philosophy prioritises depth through interlocking systems over breadth of features.
+A 2-player abstract-tactical board game. Players command armies of Guards and Champions led by a King on a grid (Stack M default: 8×8). Victory: capture the enemy King. Design philosophy: depth through interlocking systems, no luck (perfect information, no dice, no hidden cards).
+
+As of Session 27 (2026-06-22), the project is pivoting **digital-first**: a complete digital implementation with Stack M rules as default, replacing the paper-prototype pipeline as the primary iteration channel.
 
 ## Architecture
 
 ```
-docs/
-  design-principles.md           <- Rules to design by (5 principles, constraints, methodology)
-  systems-and-mechanics.md       <- All 7 systems: how they work, MDA, health, open questions
-  game-identity-visual-naming.md <- Future Phase B: art, naming, physical design direction
-  backpocket.md                  <- Pre-thought fixes for anticipated problems (staged, not active)
-  research/                      <- Exported Perplexity research threads + playtest analyses
-  mechanics-log/
-    mechanics-evaluated.md       <- Decision registry: every mechanic + Source OQ + Evidence
-  test-scenarios/
-    build-pdfs.sh                <- Discovery-based: rebuilds every .typ → .pdf (use zsh)
-    TESTING_PLAN.typ/.pdf        <- Decision tree: which stack to run next
-    shared/
-      template.typ               <- Shared Typst styling (library — not compiled standalone)
-      baseline-sections.typ      <- Baseline section functions + BASELINE_VERSION constant
-      feedback-baseline.typ      <- Feedback form template (copy for each new stack)
-      game-tracking.typ          <- Per-player in-game tracking sheet
-    baseline/
-      ruleset-baseline.typ       <- CANONICAL PLAYER-FACING RULES (source of truth for rule text)
-    stack-X-<slug>/              <- One subfolder per test stack
-      stack-X-<slug>.typ/.pdf    <- Rule sheet (Typst source + compiled PDF)
-      stack-X-feedback.typ/.pdf  <- Feedback form
+design/
+  design.db                 ← SQLite source of truth (all design knowledge)
+  schema.sql                ← 12-table schema, CHECK constraints, FKs, triggers
+  README.md                 ← DB usage notes
+  raw/                      ← Binary artefacts (photos, scans, card images)
+    playtest-photos/
+    brainstorm-scans/
+    skill-card-images/
+  inbox/                    ← Fast-write staging — promoted to DB by Claude
+    brainstorm/             ← Raw idea dumps
+    ai-chats/               ← Pasted chat transcripts (ChatGPT/Perplexity/etc)
+
+game/                       ← Digital implementation (architecture TBD; empty as of S27)
+  README.md                 ← Status + open architecture questions
+
+digital-prototype/          ← Pre-pivot scratch prototype (paper-era artefact)
+
+archive/
+  old-game-versions/        ← v1/v2/v3 + archived stacks
+  paper-pipeline/
+    test-scenarios/         ← Typst rule sheets + PDFs (paper-prototype era)
+
 game-state/
-  STATUS.md                      <- One-screen re-entry doc — read first after a gap
-  NEXT_STEPS.md                  <- Prioritised action items
-  OPEN_QUESTIONS.md              <- LIVE design questions only (sorted by status)
-  OPEN_QUESTIONS_ARCHIVE.md      <- Resolved / closed / scrapped / parked OQs
-  SESSION_LOG.md                 <- Per-session narrative log (newest first)
-playtest-results/                <- Raw photos / scans, one folder per playtest
-images/                          <- Skill card images (1 JPG per skill)
-old-game-versions/
-  README.md                      <- v1/v2/v3 archive + pre-Session-1 history + Road Ahead
+  STATUS.md                 ← One-screen re-entry doc (regenerated each session)
+
+.claude/
+  HANDOVER.md               ← Session-to-session continuity notes
+  migrate_*.py              ← One-shot migrators that built the DB (kept for audit)
+  skills/                   ← Slash-command definitions
 ```
 
-## Key Game Systems
+## The DB is the source of truth
 
-For canonical numbers (HP, Money scaling, action scaling, skill catalogue): `docs/test-scenarios/shared/baseline-sections.typ`.
-For design rationale, MDA notes, open questions per system: `docs/systems-and-mechanics.md`.
+Everything design-related — sessions, principles, open questions, ADRs, mechanics, stacks, playtests, the backpocket, next steps, essays, design docs, cross-references — lives in `design/design.db` as **markdown bodies in TEXT columns**. The migrator scripts deleted the source `.md` files in Session 27; the DB now owns those facts.
 
-Quick orientation only — never restate numbers here:
+**12 tables:** `sessions`, `principles`, `open_questions`, `adrs`, `mechanics`, `stacks`, `playtests`, `backpocket`, `next_steps`, `essays`, `design_docs`, `links`.
 
-1. **Turn Structure** — Round-based (P1 turn → P2 turn). Each turn: Move Phase → Skill Phase. See `section-turn-structure()`.
-2. **Piece Types** — King (1), Champions (5), Guards (6) per player. Champions/King carry skills; Guards do not. See `section-components()`.
-3. **Skill System** — Equipped during pre-game draft. Categories: Strike, Shield, Move, Mystic. Queen-style line-of-sight, blocked by all pieces. See `section-skill-system()` + `section-skill-reference()`.
-4. **Resource Economy** — Money scales over rounds. See `section-resource-economy()`.
-5. **Health & Armor** — Normal → Injured → Removed. Armor absorbs first. See `section-health-armor()`.
-6. **Board** — 10x10 grid, no terrain. See `section-setup()`.
-7. **Bodyguard** — Adjacent Guard intercepts Move-Attacks on Champion/King. See `section-bodyguard()`.
+### Working with the DB
 
-## Conventions
+Query patterns (use `Bash` tool with `sqlite3 design/design.db "..."`):
 
-### Source-of-truth hierarchy
+```sql
+-- Status briefing (one-screen re-entry)
+SELECT id, n, date, title FROM sessions ORDER BY n DESC LIMIT 5;
+SELECT id, letter, name, status FROM stacks WHERE status IN ('active','queued') ORDER BY status, letter;
+SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high') ORDER BY priority;
+SELECT priority, title FROM next_steps WHERE status='todo' ORDER BY priority LIMIT 5;
 
-- **Rule text (numbers, mechanics)**: `docs/test-scenarios/shared/baseline-sections.typ` — printable form: `docs/test-scenarios/baseline/ruleset-baseline.pdf`.
-- **Design principles**: `docs/design-principles.md`.
-- **Systems rationale**: `docs/systems-and-mechanics.md`.
-- **Decision history**: `docs/mechanics-log/mechanics-evaluated.md` (cross-linked to OQs and evidence).
-- **Live state**: `game-state/STATUS.md` → `game-state/NEXT_STEPS.md` → `game-state/OPEN_QUESTIONS.md`.
-- **Per-session narrative**: `game-state/SESSION_LOG.md` (newest first).
+-- Full body of a thing
+SELECT body FROM stacks WHERE id='stack-m';
+SELECT body FROM open_questions WHERE id='oq-66';
+SELECT body FROM principles WHERE id='principle-8';
+SELECT body FROM adrs WHERE id='adr-004';
+SELECT body FROM essays WHERE id='essay-game-economy-map';
 
-### Design lens
+-- Cross-references (graph)
+SELECT to_id, relation, note FROM links WHERE from_id='stack-m';
+SELECT from_id, relation, note FROM links WHERE to_id='oq-11';
 
-- **Apply MDA** (Mechanics-Dynamics-Aesthetics) when reasoning about new mechanics.
-- **North star**: "A small number of interlocking systems that generate surprising, meaningful decisions."
-- **Core fantasy**: Discovering and executing clever spell/skill combos. Every system must serve this.
-- **When in doubt**: Cut features, deepen systems.
-- **No luck**: Perfect information / pure strategy. No dice, no hidden cards, no randomness.
-- **Spending tension (G8)**: Players must always want to do more than they can execute.
+-- Recent narrative (reproduces SESSION_LOG.md)
+SELECT body FROM sessions ORDER BY n DESC;
+```
 
-### File naming
+### Writing to the DB
 
-- **SCREAMING_SNAKE** for top-level living docs that act as named sections of the project: `README.md`, `CLAUDE.md`, `STATUS.md`, `NEXT_STEPS.md`, `OPEN_QUESTIONS.md`, `OPEN_QUESTIONS_ARCHIVE.md`, `SESSION_LOG.md`, `MEMORY.md`, `TESTING_PLAN.typ`.
-- **kebab-case** for everything else: rule files, stack folders, design docs, research files, image assets.
-- **snake_case** for Typst function names (`section-quick-reference` is the existing exception; new functions follow snake_case).
+Use `Bash` + `sqlite3` with `INSERT` / `UPDATE`. Examples:
+
+```sql
+-- New OQ
+INSERT INTO open_questions (id, title, status, priority, body, created_in)
+VALUES ('oq-72', 'Title', 'high', 2, 'Body…', 'session-27');
+
+-- New session entry (at session end / /wrapup)
+INSERT INTO sessions (id, n, date, title, body)
+VALUES ('session-27', 27, '2026-06-22', 'Title', 'Body…');
+
+-- Mark an OQ resolved
+UPDATE open_questions SET status='resolved', resolved_in='session-27' WHERE id='oq-66';
+```
+
+The `updated_at` trigger fires on every UPDATE. CHECK constraints enforce valid enum values for `status`, `verdict`, `kind`, `category`, `relation`. `PRAGMA foreign_keys = ON` then `PRAGMA foreign_key_check` to validate.
+
+The DB is committed as a binary blob (single workstation, no merge conflicts expected).
+
+## Living docs (kept outside the DB)
+
+- **`game-state/STATUS.md`** — one-screen re-entry doc. Rebuilt each session from DB summaries; not a source of truth itself.
+- **`.claude/HANDOVER.md`** — session-to-session notes; what's loaded in working memory, what's next.
+
+Both are *summaries pointing at the DB*. Never restate facts here — link by ID.
+
+## Hard constraints (canonical IDs in DB `principles` table, kind='hard-constraint')
+
+`constraint-perfect-info`, `constraint-grid-based`, `constraint-no-terrain`, `constraint-two-skill-slots`, `constraint-blank-champions`, `constraint-guards-late-game`. Read bodies for full text.
+
+## Design lens
+
+- **North star** (`principle-north-star`): "A small number of interlocking systems that generate surprising, meaningful decisions."
+- **Core fantasy** (`principle-core-fantasy`): Discovering and executing clever spell/skill combos.
+- **High-concept framing** (`principle-high-concept-framing`, ADR-004): "Two minds, one puzzle."
+- **Chassis vs. Engine** (`principle-chassis-and-engine`) — diagnostic lens. Engine = skills/draft/actions; chassis = board/HP/economy. Cut chassis bloat to make the engine louder.
+- **MDA** — apply to new mechanics.
 
 ## Justification Rule (MANDATORY)
 
-**Every new idea, mechanic, rule, or system change must explicitly justify its purpose.** Before staging an idea in `backpocket.md`, before proposing a layer, before drafting a stack, the entry must answer:
+Every new mechanic / rule / system change must justify its purpose: **what problem does this fix, or what specific game-feel improvement does this deliver?** "It sounds cool" is not enough. Apply when staging a `backpocket` entry, drafting a stack, or proposing a rule change.
 
-> **What current problem / "uncoolheit" does this fix, OR what specific aspect of game feel does this improve?**
+## Incremental Testing Methodology (MANDATORY when core is settled)
 
-If the answer is "it sounds cool" or "it would add more options" — that is NOT enough. Variety is not a justification on its own. The idea must point to:
-- A concrete observed issue (e.g., "standoff zone", "Bodyguard never triggered", "draft converges to one meta"), OR
-- A specific game-feel improvement tied to the core fantasy (e.g., "creates a sente threat that dissolves passive play", "rewards multi-turn setup more than brute force").
+One layer per playtest. Decompose, identify coupling, order from independent to dependent, document which stack produced which result. **Conditional override**: Principle 7 (Session 23) suspends this while core identity is unsettled — bundled stacks are allowed when justified (Stack M is the canonical example).
 
-Format every new entry in `backpocket.md` with a **"What it fixes / improves"** field at the top, alongside the existing trigger condition. Ideas that cannot pass this test should be discarded, not parked. The backpocket is for *anticipated solutions*, not a graveyard of "could be cool."
+## Hygiene principles (Session 17 lessons — load-bearing)
 
-This rule applies retroactively to any new idea I propose unprompted, and to any user idea I capture into the doc — if the user's pitch doesn't include the justification, I must ask before writing it down.
-
----
-
-## Incremental Testing Methodology (MANDATORY)
-
-**Never propose changing multiple interacting systems at once.**
-
-When designing changes, follow this process:
-
-1. **Decompose** proposed changes into independent layers. Two changes are independent if changing one does not affect how you evaluate the other.
-2. **Identify coupling**: If change A affects how change B plays out, they are coupled. Coupled changes can be bundled into one test stack, but document WHY they're coupled.
-3. **Order stacks** from most independent / highest impact to most dependent. Test the foundation first.
-4. **Write a rule sheet** for each test stack in `docs/test-scenarios/`:
-   - Import `baseline-sections.typ` and call section functions for all unchanged rules.
-   - For Quick Reference, prefer `section-quick-reference(overrides: (...), extra-rows: (...))` over inlining the table.
-   - Inline only the genuinely changed section in the test file with a `⚡ CHANGED:` callout and before/after table.
-   - Copy `feedback-baseline.typ` to `stack-X-feedback.typ` and fill in `[STACK: ...]` placeholders.
-5. **One stack per playtest.** After each test, evaluate results before proceeding to the next stack.
-6. **Document which stack produced which result.** Never attribute an effect to a change that was bundled with other changes unless you can isolate the cause.
-
-**Why this matters**: In Session 1, a monolithic change (board size, HP, turn structure, economy, piece count, bodyguard) was proposed. That makes it impossible to know which change caused which effect. Don't repeat it.
-
----
-
-## Hygiene principles (lessons from Session 17 rework)
-
-These are the patterns that produced the drift addressed in the Session 17 rework. Each one is a rule plus the underlying *why*. Treat them as load-bearing — the rework should not be needed twice.
-
-1. **One source of truth per fact, with pointers — never restatements.** If a rule number, mechanic, or schema lives in `baseline-sections.typ` (or any other canonical file), other docs must point at it, not re-state it. Restated facts always drift. When summarising, label the summary as such and link to the canonical source on the next line.
-
-2. **State docs need lifecycle, not just append.** `OPEN_QUESTIONS.md`, `NEXT_STEPS.md`, `mechanics-evaluated.md` are working docs, not journals. Resolved items must be archived (separate file) or transformed (linked from accepted decisions), not left in-place with status tags. Append-only lists become unreadable.
-
-3. **Cross-link by ID, don't restate verdicts.** When two docs reference the same decision (an OQ, a mechanic, a playtest), one is canonical and the other links by ID. Never copy verdicts between docs — they will diverge.
-
-4. **Vocabulary renames must be project-wide and atomic.** When renaming a concept (e.g. "layer" → "stack"), do a full grep + rename pass in the same commit. Half-renames stay broken for months because the old name still works for the original author.
-
-5. **Skills must reference real, current paths.** Before adding or editing a skill, verify every file path it reads or writes exists. Skills with ghost references silently fail or create files in the wrong place. Treat skill paths as load-bearing.
-
-6. **Memory is for immutable facts, not current state.** Memories should read as historical claims ("Session 3 ruling: starting Money was 4 at that time"), not as live state ("starting Money is 4"). Anything pointing at "current" rots — let project docs own current state.
-
-7. **Templates that get copy-pasted should be functions instead.** If three stack files copy a 14-row table to edit one row, the template has failed. Parameterize. Apply to: rule sections, feedback forms, anything else with hand-copied boilerplate. Sub-rule for fillable forms: use `#v(1fr)` between question blocks, not fixed `#v(Ncm)` — fixed spacers pile up at page bottoms and create dead-zone empty pages; `1fr` distributes whatever's left on the page evenly. Use `#pagebreak()` to control which questions land on which page.
-
-8. **Build scripts should discover, not enumerate.** Hardcoded file lists go stale every time a new file is added. Use `find` / glob patterns where the convention is stable enough.
-
-9. **Justify before staging, archive before piling.** The Justification Rule prevents idea accumulation; an analogous archive rule prevents resolution accumulation. Both are forms of the same discipline: don't let working docs become graveyards.
-
-10. **CLAUDE.md is for orientation, not facts.** It should tell a future session *where to find* the canonical answer, not *what* the canonical answer is. Anything quantitative in CLAUDE.md is a future drift point.
-
----
+1. **One source of truth per fact, with pointers — never restatements.** Now enforced by the DB: facts have IDs; other rows link by ID. Summaries must label themselves as such and point at the canonical row.
+2. **State docs need lifecycle, not just append.** Resolved OQs carry `status='resolved'` and `resolved_in='session-N'`. Closed mechanics carry `verdict='rejected'/'withdrawn'/'superseded'`. Lifecycle lives in the DB enum columns, not in folder names.
+3. **Cross-link by ID, don't restate verdicts.** Use the `links` table for any cross-reference. Never copy a verdict into a second row's body — link to it.
+4. **Vocabulary renames must be project-wide and atomic.** `UPDATE` queries that touch every affected body, in one transaction. Then commit.
+5. **Skills must reference real, current paths.** Slash-command skills point at DB queries now, not file paths. Verify before adding.
+6. **Memory is for immutable facts, not current state.** Auto-memories should read as historical claims; current state lives in the DB.
+7. **Templates that get copy-pasted should be functions instead.** (Carry-over from paper-pipeline; less load-bearing now that rule rendering is downstream.)
+8. **Build scripts should discover, not enumerate.** Migrators in `.claude/migrate_*.py` are one-shot — discovery happens via SQL queries now.
+9. **Justify before staging, archive before piling.** Backpocket entries carry `status` (active/parked/promoted/withdrawn). No graveyards.
+10. **CLAUDE.md is for orientation, not facts.** This file. It tells you *where to look* (the DB). It does not restate game numbers, principles, or stack rules.
 
 ## Skills (Slash Commands)
 
 | Command | Trigger | Description |
 |---------|---------|-------------|
-| `/start` | User only | Session start — reads STATUS.md + living docs, presents status briefing |
-| `/wrapup` | User only | Session end — updates STATUS.md / NEXT_STEPS.md / SESSION_LOG.md, commits |
-| `/research <topic>` | Auto or user | Generates Perplexity research prompt with project context. Auto-triggers on knowledge gaps about game design, comparable games, or player psychology. |
-| `/playtest <N>` | Auto or user | Transcribes and analyses playtest photos/scans. Auto-triggers when user mentions playtest results. |
-| `/scenario <stack-X> <desc>` | Auto or user | Creates full standalone test scenario rule sheet + feedback form. Auto-triggers when a design discussion yields a testable change. |
-| `/adr <topic>` | Auto or user | Creates Architecture Decision Record. Auto-triggers when multiple valid design approaches emerge. |
-| `/build-pdfs` | User only | Runs `docs/test-scenarios/build-pdfs.sh` (discovery-based — picks up new `.typ` files automatically). |
+| `/start` | User only | Session start — reads STATUS.md + queries DB for current focus, presents briefing |
+| `/wrapup` | User only | Session end — appends a `sessions` row, updates STATUS.md, HANDOVER.md, commits |
+| `/research <topic>` | Auto or user | Perplexity research prompt with project context. Auto-triggers on knowledge gaps. |
+| `/playtest <N>` | Auto or user | Transcribes playtest photos/scans into a `playtests` row + cross-links |
+| `/scenario <stack-X> <desc>` | Auto or user | Stages a new `stacks` row + hypothesis. Auto-triggers when a discussion yields a testable change. |
+| `/adr <topic>` | Auto or user | Stages a new `adrs` row. Auto-triggers when multiple valid approaches emerge. |
 
-## Baseline Rule Files (read-only reference)
+**Note**: Skill definitions in `.claude/skills/` were written for the paper-pipeline era and still reference deleted MD paths. They need a rewrite to query the DB instead. Until then, expect skills to fail on the old paths — fall back to direct DB queries.
 
-These are the original pre-migration rule documents in `old-game-versions/v3-first-board-game/md-converted/`. They are outdated (12x12 board, old Money timing, terrain effects) and exist only for historical reference. Do not treat them as current rules.
+## Stack M (current Active stack)
+
+Stack M is the active design (Session 25-26). Six bundled simultaneous changes from the paper baseline:
+1. Board 10×10 → 8×8.
+2. Armor cap 3 → 2.
+3. Injured penalties removed (HP-tracker only).
+4. Draw conditions removed.
+5. Steal cost 3 → 4.
+6. Multi-Champion combo bonus widened to movement-causing skills (both trigger and bonus).
+
+Full rule substance: `SELECT body FROM stacks WHERE id='stack-m';`. **Stack M's body is the foundation for the digital implementation in `game/`.**
+
+P6 has not yet run as of Session 27. The digital-first pivot may absorb P6 into a digital playtest rather than a paper one.
