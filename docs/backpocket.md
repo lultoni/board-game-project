@@ -2,7 +2,7 @@
 
 *Three-part reference: (1) Design guardrails — invariants to check every change against. (2) New ideas & staged fixes — hypotheses ready to deploy when triggered. (3) Known potential issues — risks to monitor.*
 
-*Last updated: 2026-05-30*
+*Last updated: 2026-06-21*
 
 ---
 
@@ -39,6 +39,152 @@ Players must always want to do more than they can execute. Early game: Money lim
 ## New Ideas & Staged Fixes
 
 *Hypotheses ready to test when the relevant problem surfaces. Each has a trigger condition.*
+
+---
+
+## Session 25 Brainstorm — Post-P5 Direction-Setting (the path to the Game Length Cut)
+
+*This entry captures the brainstorm chain that led the designer to the Game Length Cut (GLC) decision. The conclusions (GLC, Principle 8, etc.) are documented elsewhere; this entry preserves the **reasoning chain** so future sessions can see WHY decisions look the way they do, and so adjacent open questions don't get lost when the GLC work absorbs the foreground. Each item below is parked, not yet active — most are explicitly "asan: revisit after GLC."*
+
+Items in the chain (designer's "asan" = "after sleeping a night" reflections in italics):
+
+**1. Does this game even need to be Perfect Information?**
+- *Brainstorm:* questioning whether PI is load-bearing or a chess-clone holdover.
+- *asan:* PI lets players never blame the game; that's worth something but doesn't automatically make a game fun. Park: revisit after the bigger blockers (GLC) are addressed.
+- **Status:** parked, not promoted to OQ. PI remains a Hard Constraint in `design-principles.md` for now. Connects to OQ-64 (felt-PI vs formal-PI).
+
+**2. Would smart, fair luck make the game more fun?**
+- *Brainstorm:* counterpart to #1. Luck only if "neither winning nor losing player feels punished by it."
+- *asan:* the better/cleverer player should still win when both play their best. Park alongside #1.
+- **Status:** parked. Not justifiable under current Justification Rule (no concrete problem it fixes).
+
+**3. Win condition: do we need a King? Could it be piece-count or other?**
+- *Brainstorm:* King-capture may be a chess-clone remnant. Alternative end conditions (capture-N-pieces, threshold-based, territory) would change game shape.
+- *asan:* this is part of the GLC brainstorm itself — "what is the natural end condition after the first climax?" Connects to Principle 8 (single climax shape).
+- **Status:** live design question, folded into the GLC work. Tracked as the win-condition question inside GLC, not as a standalone OQ until GLC clarifies the shape.
+
+**4. Health/Armor: power curve problem (one-shot vs unkillable).**
+- *Brainstorm:* pieces either fall in one hit or can't be killed. Two paths: (a) scaling power curve, (b) chess-like flat power with emergent progression.
+- *asan:* third path — just don't have games long enough for the late-game wall to materialize. GLC may dissolve this.
+- **Status:** parked behind GLC. Re-evaluate Armor performance after the length cut lands. Connects to OQ-11.
+
+**5. Armor as "easy progressive escape" from creativity.**
+- *Brainstorm:* players use Armor to avoid clever moves. Need balance: actually-defensive play allowed, but no always-available auto-action.
+- *asan:* a useful exercise — *look at every existing system/skill from both attack AND defense perspectives* to surface "better defensive alternatives to Armor." Also: re-check Armor's performance post-GLC before committing to alternatives.
+- **Status:** parked. The "attack/defense lens for every skill" is a candidate exercise for after GLC. Connects to OQ-11.
+
+**6. The "creative/clever is too hard" problem — Go comparison.**
+- *Brainstorm:* tracking burden (a) + branching factor (b) makes cleverness expensive. Go has simple rules but huge breadth — players play by feel because *most moves are low-impact*. Our game is the opposite: few high-impact moves, but currently with a long total move count, so the "few moves" claim is false in practice.
+- *Sub-finding:* high-impact moves punish small oversights too harshly; current game has high move count, so a small mistake AND a long game compound the punishment.
+- *Ideal shape:* at decent skill level, every turn has roughly equal impact on game progression — no "this turn is nothing" / "this turn is everything" swings. Also: a half-decent move should be reachable in ≤1 minute of thought; 10-minute thinking should be *rewarded* but not *required*.
+- *asan:* "how to reduce per-turn impact variance" is a later question, after GLC.
+- **Status:** parked behind GLC. The "≤1 min reachable / 10 min rewarded" ratio is a candidate feedback-form KPI for post-GLC playtests.
+
+**7. What are players actually competing on?**
+- *Brainstorm:* the fun is inventing macro tactics and reading the opponent (rock-paper-scissors flavor). But long games where outcome is decided early kill this. Solutions: (a) shorter games, (b) game structure that allows mid-game macro-strategy revision (more reactive). Current frame already has some of this.
+- *asan:* current answer = "out-think the opponent on macro strategy." Some meso layer may emerge depending on changes. Revisit after GLC.
+- **Status:** parked. Connects to OQ-56 generally.
+
+**8. Money's purpose is thin.**
+- *Brainstorm:* Money currently only does "save vs spend on skills." Could add depth via shops, alternative sinks, alternative faucets.
+- *asan:* revisit after GLC. Don't expand the economy mid-cut.
+- **Status:** parked. New entry deliberately *not* created in NEXT_STEPS — would violate Principle 7's "fundamental shifts > variable tweaking while core unsettled" if we tune Money before the shape is settled.
+
+**9. Game economy / component map (the "übersicht" idea).**
+- *Brainstorm:* designer wants a single diagram/map of all components and their interactions: piece count → HP / Armor / skills → damage economy → Money + actions → activity rate. Should expose where progression compounds.
+- *asan:* this map is the next thing the designer will produce in this session.
+- **Status:** in-flight as of Session 25. Will land as its own doc (location TBD by designer).
+
+**10. Early-game pacing — leave as-is.**
+- *Brainstorm:* slow opening is normal for the genre. Onboarding is the real issue, not opening pacing.
+- *asan:* fine as-is. Tutorial-feeling onboarding is desired but deferred until new-player intake is the active concern (pre-made loadouts already addresses Sub-goal A).
+- **Status:** parked. No action.
+
+**11. Mid-game "high tension → 10-round low" pattern, and the single-climax shape.**
+- *Brainstorm:* P4-style pattern — one big exchange, then 10 quiet rounds. Reframe: compress to *one climax = the end of the game*. Avoid the "up-down-up-down" shape where the second up tells you who won. Also solves the "decided endgame still being played" problem by ending the game while tension is still live.
+- *asan:* promote this to feedback-form KPI / observable target.
+- **Status:** **promoted to Principle 8** (`design-principles.md`). KPI form (single climax vs sine wave) added to the GLC-feedback-form TODO.
+
+**12. Bodyguard removal — what's the effect?**
+- *Brainstorm:* if Bodyguard goes, Champions become free move-attack targets for Guards. Worth a playtest.
+- *Designer note:* lower priority than the rest of the brainstorm.
+- **Status:** added as new OQ-67 (live, low priority). Connects to OQ-21 (Bodyguard trigger watch).
+
+**13. Draw conditions — remove?**
+- *Brainstorm:* current draw conditions feel like dead weight. Either smarter draw logic or remove entirely until needed.
+- *asan:* fits thematically into the big GLC change — combine.
+- **Status:** added as new OQ-68 (live, gated to GLC bundling).
+
+**14. Multi-Champ combo bonus → extend to non-Strike skills.**
+- *Brainstorm:* current Strike-only scope feels mathematically restrictive — narrows what players consider viable macro strategy. Should extend to non-Strike skills.
+- *asan:* this is exactly the Stack A G3 target-counter scope-widening — but the designer's lean is "ship this *with* the GLC bundle, not after." Test-one-thing-at-a-time vs ship-it-all-together tension explicitly noted.
+- **Status:** marked for inclusion in the GLC change-bundle (per designer direction "das kommt in der sammlung von big changes welche der GLC sind"). Move from Stack A G3 (gated-on-Stack-H) into the GLC bundle. To be reconciled with Stack A G3 when GLC stack is drafted.
+
+---
+
+*All "parked behind GLC" items above should be re-surfaced after the GLC stack lands and the new baseline stabilises. Until then, they are not action items — they are reasoning context for why GLC was chosen as the path forward and why adjacent improvements are deferred.*
+
+---
+
+## Pre-Made Loadouts for New Players (Pole A Onboarding) — Session 25
+
+**What it fixes / improves**: OQ-56 Problem A (draft entry complexity — new players cannot evaluate skills during draft because they have no on-board experience). P5 confirmed Pole B was the *wrong* solution for this problem — it replaced "no idea what skills do" with "too much happens to plan." A targeted fix inside Pole A: new players skip drafting entirely and pick one of N curated starter loadouts. Experienced players continue to draft freely.
+
+**Pre-thought design**:
+- 2–3 curated starter loadouts per side. Candidate identities: *Aggro* (Strike-heavy), *Defense* (Armor + Heal), *Combo-focused* (cross-category combo enablers).
+- New player picks a loadout (simultaneous reveal — connects to OQ-62) rather than drafting individual skills.
+- Loadouts use only the existing skill catalogue — no new skills required.
+- Experienced players can opt in to pre-made loadouts as a "quick game" mode or play full draft.
+- "Experienced" = subjective — player chooses their own mode per game.
+
+**Justification (per Rule)**: Solves OQ-56 Problem A without introducing the felt-PI / pure-reaction problems Pole B surfaced (OQ-64). New players get a comprehensible first game (game-feel improvement tied to the "Two minds, one puzzle" framing — they can read the puzzle from turn 1); experienced players keep full draft depth.
+
+**Risks**:
+- Loadouts may bias new players toward a specific play style, hiding variety. *Mitigation*: pick the 2–3 loadouts to span distinct strategic identities, not to teach one "correct" approach.
+- Must-pick skills (Armor, Steal, Focus) become more visible if they appear in every loadout — could surface a different chassis-volume problem (OQ-11 / OQ-12).
+- Defines a "starter" tier of skills — risks splitting the catalogue into "easy" and "advanced" tiers, which is its own design call (Q-E1 tiered catalogue).
+
+**Trigger**: this is now an *active* design candidate, not waiting on a trigger. Likely the next or near-next Active stack in the Pole A revival. See OQ-65.
+
+**Connects to**: OQ-56 (Problem A — direct fix); OQ-62 (simultaneous-reveal pairs); OQ-65 (the open question that frames this); OQ-66 (game length — short games make a "wrong" loadout less punishing, addresses OQ-56 Problem B without needing in-game switching); Q-E1 (tiered catalogue framing).
+
+---
+
+## Game Length 30-60 Minute Target — Multi-Lever Pacing Pass — Session 25
+
+**What it fixes / improves**: Principle 6 (game length is itself attrition). P4 ran 2h30; P5 ran 15 rounds (~?) but felt empty because nobody planned. Target: 30-60 min *with* "overarching tactic" feel preserved. Designer verbatim: *"man will trotzdem noch das feeling haben von 'ich habe eine overarching taktik und will diese anwenden um zu gewinnen'."*
+
+**Why this is a backpocket-entry instead of a single stack**: no single lever clearly delivers the target. Likely a stacked pass over multiple sessions. Candidate levers inventoried:
+- **Stack H — Armor Trim** (queued): reduces mid-game stalling at the chassis level. Confirmed effective lever (OQ-11).
+- **Stack K — Piece Count Reduction** (queued): less material to grind through.
+- **Stack D — Board Geometry** (dormant): tighter board (8×8) forces faster engagement.
+- **Pre-made loadouts** (Session 25 entry above): cuts pre-game time.
+- **Move/Skill action retuning**: under-explored; risk of breaking combo grammar.
+- **Win-condition acceleration** (Stack C dormant — King Lifetime HP): converts position into result faster.
+
+**Risk — "short because nobody planned"**: P5 was 15 rounds *because* play collapsed to reaction, not because mechanics shortened the game cleanly. Watch flag: any length-reduction lever must preserve the multi-turn planning window. Length cuts that work by reducing decision space are anti-Principle-4 and must be rejected.
+
+**Trigger**: integrated into Pole A revival as a *measurement axis* — every near-future Pole A stack tracks game length (rounds + wall clock) against the 30-60 min target alongside its primary measurement. Not a standalone stack until single-lever stacks have run.
+
+**Connects to**: Principle 6; OQ-11, OQ-27, OQ-1b, OQ-66 (the open question that frames this); OQ-19 (endgame acceleration — adjacent lever).
+
+---
+
+## Digital Prototype Persistence — Tooling Requirement — Session 25
+
+**What it fixes / improves**: P5 played digitally with Jonathan; Jonathan refreshed the browser mid/post-game and the game state vanished. No export, no log, no feedback artefact — only handwritten/verbal recall of insights survived. This blocks any future digital playtest from producing the analysis-grade data physical playtests do (tracking sheets, photos, transcribable notes).
+
+**Not a game-design fix — a tooling fix**. Lives in backpocket only to document the constraint that any digital prototype work must clear before serving as a playtest surface.
+
+**Pre-thought design** (for whoever owns the digital prototype):
+- Auto-save game state to local storage (or backend) every turn.
+- Export-as-JSON / export-as-PDF at any time, including post-game state.
+- Per-turn log of moves / drafts / activations / damage / Armor changes.
+- No reliance on browser tab persistence.
+
+**Trigger**: any future Pole B revival or digital Pole A playtest. Until persistence ships, digital playtests cannot be analysed at the level paper playtests can. Default back to paper for any "this game matters for evaluation" run.
+
+**Connects to**: P5 notes — `playtest-results/elias-vs-jonathan-pole-b-digital-2026-06/notes.md`; OQ-61 (Pole B revival gated on this if it happens digitally).
 
 ---
 
@@ -91,6 +237,8 @@ The shape is wrong, not the magnitude. Future Armor proposals must answer: "does
 **Methodology gating**: Stack H (Armor volume) runs first. Reasoning: chassis-volume is the *confirmed* P4 problem; combo scope is solving an articulated structural problem (exchange-pit) but hasn't been isolated in a single-variable test. Test Armor first → cleaner baseline for evaluating dual-counter.
 
 **Trigger**: Stack A G3 follows Stack H. If Stack H accidentally dissolves the exchange-pit pattern (chassis volume was masking it), dual-counter may not be needed. If exchange-pit persists post-H, dual-counter is the targeted fix.
+
+**Session 25 narrowing note**: P5 designer reflection — the **attacker counter** ("single piece hits multiple Champs gets bonus on 2nd+ different target") felt too generous in headspace simulation. Before Stack A G3 ships, narrow the attacker counter. Candidate narrowings: require the *targets* to be in different categories (Champion vs Guard) for the second hit to qualify; require the hits to be from *different skill categories* (not e.g. Tempest hitting all targets); cap the attacker bonus at +1 (no +2 stacking). Target counter scope-widening (cross-category skills count) stays as-is — only the attacker counter is over-generous on second look. Locks in at Stack A G3 design time, not before.
 
 ---
 

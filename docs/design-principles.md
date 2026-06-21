@@ -1,6 +1,6 @@
 # Design Principles
 
-*The rules we design by. Every proposed change must pass these. Last updated: 2026-05-30.*
+*The rules we design by. Every proposed change must pass these. Last updated: 2026-06-21.*
 
 ---
 
@@ -89,6 +89,25 @@ Treat reductions in game length as design wins by default, not as side-effects. 
 When many candidate solutions exist for the same problem, hyper-optimizing the current variable set drifts. Until the core game shape is settled, take bigger swings (new variables in place of old ones) more often than small adjustments (new values for old variables).
 
 This is a **conditional** principle. Once the core identity is settled, the Incremental Testing Methodology (one variable per stack) resumes primacy. While the core is unsettled, "do we even need this variable, and could we add new ones in place of it?" is the better question than "how do we tune this variable to produce better results?" Pole A vs Pole B (see `docs/research/path-y-defense-redesign.md`) is the canonical Session-23 example of this principle in action.
+
+---
+
+## One More Principle
+
+*Established Session 25 (2026-06-21). Promoted from brainstorm after P5.*
+
+### 8. The game shape is a single climax, not a sine wave.
+
+Target experience: rising tension → one climactic exchange or sequence → natural end. No "up-down-up-down" where the second up's tail tells you who already won. No post-climax "low" where both players grind toward a foregone conclusion. The first climax *is* the endgame.
+
+Why this matters: a multi-climax shape creates two failure modes that have shown up in playtests — (a) the "decided-but-still-playing" tail where one player knows they've lost but the rules force them to keep playing (P1, P4 endgame); (b) the dead-air interval between climaxes where neither player has a meaningful move (P4 R15-R21 Armor-stack cluster). Both burn attention budget without delivering Core Fantasy. Compress and cut to a single high-tension arc that *finishes* the game.
+
+Practical consequences:
+- End conditions must be reachable at the climax, not 10 turns after it. Open question on whether King-capture is still the right end condition vs. piece-count or threshold-based alternatives.
+- Game-shape becomes a tracked KPI in feedback forms: did the game peak once and end, or did it peak and limp?
+- Pairs with Principle 6: short games + single climax = the game-shape we are now optimizing for.
+
+This is a **design target**, not yet a mechanical mandate. P5 surfaced the pattern; the Game Length Cut work in Session 25+ is the first test of whether we can engineer the shape.
 
 ---
 

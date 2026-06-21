@@ -19,14 +19,14 @@
 - **Re-entry trigger**: re-evaluate Bodyguard *behaviour* after Stack H. If Armor trim reduces stalling and Move-Attacks return, Bodyguard becomes triggerable again — only then is the rule itself testable. If a fix is needed at that point, draft a new stack rather than reviving Stack B.
 - **Framing-B watch-flag (added Session 20, Q-C2 finding)**: Bodyguard is the most chess-coded mechanic in the chassis — confirmed combo-irrelevant in P3 (Mario's usage was trade-up defensive screening, not combo-positioning). Not actionable today, but if a future stack proposes simplifying/removing Bodyguard for chassis-volume reasons, Framing B (ADR-004) is one of the supporting arguments. See Q-C2 in `docs/research/high-concept-open-questions.md`.
 
-### OQ-34: Steal Balance — Mode B CONFIRMED DOMINANT (P4)
+### OQ-34: Steal Balance — ADDRESSED VIA STACK M (cost 3→4, both Modes)
 **Mode A** (opponent at 0 Money): Steal is a normal-range Strike skill (1 damage, no theft effect). Not dominant.
 **Mode B** (opponent has Money): cheap damage + opponent disabling. Tempo weapon. Disable value time-dependent: early-game high impact, late-game low impact.
 - **P4 evidence**: Elias Q9 *"Steal again feels very strong in some situations"* + must-pick. Niko's R26-R28 winning loop = Tempest + Steal + Focus. Niko Q15 favourite: *"stealing money to prevent skills next turn"* — celebrating Mode B. Elias R8 actively neutralised Niko's Steal champ early.
-- **Decision**: hold cost increase until after Stack H. If Stack H trims Armor and combat speeds up, Steal's Mode-B value drops naturally (less time for disable to matter).
-- **Re-entry trigger**: re-evaluate in next experienced-player game post-Stack H. If Mode B still dominant, raise to cost 4.
+- **Session 25 — absorbed into Stack M**: Steal cost 3→4 for both Modes. Targets Money economy faucet rebalance and Mode B dominance simultaneously. Rollback path: if combo widening + cost increase together kill cleverness ("pure aggression dominates"), roll back combo widening OR Steal cost increase depending on which axis feels off (per Stack M routing).
+- **Re-entry trigger**: Stack M playtest result. If Steal still must-pick at cost 4, escalate to cost 5 or a structural rework. If Steal becomes ignored, dose was too high.
 
-### OQ-38: Multi-Champion Combo Bonus — CONFIRMED IN MECHANICS, SCOPE WIDENING QUEUED (P4 + Session 22)
+### OQ-38: Multi-Champion Combo Bonus — TARGET-COUNTER WIDENING ABSORBED INTO STACK M; ATTACKER-COUNTER DEFERRED TO STACK A G3
 **+1 damage on the second+ Strike hit when 2+ different Champions target the same enemy this turn.**
 - Buff skills targeting your own pieces do NOT count.
 - Charge stacks with combo bonus (separate effects).
@@ -38,15 +38,11 @@
 - **Session 22 reframe (designer pushback)**: the "weak in feel" reading from the original analysis was wrong. The bonus is **by design** a few-times-a-game payoff, not an every-turn activation — a Q3 "Somewhat / Bit of both" reading is exactly right for that design intent. The lever is **scope**, not **strength**.
   - Cross-category crowd-out is a real consequence of Strike-only scope, not a bonus-strength problem.
   - Elias's late-game offensive lockout (#6) — *"i did not have any other attack champs left"* — is a scope-reachability problem too: the bonus was structurally locked away when his Strike-equipped Champs died. Single-Champion offense doesn't trigger the target counter.
-- **Two design moves on the table for Stack A G3 (deferred behind Stack H)**:
-  1. **Widen target counter**: any skill that hits an enemy piece counts (Strike + hit-causing Move skills like Hook). Move-Attacks excluded (free → would over-cheapen the trigger).
-  2. **Add a parallel "attacker counter"**: same Champion hitting *different* targets in one turn → 2nd+ hit gets +1 damage. Encourages distributing pressure across multiple fronts (anti-exchange-pit; see new OQ on mid-game stickiness). Fixes #6 directly — single surviving offensive Champ can still access bonus by spreading hits.
-  - **Stacking**: intuitive — both counters fire if both qualify on the same hit.
-  - **Multi-target skills (Tempest)**: tick the counter on each hit piece. Watch flag — first surgical rollback if dual-counter proves OP.
-  - **Move-Attacks**: still excluded.
-- **Methodology gating**: Path A chosen — Stack H first (Armor volume), Stack A G3 (combo scope widening) after. Reasoning: Armor volume is the *confirmed* P4 problem; combo scope is solving a problem articulated structurally but not yet isolated in a single-variable test. Testing Armor first gives a cleaner baseline against which to evaluate dual-counter.
-- **Teaching cost flag**: dual-counter is strictly more complex than current G2. Two parallel counters needs physical tracking solution (G4 Cognitive Load guardrail). Budget for tokens / board-side trackers in the Stack A G3 design.
-- **Status**: G2 verdict held — keep into baseline. G3 (dual-counter + widened scope) staged in `backpocket.md` with full Justification Rule writeup, queued behind Stack H.
+- **Session 25 — target-counter widening absorbed into Stack M**: Stack M widens the *target counter* to also tick on **movement-causing skills** that move the target (Tempest push, Hook pull, Blast push, Shove, Swap when relocating enemy). Move-Attacks still excluded. Self-movement (Dash, Retreat) excluded.
+- **Session 26 — bonus-damage scope expanded inside Stack M**: bonus damage now applies to *any* skill — Strike *or* movement-causing — that affects a target with counter > 0, not only to Strike hits. Movement skills become a damage vector once a target is counter-loaded. Designer rationale: this unlocks damage strategies without Strike skills and gives more utility/strategic options. Counter-tick rules unchanged (still requires new Champion + Strike-or-movement). This is a substantive expansion of OQ-38's scope beyond the originally drafted Stack M dose. Watch flag: if dual-effect skills (Tempest, Hook) feel overwhelmingly dominant, first rollback is "movement skills tick counter but only Strike skills deal bonus damage" (drafted in Stack M Facilitator Notes routing).
+- **Stack A G3 attacker-counter — DEFERRED post-Stack-M**: The *attacker counter* (same Champion hits different targets → bonus) is NOT in Stack M. Remains as Stack A G3 candidate if Stack M's combo widening does NOT auto-resolve the exchange-pit pattern (OQ-58). Session 25 narrowing note in `docs/backpocket.md`: attacker counter felt too generous on reflection — narrow at design time when Stack A G3 is drafted.
+- **Teaching cost flag (G4 / OQ-60)**: Stack M's widening keeps a single counter (no second parallel counter yet); cognitive-load increase is modest. Stack A G3's dual-counter would still need tokens/board-side trackers.
+- **Status**: G2 single-counter Strike-only is in baseline. Stack M widens target counter to movement-causing skills. Stack A G3 (attacker counter) deferred post-M.
 
 ---
 
@@ -78,34 +74,95 @@
 - **Re-entry trigger**: re-evaluate after Stack H + Stack A G3 + Stack K. The dead-air windows may shrink as chassis volume drops and combo grammar widens. If they persist, dedicated stack(s).
 - **Connected to**: OQ-52 (centre attractor); OQ-53 (King role); OQ-1b (8×8); OQ-38 (combo scope); OQ-58 (exchange-pit — pairs with this).
 
-### OQ-61: Two-Pole Parallel Design — Pole A vs Pole B — OPEN (Session 23)
+### OQ-61: Two-Pole Parallel Design — PARTIALLY RESOLVED → POLE A CONTINUES (Session 25)
 `[System: Project methodology / Game shape]`
 **Should the project carry both versions forward indefinitely as game *modes*, or is Pole B (per-turn-draft) an experiment that *replaces* Pole A (pre-game-draft) if it lands?**
 - **Origin**: Session 23 discussion — see `docs/research/path-y-defense-redesign.md`. User crystallised two parallel game versions rather than continuing to tweak variables inside a single rule set.
 - **Pole A** = pre-game-draft (current game). **Pole B** = per-turn-draft (skills added during play; 12-equipped cap; shared action slots; no Money activation gate).
-- **Current user lean (Session 23)**: experiment-that-could-replace, with both alive while we learn. User: *"i do not wanna abandon somethign that might serve a different game feel. so like if we see that both rule versions create different feels and stuff then we should maybe think about having 2 modes for the game."*
-- **Resolution criteria**: after first 2–3 Pole B prototype games, compare game-feel against Pole A. If Pole B clearly produces a different (good) feel → consider 2-modes. If Pole B feels like a clear upgrade in the same direction → Pole B replaces. If Pole B fails → Pole A track resumes.
-- **Re-entry trigger**: after 2–3 Pole B prototype playtests on the digital prototype.
-- **Connected to**: OQ-62 (Pole A draft information); OQ-63 (cross-pole fixing methodology); OQ-11 (Armor — diagnosed in Pole A, may persist in Pole B).
+- **P5 result (2026-06-21, Elias P1 vs Jonathan P2, digital, 15 rounds)** — full notes: `playtest-results/elias-vs-jonathan-pole-b-digital-2026-06/notes.md`. Three structural problems surfaced:
+  1. **Armor 3 still felt mandatory** — Jonathan flagged unprompted; cross-pole confirmation of OQ-11.
+  2. **Pure-reaction play** — board state shifted too dramatically per turn for multi-turn planning. Breaks Principle 4.
+  3. **Felt PI broke** — combinatorial breadth made formal-PI invisible; players reported losing the "perfect information" feel. (Distinct from OQ-62 which is about Pole A sequential draft determinism — see new OQ-64.)
+  - Length dropped (15 rounds vs P4's 28-29) but the short game lacked "overarching tactic" feel — short *because* nobody planned, not short *and* satisfying.
+- **Resolution (Session 25)**: **Pole A continues as the Active track.** Pole B (consumable-skills variant) is paused. Other Pole B variants in `docs/backpocket.md` (permanently-equipped, activation-cap, resource-cost-on-activation) remain alive as future experiments if the Pole A track stalls again. This is NOT "Pole A replaces Pole B" — Pole B is paused at this variant; the underlying *direction* (in-game skill acquisition) may return.
+- **→ Move to OPEN_QUESTIONS_ARCHIVE.md next archive pass.** OQ stays alive briefly as load-bearing context for the Session 25 → 26 transition.
+- **Connected to**: OQ-62 (Pole A draft information — still live, scope unchanged); OQ-63 (cross-pole fixing — resolved on first encounter, see below); OQ-11 (Armor — cross-pole confirmed); OQ-64 (felt-PI vs formal-PI — opened from P5); OQ-65 (onboarding via pre-made loadouts — opened from P5); OQ-66 (game length target — opened from P5).
 
-### OQ-62: Pole A Draft Information — Sequential vs Simultaneous Reveal — OPEN (Session 23)
+### OQ-62: Pole A Draft Information — Sequential vs Simultaneous Reveal — OPEN (Session 23; live again Session 25)
 `[System: Skill Drafting / Strategic determinism]`
 **Does the current sequential pre-game draft cause a "deterministic perfect game / always better to react" pathology, and does simultaneous-reveal drafting fix it without breaking perfect-information-during-play?**
 - **Origin**: Session 23 — user identified that sequential draft makes counter-picking always strictly better than committing to a strategy. *"there is no fundamental strategy picking as it is always better to react instead of doubling down."*
 - **Proposal**: *"both players pick 2 skills at the same time when both are ready and repeat."* Tunable: pick-size per round (2 vs N), reveal cadence.
 - **Information-loss carve-out**: User accepts limited PI loss **only** in the pre-game draft window: *"i accept losing a tiny bit of perfect information in the 'pre game part' if we uphold perfect information later on."* The in-game commitment to perfect information stands.
-- **Scope**: Pole A only. Pole B has its own draft model (per-turn) and this question doesn't apply there directly.
-- **Re-entry trigger**: any Pole A stack work that touches drafting; or post-Pole-B-prototype, when Pole A is re-evaluated against the new data point.
-- **Connected to**: OQ-34 (Steal — affected by draft visibility); OQ-56 (draft entry complexity); OQ-16 (skill drafting fairness).
+- **Scope**: Pole A only. (Pole B is paused as of Session 25 — see OQ-61.) With Pole A back as Active, OQ-62 returns to live status; not the next stack but a candidate after onboarding/length work.
+- **Re-entry trigger**: when the Pole A onboarding/length work surfaces draft-side levers, OR as a dedicated draft-flow stack.
+- **Connected to**: OQ-34 (Steal — affected by draft visibility); OQ-56 (draft entry complexity — see also OQ-65 pre-made loadouts); OQ-16 (skill drafting fairness); OQ-65 (pre-made loadouts may pre-empt some of the determinism — fixed loadouts have no draft phase to be deterministic in).
 
-### OQ-63: Cross-Pole Fixing Methodology — OPEN (Session 23)
+### OQ-63: Cross-Pole Fixing Methodology — RESOLVED ON FIRST ENCOUNTER (Session 25)
 `[System: Project methodology]`
 **When a problem (e.g. Armor's role) exists in both poles, do we run the fix in each pole separately, or once and carry across?**
 - **User lean (Session 23)**: *"its cleaner if we have to run it twice, once per pole, but i also say that it could be confusng if we do not clearly seperate both poles from one another."* Two-pole-twice is the default lean, with confusion as the explicit risk.
-- **Resolution criteria**: encountered first time on a real shared fix; method choice locks in then. Don't pre-decide in the abstract.
-- **First likely encounter**: Armor / defense redesign (Pole-agnostic candidate in `backpocket.md`). When it triggers, the cross-pole methodology resolves.
-- **Re-entry trigger**: first shared-fix proposal that applies cleanly to both poles.
-- **Connected to**: OQ-61 (two-pole framing); OQ-11 (Armor — first likely shared-fix surface).
+- **First encounter (Session 25)**: P5 confirmed Armor 3 feels mandatory in Pole B too (cross-pole confirmation of OQ-11). With Pole B now paused (OQ-61 resolution), the methodology question collapses to a simpler shape: Stack H runs in Pole A only. If Pole B is ever revived, Stack H (or its successor) runs again there. **Carry-forward is per-pole-revival, not once-and-carry.** Confirms the original lean without forcing an actual two-pole-twice run.
+- **→ Move to OPEN_QUESTIONS_ARCHIVE.md next archive pass.**
+- **Connected to**: OQ-61 (two-pole framing); OQ-11 (Armor — first shared-fix surface).
+
+### OQ-64: Felt PI vs Formal PI — Combinatorial Breadth Breakdown — OPEN (P5, Session 25)
+`[System: Whole-game / Information / Cognitive load]`
+**When a turn has too many possible picks × actions × interactions, does the *feeling* of perfect information break down even though formal PI holds?**
+- **Origin**: P5 (Pole B, Elias vs Jonathan) — both players reported that the breadth of pick × action × skill-interaction options per turn made the game feel like incomplete information, despite all state being technically visible. Designer verbatim: *"es gab halt so viele möglichkeiten ... sodass man nicht mehr das gefühl von 'perfekter information' hatte."*
+- **Why it matters**: Perfect Information is a hard constraint (`design-principles.md`). If a design produces formal-PI but loses felt-PI, it has lost the *thing PI was supposed to deliver* — the ability to plan from a fully readable board. Felt-PI failure breaks Principle 4 (cleverness > attrition) by making multi-turn planning impossible.
+- **Distinct from OQ-62**: OQ-62 is about *informational asymmetry* introduced by sequential draft (knowing what opponent already picked before you commit). OQ-64 is about *informational overload* breaking PI even when nothing is hidden. Same axis (information), different failure mode (asymmetry vs overload).
+- **Distinct from OQ-60 (cognitive load)**: OQ-60 asks "is per-turn thinking proportional to payoff?" OQ-64 asks "does the *visible* state space fit in a player's head well enough to read?" Cognitive load can be high while felt-PI holds (chess endgames); felt-PI can break while load is medium (Pole B P5).
+- **Design constraint flagged**: any future system addition needs a felt-PI smell-test. "Can a player look at the board and read what's possible in the next 1-2 turns without consulting external state?"
+- **Re-entry trigger**: surfaces in any future stack where per-turn option space expands sharply (combo widening, skill catalogue expansion, Pole B revival, AP system).
+- **Connected to**: OQ-60 (cognitive load); OQ-56 (Problem C2 — skill identity volume); OQ-62 (Pole A draft determinism); Principle 4 (cleverness > attrition); hard constraint "Perfect Information."
+
+### OQ-65: Pre-Made Loadouts for New Players — OPEN (P5, Session 25)
+`[System: Onboarding / Draft / Pole A revival track]`
+**Should new players skip the pre-game draft entirely and play with a curated starter loadout, with drafting unlocked only for experienced players?**
+- **Origin**: P5 — Pole B was partly motivated by "first-game players can't evaluate skills during draft" (OQ-56 Problem A). P5 confirmed Pole B *replaced* that problem with a worse one (felt-PI breakdown, OQ-64). Designer's call: solve OQ-56 Problem A inside Pole A directly, via **pre-made loadouts**. Verbatim: *"unerfahrene spieler nutzen pre-made picks."*
+- **Pre-thought design**: 2-3 curated starter loadouts per side (e.g. "Aggro", "Defense", "Combo-focused"). New players pick a loadout, not individual skills. Experienced players continue with the full draft. Removes the entire draft cognitive load for new players without removing strategic depth from the game itself.
+- **Justification (per Rule)**: Fixes OQ-56 Problem A (draft entry complexity) without introducing the felt-PI / pure-reaction problems Pole B surfaced. Game-feel improvement: new players get a comprehensible first game; experienced players keep the full draft experience.
+- **Risks to monitor**:
+  - Loadout selection becomes its own draft determinism problem if presented sequentially (use simultaneous reveal — connects to OQ-62).
+  - Curated loadouts may bias new players toward a specific play style, hiding strategic variety.
+  - "Mandatory upkeep" / must-pick skills (Armor, Steal, Focus) become more visible if they appear in every loadout — exposes a different chassis-volume problem.
+- **Re-entry trigger**: this is now a candidate Active stack for Pole A revival (alongside OQ-66).
+- **Connected to**: OQ-56 (draft entry complexity — direct fix for Problem A); OQ-62 (simultaneous-reveal could pair with loadout selection); OQ-66 (game length — short games make a "wrong" loadout less punishing).
+
+### OQ-66: Game Length Target — 30-60 Minutes — ADDRESSED VIA STACK M, PENDING PLAYTEST (P5, Session 25)
+`[System: Whole-game pacing / Principle 6]`
+**Can game length be drastically reduced to a 30-60 minute target without sacrificing the "overarching tactic" feel?**
+- **Origin**: P5 — designer verbatim: *"es ist gut, wenn das game schnell vorbei geht, aber man will trotzdem noch das feeling haben von 'ich habe eine overarching taktik und will diese anwenden um zu gewinnen'. ich glaube wirklich der nächste schritt ist erstmal bei pole a zu bleiben und sich darauf zu fokussieren ... die länge vom spiel drastisch zu verringern (auf so 30-60 minuten maybe)."* P5 itself ran 15 rounds (fast) but felt empty — short + reactive is bad. Target: short + with overarching tactic.
+- **Why it matters**: Principle 6 (game length is itself a form of attrition). P4 ran 2h30; reducing to 30-60 min unlocks more playtests per session, lower onboarding friction, and meets the actual playability bar for first-time players.
+- **Stack M operationalization (Session 25)**: Six bundled changes target game length on multiple compounding axes simultaneously (per the 12-economy map): board 8×8 (tile economy / combinatorics), Armor cap 2 (chassis volume), Injured-no-penalty (damage-vs-heal asymmetry), no draws (single-climax shape), Steal cost 4 (Money faucet rebalance), combo widening (engagement more attractive than stalling). Each lever maps to a specific compounding curve identified in `docs/research/game-economy-map.md`.
+- **Risks (still apply)**:
+  - Cutting too fast removes the multi-turn-planning window the core fantasy lives in.
+  - "Short *because* nobody planned" is the P5 failure mode — guard against it.
+  - Player skill asymmetry feels worse in short games (less time for newer player to learn / recover).
+- **Re-entry trigger**: Stack M playtest result. If target met but feel broken → roll back the offending axis per Stack M routing. If target not met but no stalling → Stack K piece reduction is the next isolation lever.
+- **Connected to**: Principle 6 (game length as attrition); Principle 8 (single climax); OQ-11 (Armor — absorbed); OQ-27 (Stack K — piece count, queued post-M); OQ-1b (Stack D — 8×8 absorbed); OQ-65 (pre-made loadouts — sequenced post-M).
+
+### OQ-67: Bodyguard Removal — Effect on Champion Mobility — OPEN (Session 25 brainstorm)
+`[System: Bodyguard / Champion-Guard interaction]`
+**What changes if the Bodyguard rule is removed entirely?**
+- **Origin**: Session 25 brainstorm — designer asked "do we need the Bodyguard rule at all?" Bodyguard currently lets an adjacent Guard intercept a Move-Attack on a Champion/King. Without it, Champions become free Move-Attack targets for opposing Guards.
+- **Why it matters**: Bodyguard is a chassis system. Per the Chassis/Engine lens, every chassis system should justify why the engine needs it. P3 and P4 evidence is mixed — Bodyguard *did* trigger organically in P3 (resolving OQ-21 favorably) but stayed at 0 triggers in P4 (correlated with the Armor-stall covariate). With Bodyguard absent, Champions would face direct Guard pressure — could make mid-game more active or could make Champions glass cannons.
+- **Designer note**: explicitly low priority — "other questions here have more priority." Park as live OQ but do not bundle into the GLC change set unless it surfaces as a problem there.
+- **Justification (per Rule)**: tests whether Bodyguard pays for its chassis volume (G4 cognitive load + rule explanation cost). If removal doesn't damage game-feel, the rule is dead weight.
+- **Re-entry trigger**: standalone playtest after GLC stabilises. Or earlier if Bodyguard surfaces as a problem during GLC playtests.
+- **Connected to**: OQ-21 (Bodyguard trigger watch — would close negatively if removal feels fine); Chassis/Engine lens (Bodyguard is pure chassis).
+
+### OQ-68: Draw Conditions — RESOLVED via Stack M (Session 25 brainstorm; folded into GLC bundle)
+`[System: End conditions]`
+**Should the current draw conditions be removed (until a gameplay-feel reason returns), redesigned, or kept?**
+- **Origin**: Session 25 brainstorm — designer verbatim: *"auch die draw conditions könnte man entweder mal endlich entfernen (und eventuell mal überlegen ob man da smartere sachen nehmen will oder sie einfach komplett weg lässt bis ein bestimmtes gameplay feel sie wieder brauchen würde)."*
+- **Why it matters**: end conditions shape game shape (Principle 8 — single climax target). Current draw conditions are remnants from earlier versions and may not match the "single climax → natural end" target shape.
+- **Resolution (Session 25)**: **Removed entirely as part of Stack M.** Both current draw conditions (10-round-captureless + only-Kings-remain) are gone for Stack M. Not replaced. Game ends only when a King is captured. Rollback path: if no-draws causes infinite games in some positions, restore only-Kings-remain as the cheaper draw condition to keep (per Stack M routing). Final answer pending Stack M playtest result.
+- **→ Move to OPEN_QUESTIONS_ARCHIVE.md once Stack M playtest closes the question.**
+- **Connected to**: Principle 8 (single climax); OQ-53 (King as real target — overlap on win-condition redesign); Stack M routing in `docs/test-scenarios/stack-m-game-length-cut/`.
+
+---
 
 ### OQ-60: Cognitive Load — Real Concern or Acceptable? — WATCH (P4 finding, Session 22)
 `[System: Whole-game / G4 guardrail]`
@@ -165,10 +222,12 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
   - Reversal criterion check: did combos *reliably* overrun Armor? Niko's R26-R28 loop did, BUT only after a 7-round Armor consolidation. **Cannot dissolve Q-C1.**
 - **Test plan (Q-C1, decided Session 20; restructured Session 22)**: Stack H bundles **C1b** as the lead dose — cap 3→2 *and* Plate +1→+2. Risky-path-first: smaller dose **C1a** (cap 3→2 only) runs as the next iteration of Stack H if the bundled dose stalls. (Previously this was tracked as a separate Stack I — collapsed into Stack H Session 22.)
 - **Session 23 update — DEPRIORITISED to Queued.** Pole B per-turn-draft prototype claims the Active slot during the 3-week vacation digital-prototype window (see OQ-61). Stack H bundled dose remains the **lead variant** when Stack H runs; within-stack rollback (cap-only) is the contingency. **"Build cheaper than break" risk is bigger than originally framed** — user verbatim: *"if it is way easier to stack armor then it is to get rid of it... the change can exponetiallise this even more."* When Stack H runs, Armor totals must be tracked vs P4 baseline (14/22) and the rollback dose triggered if totals climb.
-- **Status**: **QUEUED** — runs after Pole B prototype data lands (or earlier if Pole B fails fast).
-- **Connected to**: Q-C1 in `docs/research/high-concept-open-questions.md`; ADR-004 (Framing B); OQ-38 (combo bonus); OQ-58 (exchange-pit / mid-game stickiness — separate problem); OQ-61 (Pole B claims active slot); OQ-63 (cross-pole fixing — Armor is the likely first shared-fix encounter).
+- **Session 25 update — CROSS-POLE CONFIRMED.** P5 (Elias vs Jonathan, Pole B digital prototype, 15 rounds) — Jonathan flagged unprompted that **Armor 3 is too much**, in Pole B's per-turn-draft model where Pole A's compounding-stack dynamics shouldn't apply. The chassis-tax pattern survives the structural switch — Armor is not a Pole-A-specific symptom. Confirms OQ-11 as a cross-pole structural issue and resolves OQ-63 toward "per-pole-revival, not once-and-carry" (see OQ-63). With Pole A back as Active track (OQ-61), Stack H is the natural next-Active candidate — but Session 25 designer call pushes onboarding (OQ-65) + game length (OQ-66) ahead of Stack H, on the theory that *those* shorten the game enough to make Armor stalling shorter even before chassis trim.
+- **Session 25 update — ABSORBED INTO STACK M.** Armor cap 3→2 is one of Stack M's six bundled changes (`docs/test-scenarios/stack-m-game-length-cut/`). The Plate +1→+2 component of the originally-bundled Stack H dose is NOT in Stack M — only the cap change is. Stack H as a standalone remains as **isolation-fallback**: if Stack M's routing produces "rollback Armor only" or "rollback everything except Armor", Stack H runs as the single-variable Armor isolation stack at that point. The cross-pole confirmation (P5 Jonathan) was the trigger that made Stack H's Armor lever load-bearing across both poles and justified including it in the bundle.
+- **Status**: **ABSORBED into Stack M (Active); Stack H queued as isolation-fallback only.** Pending Stack M playtest result.
+- **Connected to**: Q-C1 in `docs/research/high-concept-open-questions.md`; ADR-004 (Framing B); OQ-38 (combo bonus — also addressed in Stack M); OQ-58 (exchange-pit / mid-game stickiness — separate problem); OQ-61 (Pole B paused → Pole A continues); OQ-63 (cross-pole fixing — RESOLVED via OQ-11); OQ-66 (game length — primary axis Stack M operates on).
 
-### OQ-57: Injured State — Mechanical Downsides Carry Their Weight? — PARTIALLY CONFIRMED (P4)
+### OQ-57: Injured State — Mechanical Downsides Carry Their Weight? — ABSORBED INTO STACK M
 `[System: Health & Armor] [Affects: Combat texture, teaching cost, combo grammar]`
 **Opened 2026-05-26** from Q-B5 reframing. Original question was "should Injured be hidden for first-game teaching?" — reframed via user pushback to "should Injured have any mechanical downsides at all?" That's a stack candidate, not a teaching-protocol tweak.
 - **Chassis volume claim**: Injured carries non-trivial teaching cost (speed cap, Range −1, "doesn't affect self/adjacent" carve-out, Range-modifier chaining for Range−1 skills on Injured pieces). Multiple rule clarifications during play stem from it.
@@ -177,10 +236,8 @@ Four constraint models proposed (A: 1-skill-per-piece; B: 1-AP-per-piece; C: unc
   - Niko Q12: **Clearly weaker** — felt the downsides ("also because it was close to death").
   - Elias Q12: **Slightly weaker / Barely noticeable** — experienced player barely registers the mechanical effect.
   - Split read: experienced player barely notices Injured's effect; new player gets weak-piece feel + confusion at the rule. **Suggests volume is real but mechanical payoff is thin.**
-- **Test plan (Stack J)**: Remove Injured's mechanical downsides entirely. State persists as HP-tracker (2 HP → 1 HP → 0 HP) but Injured pieces have no speed cap and no Range −1.
-- **Trigger / gating**: After Stack H. P4 lifts the prerequisite ("after Stack A G2") — combo bonus is now confirmed, the gating is just Stack H ordering.
-- **Recognised risk**: Could scale up to baseline-change candidate if it plays well — that's accepted as part of the stack's scope, not a misframing.
-- **Connected to**: Q-B5 in `docs/research/high-concept-open-questions.md`; chassis/engine lens in `design-principles.md`.
+- **Session 25 — absorbed into Stack M**: Injured's mechanical downsides are removed entirely (no speed cap, no Range −1, no self/adjacent carve-out). State persists only as 2 HP tracker. Stack M routing: if "Injured-no-penalty makes pieces feel disposable / structureless", roll back Injured change only (re-enable speed cap + Range-1). Stack J (standalone Injured Trim) is now redundant unless that rollback fires and Injured needs its own isolation stack.
+- **Connected to**: Q-B5 in `docs/research/high-concept-open-questions.md`; chassis/engine lens in `design-principles.md`; Stack M routing.
 
 ### OQ-56: Draft Entry Complexity + Skill Permanence — INCONCLUSIVE-CONTAMINATED (P4)
 `[System: Skill Drafting] [Affects: New player onboarding, Mid-game adaptability]`

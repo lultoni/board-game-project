@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-05-31 — end of Session 24.*
+*Last updated: 2026-06-21 — end of Session 26.*
 
 ---
 
@@ -32,18 +32,17 @@ You are my board game design co-creator and systems architect. We are working on
 6. Read `docs/research/path-y-defense-redesign.md` (Session 23 canonical writeup — Pole framing + Pole B mechanics live here).
 7. Check if the user has added any new files in `playtest-results/` or `docs/research/` since last session.
 
-### Where We Are (Session 24 complete, 2026-05-31)
+### Where We Are (end of Session 26, 2026-06-21)
 
-- **Stack L — Pole B Per-Turn-Draft Prototype** is the Active stack with a standalone rule sheet now at `docs/test-scenarios/stack-l-per-turn-draft/stack-l-per-turn-draft.pdf`. Three-phase turn: Move → Draft → Skill. Move and Draft share a 4-action pool. Skill Phase is free; activations consume the skill back to the shared pool.
-- **Pole framing remains current.** *Pole A* = pre-game-draft (current game). *Pole B* = per-turn-draft (radical alternative, now playable). Full discussion: `docs/research/path-y-defense-redesign.md`.
-- **Stack H — Armor Trim** still Queued.
-- **Project-wide vocabulary simplification** completed — broad rename pass across docs/skills/Typst rule sheets to align terminology and reduce jargon for new players.
-- **PDF template redesigned** (Session 24). Inter typography, numbered H2 with teal numerals, new `sk("Lance")` skill-chip helper, redesigned callout boxes, pagination fixed (lists/enums no longer split mid-bullet; outer `breakable: false` wraps removed from baseline-sections + stack-l). All PDFs rebuild clean.
-- **`BASELINE_VERSION` = 2026-05-30** (unchanged from Session 23).
+- **Stack M — Game Length Cut is the Active stack and the rule sheet is print-ready.** Six bundled simultaneous changes vs baseline (intentional methodology deviation per Principle 7): board 10×10→8×8; Armor cap 3→2; Injured penalties removed (still 2 HP); draw conditions removed; Steal cost 3→4; Multi-Champion Combo Bonus widened on two axes — (a) counter ticks on movement-causing skills, and (b) **bonus damage applies to any skill (Strike OR movement) on a counter-loaded target** (Session 26 design change).
+- **Session 26 was a finalisation pass on Stack M**, not new ground. Multiple correction passes restored baseline section order, added Introduction + Simple Overview, cut over-used `changed-box` callouts and diff-style annotations, fixed the fixed-layout Setup (Kings offset, 2+3 Champion split, Guards in front of each Champion+King), collapsed Health & Armor, switched in-text skill refs to `sk()` chips, and hid Facilitator Notes via Typst block comment so the player-facing PDF reads as rules-only.
+- **Substantive design change inside Stack M**: bonus damage now applies to any skill (not just Strikes) on a counter-loaded target. Movement skills become a damage vector once counter is loaded. This expands OQ-38's scope beyond the Session 25 dose; first rollback if it dominates is to revert to "movement ticks counter, Strike-only deals bonus damage" (Session 25 draft).
+- **Pole B remains paused** (Session 25 P5 result). Stack H (Armor Trim) remains the isolation-fallback inside Stack M's per-axis rollback routing.
+- **OQ-65 (pre-made loadouts)** is sequenced after Stack M, not before. **`BASELINE_VERSION` = 2026-05-30** (unchanged).
 
 ### Immediate Next Action
 
-**Run the first Pole B per-turn-draft prototype game digitally** with Jonathan (3-week vacation window open). Use `docs/test-scenarios/stack-l-per-turn-draft/stack-l-per-turn-draft.pdf` as the rule sheet. After 2–3 games, compare game-feel vs Pole A and route per Stack L's *Routing on result* in `TESTING_PLAN.pdf`.
+**Print Stack M and run P6.** Files: `stack-m-game-length-cut.pdf` (rule sheet) + 2× `stack-m-feedback.pdf` (one per player). Game-tracking sheet + skill cards unchanged. Track rounds + wall-clock + first-Champion-kill round vs the 30-60 min target. *Caveat:* designer may still have brainstorm batches incoming — if any arrive before scheduling P6, fold them in before locking the print version.
 
 ### Key Files
 

@@ -3,7 +3,7 @@
 
 = Testing Plan
 
-_Last updated: 2026-05-30 (Session 23, post-Pole-framing). Updated by Claude at end of each session._
+_Last updated: 2026-06-21 (Session 26 — Stack M rule sheet finalised after holiday-insights brainstorm). Updated by Claude at end of each session._
 
 #note-box[
   *How to read this document:*
@@ -19,37 +19,34 @@ _Last updated: 2026-05-30 (Session 23, post-Pole-framing). Updated by Claude at 
 
 _Exactly one stack is Active at a time — the one prepping to run, or running. Don't open a second._
 
-=== Stack L — Pole B Per-Turn-Draft Prototype
+=== Stack M — Game Length Cut (GLC)
 
-*Pole framing (Session 23):* Pole A = pre-game-draft (current game). Pole B = per-turn-draft (this stack). See `docs/research/path-y-defense-redesign.md` for the full design discussion.
+*Status: drafted Session 25 (2026-06-21).* Rule sheet + feedback form: `docs/test-scenarios/stack-m-game-length-cut/`.
 
-*Targets:* The defense-as-tax problem (OQ-11 from a different angle), game length (Principle 6 — length is attrition), drafting determinism (OQ-62). Tests whether moving the draft into the game flow changes the game-feel enough to justify the radical shape change.
+*What's bundled (six simultaneous changes — intentional methodology deviation):*
++ Board 10×10 → *8×8*
++ Armor cap 3 → *2*
++ Injured state: penalties removed (still 2 HP tracker; no speed cap, no Range -1)
++ Draw conditions removed entirely (not replaced)
++ Steal cost 3 → *4* (both Modes)
++ Multi-Champion Combo Bonus widened on two axes: (a) counter *ticks* on *movement-causing skills* (Tempest, Hook, Blast, Shove, Swap when it relocates an enemy) by a new Champion, not just Strikes; (b) bonus damage applies to *any* skill — Strike or movement-causing — that affects a target with counter > 0. Movement skills become a damage vector once the counter is loaded.
 
-*Mechanic summary* (full design in `docs/research/path-y-defense-redesign.md`):
-- Skills are *added to pieces during play*, not all at once at the start.
-- Skills still *fire once per use* but are *reusable while equipped*.
-- *Equipped count cap = 12 skills per player* (6 Champions × 2 slots; King doesn't change the count).
-- *Shared actions* — Move Phase and Draft Phase use the same action pool. Spending an action to draft a new skill onto a piece is a tempo cost (vs. moving). Skill Phase is free (no action cost). _(Vocabulary note Session 24: "Build Phase" renamed to "Draft Phase" to align with the existing "draft" terminology used elsewhere.)_
-- *No Money-economy activation gate.* Activate as many skills as Money allows per turn; no per-turn cap. Hoarding is allowed (and risky — see backpocket "unstoppable one-turn killer" potential issue).
-- *Effectively infinite skill pool* for drafting. The 12-equipped cap is the constraint, not the pool size.
+*Hypothesis:* a single coordinated cut to chassis-volume, end conditions, and engagement-geometry produces a 30-60 minute game with a single-climax shape (Principle 8) without breaking the combo fantasy.
 
-*Entry conditions:* Digital prototype only for the first 2–3 games — 3-week vacation window with Jonathan is the cheap testing surface for a radical shift. No physical rule sheet for the first prototype runs; rules carried in shared digital state.
+*Why bundled (per Principle 7):* core identity unsettled; six sequential isolation stacks cost 6+ playtest sessions. The bundle is a coordinated deployment of independently validated candidate fixes (P3-P5). Follow-up isolation stacks (piece count, unified actions, 6×6 board) defer attribution, do not lose it. Designer call verbatim: *"alles auf einmal — ich will schnellen progress sehen."*
 
-*What "good" looks like:*
-- Game-feel measurably different from Pole A (whether better or worse — the comparison is the point).
-- Game length drops vs P4 baseline (28-29 rounds, ~2h30).
-- Drafting-determinism reads less "always better to react." Players make commitments early and the game rewards them.
-- Cognitive load stays inside G4 budget (drafting *and* playing *and* opponent-drafting reads is the worry).
+*Watching:* game length (rounds + wall-clock vs 30-60 min target); single-climax shape (Principle 8 KPI); mid-game stalling pattern (P4 R15-R21 cluster — gone?); combo widening reception; Injured-as-tracker feel; no-draws environment (any infinite games?); Steal at cost 4 still must-pick?; 8×8 cramping; felt-PI (OQ-64); cognitive load (OQ-60).
 
-*Routing on result:*
-- *Game-feel improves and length drops* → run 1–2 more, then design Pole B v2 with iteratively patched issues. Resolves OQ-61 partially toward "Pole B replaces."
-- *Cognitive load too high or burst-turns dominate* → log learnings, restore *Stack H — Armor Trim* to Active, return to Pole A track. Resolves OQ-61 toward "Pole A continues."
-- *Mixed result (some axes improved, some worse)* → design Pole B v2 to address the worst issue; do not simultaneously change another variable. OQ-61 stays open.
-- *Cross-pole shared problem surfaces (e.g. defense-as-tax persists in Pole B too)* → that's the trigger to resolve OQ-63 (cross-pole fixing methodology).
+*Routing on result* (full version in `stack-m-game-length-cut.typ`):
+- *Length + shape + no-stalling all land* → Stack M accepted into baseline. Next: piece count (Stack K) or 6×6 board (Stack D variant) as isolation stacks.
+- *Combo widening dominates / Tempest broken* → roll back movement-counter trigger only. Keep other five.
+- *Length still too long, no stalling* → next is piece-count cut.
+- *Cleverness gone (pure aggression)* → roll back combo widening OR Steal cost increase.
+- *Injured-no-penalty makes pieces disposable* → roll back Injured change only.
+- *No-draws causes infinite games* → restore only-Kings-remain draw condition.
+- *Bundle uninterpretable* → individual rollback per axis in sequenced next stacks.
 
-*Cross-refs:* OQ-61 (two-pole framing), OQ-62 (Pole A draft information — Pole B is the alternative axis), OQ-63 (cross-pole fixing), OQ-11 (Armor — diagnosed in Pole A, may persist in Pole B), Principle 6 (game length as attrition), Principle 7 (fundamental shifts while core unsettled). Full design discussion: `docs/research/path-y-defense-redesign.md`.
-
-*Status:* No rule sheet yet. The prototype runs digitally; if it survives 2–3 games, draft a rule sheet at `docs/test-scenarios/stack-l-per-turn-draft/`.
+*Cross-refs:* OQ-11 (Armor — addressed); OQ-34 (Steal — addressed); OQ-38 (combo widening — addressed); OQ-57 (Injured penalties — addressed via removal); OQ-66 (game length target — primary axis); OQ-68 (draw conditions — resolved by removal); Principle 6 + Principle 7 + Principle 8; `docs/research/game-economy-map.md`.
 
 #hr
 
@@ -57,33 +54,21 @@ _Exactly one stack is Active at a time — the one prepping to run, or running. 
 
 _Stacks gated on a specific other stack's result, ordered by priority._
 
-=== Q1. Stack H — Armor Trim *(Pole A track; deprioritised Session 23)*
+=== Q1. Stack H — Armor Trim *(absorbed into Stack M; remains as isolation-fallback)*
 
-*Targets:* OQ-11 chassis-volume hypothesis. Armor↔Armor-Breaker loop crowds out the combo loop (P4-confirmed).
+*Status:* Armor cap 3→2 is one of Stack M's six bundled changes. Stack H as a standalone is *not* the next stack — but if Stack M's routing produces "rollback Armor only" or "rollback everything except Armor", Stack H steps in as the isolation stack for the Armor lever.
 
-*Variants (within-stack doses):*
-- *Bundled (lead)*: Armor cap 3→2 *and* Plate +1→+2 (one-shot fortify, not stack-grind).
-- *Smaller dose (rollback)*: Armor cap 3→2 only, Plate unchanged. Run as next iteration of Stack H if the bundled dose stalls (build cheaper than break).
+*Targets:* OQ-11 chassis-volume hypothesis (Armor↔Armor-Breaker loop crowds out the combo loop, P4-confirmed; P5 cross-pole confirmed). Now also a *game-length lever* (OQ-66).
 
-*Status:* Rule sheet not yet written. Folder pending: `docs/test-scenarios/stack-h-armor-trim/`. *Deprioritised Session 23* — Pole B per-turn-draft prototype claims the active slot. Stack H bundled dose remains the lead variant for when Stack H runs.
+*Bundled (lead) dose* (if revived): Armor cap 3→2 *and* Plate +1→+2 (one-shot fortify, not stack-grind). _Note: Stack M only takes the cap change; the Plate buff is not in Stack M and would re-enter via Stack H if needed._
 
-*Entry conditions:* Two experienced players required (chassis-volume read needs both players able to plan combos). Move-Attack 1 damage (Layer 1 Stack A G1) and current combo bonus (Stack A G2) carry forward as baseline.
+*Smaller dose (rollback within Stack H)*: Armor cap 3→2 only, Plate unchanged. Run if the bundled dose stalls (build cheaper than break).
 
-*"Build cheaper than break" risk* — bigger than originally framed (user verbatim Session 23): *"if it is way easier to stack armor then it is to get rid of it... the change can exponetiallise this even more."* Within-stack rollback (cap-only) is the contingency if Armor totals climb past P4 baseline (14 / 22).
+*Entry conditions:* Stack M result demands isolation of Armor lever, OR Stack M is rolled back entirely and Armor remains the primary lever.
 
-*What "good" looks like:*
-- Armor granted total per game drops noticeably from P4 baseline (P4: 14 / 22).
-- Mid-game Armor-stack arc (P4 R15-R21 cluster) shortens or disappears.
-- Q13 mental-focus self-report drops vs P4 ("Yes, a lot" → "Slightly" or lower).
-- Combo loops fire mid-game, not only after a 7-round Armor consolidation.
+*"Build cheaper than break" risk* — bigger than originally framed (user verbatim Session 23): *"if it is way easier to stack armor then it is to get rid of it... the change can exponetiallise this even more."*
 
-*Routing on result:*
-- *Bundled works (Armor volume drops, exchange-pit pattern softens)* → resolve OQ-11 + watch OQ-58. Next Active = *Stack A G3 — Dual-Counter Combo*.
-- *Bundled stalls (Armor stalling becomes dominant — build cheaper than break)* → run smaller dose as iteration. Same OQ, smaller variable.
-- *Bundled works, exchange-pit pattern persists* → confirms OQ-58 is independent of Armor volume. Next Active = *Stack A G3*.
-- *Bundled works, first kill jumps past R20* → unlikely but watch. Next Active = *Stack C — Pacing*.
-
-*Cross-refs:* OQ-11, OQ-57 (gated behind H), OQ-58 (watched under H), Q-C1, P3 + P4 evidence in `docs/research/playtest-3-analysis.md` and `playtest-4-analysis.md`.
+*Cross-refs:* OQ-11, OQ-57 (Injured — also in Stack M), OQ-58, OQ-66, Q-C1, P3 + P4 + P5 evidence in `docs/research/playtest-3-analysis.md`, `playtest-4-analysis.md`, and `playtest-results/elias-vs-jonathan-pole-b-digital-2026-06/notes.md`.
 
 === Q2. Stack A G3 — Dual-Counter Combo *(gated on Stack H)*
 
@@ -91,9 +76,9 @@ _Stacks gated on a specific other stack's result, ordered by priority._
 
 *Mechanic summary* (full design in `docs/backpocket.md`):
 - *Target counter* (kept from G2): different friendly Champions hit same enemy target → bonus on 2nd+ hit.
-- *Attacker counter* (new): same friendly Champion hits different enemy targets → bonus on 2nd+ hit.
+- *Attacker counter* (new): same friendly Champion hits different enemy targets → bonus on 2nd+ hit. *Session 25 narrowing note* (`docs/backpocket.md`): attacker counter felt too generous on reflection — narrow before shipping.
 - Both counters live in parallel; if a hit qualifies for both, both fire (intuitive stacking — rare in practice).
-- Scope widened: any skill that hits an enemy piece counts. Move-Attacks excluded.
+- Scope widened (target counter): any skill that hits an enemy piece counts. Move-Attacks excluded.
 - Multi-target skills (Tempest) tick the counter on every hit piece. Watch flag — first rollback if dual-counter proves OP.
 
 *Justifications:*
@@ -108,11 +93,11 @@ _Stacks gated on a specific other stack's result, ordered by priority._
 - *Exchange-pit persists, dual-counter scope OK* → keep dual-counter, advance to *Stack F — Sente Skills* for a different mechanism.
 - *Cognitive load too high (G4 violation)* → roll back to single-counter widened scope (Option A: Move-into-Strike).
 
-=== Q3. Stack K — Piece Count Reduction *(gated on Stack H)*
+=== Q3. Stack K — Piece Count Reduction *(gated on Stack H; also game-length lever OQ-66)*
 
-*Targets:* OQ-27 piece density. *Decoupled from board geometry as of Session 22* — Stack D owns board size.
+*Targets:* OQ-27 piece density. *Decoupled from board geometry as of Session 22* — Stack D owns board size. Now also a game-length lever (OQ-66).
 
-*Variant:* Current board (10×10 today) with 3 Champions + 3 Guards + 1 King per side (vs current 5+6+1).
+*Variant:* Current board (10×10 today) with 3 Champions + 4 Guards + 1 King per side (vs current 5+6+1).
 
 *Entry conditions:* Two experienced players, full session.
 
@@ -138,6 +123,12 @@ _Stacks gated on a specific other stack's result, ordered by priority._
 
 _Waiting on a trigger that hasn't been hit. No internal ordering._
 
+=== Stack L — Pole B Per-Turn-Draft Prototype (consumable variant) *(PAUSED Session 25)*
+
+*Trigger to revive:* Pole A revival track stalls AND a clear Pole B variant addresses P5's surfaced problems (felt-PI breakdown OQ-64; pure-reaction play). Candidates in `docs/backpocket.md`: permanently-equipped (non-consumable) drafted skills; per-Skill-Phase activation cap; skills cost a resource to activate.
+
+*Status:* Rule sheet exists at `docs/test-scenarios/stack-l-per-turn-draft/`. P5 ran once (Elias vs Jonathan, digital, 15 rounds). Three structural problems surfaced; Pole A returns as Active. See OQ-61 partial resolution and `playtest-results/elias-vs-jonathan-pole-b-digital-2026-06/notes.md`.
+
 === Stack C — Pacing
 
 *Trigger:* First Champion kill past Round 20 in any future stack.
@@ -148,7 +139,7 @@ _Waiting on a trigger that hasn't been hit. No internal ordering._
 
 === Stack D — Board Geometry
 
-*Trigger:* Board size or geometry surfaces as a bottleneck in any future stack.
+*Trigger:* Board size or geometry surfaces as a bottleneck in any future stack. Also a candidate game-length lever (OQ-66).
 
 *Variants:* 8×10 (OQ-52 narrower board), 8×8, hex grid (gated on `/research hex vs square grid in tactical games` per OQ-42).
 
@@ -156,7 +147,7 @@ _Waiting on a trigger that hasn't been hit. No internal ordering._
 
 === Stack E — Draft Flow
 
-*Trigger:* Draft feels stale or under-explored after Stack A G3 lands.
+*Trigger:* Draft feels stale or under-explored after the Pole A revival stacks land. May be partially subsumed if pre-made loadouts (OQ-65) ship with simultaneous-reveal selection (OQ-62).
 
 *Variants:* Pool draft (OQ-35 — draft pool first, assign after); placement order (OQ-36 + OQ-48 — equip skills first, then place on board).
 
@@ -191,6 +182,7 @@ _Outcome known. Listed for historical cross-reference; not active work._
   [*Stack A G2 — Combo Bonus*], [*Confirmed in mechanics, design-aligned in feel (P4, 2026-05-28).* Multi-Champion Strike-only counter scales +0/+1/+2. Stays in baseline. Scope-widening discussion produced *Stack A G3* — see Queued.], [`playtest-4-analysis.md` + Session 22 discussion],
   [*Stack B — Bodyguard Fix*], [*Withdrawn (Session 22, 2026-05-29).* Defender-only adjacency change. P4 confirmed Bodyguard tracks standoff state, not the rule (0 triggers when Armor stalling returned). Different solutions would be on the table even if Bodyguard remains broken post-Stack-H. The stack as drafted is not the right fix.], [P4 evidence; Session 22 designer call],
   [*Stack I — Armor Rollback*], [*Folded into Stack H (Session 22, 2026-05-29).* Was a contingency dose, not a distinct stack. Now lives as the smaller dose within Stack H.], [Session 22 restructure],
+  [*Stack L — Pole B Per-Turn-Draft (consumable variant)*], [*Paused (Session 25, 2026-06-21) after P5.* Three structural problems surfaced: Armor 3 still felt mandatory (cross-pole confirmation of OQ-11), play collapsed to pure reaction (no multi-turn planning), felt-PI broke under combinatorial breadth (OQ-64). Pole A returns as Active track. Other Pole B variants in `docs/backpocket.md` may be revived if Pole A stalls again — see Dormant.], [P5 notes; OQ-61 partial resolution; Session 25],
 )
 
 #hr
@@ -251,6 +243,12 @@ Letter IDs are immutable once assigned. Names can be refined; if a name changes,
 _Latest at top._
 
 #note-box[
+  *Session 26 (2026-06-21) — holiday-insights gathering + Stack M rule sheet finalised:*
+  - Designer returned from holiday and dumped accumulated insights. Multi-pass restructuring of the Stack M rule sheet: baseline section order restored; missing onboarding sections (Introduction + Simple Overview) added; diff-style "_(Baseline: X)_" annotations removed; over-use of `changed-box` callouts cut from 5 to 2 `⚡ CHANGED:` headers.
+  - *Substantive design change inside Stack M's combo bonus*: bonus damage now applies to *any* skill (Strike OR movement-causing) that affects a target with counter > 0, not only to Strike hits. This unlocks damage strategies without Strike skills — movement skills become a damage vector once a target is counter-loaded. Counter-tick rules unchanged.
+  - *Setup layout corrected*: Kings stand mid-back-row but *not directly opposite each other*; one side of each King has 2 Champions, the other 3; one Guard directly in front of each Champion + King (6 Guards total). Players do not choose tiles.
+  - *Rule sheet hygiene*: Skill table column widths fixed (Effect is now the only flex column); Shield/Plate "_(max 2)_" annotations removed; Health & Armor collapsed to 2 short paragraphs; Skill System's "Injured Range penalty" line removed; in-text skill references switched to `sk()` chips; Facilitator Notes wrapped in Typst `/* */` block so the player-facing PDF no longer surfaces them.
+
   *Session 24 (2026-05-31) — three-goal session: Pole B + vocabulary + template:*
   - *Project-wide vocabulary simplification.* "Runes" → "Money" (existing player-facing rename), plus a broader pass across docs, skills, research, mechanics-evaluated, and Typst rule sheets to remove jargon and align terminology between files. 6 commits.
   - *Pole B rule sheet written* (`docs/test-scenarios/stack-l-per-turn-draft/`). Standalone — does not reference `baseline-sections.typ`. Vocabulary "Build Phase" → "Draft Phase". Three-phase turn (Move → Draft → Skill); Move and Draft share a 4-action pool; Skill Phase is free with consumable activations. Bodyguard sits between Move and Draft.
