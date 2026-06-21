@@ -84,9 +84,9 @@ Both must return no errors / "ok". If either fails, stop and surface the error �
 
 ## Step 5: Regenerate STATUS.md and HANDOVER.md
 
-`game-state/STATUS.md` and `.claude/HANDOVER.md` are the two on-disk re-entry docs. Rewrite both from current DB state:
+`.claude/STATUS.md` and `.claude/HANDOVER.md` are the two on-disk re-entry docs. Rewrite both from current DB state:
 
-- **`game-state/STATUS.md`** — one-screen re-entry doc. Keep ≤45 lines. Sections: Current focus · Active stack · What changed this session · Immediate next action · Live critical/high OQs (as a query, not enumerated) · Open methodological loose ends · DB sanity.
+- **`.claude/STATUS.md`** — one-screen re-entry doc. Keep ≤45 lines. Sections: Current focus · Active stack · What changed this session · Immediate next action · Live critical/high OQs (as a query, not enumerated) · Open methodological loose ends · DB sanity.
 
 - **`.claude/HANDOVER.md`** — full handover prompt. Keep ≤80 lines. Overwrite "Last updated", "Where We Are", and "Immediate Next Action" sections. The "Key DB Queries" table should reflect what's relevant for the next session's anchor task.
 

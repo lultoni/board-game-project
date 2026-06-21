@@ -17,7 +17,7 @@ Run `git pull` to fetch any changes pushed from another device. If there are con
 Read these two files (in parallel):
 
 1. `CLAUDE.md` — orientation map
-2. `game-state/STATUS.md` — one-screen re-entry doc
+2. `.claude/STATUS.md` — one-screen re-entry doc
 3. `.claude/HANDOVER.md` — last session's wrap-up + immediate next action
 
 ## Step 2: Query the DB for Live State
@@ -47,6 +47,7 @@ Check for new content the designer dropped between sessions:
 
 - `design/inbox/brainstorm/` — fast-write idea dumps (not the README)
 - `design/inbox/ai-chats/` — pasted chat transcripts (not the README)
+- `design/inbox/digital/` — architecture / UI / AI-opponent notes for `game/` (not the README)
 - `design/raw/playtest-photos/` — new playtest folders
 
 If new files exist:

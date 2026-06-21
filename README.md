@@ -1,28 +1,31 @@
 # (GAME NAME) — Board Game Design Project
 
-A 2-player abstract-tactical board game in active development. Two players command armies of Guards and Champions led by a King across a 10×10 grid, equipping Champions with skills and spending Money to activate them. Victory by capturing the enemy King.
+A 2-player abstract-tactical board game in active development. Players command armies of Guards and Champions led by a King on a grid, equipping Champions with skills and spending Money to activate them. Victory by capturing the enemy King.
 
 **Design identity**: The intersection of chess-like spatial tactics and CCG-style build customisation. The core fantasy is discovering and executing clever skill combos. Everything else is chassis.
+
+As of Session 27 (2026-06-22) the project is **digital-first**: a complete digital implementation in `game/` is the deliverable, with Stack M rules as the default. The paper pipeline is archived.
 
 ---
 
 ## Quick Navigation
 
-| I want to... | Go here |
+The source of truth for all design knowledge is `design/design.db` (SQLite). Query it directly:
+
+| I want to… | Query / file |
 |---|---|
-| Read the canonical rules (printable) | [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf) |
-| Understand design principles | [`docs/design-principles.md`](docs/design-principles.md) |
-| Understand how each system works (MDA, health, open questions) | [`docs/systems-and-mechanics.md`](docs/systems-and-mechanics.md) |
-| See what needs doing next | [`game-state/NEXT_STEPS.md`](game-state/NEXT_STEPS.md) |
-| See unresolved design questions | [`game-state/OPEN_QUESTIONS.md`](game-state/OPEN_QUESTIONS.md) (live) / [`game-state/OPEN_QUESTIONS_ARCHIVE.md`](game-state/OPEN_QUESTIONS_ARCHIVE.md) (resolved) |
-| Re-enter the project after a gap | [`game-state/STATUS.md`](game-state/STATUS.md) |
-| Read the per-session narrative log | [`game-state/SESSION_LOG.md`](game-state/SESSION_LOG.md) |
-| See the full testing plan | [`docs/test-scenarios/TESTING_PLAN.pdf`](docs/test-scenarios/TESTING_PLAN.pdf) |
-| Print materials for the next playtest | [`WHAT_TO_PRINT.md`](WHAT_TO_PRINT.md) |
-| See what has been tried and why | [`docs/mechanics-log/mechanics-evaluated.md`](docs/mechanics-log/mechanics-evaluated.md) |
-| See future visual/identity direction | [`docs/game-identity-visual-naming.md`](docs/game-identity-visual-naming.md) |
-| Read the full game history | [`old-game-versions/README.md`](old-game-versions/README.md) |
-| Pre-thought fixes for anticipated problems | [`docs/backpocket.md`](docs/backpocket.md) |
+| Re-enter the project after a gap | [`.claude/STATUS.md`](.claude/STATUS.md) |
+| Read the active stack's full rules (Stack M) | `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"` |
+| See critical / high open questions | `sqlite3 design/design.db "SELECT id, title FROM open_questions WHERE status IN ('critical','high') ORDER BY priority;"` |
+| See what to do next | `sqlite3 design/design.db "SELECT priority, title FROM next_steps WHERE status='todo' ORDER BY priority;"` |
+| Read the most recent session narrative | `sqlite3 design/design.db "SELECT body FROM sessions ORDER BY n DESC LIMIT 1;"` |
+| See all stacks (active / queued / resolved) | `sqlite3 design/design.db "SELECT id, letter, name, status FROM stacks ORDER BY letter;"` |
+| Read a specific essay / research artefact | `sqlite3 design/design.db "SELECT body FROM essays WHERE id='essay-<slug>';"` |
+| See cross-references for any row | `sqlite3 design/design.db "SELECT to_id, relation FROM links WHERE from_id='<id>';"` |
+| Read all architecture decisions | `sqlite3 design/design.db "SELECT body FROM adrs ORDER BY n;"` |
+| Read the paper-era rule sheets (historical) | [`archive/paper-pipeline/test-scenarios/`](archive/paper-pipeline/test-scenarios/) |
+
+More query patterns in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -31,73 +34,41 @@ A 2-player abstract-tactical board game in active development. Two players comma
 ```
 board-game-project/
 │
-├── README.md                        ← you are here
-├── CLAUDE.md                        ← project conventions for Claude Code
-├── WHAT_TO_PRINT.md                 ← print checklist for every game session
+├── README.md                    ← you are here
+├── CLAUDE.md                    ← project conventions for Claude Code
 │
-├── game-state/                      ← living documents — always up to date
-│   ├── STATUS.md                    ← one-screen re-entry doc (read first after a gap)
-│   ├── NEXT_STEPS.md                ← prioritised action items
-│   ├── OPEN_QUESTIONS.md            ← live design questions
-│   ├── OPEN_QUESTIONS_ARCHIVE.md    ← resolved / closed / parked questions
-│   └── SESSION_LOG.md               ← per-session narrative log (newest first)
+├── design/
+│   ├── design.db                ← SQLite source of truth (12 tables)
+│   ├── schema.sql               ← table definitions, CHECK constraints, FKs
+│   ├── README.md                ← DB usage notes
+│   ├── raw/                     ← binary artefacts (photos, scans, card images)
+│   │   ├── playtest-photos/
+│   │   ├── brainstorm-scans/
+│   │   └── skill-card-images/
+│   └── inbox/                   ← fast-write staging — promoted into the DB
+│       ├── brainstorm/          ← raw game-design idea dumps
+│       ├── ai-chats/            ← pasted transcripts from other AI tools
+│       └── digital/             ← architecture / UI / AI-opponent notes for game/
 │
-├── docs/
-│   ├── design-principles.md         ← rules to design by (5 principles, constraints, methodology)
-│   ├── systems-and-mechanics.md     ← all 7 systems: how they work, MDA, health, open questions
-│   ├── game-identity-visual-naming.md ← future Phase B: art, naming, physical design direction
-│   ├── backpocket.md                ← pre-thought fixes for anticipated problems (staged, not active)
-│   │
-│   ├── test-scenarios/              ← printable rule sheets + feedback forms (Typst → PDF)
-│   │   ├── build-pdfs.sh            ← run this to rebuild all PDFs
-│   │   ├── TESTING_PLAN.typ/.pdf    ← stack catalogue (Active / Queued / Dormant / Resolved) + per-stack routing
-│   │   ├── shared/                  ← reusable Typst components + shared print materials
-│   │   │   ├── template.typ         ← shared styling
-│   │   │   ├── baseline-sections.typ ← canonical rule section functions (source of truth for rule text)
-│   │   │   ├── feedback-baseline.typ ← feedback form template (copy for each new stack)
-│   │   │   ├── feedback-onboarding.typ ← first-game onboarding feedback form
-│   │   │   ├── game-tracking.typ    ← per-player in-game tracking sheet
-│   │   │   ├── skill-cards.typ      ← printable skill reference cards (15 skills)
-│   │   │   └── teacher-vocab-checklist.typ ← facilitator self-check (Q-D1 bias correction)
-│   │   ├── baseline/                ← canonical ruleset (compiled from baseline-sections.typ)
-│   │   └── stack-g-structure/       ← DRAFT: unified AP framework
-│   │
-│   ├── research/                    ← Perplexity research exports + playtest analyses
-│   └── mechanics-log/
-│       └── mechanics-evaluated.md   ← decision registry: every mechanic considered + status
+├── game/                        ← digital implementation (Rust core + multi-platform; empty as of S27)
 │
-├── prototype/
-│   └── index.html                   ← digital prototype PWA (10×10 board, full game loop)
+├── archive/
+│   ├── old-game-versions/       ← v1/v2/v3 + archived stacks
+│   └── paper-pipeline/
+│       └── test-scenarios/      ← Typst rule sheets + PDFs (paper-prototype era)
 │
-├── playtest-results/                ← photos of handwritten feedback + game logs
-│   ├── elias-vs-pasco-31_10_25/
-│   ├── elias-vs-jonathan-24_04_26/
-│   ├── elias-vs-mario-17_05_26/
-│   └── elias-vs-niko-28_05_26/
-│
-├── images/                          ← skill card images (15 skills)
-│
-├── old-game-versions/               ← archived earlier iterations + full game timeline
-│   ├── README.md                    ← The Ultimate Game Timeline (2023–present)
-│   ├── v1-realm-of-elements/
-│   ├── v2-project-roe/
-│   ├── v3-first-board-game/
-│   └── archived-stacks/                ← frozen test-stack source (e.g. Stack A — accepted into baseline)
-│
-└── .claude/                         ← Claude Code project config
-    ├── HANDOVER.md                  ← session bookmark (paste into new session)
-    ├── settings.local.json
-    ├── hooks/session-start.sh
-    └── skills/                      ← custom slash commands
+└── .claude/
+    ├── STATUS.md                ← one-screen re-entry doc (regenerated each session)
+    ├── HANDOVER.md              ← session-to-session continuity prompt
+    ├── migrate_*.py             ← one-shot migrators (Session 27 — kept for audit)
+    └── skills/                  ← slash-command definitions
 ```
 
 ---
 
 ## The Game in 2 Minutes
 
-**Players**: 2  
-**Board**: 10×10 grid, no terrain  
-**Win condition**: Capture the enemy King  
+**Players**: 2 · **Board**: 8×8 grid (Stack M default), no terrain · **Win condition**: capture the enemy King.
 
 ### Pieces (per player)
 | Piece | Count | Speed | Skills |
@@ -106,85 +77,56 @@ board-game-project/
 | Champion | 5 | 1 | 2 slots |
 | Guard | 6 | 2 | — |
 
-*For current HP values and full piece stats: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf)*
+### How a turn works
+1. **Move Phase** — move up to 2 pieces (each once).
+2. **Skill Phase** — activate up to N skills (limited by actions, paid in Money).
 
-### How a Turn Works
-1. **Move Phase** — move up to 2 pieces (each piece once)
-2. **Skill Phase** — activate up to N skills (limited by actions, paid in Money)
-
-### Key Systems
+### Key systems
 - **Money** — currency for activating skills. Scales over rounds.
 - **Skills** — equipped during pre-game draft. 2 slots per Champion/King. Line-of-sight paths blocked by all pieces.
-- **2 HP** — Normal → Injured → Removed. Injured reduces Guard speed and skill range.
+- **2 HP** — Normal → Removed (Stack M: injured penalties removed; HP tracker only).
 - **Bodyguard** — Guard adjacent to an attacked Champion/King can intercept move-attacks.
 - **Move-Attack** — move onto enemy tile = 1 damage.
 
-Full rules: [`docs/test-scenarios/baseline/ruleset-baseline.pdf`](docs/test-scenarios/baseline/ruleset-baseline.pdf)
+Full Stack M rules: `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"`
 
 ---
 
 ## Current Status
 
-See [`game-state/STATUS.md`](game-state/STATUS.md) for the one-screen re-entry doc.
-
-See [`docs/test-scenarios/TESTING_PLAN.pdf`](docs/test-scenarios/TESTING_PLAN.pdf) for the full stack pipeline (Active / Queued / Dormant / Resolved) and per-stack routing rules.
+See [`.claude/STATUS.md`](.claude/STATUS.md) for the one-screen re-entry doc. The next anchor is the architecture ADR for `game/` (Rust core + multi-platform frontend).
 
 ---
 
 ## Working with Claude Code
 
-### Starting a Session
-Run `/start` in Claude Code. It reads all living documents and presents a status briefing.
+### Starting a session
+Run `/start` — it pulls remote, reads STATUS + HANDOVER, queries the DB for live state, and presents a briefing.
 
-### Ending a Session
-Run `/wrapup`. It updates all living documents, writes the session entry into the timeline, and commits.
+### Ending a session
+Run `/wrapup` — it persists DB changes, runs integrity checks, regenerates STATUS.md and HANDOVER.md, commits and pushes.
 
-### Custom Skills
+### Custom skills
 
 | Command | When to use |
 |---|---|
 | `/start` | Begin a design session |
-| `/wrapup` | End a session — updates docs, commits |
+| `/wrapup` | End a session — DB writes, commit, push |
 | `/research <topic>` | Need external knowledge about game design |
 | `/adr <topic>` | Multiple valid design approaches need comparison |
-| `/scenario <stack-X> <desc>` | Design discussion yields a testable change |
-| `/playtest <N>` | Analyse playtest results from photos |
+| `/scenario <stack-X> <desc>` | Discussion yields a testable rule bundle |
+| `/playtest <N>` | Analyse playtest results (paper photos or digital log) |
 
-### Source of Truth Hierarchy
-1. **Rule text**: `docs/test-scenarios/baseline/ruleset-baseline.typ`
-2. **Design principles**: `docs/design-principles.md`
-3. **Systems detail**: `docs/systems-and-mechanics.md`
-4. **What to do next**: `game-state/NEXT_STEPS.md`
-5. **Decision history**: `docs/mechanics-log/mechanics-evaluated.md`
-6. **Full game timeline**: `old-game-versions/README.md`
+### Dropping notes between sessions
 
----
+- **Game-design ideas** (mechanics, skills, board) → `design/inbox/brainstorm/`
+- **Pasted AI chats** (ChatGPT, Perplexity, Gemini) → `design/inbox/ai-chats/`
+- **Digital-implementation thinking** (architecture, UI, AI opponent, save format) → `design/inbox/digital/`
 
-## How Rule Sheets Are Made
-
-Rule sheets use **Typst** and a composable section system:
-
-- `shared/baseline-sections.typ` — parameterless functions, one per baseline section.
-- Each stack file calls baseline functions for unchanged sections and inlines its own changed sections with `⚡ CHANGED:` callouts.
-- Changing the baseline propagates automatically to all stack files.
-
-**To rebuild all PDFs**: run `zsh docs/test-scenarios/build-pdfs.sh` (requires [Typst](https://typst.app)).
-
-> **PDF commit policy**: Compiled `.pdf` files for rule sheets, feedback forms, and the testing plan are committed to the repo. Collaborators without Typst installed can read them directly. The `.typ` source remains the source of truth — regenerate via the script after editing.
+I'll mine these into the DB (backpocket / essays / open_questions / adrs / next_steps) at session start.
 
 ---
 
-## Playtest Methodology
+## Archive
 
-1. **One stack = one experience outcome** (e.g. "make skill combos dominant strategy").
-2. **Each stack contains 1–2 game variants** — minimum change to test the hypothesis.
-3. **After each playtest**, consult `TESTING_PLAN.pdf` to pick the highest-value next stack.
-4. **Never change multiple interacting systems at once.** If you can't isolate causation, the test is invalid.
-
-Results go in `playtest-results/<players>-<date>/`. Run `/playtest <N>` to analyse.
-
----
-
-## Old Game Versions
-
-`old-game-versions/` contains archived material from earlier iterations (2023–2025). See [`old-game-versions/README.md`](old-game-versions/README.md) for the full game history and session timeline.
+`archive/old-game-versions/` — earlier iterations (2023–2025). `archive/paper-pipeline/` — Typst rule sheets and PDFs from the paper-prototype era; read-only history.

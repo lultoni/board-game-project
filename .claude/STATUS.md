@@ -18,10 +18,11 @@ Full rule substance: `sqlite3 design/design.db "SELECT body FROM stacks WHERE id
 
 ## What changed in Session 27
 
-1. **Repo restructured.** All design knowledge migrated into `design/design.db` (12 tables, 365 rows). Source `.md` files deleted. `old-game-versions/` → `archive/old-game-versions/`. `docs/test-scenarios/` → `archive/paper-pipeline/test-scenarios/`. Raw assets → `design/raw/`.
+1. **Repo restructured.** All design knowledge migrated into `design/design.db` (12 tables, 366 rows). Source `.md` files deleted. `old-game-versions/` → `archive/old-game-versions/`. `docs/test-scenarios/` → `archive/paper-pipeline/test-scenarios/`. Raw assets → `design/raw/`. `game-state/` folded into `.claude/STATUS.md`. `digital-prototype/` deleted (orphan).
 2. **`CLAUDE.md` rewritten** as an orientation pointer-document; facts now live in the DB.
-3. **Inboxes added** for the designer's brainstorm dumps and AI-chat transcripts: `design/inbox/brainstorm/`, `design/inbox/ai-chats/`. READMEs explain the fast-write → DB-distill flow.
+3. **Inboxes added** for the designer's dumps: `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, `design/inbox/digital/` (the last for architecture / UI / AI-opponent notes). READMEs explain the fast-write → DB-distill flow.
 4. **`game/README.md` placeholder** written; architecture pending an ADR.
+5. **Slash-command skills rewritten** to query/write the DB (`/start`, `/wrapup`, `/adr`, `/research`, `/scenario`, `/playtest`). `/build-pdfs` retired.
 
 ## Immediate next action
 
@@ -33,10 +34,9 @@ Query: `sqlite3 design/design.db "SELECT id, title FROM open_questions WHERE sta
 
 ## Open methodological loose ends
 
-- Slash-command skills (`.claude/skills/*`) reference deleted MD paths and will fail until rewritten.
 - One-shot migrators (`.claude/migrate_*.py`) kept for audit; consider moving to `archive/migrators/` once DB is trusted.
 
 ## DB sanity
 
-- 12 tables, 365 rows.
+- 12 tables, 366 rows.
 - `PRAGMA foreign_key_check` returns no rows; `PRAGMA integrity_check = ok`.

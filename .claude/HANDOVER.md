@@ -25,18 +25,18 @@ You are my board game design co-creator and systems architect. We are working on
 ### How to start this session
 
 1. Read `CLAUDE.md` (orientation; tells you the DB owns the facts).
-2. Read `game-state/STATUS.md` (one-screen re-entry doc).
+2. Read `.claude/STATUS.md` (one-screen re-entry doc).
 3. Query the DB for current focus — example one-liners in CLAUDE.md "Working with the DB" section.
-4. Check `design/inbox/brainstorm/` and `design/inbox/ai-chats/` for any new dumps from the designer. Mine load-bearing content into the DB.
+4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for any new dumps from the designer. Mine load-bearing content into the DB.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
 ### Where We Are (end of Session 27, 2026-06-22)
 
 - **Digital-first pivot declared.** During holiday, designer decided: a "rumschieb simulator" is not enough. The deliverable in `game/` is a complete digital implementation of (GAME NAME) with Stack M rules as default. Multiplayer + AI opponent + multi-platform (Desktop / Web / Mobile). No code written yet — the architecture ADR is the next-session anchor.
-- **Repository restructure complete.** All design knowledge migrated into `design/design.db` (12 tables, 365 rows, integrity verified). Source `.md` files deleted from `docs/`, `game-state/` (except STATUS.md), and the top level (`WHAT_TO_PRINT.md` gone). `old-game-versions/` moved to `archive/old-game-versions/`. `docs/test-scenarios/` moved to `archive/paper-pipeline/test-scenarios/`. Raw photos/scans/card images moved to `design/raw/`. `playtest-results/` no longer exists as a top-level folder.
-- **Inboxes staged for designer dumps.** `design/inbox/brainstorm/` and `design/inbox/ai-chats/` with READMEs explaining the fast-write → DB-distill flow.
+- **Repository restructure complete.** All design knowledge migrated into `design/design.db` (12 tables, 365 rows, integrity verified). Source `.md` files deleted from `docs/`, `game-state/`, and the top level (`WHAT_TO_PRINT.md` gone). `game-state/` folded into `.claude/STATUS.md`. `digital-prototype/` deleted (orphan from paper era). `old-game-versions/` → `archive/old-game-versions/`. `docs/test-scenarios/` → `archive/paper-pipeline/test-scenarios/`. Raw photos/scans/card images moved to `design/raw/`. `playtest-results/` no longer exists as a top-level folder.
+- **Inboxes staged for designer dumps.** `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` with READMEs explaining the fast-write → DB-distill flow.
 - **Stack M (Active) lives in the DB with its full rule substance.** `SELECT body FROM stacks WHERE id='stack-m';` — that body is the Rust prototype's rule foundation. P6 has not yet run; the pivot may absorb P6 into a digital playtest instead of paper.
-- **Skills in `.claude/skills/` still point at deleted paths.** They will fail. Rewrite required (next session, or as-needed when a skill is invoked).
+- **Slash-command skills rewritten** to query/write the DB (`/start`, `/wrapup`, `/adr`, `/research`, `/scenario`, `/playtest`). `/build-pdfs` retired.
 
 ### Immediate Next Action
 
@@ -64,12 +64,11 @@ You are my board game design co-creator and systems architect. We are working on
 | `design/schema.sql` | 12-table schema |
 | `design/inbox/brainstorm/` | Designer's fast-write idea dumps |
 | `design/inbox/ai-chats/` | Pasted chat transcripts |
-| `game-state/STATUS.md` | One-screen re-entry summary |
+| `design/inbox/digital/` | Architecture / UI / AI-opponent notes for `game/` |
+| `.claude/STATUS.md` | One-screen re-entry summary |
 | `CLAUDE.md` | Orientation (points at DB; does not restate facts) |
 | `archive/paper-pipeline/test-scenarios/` | Paper-era Typst rule sheets (read-only history) |
 
 ### Open methodological loose ends (carry into Session 28)
 
-- Slash-command skills (`.claude/skills/*`) reference deleted MD paths and need a rewrite to query the DB.
-- `STATUS.md` was kept but holds Session-26-era content; needs a Session-27 rewrite from DB queries.
 - One-shot migrators (`.claude/migrate_*.py`) are kept for audit; could be moved to `archive/migrators/` once we're confident the DB is correct.

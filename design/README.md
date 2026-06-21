@@ -2,7 +2,7 @@
 
 This directory is the design knowledge base for the board game project. **SQLite is the source of truth.**
 
-Markdown files that previously lived under `docs/`, `game-state/`, and `playtest-results/` were migrated into `design.db` in Session 27 and deleted. Do not re-create those Markdown files — write to the DB instead.
+Markdown files that previously lived under `docs/`, `game-state/`, and `playtest-results/` were migrated into `design.db` in Session 27 and deleted (`game-state/` is gone; its sole remaining file, `STATUS.md`, now lives at `.claude/STATUS.md`). Do not re-create those Markdown files — write to the DB instead.
 
 ## Layout
 
@@ -14,6 +14,10 @@ raw/             Non-text artefacts referenced from DB rows.
   playtest-photos/    Per-playtest photos + scans.
   brainstorm-scans/   Per-session brainstorm photos.
   skill-card-images/  Skill card source images.
+inbox/           Fast-write staging — Claude mines into DB rows.
+  brainstorm/         Raw game-design idea dumps.
+  ai-chats/           Pasted chat transcripts (ChatGPT/Perplexity/etc).
+  digital/            Architecture / UI / AI-opponent notes for `game/`.
 ```
 
 ## ID conventions

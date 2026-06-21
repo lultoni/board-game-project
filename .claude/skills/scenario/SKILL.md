@@ -128,7 +128,7 @@ Exactly one stack should be `active` at a time.
 
 ## Step 6: Regenerate STATUS.md if Activated
 
-If the new stack is now Active, regenerate `game-state/STATUS.md` so "Active stack" reflects the change. (The `/wrapup` skill normally does this at session end — only do it inline if the user wants the file updated now.)
+If the new stack is now Active, regenerate `.claude/STATUS.md` so "Active stack" reflects the change. (The `/wrapup` skill normally does this at session end — only do it inline if the user wants the file updated now.)
 
 ## Step 7: Confirm
 

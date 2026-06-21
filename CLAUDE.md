@@ -20,21 +20,18 @@ design/
   inbox/                    ← Fast-write staging — promoted to DB by Claude
     brainstorm/             ← Raw idea dumps
     ai-chats/               ← Pasted chat transcripts (ChatGPT/Perplexity/etc)
+    digital/                ← Architecture / UI / AI-opponent notes for game/
 
 game/                       ← Digital implementation (architecture TBD; empty as of S27)
   README.md                 ← Status + open architecture questions
-
-digital-prototype/          ← Pre-pivot scratch prototype (paper-era artefact)
 
 archive/
   old-game-versions/        ← v1/v2/v3 + archived stacks
   paper-pipeline/
     test-scenarios/         ← Typst rule sheets + PDFs (paper-prototype era)
 
-game-state/
-  STATUS.md                 ← One-screen re-entry doc (regenerated each session)
-
 .claude/
+  STATUS.md                 ← One-screen re-entry doc (regenerated each session)
   HANDOVER.md               ← Session-to-session continuity notes
   migrate_*.py              ← One-shot migrators that built the DB (kept for audit)
   skills/                   ← Slash-command definitions
@@ -95,7 +92,7 @@ The DB is committed as a binary blob (single workstation, no merge conflicts exp
 
 ## Living docs (kept outside the DB)
 
-- **`game-state/STATUS.md`** — one-screen re-entry doc. Rebuilt each session from DB summaries; not a source of truth itself.
+- **`.claude/STATUS.md`** — one-screen re-entry doc. Rebuilt each session from DB summaries; not a source of truth itself.
 - **`.claude/HANDOVER.md`** — session-to-session notes; what's loaded in working memory, what's next.
 
 Both are *summaries pointing at the DB*. Never restate facts here — link by ID.
