@@ -1,44 +1,68 @@
 ---
 name: start
-description: "Session start — reads all living documents, checks for new files, and presents a concise status briefing to resume work."
+description: "Session start — pulls remote, reads STATUS + HANDOVER, queries DB for live state, checks inboxes and raw assets, presents a concise status briefing."
 disable-model-invocation: true
 ---
 
 # Session Start
 
-Read the following files in order to build context, then present a concise status briefing.
+The DB at `design/design.db` is the source of truth. This skill orients you to current state via DB queries, not by re-reading deleted MD files.
 
 ## Step 0: Sync with Remote
 
 Run `git pull` to fetch any changes pushed from another device. If there are conflicts, surface them to the user before proceeding.
 
-## Step 1: Read Living Documents
+## Step 1: Read Orientation Files
 
-Read all of these files (in parallel where possible):
+Read these two files (in parallel):
 
-1. `CLAUDE.md`
-2. `game-state/STATUS.md`  ← one-screen re-entry doc; read first for orientation
-3. `docs/design-principles.md`
-4. `game-state/NEXT_STEPS.md`
-5. `game-state/OPEN_QUESTIONS.md`
-6. `.claude/HANDOVER.md`
+1. `CLAUDE.md` — orientation map
+2. `game-state/STATUS.md` — one-screen re-entry doc
+3. `.claude/HANDOVER.md` — last session's wrap-up + immediate next action
 
-## Step 2: Check for New Files
+## Step 2: Query the DB for Live State
 
-Check for any new or modified files in:
-- `playtest-results/`
-- `docs/research/`
+Run these queries (one combined `sqlite3` call is fine):
 
-If new files exist since the last session, read them and note their contents.
+```bash
+sqlite3 design/design.db <<'SQL'
+.headers on
+.mode column
+SELECT n, date, title FROM sessions ORDER BY n DESC LIMIT 3;
+SELECT id, title, priority, status FROM open_questions WHERE status IN ('critical','high') ORDER BY priority, id;
+SELECT priority, title FROM next_steps WHERE status='todo' ORDER BY priority;
+SELECT id, letter, name, status FROM stacks WHERE status IN ('active','queued') ORDER BY letter;
+SQL
+```
 
-## Step 3: Present Status Briefing
+If anything in the STATUS / HANDOVER references an ID, query the body:
+
+```bash
+sqlite3 design/design.db "SELECT body FROM <table> WHERE id='<id>';"
+```
+
+## Step 3: Check Inboxes and Raw Assets
+
+Check for new content the designer dropped between sessions:
+
+- `design/inbox/brainstorm/` — fast-write idea dumps (not the README)
+- `design/inbox/ai-chats/` — pasted chat transcripts (not the README)
+- `design/raw/playtest-photos/` — new playtest folders
+
+If new files exist:
+- Brainstorm/ai-chat dumps: read, summarise in the briefing, flag for mining into DB (`backpocket`, `essays`, `open_questions`, or `adrs` rows). Don't mine yet — that's a separate user-initiated step.
+- New playtest photos: surface them; the user will likely invoke `/playtest <N>` next.
+
+## Step 4: Present Status Briefing
 
 Output a concise briefing with:
 
-1. **Session number** (increment from last session in the log)
+1. **Session number** (last `n` from `sessions` + 1)
 2. **Where we are** (2-3 sentences from HANDOVER.md "Where We Are")
 3. **Immediate next action** (from HANDOVER.md)
-4. **New files found** (if any — summarise what they contain)
-5. **Open blockers** (any Priority 1 items from NEXT_STEPS.md that are waiting on user input)
+4. **Active/queued stacks** (from the DB query)
+5. **Live critical/high OQs** (count + topmost titles)
+6. **Inbox / raw deltas** (anything new since last session — summarise, don't dump)
+7. **Open blockers** (Priority 1 todos awaiting user input)
 
-Keep the briefing under 20 lines. Do not repeat full file contents — summarise.
+Keep the briefing under 25 lines. Do not paste full file or row bodies — summarise.

@@ -1,6 +1,6 @@
 ---
 name: research
-description: "Generate a Perplexity research request with project context when external game design knowledge is needed. Auto-triggers when a knowledge gap is identified about game mechanics, comparable games, player psychology, or design patterns."
+description: "Generate a Perplexity research request with project context when external game design knowledge is needed. Persists results into the `essays` table."
 argument-hint: "<topic>"
 ---
 
@@ -8,11 +8,33 @@ argument-hint: "<topic>"
 
 ## Step 1: Check for Existing Research
 
-Search `docs/research/` for any existing files that cover this topic or a closely related one. If found, read the file and assess whether it already answers the question. If it does, summarise the existing findings instead of generating a new request.
+Query the `essays` table for existing coverage:
+
+```bash
+sqlite3 design/design.db "SELECT id, title, description FROM essays WHERE description LIKE '%<keyword>%' OR title LIKE '%<keyword>%';"
+```
+
+Also check `design/inbox/ai-chats/` for any unmined transcripts on this topic.
+
+If existing material answers the question, summarise it instead of generating a fresh request. Pull the body:
+
+```bash
+sqlite3 design/design.db "SELECT body FROM essays WHERE id='essay-<slug>';"
+```
 
 ## Step 2: Build Context Block
 
-Read the current design state from the canonical trio: `docs/design-principles.md`, `docs/systems-and-mechanics.md`, and `game-state/OPEN_QUESTIONS.md`. Identify which specific systems or design questions relate to this research topic.
+Pull the design context from the DB:
+
+```bash
+sqlite3 design/design.db <<'SQL'
+SELECT body FROM principles WHERE kind IN ('north-star','lens') ORDER BY n;
+SELECT id, title FROM open_questions WHERE status IN ('critical','high');
+SELECT body FROM design_docs WHERE id='design-doc-systems-and-mechanics';
+SQL
+```
+
+Identify which specific systems or OQs relate to this research topic.
 
 ## Step 3: Generate Perplexity Prompt
 
@@ -23,7 +45,7 @@ RESEARCH REQUEST: [Topic]
 
 Context: We are designing a 2-player perfect-information tactical board game where players command armies on a grid, equipping Champions with skills/spells and spending Money to activate them. The core fantasy is discovering and executing clever spell/skill combos.
 
-[Include 2-3 sentences of specific context about which system or question this research relates to, drawn from systems-and-mechanics.md and OPEN_QUESTIONS.md.]
+[2-3 sentences of specific context about which system or OQ this relates to.]
 
 Questions:
 1. [Specific question 1]
@@ -37,15 +59,36 @@ Please include:
 - Concrete mechanics, not just philosophy
 ```
 
-## Step 4: Wait and Process
+## Step 4: Process Results
 
-Tell the user to:
-1. Paste the prompt into Perplexity (or their preferred research tool).
-2. Save the results as a markdown file in `docs/research/` with a descriptive filename.
-3. Tell you the filename when done.
+Tell the user to paste the Perplexity output into a file in `design/inbox/ai-chats/` (e.g. `perplexity-2026-06-22-<topic>.md`) and tell you when ready.
 
-When the user provides the filename:
-1. Read the saved research file.
-2. Summarise the key findings relevant to the current design.
-3. Identify any findings that should update `docs/systems-and-mechanics.md`, `game-state/OPEN_QUESTIONS.md`, or `game-state/NEXT_STEPS.md`.
-4. Propose specific design implications (don't just summarise — connect to our game).
+When the user signals ready:
+
+1. Read the inbox file.
+2. Summarise key findings and propose design implications (don't just paraphrase — connect to our game).
+3. INSERT the substantive research into the `essays` table:
+
+   ```bash
+   sqlite3 design/design.db <<SQL
+   INSERT INTO essays (id, date, title, description, body) VALUES (
+     'essay-<slug>',
+     date('now'),
+     '<Title>',
+     '<One-line description for future SELECT-by-keyword>',
+     '<Full markdown body of the research findings + analysis>'
+   );
+   SQL
+   ```
+
+4. Add `links` rows connecting the essay to the OQs/mechanics/stacks it informs:
+
+   ```sql
+   INSERT INTO links (from_id, to_id, relation, note) VALUES
+     ('essay-<slug>', 'oq-N', 'evidence-for', NULL),
+     ('essay-<slug>', 'stack-X', 'evidence-for', NULL);
+   ```
+
+5. Delete the inbox file (fully absorbed) or annotate it with what was promoted where.
+
+The `essays` table is the canonical home for research; `design/inbox/ai-chats/` is only staging.

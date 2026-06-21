@@ -1,264 +1,224 @@
 ---
 name: playtest
-description: "Analyse playtest results from photos/scans in playtest-results/. Transcribes handwritten feedback, game logs, and synthesises findings. Auto-triggers when user mentions playtest results or references playtest-results/ files."
+description: "Analyse playtest results — paper photos in design/raw/playtest-photos/ or a digital game log from game/. Inserts a `playtests` row + an `essays` analysis row. Auto-triggers when the user mentions playtest results."
 argument-hint: "<playtest-number>"
 ---
 
 # Playtest Analysis: Playtest $ARGUMENTS
 
-## Step 1: Read All Playtest Materials
+This skill handles **two input modes**:
 
-Read ALL files in the relevant playtest subfolder — images AND any .md side-notes files. Do not skip any file.
+- **Paper mode**: photos/scans in `design/raw/playtest-photos/playtest-N/` (handwritten log + feedback forms + optional side-notes `.md`).
+- **Digital mode**: a structured game log exported by the Rust binary in `game/` (JSON / structured markdown). Once `game/` produces logs, this is the default mode.
 
-Also read the test scenario rule sheet that was used (check `docs/test-scenarios/` for the relevant layer) to understand what was being tested and what to watch for.
+Detect mode automatically: if `design/raw/playtest-photos/playtest-N/` has image files → paper mode. If a digital log file is provided (or the user names one) → digital mode.
 
-Also read `game-state/OPEN_QUESTIONS.md` — specifically any OQ marked **TRACKING** or with **Evaluation criteria** notes for this stack. These are the monitoring hypotheses you must answer from the data. (OQ numbers are not hardcoded in this skill — read the live file to find which ones apply.)
+## Step 1: Pull Context from the DB
 
-## Step 2: Transcribe
+Before reading any playtest material:
 
-For each handwritten document, transcribe with maximum fidelity before interpreting. Errors in transcription cascade into wrong design conclusions.
+```bash
+sqlite3 design/design.db <<'SQL'
+SELECT id, body FROM stacks WHERE status='active';
+SELECT id, title, body FROM open_questions WHERE status IN ('critical','high','tracking');
+SELECT id, body FROM playtests ORDER BY n DESC LIMIT 3;
+SQL
+```
 
-### Game logs
+Identify which stack this playtest was testing, and which OQs are TRACKING for that stack.
 
-- Reconstruct **every round row** — Money (start+gain−spent=end), skills used, events/notes.
-- Preserve the **exact wording** of all margin notes, exclamations, and annotations — these are named moments and design signals (e.g. "peak move!", "gradients", "stalling — very nice!").
-- Note the **final round played** explicitly — the last row with an entry is the end of the game.
-- Note any **post-game annotations** separately (written after the game ended, not during a round).
-- Flag hard-to-read entries with [unclear] rather than guessing.
+## Step 2: Transcribe / Parse
 
-### Feedback forms
+### Paper mode
 
-Transcribe each question answer **exactly as written** before interpreting. Common misread patterns to watch for:
+Read EVERY file in `design/raw/playtest-photos/playtest-N/` — images and any `.md` side-notes. Transcribe with maximum fidelity before interpreting. Errors in transcription cascade into wrong design conclusions.
 
-- **Circle position**: Read which number on a scale is actually circled — don't estimate from nearby text.
-- **"gut so" vs neutral**: "gut so" or "good like that" is an explicit design affirmation, not just a description. Flag it.
-- **Soft flags vs hard flags**: "a bit — aber für jetzt okay — note for later" is a deferred soft flag, not an urgent problem. Preserve this nuance.
-- **Crossed-out / blank questions**: If a player crossed out a question or left it blank, record that explicitly — don't infer an answer. Common case: a player who didn't play Playtest 1 cannot answer "Opening vs Playtest 1."
-- **"?" answers**: A "?" means the player was uncertain — do not convert this into a yes/no or a count.
-- **German handwriting**: Read carefully before translating. Common errors: "Schild" (shield) ≠ "Skill"; "limiterit" ≠ "Bremse" (both mean "limited/brake" but the nuance differs); "start" ≠ "jetzt".
-- **Retaliation notes on expensive skills**: A "yes, reachable" answer with a note about retaliation risk is a richer insight than just "yes" — preserve both parts.
+Transcription rules:
 
-### Side-notes files
+- **Game logs**: reconstruct every round row (Money, skills used, events). Preserve exact wording of margin notes — they are named moments. Note final round explicitly. Flag unclear entries with `[unclear]`.
+- **Feedback forms**: transcribe exact circled position, exact wording. Distinguish "gut so" (design affirmation) from neutral, soft flags from hard flags, "?" (uncertainty — don't convert to yes/no). German handwriting: read before translating; common confusions: Schild≠Skill, limitiert≠Bremse.
+- **Side-notes**: every bullet is a distinct design signal — rule clarifications, skill observations, new ideas, layout notes.
 
-Side-notes (.md files in the playtest folder) are written by the game runner during or after the game. Treat every bullet point as a distinct design signal. Go through them exhaustively:
+### Digital mode
 
-- Rules clarifications made mid-game → new OQ entries or ruleset fixes
-- Skill-specific observations → skill balance flags
-- New ideas or variants → new OQ entries (deferred)
-- Layout/print notes → Typst/PDF fix items
-- Table/progression corrections → rule sheet fix items
-- Emotional or social observations → design signal notes
+Parse the log file. Expected structure (the Rust binary will define this; treat as forward spec): per-turn records with player, phase, action, resource state, board diff. Extract automatically — no transcription needed. Convert to the same internal representation as paper mode for Block A/B (below).
 
-## Step 2.5: Structured Data Extraction
+## Step 3: Structured Extraction (Per Player)
 
-For each player's tracking sheet and game log, produce two blocks: (A) Money/Capture data, (B) Behavioral pattern analysis.
+For each player, produce two blocks:
 
 ### Block A — Tracking Data
 
 ```markdown
-### Tracking Data — [Player name]
+### Tracking Data — [Player]
 
 **Money economy**
-- Starting Money: [value]
-- First round a skill was used: Round [N]
-- Rounds where unspent Money exceeded 6: [list rounds, or "none"]
-- Rounds where all Money was spent: [list rounds, or "none"]
-- Largest single-turn Money spend: [N Money on Round X]
+- Starting Money: [N]
+- First round a skill was used: R[N]
+- Rounds with unspent Money > 6: [list or "none"]
+- Rounds with full spend: [list]
+- Largest single-turn spend: [N Money on R[N]]
 
-**Captures & key events** (from Events/Notes column)
+**Captures & key events**
 | Round | Event |
 |-------|-------|
-| [N] | [description] |
-- Final round played: Round [N]
-- Total captures made: [N]
-- Total captures suffered: [N]
-- Post-game annotations: [any notes written after the final round row]
+| ... | ... |
+
+- Final round: R[N]
+- Captures made / suffered: [N] / [N]
+- Post-game annotations: [...]
 ```
 
-### Block B — Behavioral Pattern Analysis
-
-This block answers "what were players actually doing?" — extracted from the game log, not the feedback form. The goal is to surface patterns players don't consciously notice or report.
+### Block B — Behavioral Patterns
 
 ```markdown
-### Behavioral Patterns — [Player name]
+### Behavioral Patterns — [Player]
 
-**Skill usage frequency**
-| Skill | Times used | Rounds used | Typical context |
-|-------|-----------|-------------|-----------------|
-| [name] | [N] | [R1, R4, R7...] | [e.g. "finisher on Injured piece", "opener every turn", "paired with Charge"] |
+**Skill usage**
+| Skill | Uses | Rounds | Typical context |
+|-------|------|--------|-----------------|
+| ... | ... | ... | ... |
 
-- Most-used skill: [name] ([N] uses)
-- Least-used / never used: [names]
-- Skills used 3+ times: [list] — potentially over-relied upon
-- Skills used exactly once or twice: [list] — possibly situational or underpowered
+- Most-used: [skill] ([N])
+- Unused: [list]
+- Skills used 3+ times — over-relied?: [list]
 
-**Attack vs. skill balance**
-- Move-attacks made: [N total, estimated from log]
-- Skill activations made: [N total]
-- Attack-to-skill ratio: [N attacks per skill use] — compare against Playtest baseline (P1: high, P2: mid)
+**Attack vs skill balance**
+- Move-attacks made / skill activations / ratio: [N] / [N] / [N per skill]
 
-**Combo attempts (if Layer 2+)**
-- Multi-Champion combos attempted: [N]
-- Combos that succeeded: [N]
-- Which skills were paired: [list skill pairs]
-- What blocked failed attempts: [LoS, no second Champion in range, etc.]
+**Combos (Stack-relevant)**
+- Multi-Champion combos attempted / succeeded / pairs / blockers: ...
 
-**Positioning and movement patterns** (inferred from event log)
-- Rounds before first forward movement: [N]
-- First contact round: [N] (first melee exchange or skill hit on an opponent)
-- Evidence of standoff: [yes/no — describe if yes]
-- Guard behavior: [used as screens / used offensively / died early / survived long]
+**Positioning**
+- First forward move round / first contact / standoff evidence / Guard role: ...
 
-**Armor usage** (if tracked)
-- Total armor granted (you / opponent): [N / N]
-- Rounds with active armor: [list]
-- Armor vs. damage ratio: [approx — did armor absorb a meaningful share of incoming damage?]
+**Armor**
+- Granted (you / opp) / rounds active / damage absorbed ratio: ...
 ```
 
-**Synthesis note**: After completing both players' Block B, write 3–5 cross-player observations comparing their patterns. Look for: one player offensively dominant while other defends; both players stuck in standoff simultaneously; skill choices that mirror vs. diverge; Money spending rhythms that synchronise or oppose.
+After both players, write 3–5 cross-player observations.
 
-## Step 2.8: Independent Per-Player Transcription (Multi-Agent)
+### Multi-agent parallel extraction (paper mode only)
 
-Before synthesising, spawn two independent agents — one per player — to transcribe and extract behavioral patterns from that player's materials only. This prevents each player's data from biasing interpretation of the other's.
+To prevent bias, spawn TWO `Agent` calls in parallel (single message, two tool calls):
 
-**How to do this:**
+- Agent 1: reads Player A's files only, produces A-only Block A + B.
+- Agent 2: reads Player B's files only, produces B-only Block A + B.
 
-Spawn two agents in parallel (single message, two Agent tool calls):
+Each agent prompt must include exact file paths, the Block A/B templates, and the instruction "Do not read the other player's files."
 
-- **Agent 1** receives: Player A's game log image(s) + feedback form image(s) + instructions to produce Block A (Tracking Data) and Block B (Behavioral Patterns) for Player A only. The agent must NOT read Player B's materials.
-- **Agent 2** receives: Player B's game log image(s) + feedback form image(s) + instructions to produce Block A and Block B for Player B only. The agent must NOT read Player A's materials.
+In digital mode this is unnecessary — the log is structured.
 
-Each agent prompt must include:
-1. The exact file paths to read (player-specific only).
-2. The Block A and Block B templates from Step 2.5.
-3. The instruction: "Do not read the other player's files. Produce only this player's data blocks. Do not try to compare with or anticipate the other player's results."
+## Step 4: Synthesise
 
-After both agents complete, collect their outputs and proceed to Step 3 synthesis — only at that point are both datasets combined for cross-player comparison.
-
-**Why this matters**: If you read both players' materials sequentially, earlier data shapes interpretation of later data. A surprising skill usage pattern in Player A's log will prime you to look for (and find) it in Player B's — even if it isn't there. Independent extraction keeps the behavioral signal clean.
-
-## Step 3: Synthesise Findings
-
-Create `docs/research/playtest-N-analysis.md` with:
+Compose a full analysis markdown body. Required sections:
 
 ```markdown
 # Playtest N Analysis
 
-**Date**: [date]
-**Players**: [names]
-**Variants/Layer tested**: [what rule sheet was used]
-**Game length**: [exact final round] / [session time if noted]
+**Date** · **Players** · **Stack tested** · **Mode** (paper/digital) · **Game length** (final round / session time)
 
 ## Tracking Data
-[Block A data — one per player]
+[Block A per player]
 
 ## Behavioral Patterns
-[Block B data — one per player, then cross-player synthesis]
+[Block B per player + cross-player synthesis]
 
-## Raw Transcriptions
-[All transcribed feedback and logs, with exact quotes preserved]
+## Raw Transcriptions / Log Excerpts
+[Paper: exact quotes preserved. Digital: representative log slices.]
 
 ## Key Findings
-[Numbered list, ordered by impact. Each finding must cite the specific source — quote or round number. Distinguish: confirmed positives, confirmed problems, soft flags (deferred), and open questions.
-IMPORTANT: Separate findings into two categories:
-  - **Self-reported** (player said X in the feedback form or verbally)
-  - **Behaviorally observed** (extracted from the game log — the player did X but may not have noticed or named it)]
+[Numbered, ordered by impact. Each cites source — quote, round, or log entry.
+Split into:
+  - Self-reported (player said it)
+  - Behaviorally observed (the log shows it; player may not have named it)]
 
-## Answers to Test Scenario Questions
-[Go through the post-game questions from the test scenario rule sheet and answer each based on evidence. Where players disagreed, note both answers.]
+## Answers to Stack Hypothesis Questions
+[For each question in the active stack's body, answer from evidence.]
+
+## OQ Verdicts
+[For each TRACKING OQ: Hypothesis / Evidence / Verdict / Recommended action.]
 
 ## Implications for Design
-[What should change, what was confirmed, what needs more testing. Separate: urgent actions, deferred items, design ideas.]
+[Urgent / deferred / ideas — explicit.]
 
-## Comparison to Previous Playtests
-[How do these results compare to prior playtests — use a table]
-```
-
-## Step 3.5: OQ Metric Evaluation
-
-After writing the synthesis, go through **every OQ that is TRACKING or has Evaluation criteria for this layer** in `game-state/OPEN_QUESTIONS.md`. For each one, write a short verdict block:
-
-```markdown
-### OQ-[N]: [Title]
-
-**Hypothesis**: [What was expected]
-**Evidence**: [Specific data points from this playtest — quotes, round numbers, counts]
-**Verdict**: Confirmed / Partially confirmed / Inconclusive / Contradicted
-**Recommended action**: [Update OQ status / Accept / Defer / Open new OQ / No change]
-```
-
-Include this section in the analysis doc under the heading `## OQ Evaluations`.
-
-Cover at minimum:
-- Every OQ explicitly marked **TRACKING (Layer N)** for this playtest
-- Every OQ with **Evaluation criteria (Session X)** that maps to this layer
-- Any OQ whose status should change based on the new data, even if not explicitly flagged
-
-## Step 4: Cascade Updates
-
-After writing the analysis, update the following living documents:
-
-### `docs/systems-and-mechanics.md`
-- Update Playtest Evidence section with new findings.
-- Update Design Health Check scores if evidence warrants.
-- Update Incremental Test Plan table (mark stack as tested, note result).
-
-### `game-state/OPEN_QUESTIONS.md`
-- Resolve any questions answered by this playtest.
-- Add new questions raised by findings — one OQ per distinct issue.
-- Update existing OQs with new evidence even if not resolved.
-- Update status of all OQs covered in the Step 3.5 verdicts.
-
-### `game-state/NEXT_STEPS.md`
-- Update priorities based on findings.
-- Add new action items if the playtest revealed issues.
-
-### `docs/mechanics-log/mechanics-evaluated.md`
-- If the playtest confirms or withdraws a mechanic, update its entry.
-- If new mechanics/variants were discussed at the table (from side-notes), add them as new entries with status "Raised in Playtest N".
-
-### `game-state/SESSION_LOG.md`
-- Add a sub-section under the current session entry noting the playtest analysis.
-
-## Step 5: Routing — Which Stack Next?
-
-Read `docs/test-scenarios/TESTING_PLAN.typ`. Each stack has its own *Routing on result* block listing the conditions under which it advances to a specific next stack. **TESTING_PLAN.typ is the source of truth — consult it directly rather than relying on numbers cached in this skill.** The doc structure as of Session 22:
-
-- *Active* section: the stack just played (or being prepped).
-- *Queued* section: stacks gated on the Active stack's result, with explicit gate conditions.
-- *Dormant* section: stacks waiting on a trigger (e.g. "first Champion kill past R20" → Stack C).
-- *Resolved* section: accepted, withdrawn, or superseded — historical only.
-
-Map the playtest metrics to the Active stack's *Routing on result* rules and the *Dormant* trigger conditions:
-
-1. **Champion kill round** — extract from Block A tracking data. If past R20, *Stack C — Pacing* trigger fires.
-2. **Mid-game stickiness / "exchange pit"** — extract from Block B behavioral patterns (first contact round, whether action concentrates in one cluster, pieces taken one-by-one). Connects to OQ-58 — informs whether *Stack A G3 — Dual-Counter Combo* or *Stack F — Sente Skills* is the next lever.
-3. **Bodyguard triggers** — extract from feedback form or game log. Note: OQ-21 covaries with standoff state (P4 confirmed) — 0 triggers when stalling returns is *not* a Bodyguard problem; it's a movement-volume problem.
-4. **Any other routing criteria** named in the Active stack's *What "good" looks like* and *Routing on result* blocks.
-
-Write a routing block:
-
-```markdown
 ## Routing — Which Stack Next?
-
-**Key metrics:**
-- First Champion kill: Round [N] → [trigger fires / does not fire for Stack C]
-- Exchange-pit pattern: [yes/no — describe]
-- Bodyguard triggers: [N] (note covariance with standoff)
-- [Other Active-stack-specific metrics]
-
-**Routing recommendation:** [Active stack] result → next Active = **[Stack X — Name]**.
-
-**Reasoning:** [1-2 sentences citing the specific Routing on result rule from TESTING_PLAN.typ that this falls under. If the literal routing output is overridden by diagnosis (e.g. P4: literal output Stack F, but diagnosis pointed to Stack H), explain why.]
+[Map metrics to the active stack's Routing on result block.]
 ```
 
-Include this section in the analysis doc before the final summary.
+## Step 5: Persist to DB
 
-## Step 6: Present Summary
+Wrap in a transaction:
 
-Output a concise summary to the user:
+```bash
+sqlite3 design/design.db <<SQL
+BEGIN;
+
+-- 1. Insert the playtest row (summary metadata + short body)
+INSERT INTO playtests (id, n, date, stack_id, body) VALUES (
+  'playtest-<N>',
+  <N>,
+  '<date>',
+  'stack-<X>',
+  '<concise markdown summary — top findings, final round, verdict-level only>'
+);
+
+-- 2. Insert the full analysis as an essay (long-form artefact)
+INSERT INTO essays (id, date, title, description, body) VALUES (
+  'essay-playtest-<N>-analysis',
+  '<date>',
+  'Playtest <N> Analysis',
+  'Full analysis with Block A/B data, OQ verdicts, routing',
+  '<full markdown body from Step 4>'
+);
+
+-- 3. Link
+INSERT INTO links (from_id, to_id, relation, note) VALUES
+  ('playtest-<N>', 'stack-<X>', 'evidence-for', NULL),
+  ('essay-playtest-<N>-analysis', 'playtest-<N>', 'related-to', NULL);
+
+-- 4. OQ updates from Step 4 verdicts
+UPDATE open_questions SET status='resolved' WHERE id='oq-N';
+UPDATE open_questions SET body='<updated body with new evidence>' WHERE id='oq-M';
+
+-- 5. New OQs raised
+INSERT INTO open_questions (id, title, status, priority, body) VALUES (...);
+
+-- 6. Mechanics impacted
+UPDATE mechanics SET verdict='accepted', body='<updated>' WHERE id='mech-<slug>';
+
+-- 7. New backpocket entries from side-notes
+INSERT INTO backpocket (id, title, status, body) VALUES (...);
+
+-- 8. next_steps
+UPDATE next_steps SET status='done' WHERE id='ns-playtest-<N>';
+INSERT INTO next_steps (id, priority, title, status, body) VALUES (...);
+
+COMMIT;
+SQL
+```
+
+Verify integrity:
+
+```bash
+sqlite3 design/design.db "PRAGMA foreign_key_check; PRAGMA integrity_check;"
+```
+
+## Step 6: Backpocket Trigger Check
+
+```bash
+sqlite3 design/design.db "SELECT id, title, body FROM backpocket WHERE status='staged';"
+```
+
+For each staged entry, check whether this playtest's findings triggered its activation condition. If yes, surface to the user.
+
+## Step 7: Present Summary
+
+Output a concise summary:
 1. Top 3–5 findings (one sentence each, with source — self-reported or behavioral).
-2. Which OQ verdicts changed (resolved/updated).
-3. Key behavioral pattern not captured in any feedback form question.
-4. **Decision tree recommendation**: which stack to run next, citing the specific metric and the *Routing on result* rule that drives it. If diagnosis overrides the literal rule, explain why.
-5. Any pre-staged responses from `docs/backpocket.md` that are now triggered by the results.
+2. OQ verdicts that changed.
+3. Behavioral patterns not captured in any feedback question.
+4. **Routing recommendation**: next stack to activate, citing the specific metric + routing rule.
+5. Any backpocket entries triggered.
+
+The full analysis lives in `essays` (queryable via `SELECT body FROM essays WHERE id='essay-playtest-<N>-analysis';`); the summary playtest row in `playtests`. No `.md` files are written.

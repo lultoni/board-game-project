@@ -1,123 +1,141 @@
 ---
 name: scenario
-description: "Create a test scenario rule sheet and feedback form for an incremental design change. Auto-triggers when a design discussion concludes with a testable change or when a new test stack is needed."
+description: "Stage a candidate rule bundle as a row in the `stacks` table. The bundle becomes a digital variant (toggleable in `game/`) or a paper rule sheet (only via archived paper-pipeline)."
 argument-hint: "<stack-X> <short description>"
 ---
 
 # Test Scenario: $ARGUMENTS
 
+A "scenario" (a.k.a. test stack) is now a row in the `stacks` table whose `body` markdown captures everything a future Rust prototype or paper playtest needs: what changes, why, hypothesis, watch list, routing. It is NOT a Typst file — the paper pipeline is archived.
+
 ## Step 1: Validate Methodology
 
-Before writing, check the incremental testing methodology:
+Pull the canonical methodology from the DB before designing the stack:
 
-1. **Independence**: Is this change independent from other untested changes? If not, identify the coupling and either:
-   - Bundle the coupled changes into one stack (document why), or
-   - Defer this change until its dependency is tested.
-
-2. **Stack assignment**: Which experience stack does this scenario belong to? Read `docs/test-scenarios/TESTING_PLAN.typ` to check existing stacks. If it's a new stack, define it.
-
-3. **Ordering**: Does this change depend on results from a prior untested stack? If so, note the dependency and mark the rule sheet as requiring those results first.
-
-4. **Isolation**: Can we attribute observed effects to THIS change alone? If the change touches multiple systems, consider decomposing further.
-
-Read the current baseline rules from the canonical sources: `docs/design-principles.md`, `docs/systems-and-mechanics.md`, and `docs/test-scenarios/baseline/ruleset-baseline.typ` (and the shared section functions in `docs/test-scenarios/shared/baseline-sections.typ`).
-
-## Step 2: Determine Stack Letter and Folder
-
-Check existing folders in `docs/test-scenarios/` to find the next available stack letter (or use the existing stack folder if extending it). Folder convention:
-
-```
-docs/test-scenarios/stack-X-<short-slug>/
-  stack-X-<short-slug>.typ        ← rule sheet
-  stack-X-feedback.typ            ← feedback form (one per stack, shared across games in stack)
+```bash
+sqlite3 design/design.db <<'SQL'
+SELECT body FROM principles WHERE kind='methodology';
+SELECT id, letter, name, status FROM stacks ORDER BY letter;
+SQL
 ```
 
-If the stack runs multiple games (e.g. game1, game2), name files `stack-X-game1-<slug>.typ` etc. Check the archived `old-game-versions/archived-stacks/stack-a-cleverness/` for the convention.
+Check each:
 
-After creating the files, the discovery-based `build-pdfs.sh` will pick them up automatically — run `zsh docs/test-scenarios/build-pdfs.sh` to compile PDFs.
+1. **Independence**: Is this change independent of other untested changes? If not, identify the coupling — either bundle (document why) or defer.
+2. **Stack assignment**: Is this a new stack or an extension of an existing one? Existing letters: query above.
+3. **Ordering**: Does it depend on results of a prior untested stack? Note the dependency.
+4. **Isolation**: Can we attribute observed effects to THIS change alone? If not, decompose.
 
-## Step 3: Write the Rule Sheet
+Pull baseline + active stack bodies for context:
 
-**Rule**: Use the composable section system — do NOT copy sections verbatim.
-
-Start the rule sheet with:
-
-```typst
-#import "../shared/template.typ": *
-#import "../shared/baseline-sections.typ": *
-#show: template.with(title: "Stack X — [Title]")
+```bash
+sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"
+sqlite3 design/design.db "SELECT id, name, body FROM mechanics WHERE verdict='baseline';"
 ```
 
-Then call section functions. Pass arguments ONLY for what this stack changes. Everything else uses baseline defaults automatically.
+## Step 2: Pick the Next Stack Letter
 
-**Available section functions** (all in `baseline-sections.typ` — re-read it before invoking to confirm current API):
-
-```typst
-#section-goal()
-#section-components()
-#section-setup()
-#section-round-structure()
-#section-turn-structure()
-#section-movement-phase()
-#section-standard-attack()
-#section-action-phase()
-#section-skill-system()
-#section-resource-economy()
-#section-health-armor()
-#section-bodyguard()
-#section-skill-drafting()
-#section-progression()
-#pagebreak()
-#section-skill-reference()
-#section-quick-reference(overrides: (:))   // pass overrides for changed rows only
+```bash
+sqlite3 design/design.db "SELECT letter FROM stacks ORDER BY letter;"
 ```
 
-For changed rules, inline the changed section directly with a `⚡ CHANGED:` callout and a before/after table — don't call the baseline function for that section.
+Conventional next-letter logic (alphabetic). If the new stack is a sibling variant of an existing stack (e.g. M.1 dose), use a sub-id.
 
-For the Quick Reference table: call `#section-quick-reference(overrides: ("Concept Name": [new content]))` to override only the rows your stack changes. Do not copy the whole table.
+## Step 3: Write the Stack Body
 
-Add a header block before the section calls with:
-- Version (use `#BASELINE_VERSION` from baseline-sections.typ), source lineage, feedback form pointer.
-- `#note-box[]` summarising what changes in this stack.
-- "What we're testing", "Hypothesis", "Watch for" bullets.
+The `body` is full markdown. Required sections:
 
-## Step 4: Write the Feedback Form
+```markdown
+# Stack X — <Name>
 
-Create `stack-X-feedback.typ` by importing the shared feedback functions from `docs/test-scenarios/shared/feedback-baseline.typ`. Write only Section A (stack-specific observables) and Section B (stack-specific hypothesis questions). Use the imported `section-c-skeleton(extra-questions: (...))` for Section C — do not rebuild it from scratch.
+**Status**: queued | active
+**Targets**: oq-N, oq-M
+**Baseline reference**: <date or "Stack <previous letter>">
 
-Section A: Add kill-timing fields (always include first Guard kill + first Champion kill round fields) + any stack-specific observables. Include armor totals.
+## What changes vs baseline / previous
 
-Section B: 6–8 questions testing this stack's hypothesis. Use `#fq[...]` for auto-numbering — do not hardcode question numbers.
+| Concept | Before | After | Why |
+|---|---|---|---|
+| ... | ... | ... | ... |
 
-Section C OQ-monitoring: For each OQ marked TRACKING in `game-state/OPEN_QUESTIONS.md` for this stack, pass it as an extra question to `section-c-skeleton`.
+## Hypothesis
 
-Include a comparison rating row labelling the dimension being compared (e.g. "Guards feel vs prior stack:").
+[1-2 paragraphs: the specific effect this change is predicted to produce, framed against the core fantasy.]
 
-## Step 5: Update Living Documents
+## What "good" looks like
 
-### `docs/test-scenarios/TESTING_PLAN.typ`
-- Place the new stack in the appropriate state section: *Active* (replacing the previous Active — exactly one Active at a time), *Queued* (gated on a specific other stack's result), or *Dormant* (waiting on a trigger condition).
-- Each stack entry must include: stable letter ID + descriptive name, what it targets (OQ refs), variants/doses, status, entry conditions, *What "good" looks like*, *Routing on result*.
-- Add a Session Notes entry at the bottom explaining the change.
-- Run `zsh docs/test-scenarios/build-pdfs.sh` to rebuild TESTING_PLAN.pdf.
+- [Bullet 1 — observable outcome]
+- [Bullet 2]
 
-### `docs/systems-and-mechanics.md`
-- Add the new stack to the Incremental Test Plan table with status "Ready to test".
+## Watch list
 
-### `game-state/NEXT_STEPS.md`
-- Add the new playtest as a prioritised action item.
+- [Risk 1 — what could go wrong, and how we'd notice]
+- [Risk 2]
 
-### `game-state/STATUS.md`
-- Update Current Focus / Next Action to point at the new stack if it's the next thing to play.
+## Routing on result
 
-### `game-state/OPEN_QUESTIONS.md`
-- Link the relevant OQ(s) to this test stack.
+- **If hypothesis confirmed**: [next stack to queue]
+- **If partial**: [adjustment / dose change]
+- **If rejected**: [rollback path]
 
-## Step 6: Confirm
+## Digital toggle
 
-Output a summary:
-1. What the stack tests and which experience stack it belongs to.
-2. The hypothesis.
-3. Where the rule sheet and feedback form were saved.
-4. Which section functions were called with non-default arguments.
+[Once `game/` exists: how this stack maps to a feature flag / config switch in the Rust core. For paper-only stacks: "paper-only, see archive/paper-pipeline/test-scenarios/ for the rule sheet."]
+```
+
+## Step 4: Insert into DB
+
+```bash
+sqlite3 design/design.db <<SQL
+BEGIN;
+
+INSERT INTO stacks (id, letter, name, status, body) VALUES (
+  'stack-<X>',
+  '<X>',
+  '<Name>',
+  'queued',
+  '<full markdown body from Step 3>'
+);
+
+-- Link to OQs this stack addresses
+INSERT INTO links (from_id, to_id, relation, note) VALUES
+  ('stack-<X>', 'oq-N', 'addresses', NULL),
+  ('stack-<X>', 'oq-M', 'addresses', NULL);
+
+-- If extending or superseding a previous stack
+INSERT INTO links (from_id, to_id, relation, note) VALUES
+  ('stack-<X>', 'stack-<prev>', 'derived-from', NULL);
+
+COMMIT;
+SQL
+```
+
+If activating this stack (replacing the current Active), mark the predecessor first:
+
+```bash
+sqlite3 design/design.db <<'SQL'
+UPDATE stacks SET status='resolved' WHERE id='stack-m';
+UPDATE stacks SET status='active' WHERE id='stack-<X>';
+SQL
+```
+
+Exactly one stack should be `active` at a time.
+
+## Step 5: Update Affected Rows
+
+- `next_steps`: insert a new row for "playtest stack-<X>" or "implement stack-<X> toggle in game/" depending on whether it's paper or digital.
+- `mechanics`: if the stack stages a new mechanic candidate, insert into `mechanics` with `verdict='staged'` and a `link` from the stack to the mechanic (`evidence-for`).
+
+## Step 6: Regenerate STATUS.md if Activated
+
+If the new stack is now Active, regenerate `game-state/STATUS.md` so "Active stack" reflects the change. (The `/wrapup` skill normally does this at session end — only do it inline if the user wants the file updated now.)
+
+## Step 7: Confirm
+
+Output a short summary:
+
+1. Stack ID, letter, name, status.
+2. The hypothesis (one sentence).
+3. OQs addressed.
+4. Whether this maps to a digital toggle in `game/` or a paper run (and if paper, note that the rule-sheet generator is no longer maintained — the body in the DB is the spec).
 5. Any methodology concerns (coupling, dependencies).

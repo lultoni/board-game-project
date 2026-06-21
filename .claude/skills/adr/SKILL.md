@@ -1,6 +1,6 @@
 ---
 name: adr
-description: "Create an Architecture Decision Record when an architectural decision point emerges with multiple valid approaches. Auto-triggers when Claude needs to formally present design options to the user."
+description: "Create an Architecture Decision Record when a decision point emerges with multiple valid approaches. Persists the ADR into the `adrs` table once decided."
 argument-hint: "<topic>"
 ---
 
@@ -8,19 +8,34 @@ argument-hint: "<topic>"
 
 ## Step 1: Research Context
 
-Read `docs/design-principles.md`, `docs/systems-and-mechanics.md`, and `game-state/OPEN_QUESTIONS.md` to understand how this decision connects to the current design state.
+Query the DB for relevant context:
 
-If external game design knowledge is needed and you're not confident in your knowledge, trigger the `/research` skill first to gather evidence before writing the ADR.
+```bash
+sqlite3 design/design.db <<'SQL'
+SELECT body FROM principles WHERE kind IN ('north-star','lens','hard-constraint') ORDER BY n;
+SELECT id, title FROM open_questions WHERE status IN ('critical','high');
+SELECT id, n, title FROM adrs ORDER BY n;
+SQL
+```
+
+If a specific OQ or essay informs this decision, pull its body:
+
+```bash
+sqlite3 design/design.db "SELECT body FROM open_questions WHERE id='oq-N';"
+sqlite3 design/design.db "SELECT body FROM essays WHERE id='essay-<slug>';"
+```
+
+If external game-design knowledge is needed and you're not confident, trigger `/research` first.
 
 ## Step 2: Present the ADR inline
 
-Do NOT create a separate file. Present the ADR directly in the conversation using this structure:
+Do NOT write a file yet. Present the ADR directly using this structure:
 
 ```
 ## ADR: [Decision Title]
 
-**Date**: [today]  
-**Related OQs**: [OQ numbers if applicable]
+**Date**: [today]
+**Related OQs**: [oq-N, oq-M] (if any)
 
 ### Context
 [2-3 paragraphs: what prompted this, what constraints exist, how it connects to the core fantasy]
@@ -37,18 +52,37 @@ Do NOT create a separate file. Present the ADR directly in the conversation usin
 [Same structure]
 
 ### Recommendation
-[Opinionated assessment. Always evaluate against the core fantasy: "Does this make spell combos more interesting?"]
+[Opinionated assessment. Evaluate against the core fantasy ("does this make spell combos better?") and the north stars / hard constraints.]
 ```
 
 Ask the user to decide.
 
-## Step 3: After Decision
+## Step 3: After Decision — Persist to DB
 
-When the user decides:
+When the user decides, INSERT the ADR into `adrs` and update affected rows.
 
-1. Update the relevant project doc to reflect the decision:
-   - System-level decisions → `docs/systems-and-mechanics.md`
-   - Principle-level decisions → `docs/design-principles.md`
-   - Decision log entry → `docs/mechanics-log/mechanics-evaluated.md`
-2. Update `game-state/OPEN_QUESTIONS.md` to resolve related questions.
+```bash
+NEXT_N=$(sqlite3 design/design.db "SELECT COALESCE(MAX(n),0)+1 FROM adrs;")
+sqlite3 design/design.db <<SQL
+INSERT INTO adrs (id, n, date, title, body) VALUES (
+  'adr-00${NEXT_N}',
+  ${NEXT_N},
+  date('now'),
+  '[Decision Title]',
+  '[Full markdown body: Context + Options + Decision + Consequences]'
+);
+SQL
+```
+
+Then:
+
+1. **Resolve related OQs**: `UPDATE open_questions SET status='resolved' WHERE id IN ('oq-N','oq-M');`
+2. **Link the ADR** to the OQs it resolves:
+   ```sql
+   INSERT INTO links (from_id, to_id, relation, note) VALUES
+     ('adr-00<N>', 'oq-N', 'resolved-by', NULL);
+   ```
 3. If the decision requires testing, trigger `/scenario` to create the test stack.
+4. If the decision changes a principle or mechanic verdict, `UPDATE` the relevant row's body and add a `supersedes` link from the new state to the old.
+
+Keep the ADR body in the DB as full markdown — this is the canonical record. Don't write a separate `.md` file.
