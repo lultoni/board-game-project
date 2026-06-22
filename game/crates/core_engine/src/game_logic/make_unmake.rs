@@ -52,9 +52,9 @@ pub fn make(pos: &mut Position, action: Action) -> Undo {
 
     match action.kind() {
         ActionKind::Move      => apply_move(pos, action, &mut undo),
+        ActionKind::Skill     => apply_skill(pos, action, &mut undo),
         ActionKind::EndPhase  => apply_end_phase(pos, &mut undo),
         ActionKind::EndTurn   => super::turn_manager::end_turn(pos),
-        ActionKind::Skill     => panic!("Skill-kind make() not implemented until Slice 4+"),
     }
 
     undo
@@ -232,6 +232,38 @@ fn deal_one_damage(pos: &mut Position, hit_sq: u8, undo: &mut Undo) {
         }
     } else {
         pos.mailbox[hit_sq as usize] = prev_entry.with_hp(new_hp);
+    }
+}
+
+// === Skill-kind dispatch ===================================================
+
+/// Apply a Skill-kind action. Slice 3 wires the dispatch surface; each per-
+/// skill resolver is `unimplemented!()` until Slice 4+ lands the bodies one
+/// skill at a time. The generator already enumerates Skill actions in Slice 3,
+/// but no engine consumer plays them yet — search and HvH UI gate Skill-phase
+/// play on resolver availability.
+fn apply_skill(pos: &mut Position, action: Action, _undo: &mut Undo) {
+    debug_assert!(pos.actions_remaining > 0, "make() invoked with zero actions");
+    let skill = super::skills::skill_from_id(action.skill_id())
+        .expect("generator emitted unknown skill id");
+    match skill {
+        super::skills::Skill::Lance
+        | super::skills::Skill::Hook
+        | super::skills::Skill::Break
+        | super::skills::Skill::Steal
+        | super::skills::Skill::Tempest
+        | super::skills::Skill::Shield
+        | super::skills::Skill::Heal
+        | super::skills::Skill::Plate
+        | super::skills::Skill::Dash
+        | super::skills::Skill::Blast
+        | super::skills::Skill::Shove
+        | super::skills::Skill::Swap
+        | super::skills::Skill::Retreat
+        | super::skills::Skill::Focus
+        | super::skills::Skill::Charge => {
+            unimplemented!("Skill::{:?} resolver lands in Slice 4+", skill);
+        }
     }
 }
 

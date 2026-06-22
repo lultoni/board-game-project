@@ -1,13 +1,16 @@
 //! Layer 2 — Game Logic & Action Pipeline.
 //!
 //! - `action`        — packed Primitive Action representation
-//! - `magic`         — precomputed straight-line move tables
+//! - `skills`        — skill enum + cost/range/category/owner lookups
 //! - `generator`     — enumerate legal primitive actions for a Position
 //! - `make_unmake`   — apply / reverse an action against a Position
 //! - `turn_manager`  — phase transitions and end-of-turn bookkeeping
+//!
+//! Path/Range/Block primitives live in `state::magic` and `state::path` —
+//! they are pure geometry, not game-logic.
 
 pub mod action;
-pub mod magic;
+pub mod skills;
 pub mod generator;
 pub mod make_unmake;
 pub mod turn_manager;

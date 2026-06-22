@@ -46,6 +46,8 @@
 //! slice 4. Until then, the only legal Skill-Phase action is `EndPhase`.
 
 use super::action::{Action, ActionKind};
+use super::skills::{self, TargetOwner};
+use crate::state::path;
 use crate::state::position::{Phase, Player};
 use crate::state::{Bitboard, Position};
 
@@ -117,13 +119,85 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
     out
 }
 
-// === Skill Phase (stub for slice 1) =========================================
+// === Skill Phase ============================================================
 
-fn generate_skill_phase(_pos: &Position) -> Vec<Action> {
-    // Slice 1 ships Move-Phase only. Skill Phase legality is implemented in
-    // slice 4 (after Path/Range/Block in slice 3). Until then, the only legal
-    // Skill-Phase action is to end the phase (i.e. end the turn).
-    vec![Action::encode(0, 0, ActionKind::EndPhase, 0, 0)]
+/// Enumerate Skill-Phase actions. Slice 3 wires *enumeration only* — the
+/// per-skill resolvers in `make_unmake::apply_skill` are still `unimplemented!`
+/// for every skill, so calling `make()` on any non-EndPhase emitted here will
+/// panic. Search / HvH consumers gate on resolver availability before playing
+/// these.
+///
+/// For each caster on the side-to-move with money ≥ skill cost, emit one
+/// action per (skill, legal-target) pair where "legal" means:
+///   - `TargetOwner::SelfOnly` → one action with `src == tgt`.
+///   - `TargetOwner::Empty` → skipped in Slice 3 (Move-skills land in Slice 5).
+///   - `TargetOwner::Ally|Enemy|Either` → use `path::skill_targets` and AND
+///     with the appropriate side bitboard.
+///
+/// `choice_idx` is always 0 in Slice 3. Shove direction, Retreat Guard-pick,
+/// and Tempest bodyguard live in Slice 4/5.
+fn generate_skill_phase(pos: &Position) -> Vec<Action> {
+    let mut out = Vec::with_capacity(64);
+
+    if pos.actions_remaining == 0 {
+        out.push(Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        return out;
+    }
+
+    let stm_bb = side_to_move_bb(pos);
+    let opp_bb = opponent_bb(pos);
+    let money = match pos.to_move {
+        Player::P1 => pos.p1_money,
+        Player::P2 => pos.p2_money,
+    };
+
+    for src in iter_squares(stm_bb) {
+        let entry = pos.mailbox[src as usize];
+        for slot_id in [entry.skill1(), entry.skill2()] {
+            let Some(skill) = skills::skill_from_id(slot_id) else { continue };
+            if (skills::skill_cost(skill) as u16) > money { continue; }
+
+            // OQ-70: Focus-buff range is wired in Slice 6 (caster choice for
+            // Move-skills). For now, generator uses the unbuffed range.
+            let range = skills::skill_default_range(skill);
+
+            match skills::skill_target_owner(skill) {
+                TargetOwner::SelfOnly => {
+                    out.push(Action::encode(
+                        src, src, ActionKind::Skill, skill as u8, 0,
+                    ));
+                }
+                TargetOwner::Empty => {
+                    // Move-skills (Dash/Retreat) — Slice 5 wires these.
+                    continue;
+                }
+                owner @ (TargetOwner::Ally | TargetOwner::Enemy | TargetOwner::Either) => {
+                    let raw = path::skill_targets(pos, src, range).0;
+                    let filtered = match owner {
+                        TargetOwner::Ally   => raw & stm_bb.0,
+                        TargetOwner::Enemy  => raw & opp_bb.0,
+                        TargetOwner::Either => raw,
+                        _ => unreachable!(),
+                    };
+                    // Swap requires the caster to not be its own target, but
+                    // path::skill_targets already excludes src (the src
+                    // square is not on any of its own rays). Other ally-target
+                    // skills are likewise fine.
+                    for tgt in iter_squares(Bitboard(filtered)) {
+                        // Skill::Swap with src==tgt impossible (see above).
+                        // Drop the `Skill` value here; the action encodes id only.
+                        let _ = skill;
+                        out.push(Action::encode(
+                            src, tgt, ActionKind::Skill, skill as u8, 0,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    out.push(Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+    out
 }
 
 // === Reachability ===========================================================
@@ -706,5 +780,215 @@ mod tests {
             ),
             "diagonal-2 destination should be reachable for Guard"
         );
+    }
+
+    // ---- Skill Phase enumeration (Slice 3) ----------------------------
+
+    use crate::state::MailboxEntry;
+    use crate::state::position::GameResult;
+
+    fn skill_phase_pos(actions: u8) -> Position {
+        let mut p = Position::empty();
+        p.current_phase = Phase::Skill;
+        p.actions_remaining = actions;
+        p.to_move = Player::P1;
+        p.p1_money = 10;
+        p.p2_money = 10;
+        p
+    }
+
+    fn equip(p: &mut Position, sq: u8, skill_id: u8) {
+        let prev = p.mailbox[sq as usize];
+        // Place into slot 1 if free, else slot 2.
+        p.mailbox[sq as usize] = if prev.skill1() == 0 {
+            prev.with_skill1(skill_id)
+        } else {
+            prev.with_skill2(skill_id)
+        };
+    }
+
+    fn place_champ(p: &mut Position, sq: u8, player: Player) {
+        let bit = Bitboard::from_square(sq);
+        match player {
+            Player::P1 => p.p1_pieces = p.p1_pieces | bit,
+            Player::P2 => p.p2_pieces = p.p2_pieces | bit,
+        }
+        p.champions = p.champions | bit;
+        p.mailbox[sq as usize] = MailboxEntry::default().with_hp(2);
+    }
+
+    #[test]
+    fn generate_skill_phase_caster_with_no_money_emits_only_endphase() {
+        let mut p = skill_phase_pos(2);
+        p.p1_money = 0;
+        place_champ(&mut p, 28, Player::P1); // e4
+        equip(&mut p, 28, super::skills::Skill::Lance as u8);
+
+        let actions = generate(&p);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].kind(), ActionKind::EndPhase);
+    }
+
+    #[test]
+    fn generate_skill_phase_lance_targets_enemy_in_range() {
+        // P1 Champion at e4 (sq 28) with Lance (range 1 = adjacent only).
+        // P2 Champion at e5 (sq 36) — adjacent N. Lance can hit it.
+        let mut p = skill_phase_pos(2);
+        place_champ(&mut p, 28, Player::P1);
+        equip(&mut p, 28, super::skills::Skill::Lance as u8);
+        place_champ(&mut p, 36, Player::P2);
+
+        let actions = generate(&p);
+        let lance_id = super::skills::Skill::Lance as u8;
+        assert!(
+            actions.iter().any(|a|
+                a.kind() == ActionKind::Skill
+                && a.src() == 28
+                && a.target() == 36
+                && a.skill_id() == lance_id
+            ),
+            "expected Lance(e4 → e5) in actions: {:?}",
+            actions.iter().filter(|a| a.kind() == ActionKind::Skill).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn generate_skill_phase_blocked_ray_no_action() {
+        // P1 Champion at e4 (sq 28) with Hook (range 2). P1 ally at e5 (36),
+        // P2 enemy at e6 (44). Ally blocks the e-ray; even with range 2 Hook
+        // cannot reach e6. Lance/Hook target Enemy → ally is filtered too.
+        let mut p = skill_phase_pos(2);
+        place_champ(&mut p, 28, Player::P1);
+        place_champ(&mut p, 36, Player::P1); // ally
+        place_champ(&mut p, 44, Player::P2); // enemy past ally
+        equip(&mut p, 28, super::skills::Skill::Hook as u8);
+
+        let actions = generate(&p);
+        let hook_id = super::skills::Skill::Hook as u8;
+        // No Hook hits anywhere on the N-ray: ally blocks, enemy past blocker.
+        assert!(
+            !actions.iter().any(|a|
+                a.kind() == ActionKind::Skill
+                && a.src() == 28
+                && a.skill_id() == hook_id
+                && (a.target() == 36 || a.target() == 44)
+            ),
+            "Hook should not target sq 36 (ally, wrong owner) or sq 44 (blocked)"
+        );
+    }
+
+    #[test]
+    fn generate_skill_phase_heal_targets_only_allies() {
+        // P1 Champion at e4 (sq 28) with Heal (range 1, Ally). P1 ally at e5
+        // (36), P2 enemy at e3 (20). Heal must emit ally target, NOT enemy.
+        let mut p = skill_phase_pos(2);
+        place_champ(&mut p, 28, Player::P1);
+        place_champ(&mut p, 36, Player::P1);
+        place_champ(&mut p, 20, Player::P2);
+        equip(&mut p, 28, super::skills::Skill::Heal as u8);
+
+        let actions = generate(&p);
+        let heal_id = super::skills::Skill::Heal as u8;
+        let heal_targets: Vec<u8> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Skill
+                && a.src() == 28
+                && a.skill_id() == heal_id)
+            .map(|a| a.target())
+            .collect();
+        assert!(heal_targets.contains(&36), "ally target emitted");
+        assert!(!heal_targets.contains(&20), "enemy target filtered out");
+    }
+
+    #[test]
+    fn generate_skill_phase_shove_targets_either_side() {
+        // P1 Champion at e4 (sq 28) with Shove (range 3, Either). P1 ally at
+        // e5 (36), P2 enemy at e3 (20). Both should be valid Shove targets.
+        let mut p = skill_phase_pos(2);
+        place_champ(&mut p, 28, Player::P1);
+        place_champ(&mut p, 36, Player::P1);
+        place_champ(&mut p, 20, Player::P2);
+        equip(&mut p, 28, super::skills::Skill::Shove as u8);
+
+        let actions = generate(&p);
+        let shove_id = super::skills::Skill::Shove as u8;
+        let shove_targets: Vec<u8> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Skill
+                && a.src() == 28
+                && a.skill_id() == shove_id)
+            .map(|a| a.target())
+            .collect();
+        assert!(shove_targets.contains(&36), "Shove emits ally target");
+        assert!(shove_targets.contains(&20), "Shove emits enemy target");
+    }
+
+    #[test]
+    fn generate_skill_phase_self_targeting_skill_emits_src_eq_tgt() {
+        // P1 Champion at e4 (sq 28) with Shield (SelfOnly, range 0).
+        // Generator emits exactly one Shield action: src=tgt=28.
+        let mut p = skill_phase_pos(2);
+        place_champ(&mut p, 28, Player::P1);
+        equip(&mut p, 28, super::skills::Skill::Shield as u8);
+
+        let actions = generate(&p);
+        let shield_id = super::skills::Skill::Shield as u8;
+        let shield_actions: Vec<_> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Skill && a.skill_id() == shield_id)
+            .collect();
+        assert_eq!(shield_actions.len(), 1);
+        assert_eq!(shield_actions[0].src(), 28);
+        assert_eq!(shield_actions[0].target(), 28);
+    }
+
+    #[test]
+    fn generate_skill_phase_move_skill_emits_nothing_in_slice_3() {
+        // P1 Champion at e4 (sq 28) with Dash (TargetOwner::Empty).
+        // Slice 3 skips Move-skills entirely — no Dash actions emitted.
+        let mut p = skill_phase_pos(2);
+        place_champ(&mut p, 28, Player::P1);
+        equip(&mut p, 28, super::skills::Skill::Dash as u8);
+
+        let actions = generate(&p);
+        let dash_id = super::skills::Skill::Dash as u8;
+        assert!(
+            !actions.iter().any(|a| a.kind() == ActionKind::Skill && a.skill_id() == dash_id),
+            "Dash is a Move-skill — deferred to Slice 5"
+        );
+    }
+
+    #[test]
+    fn generate_skill_phase_after_game_over_returns_empty() {
+        let mut p = skill_phase_pos(2);
+        place_champ(&mut p, 28, Player::P1);
+        equip(&mut p, 28, super::skills::Skill::Lance as u8);
+        p.game_result = Some(GameResult::P1Wins);
+
+        let actions = generate(&p);
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn generate_skill_phase_zero_actions_only_endphase() {
+        let mut p = skill_phase_pos(0);
+        place_champ(&mut p, 28, Player::P1);
+        equip(&mut p, 28, super::skills::Skill::Lance as u8);
+
+        let actions = generate(&p);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].kind(), ActionKind::EndPhase);
+    }
+
+    #[test]
+    #[should_panic(expected = "Skill::Lance resolver lands in Slice 4+")]
+    fn make_panics_on_skill_action() {
+        // Slice-3 contract: `make()` on any Skill action panics with
+        // unimplemented!(). Search/UI must gate on resolver availability.
+        let mut p = skill_phase_pos(2);
+        place_champ(&mut p, 28, Player::P1);
+        equip(&mut p, 28, super::skills::Skill::Lance as u8);
+        place_champ(&mut p, 36, Player::P2);
+
+        let lance_id = super::skills::Skill::Lance as u8;
+        let a = Action::encode(28, 36, ActionKind::Skill, lance_id, 0);
+        let _ = super::super::make_unmake::make(&mut p, a);
     }
 }

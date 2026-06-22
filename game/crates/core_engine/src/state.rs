@@ -8,7 +8,9 @@
 
 pub mod bitboard;
 pub mod fen;
+pub mod magic;
 pub mod mailbox;
+pub mod path;
 pub mod position;
 pub mod zobrist;
 
