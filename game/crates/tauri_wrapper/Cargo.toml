@@ -1,0 +1,19 @@
+[package]
+name = "tauri_wrapper"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Tauri 2 desktop wrapper exposing core_engine via IPC to the Svelte frontend."
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+core_engine = { workspace = true }
+tauri = { version = "2", features = [] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

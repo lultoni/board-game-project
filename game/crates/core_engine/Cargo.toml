@@ -1,0 +1,15 @@
+[package]
+name = "core_engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Pure Rust game engine for (GAME NAME). Stateless math; no I/O; no platform deps."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]

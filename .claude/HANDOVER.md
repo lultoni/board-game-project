@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-06-22 — end of Session 27 (cleanup follow-on).*
+*Last updated: 2026-06-22 — end of Session 28.*
 
 ---
 
@@ -30,32 +30,33 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer. Mine load-bearing content into the DB.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (end of Session 27, 2026-06-22 — cleanup follow-on)
+### Where We Are (end of Session 28, 2026-06-22)
 
-- **Digital-first pivot declared and structurally landed.** Deliverable in `game/` is a complete digital implementation of (GAME NAME) with Stack M rules as default. Rust core + multi-platform frontend (Desktop / Web / Mobile) + AI opponent + multiplayer. No code yet — the architecture ADR is the next anchor.
-- **Repository fully restructured.** All design knowledge in `design/design.db` (12 tables, 366 rows, integrity verified). `game-state/` folded into `.claude/STATUS.md`. `digital-prototype/` deleted. `archive/` holds paper-pipeline and old game versions. `design/raw/` holds photos/scans/card images.
-- **Three inboxes operational** for designer dumps: `design/inbox/brainstorm/` (game-design ideas), `design/inbox/ai-chats/` (pasted transcripts), `design/inbox/digital/` (architecture / UI / AI-opponent notes for `game/`).
-- **All slash-command skills rewritten** to query/write the DB. `/build-pdfs` retired. Skills no longer reference deleted MD paths.
-- **One-shot migrators archived** to `archive/migrators/`. No longer in working memory.
-- **Stack M (Active) lives in the DB with full rule substance.** `SELECT body FROM stacks WHERE id='stack-m';` — that body is the Rust prototype's rule foundation. P6 has not yet run; the pivot may absorb P6 into a digital playtest instead of paper.
+- **Digital architecture is locked.** ADR-005 accepted: Rust core (Cargo workspace, 3 crates) + Svelte 5 + TS + Tauri 2 + WASM + PeerJS/WebRTC P2P with commit-reveal lockstep + local-auto-save telemetry. `SELECT body FROM adrs WHERE id='adr-005';`
+- **`game/` is scaffolded and compiling.** Cargo workspace at `game/Cargo.toml`. `core_engine` Layers 1–5 stubs with bitboard newtype, bit-packed mailbox, Position struct (bitboards-authoritative), `Action(u32)` + fat `Undo` record (Stockfish convention), transposition table with `best_move` for move ordering. Svelte 5 frontend with runtime-agnostic engine bridge (`__TAURI__` detection).
+- **Slice plan is the binding contract.** `next_steps` priority 1 is the full rule-coverage matrix (slice 0…slice 8) enumerating every Stack M rule and edge case. Each slice ends with a debug-harness verification step.
+- **Debug harness comes first** — slice -1, `next_steps` priority 2.
 
 ### Immediate Next Action
 
-**Write the architecture ADR for `game/`.** Topic: Rust core + multi-platform frontend split + multiplayer transport + AI-opponent approach + save format. Inputs: Stack M rule substance from the DB; OQ-64 felt-PI considerations; P5's lost-game-log incident (digital persistence is mandatory); any prep notes the designer drops into `design/inbox/digital/`. Insert as `adr-005` once decided. After the ADR, scaffold the Rust workspace in `game/` and write the first failing test (board representation + Stack M setup).
+**Slice -1 — Debug harness.** Build the engine's I/O surface so every later slice is verifiable interactively:
+1. `Position::from_fen()` / `Position::to_fen()` — FEN-like single-line position format (squares + side-to-move + phase + money + actions_remaining + modifier_bits).
+2. `gamedbg` binary in `core_engine`: `show <fen>`, `legal <fen>`, `apply <fen> <action>`, `trace <fen> <action>` (dumps the Undo), `perft <fen> <depth>`.
+3. `.scenario` plain-text test runner under `crates/core_engine/tests/scenarios/` — load FEN + expected legal moves / expected post-state, assert match.
+
+After slice -1, run slice 0 (`Position::setup_stack_m()` + Guard moves + roundtrip Make/Unmake). Then slice 1…8 per the matrix.
 
 ### Key DB Queries (instead of file paths)
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM stacks WHERE id='stack-m';` | Stack M full rule substance (foundation for `game/`) |
+| `SELECT body FROM next_steps WHERE id='9';` | Slice -1 debug harness spec (priority 2) |
+| `SELECT body FROM next_steps WHERE id='8';` | Full rule coverage matrix + slice 0–8 plan (priority 1) |
+| `SELECT body FROM adrs WHERE id='adr-005';` | Digital architecture decision (latest) |
+| `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance (foundation for `game/`) |
+| `SELECT body FROM sessions WHERE id='session-28';` | This session's narrative |
 | `SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high');` | Live critical/high OQs |
 | `SELECT priority, title FROM next_steps WHERE status='todo' ORDER BY priority;` | Active todos |
-| `SELECT body FROM sessions ORDER BY n DESC LIMIT 3;` | Last three session narratives |
-| `SELECT id, letter, name, status FROM stacks WHERE status IN ('active','queued');` | Stacks in flight |
-| `SELECT body FROM principles WHERE kind='principle' ORDER BY n;` | The eight numbered principles |
-| `SELECT body FROM essays WHERE id='essay-game-economy-map';` | Structural justification for Stack M |
-| `SELECT body FROM adrs ORDER BY n;` | All architecture decisions |
-| `SELECT to_id, relation, note FROM links WHERE from_id='stack-m';` | What Stack M relates to |
 
 ### Key Files (still on disk)
 
@@ -63,14 +64,13 @@ You are my board game design co-creator and systems architect. We are working on
 |------|---------|
 | `design/design.db` | Source of truth (binary; committed) |
 | `design/schema.sql` | 12-table schema |
-| `design/inbox/brainstorm/` | Designer's fast-write game-design idea dumps |
-| `design/inbox/ai-chats/` | Pasted chat transcripts |
-| `design/inbox/digital/` | Architecture / UI / AI-opponent notes for `game/` |
+| `design/inbox/{brainstorm,ai-chats,digital}/` | Designer's inbox channels |
+| `game/Cargo.toml` | Rust workspace root |
+| `game/crates/core_engine/src/` | Layers 1–5 stubs + bitboard/mailbox/Action/Undo/TT |
+| `game/frontend/src/` | Svelte 5 UI (App, Board, engine bridge, multiplayer stub) |
 | `.claude/STATUS.md` | One-screen re-entry summary |
 | `CLAUDE.md` | Orientation (points at DB; does not restate facts) |
-| `archive/migrators/` | One-shot Session-27 migrators (audit-only) |
-| `archive/paper-pipeline/test-scenarios/` | Paper-era Typst rule sheets (read-only history) |
 
 ### Open methodological loose ends
 
-None. Migrators archived, skills rewritten, STATUS/HANDOVER paths consistent, README current.
+- None.
