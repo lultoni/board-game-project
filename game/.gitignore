@@ -1,3 +1,6 @@
 target/
 **/*.rs.bk
 Cargo.lock
+
+# Tauri auto-generated schemas (regenerated each build)
+crates/tauri_wrapper/gen/

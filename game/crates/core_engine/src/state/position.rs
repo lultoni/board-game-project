@@ -110,4 +110,16 @@ impl Position {
     // TODO: setup_stack_m() — Stack M canonical start (8×8 board, piece placement,
     // starting money = 6, fixed back-row + front-row layout per Stack M setup).
     // Source of truth: SELECT body FROM stacks WHERE id='stack-m';
+
+    /// Serialise to the project's FEN-like single-line format.
+    /// See `state::fen` module docs for the grammar.
+    pub fn to_fen(&self) -> String {
+        super::fen::to_fen(self)
+    }
+
+    /// Parse a FEN-like string into a Position. Returns a tagged `FenError`
+    /// describing the first parse failure encountered.
+    pub fn from_fen(s: &str) -> Result<Self, super::fen::FenError> {
+        super::fen::from_fen(s)
+    }
 }
