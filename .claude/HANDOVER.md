@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-06-22 — end of Session 28.*
+*Last updated: 2026-06-22 — end of Session 29.*
 
 ---
 
@@ -30,31 +30,35 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer. Mine load-bearing content into the DB.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (end of Session 28, 2026-06-22)
+### Where We Are (end of Session 29, 2026-06-22)
 
-- **Digital architecture is locked.** ADR-005 accepted: Rust core (Cargo workspace, 3 crates) + Svelte 5 + TS + Tauri 2 + WASM + PeerJS/WebRTC P2P with commit-reveal lockstep + local-auto-save telemetry. `SELECT body FROM adrs WHERE id='adr-005';`
-- **`game/` is scaffolded and compiling.** Cargo workspace at `game/Cargo.toml`. `core_engine` Layers 1–5 stubs with bitboard newtype, bit-packed mailbox, Position struct (bitboards-authoritative), `Action(u32)` + fat `Undo` record (Stockfish convention), transposition table with `best_move` for move ordering. Svelte 5 frontend with runtime-agnostic engine bridge (`__TAURI__` detection).
-- **Slice plan is the binding contract.** `next_steps` priority 1 is the full rule-coverage matrix (slice 0…slice 8) enumerating every Stack M rule and edge case. Each slice ends with a debug-harness verification step.
-- **Debug harness comes first** — slice -1, `next_steps` priority 2.
+- **Slice -1 + Slice 0 shipped.** Engine has FEN serialisation (`Position::to_fen()` / `from_fen()` / `from_fen_strict()`), the canonical Stack M starting position (`Position::setup_stack_m()`), and 30 passing tests. Rust toolchain on 1.96; Tauri compiles.
+- **Spec doc frozen** at `crates/core_engine/SCENARIO_FORMAT.md`: FEN grammar, action-text grammar, `.scenario` file format, strict-vs-lax parse rules.
+- **Inbox is clean** — evaluator philosophy folded into `crates/core_engine/src/search/evaluator.rs`.
+- **Slice plan stays binding.** `next_steps` id=8 (rule-coverage matrix) carries a slice-status header; -1 and 0 are ticked.
 
 ### Immediate Next Action
 
-**Slice -1 — Debug harness.** Build the engine's I/O surface so every later slice is verifiable interactively:
-1. `Position::from_fen()` / `Position::to_fen()` — FEN-like single-line position format (squares + side-to-move + phase + money + actions_remaining + modifier_bits).
-2. `gamedbg` binary in `core_engine`: `show <fen>`, `legal <fen>`, `apply <fen> <action>`, `trace <fen> <action>` (dumps the Undo), `perft <fen> <depth>`.
-3. `.scenario` plain-text test runner under `crates/core_engine/tests/scenarios/` — load FEN + expected legal moves / expected post-state, assert match.
+**Slice 1 — Move Phase: plain movement.** Three deliverables:
+1. `Action(u32)` movement encoding (origin square + dest square; phase = Move; piece type implicit via lookup).
+2. `make(&mut Position, Action) -> Undo` + `unmake(&mut Position, Undo)` for movement actions only (Stockfish-style fat Undo; cleared mailbox slot on origin, populated on dest, bitboard flips).
+3. Legal-move generation for Guard (speed 2) / Champion / King (speed 1) — cardinal movement, blocked by any piece, no off-board, one move per piece per phase, 2 actions per phase.
 
-After slice -1, run slice 0 (`Position::setup_stack_m()` + Guard moves + roundtrip Make/Unmake). Then slice 1…8 per the matrix.
+Edge cases (per `next_steps` id=8 Slice 1): cannot move 3 with Guard, cannot move 2 with Champion/King, cannot move through ally/enemy, cannot reuse a piece in the same phase, `EndPhase` becomes legal when actions hit 0.
+
+**Designer decision needed before this slice ships**: is diagonal movement legal in the Move Phase? Stack M body is silent. File an OQ at slice start if not pre-resolved; default to NO until designer says otherwise.
+
+Once Slice 1 lands, `gamedbg` CLI (`show / legal / apply / trace / perft`) and the `.scenario` runner become buildable — `next_steps` id=9 deliverables 2 + 3.
 
 ### Key DB Queries (instead of file paths)
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM next_steps WHERE id='9';` | Slice -1 debug harness spec (priority 2) |
-| `SELECT body FROM next_steps WHERE id='8';` | Full rule coverage matrix + slice 0–8 plan (priority 1) |
-| `SELECT body FROM adrs WHERE id='adr-005';` | Digital architecture decision (latest) |
-| `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance (foundation for `game/`) |
-| `SELECT body FROM sessions WHERE id='session-28';` | This session's narrative |
+| `SELECT body FROM next_steps WHERE id='8';` | Rule-coverage matrix + slice 0–8 plan (priority 1) |
+| `SELECT body FROM next_steps WHERE id='9';` | Debug harness status (FEN done; CLI + runner todo) |
+| `SELECT body FROM sessions WHERE id='session-29';` | This session's narrative |
+| `SELECT body FROM adrs WHERE id='adr-005';` | Digital architecture decision |
+| `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance (engine's source of truth) |
 | `SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high');` | Live critical/high OQs |
 | `SELECT priority, title FROM next_steps WHERE status='todo' ORDER BY priority;` | Active todos |
 
@@ -66,7 +70,9 @@ After slice -1, run slice 0 (`Position::setup_stack_m()` + Guard moves + roundtr
 | `design/schema.sql` | 12-table schema |
 | `design/inbox/{brainstorm,ai-chats,digital}/` | Designer's inbox channels |
 | `game/Cargo.toml` | Rust workspace root |
-| `game/crates/core_engine/src/` | Layers 1–5 stubs + bitboard/mailbox/Action/Undo/TT |
+| `game/crates/core_engine/src/state/fen.rs` | FEN encoder/parser + strict validator |
+| `game/crates/core_engine/src/state/position.rs` | `Position`, `setup_stack_m()` |
+| `game/crates/core_engine/SCENARIO_FORMAT.md` | Frozen FEN + action-text + scenario-file spec |
 | `game/frontend/src/` | Svelte 5 UI (App, Board, engine bridge, multiplayer stub) |
 | `.claude/STATUS.md` | One-screen re-entry summary |
 | `CLAUDE.md` | Orientation (points at DB; does not restate facts) |

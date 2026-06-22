@@ -81,6 +81,11 @@ pub enum FenError {
     BadDecimal { field: &'static str },
     /// Exactly one King per side is required.
     KingCount { p1_kings: u32, p2_kings: u32 },
+    /// Strict-mode only: piece counts per side aren't 1K + 5C + 6G.
+    /// `kind` ∈ `{"kings", "champions", "guards"}`.
+    WrongPieceCount { player: Player, kind: &'static str, expected: u32, got: u32 },
+    /// Strict-mode only: both Kings are on the same file. Stack M requires the offset.
+    KingsOnSameFile { file: u8 },
     /// Internal sanity check: after parse, occupancy bitboards disagree with
     /// the per-piece bitboards. Indicates an encoder/parser bug, not bad input.
     InternalOccupancyMismatch,
@@ -372,6 +377,54 @@ fn parse_board(board: &str, pos: &mut Position) -> Result<(), FenError> {
     Ok(())
 }
 
+// --- Strict-mode validator --------------------------------------------------
+
+/// Strict parse: structural validity (via `from_fen`) **plus** Stack M setup
+/// invariants (1 King + 5 Champions + 6 Guards per side, Kings on different
+/// files). Use this for setup-position scenarios and the roundtrip test of
+/// `setup_stack_m()`. For mid-game positions (captures bring counts down),
+/// stick with `from_fen`.
+pub fn from_fen_strict(s: &str) -> Result<Position, FenError> {
+    let pos = from_fen(s)?;
+    validate_stack_m_invariants(&pos)?;
+    Ok(pos)
+}
+
+fn validate_stack_m_invariants(pos: &Position) -> Result<(), FenError> {
+    // Per-side per-type counts. `from_fen` already guarantees 1 King per side,
+    // but we re-check here so the error message points at the right `kind`.
+    for (player, player_bb) in [(Player::P1, pos.p1_pieces), (Player::P2, pos.p2_pieces)] {
+        let kings     = (player_bb & pos.kings).count();
+        let champions = (player_bb & pos.champions).count();
+        let guards    = (player_bb & pos.guards).count();
+        if kings != 1 {
+            return Err(FenError::WrongPieceCount {
+                player, kind: "kings", expected: 1, got: kings,
+            });
+        }
+        if champions != 5 {
+            return Err(FenError::WrongPieceCount {
+                player, kind: "champions", expected: 5, got: champions,
+            });
+        }
+        if guards != 6 {
+            return Err(FenError::WrongPieceCount {
+                player, kind: "guards", expected: 6, got: guards,
+            });
+        }
+    }
+
+    let p1_king_sq = (pos.p1_pieces & pos.kings).lsb().expect("p1 king present");
+    let p2_king_sq = (pos.p2_pieces & pos.kings).lsb().expect("p2 king present");
+    let p1_file = p1_king_sq % 8;
+    let p2_file = p2_king_sq % 8;
+    if p1_file == p2_file {
+        return Err(FenError::KingsOnSameFile { file: p1_file });
+    }
+
+    Ok(())
+}
+
 fn parse_bracket(buf: &str, rank_idx_from_top: usize) -> Result<(u8, u8, u8, u8, u8), FenError> {
     let parts: Vec<&str> = buf.split('/').collect();
     if parts.len() != 5 {
@@ -608,5 +661,108 @@ mod tests {
     fn rejects_malformed_bracket() {
         let bad = "7k/8/8/8/C[1/2/3]7/8/8/K7 P1 M 2 6 6 0"; // 3 fields, not 5
         assert!(matches!(from_fen(bad), Err(FenError::MalformedBracket { .. })));
+    }
+
+    // --- Slice 0: setup_stack_m + strict validation -----------------------
+
+    const CANONICAL_STACK_M_FEN: &str =
+        "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0";
+
+    #[test]
+    fn setup_stack_m_matches_expected_fen() {
+        assert_eq!(Position::setup_stack_m().to_fen(), CANONICAL_STACK_M_FEN);
+    }
+
+    #[test]
+    fn setup_stack_m_piece_counts() {
+        let p = Position::setup_stack_m();
+        // P1 side
+        assert_eq!((p.p1_pieces & p.kings).count(),     1);
+        assert_eq!((p.p1_pieces & p.champions).count(), 5);
+        assert_eq!((p.p1_pieces & p.guards).count(),    6);
+        // P2 side
+        assert_eq!((p.p2_pieces & p.kings).count(),     1);
+        assert_eq!((p.p2_pieces & p.champions).count(), 5);
+        assert_eq!((p.p2_pieces & p.guards).count(),    6);
+        // Totals
+        assert_eq!(p.p1_pieces.count(), 12);
+        assert_eq!(p.p2_pieces.count(), 12);
+    }
+
+    #[test]
+    fn setup_stack_m_kings_on_different_files() {
+        let p = Position::setup_stack_m();
+        let p1_king_sq = (p.p1_pieces & p.kings).lsb().unwrap();
+        let p2_king_sq = (p.p2_pieces & p.kings).lsb().unwrap();
+        assert_eq!(p1_king_sq % 8, 3, "P1 king on file d");
+        assert_eq!(p2_king_sq % 8, 4, "P2 king on file e");
+    }
+
+    #[test]
+    fn setup_stack_m_money() {
+        let p = Position::setup_stack_m();
+        assert_eq!(p.p1_money, 6);
+        assert_eq!(p.p2_money, 6);
+    }
+
+    #[test]
+    fn setup_stack_m_phase_and_actions() {
+        let p = Position::setup_stack_m();
+        assert_eq!(p.to_move, Player::P1);
+        assert_eq!(p.current_phase, Phase::Move);
+        assert_eq!(p.actions_remaining, 2);
+    }
+
+    #[test]
+    fn setup_stack_m_roundtrip() {
+        let p = Position::setup_stack_m();
+        let s = to_fen(&p);
+        let p2 = from_fen(&s).expect("parse setup_stack_m FEN");
+        assert!(position_eq_for_fen(&p, &p2));
+    }
+
+    #[test]
+    fn setup_stack_m_passes_strict() {
+        let s = to_fen(&Position::setup_stack_m());
+        from_fen_strict(&s).expect("strict accepts canonical Stack M setup");
+    }
+
+    #[test]
+    fn strict_rejects_kings_same_file() {
+        // Both Kings on file d (d1 and d8). Otherwise valid 1+5+6 setup.
+        // Swap P2 king from e8 to d8, and one P2 champion from d8 to e8.
+        let bad = "1cckccc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0";
+        match from_fen_strict(bad) {
+            Err(FenError::KingsOnSameFile { file: 3 }) => {}
+            other => panic!("expected KingsOnSameFile(3), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn strict_rejects_wrong_champion_count() {
+        // P1 side has 4 Champions instead of 5 (one C replaced by a Guard).
+        // 1CCKCCG1 → C,C,K,C,C,G = 4 champs.
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCG1 P1 M 2 6 6 0";
+        match from_fen_strict(bad) {
+            Err(FenError::WrongPieceCount { player: Player::P1, kind: "champions", expected: 5, got: 4 }) => {}
+            other => panic!("expected WrongPieceCount(P1, champions, 5, 4), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn strict_rejects_wrong_guard_count() {
+        // P1 side has 5 Guards instead of 6.
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/2GGGGG1/1CCKCCC1 P1 M 2 6 6 0";
+        match from_fen_strict(bad) {
+            Err(FenError::WrongPieceCount { player: Player::P1, kind: "guards", expected: 6, got: 5 }) => {}
+            other => panic!("expected WrongPieceCount(P1, guards, 6, 5), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn lax_accepts_wrong_counts() {
+        // Same FEN as strict_rejects_wrong_champion_count — plain from_fen accepts it.
+        let mid_game = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCG1 P1 M 2 6 6 0";
+        from_fen(mid_game).expect("lax accepts mid-game piece counts");
     }
 }

@@ -107,9 +107,46 @@ impl Position {
         (self.p1_pieces | self.p2_pieces).contains(sq)
     }
 
-    // TODO: setup_stack_m() — Stack M canonical start (8×8 board, piece placement,
-    // starting money = 6, fixed back-row + front-row layout per Stack M setup).
-    // Source of truth: SELECT body FROM stacks WHERE id='stack-m';
+    // === Layer 1: Setup ====================================================
+
+    /// Stack M canonical starting position.
+    /// Source of truth: `SELECT body FROM stacks WHERE id='stack-m';`.
+    ///
+    /// Stack M permits multiple offset-King layouts; this is the single
+    /// canonical one the engine boots into. A parameterised
+    /// `setup_stack_m_with(...)` arrives when the frontend exposes layout
+    /// choice to players.
+    ///
+    /// Layout (a..h on files, 1..=8 on ranks):
+    /// ```text
+    /// rank 8: .ccckcc.    P2 back  — King on e8
+    /// rank 7: .gggggg.    P2 front
+    /// rank 6: ........
+    /// rank 5: ........
+    /// rank 4: ........
+    /// rank 3: ........
+    /// rank 2: .GGGGGG.    P1 front
+    /// rank 1: .CCKCCC.    P1 back  — King on d1
+    /// ```
+    /// Counts per side: 1 King + 5 Champions + 6 Guards = 12 pieces.
+    /// Starting money 6 each, P1 to move, Move Phase, 2 actions.
+    pub fn setup_stack_m() -> Self {
+        let mut p = Self::empty();
+
+        // Files 1..=6 (b..g) are occupied on both back rows; files 0 and 7 empty.
+        place_back_row(&mut p, /*rank=*/ 0, Player::P1, /*king_file=*/ 3);
+        place_front_row(&mut p, /*rank=*/ 1, Player::P1);
+        place_front_row(&mut p, /*rank=*/ 6, Player::P2);
+        place_back_row(&mut p, /*rank=*/ 7, Player::P2, /*king_file=*/ 4);
+
+        p.to_move = Player::P1;
+        p.current_phase = Phase::Move;
+        p.actions_remaining = 2;
+        p.p1_money = 6;
+        p.p2_money = 6;
+        p.pending_modifiers = 0;
+        p
+    }
 
     /// Serialise to the project's FEN-like single-line format.
     /// See `state::fen` module docs for the grammar.
@@ -121,5 +158,45 @@ impl Position {
     /// describing the first parse failure encountered.
     pub fn from_fen(s: &str) -> Result<Self, super::fen::FenError> {
         super::fen::from_fen(s)
+    }
+}
+
+// === Setup helpers (module-private) =========================================
+
+/// Place a back row (rank 0 for P1, rank 7 for P2). Files 1..=6 hold pieces;
+/// `king_file` carries the King, the other five files carry Champions.
+fn place_back_row(p: &mut Position, rank: u8, player: Player, king_file: u8) {
+    debug_assert!(rank == 0 || rank == 7);
+    debug_assert!((1..=6).contains(&king_file), "king must sit on b..g");
+    let default_entry = EMPTY_MAILBOX_ENTRY.with_hp(2);
+    for file in 1u8..=6u8 {
+        let sq = rank * 8 + file;
+        let bit = Bitboard::from_square(sq);
+        match player {
+            Player::P1 => p.p1_pieces = p.p1_pieces | bit,
+            Player::P2 => p.p2_pieces = p.p2_pieces | bit,
+        }
+        if file == king_file {
+            p.kings = p.kings | bit;
+        } else {
+            p.champions = p.champions | bit;
+        }
+        p.mailbox[sq as usize] = default_entry;
+    }
+}
+
+/// Place a front row of Guards (rank 1 for P1, rank 6 for P2). Files 1..=6.
+fn place_front_row(p: &mut Position, rank: u8, player: Player) {
+    debug_assert!(rank == 1 || rank == 6);
+    let default_entry = EMPTY_MAILBOX_ENTRY.with_hp(2);
+    for file in 1u8..=6u8 {
+        let sq = rank * 8 + file;
+        let bit = Bitboard::from_square(sq);
+        match player {
+            Player::P1 => p.p1_pieces = p.p1_pieces | bit,
+            Player::P2 => p.p2_pieces = p.p2_pieces | bit,
+        }
+        p.guards = p.guards | bit;
+        p.mailbox[sq as usize] = default_entry;
     }
 }

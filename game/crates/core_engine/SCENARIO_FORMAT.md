@@ -2,7 +2,7 @@
 
 Plain-text formats the engine's debug harness understands. Frozen so the designer can author scenarios in parallel with engine work.
 
-**Status (Session 29):** FEN encoder/parser implemented. Action-text parser and `.scenario` runner deferred to slice 0.
+**Status (Session 29):** FEN encoder/parser implemented, plus strict-mode setup validator (slice 0). Action-text parser and `.scenario` runner still deferred.
 
 ---
 
@@ -65,6 +65,17 @@ FEN represents between-turn state. Mid-turn search state stays in-memory only.
 ```
 
 P1 King at a1, P2 King at h8, otherwise empty. P1 to move, Move phase, 2 actions, 6 money each, no modifiers.
+
+### Strict vs lax parsing
+
+Two entry points, same grammar:
+
+- **`from_fen(s)`** — structural validity only. Verifies the board syntax parses, every rank sums to 8 squares, exactly one King per side, and bracketed fields are in-range. Accepts any reachable mid-game position (captures, depleted armies, etc.).
+- **`from_fen_strict(s)`** — also enforces **Stack M setup invariants**: per side, exactly 1 King + 5 Champions + 6 Guards, and the two Kings on different files. Use this for setup-position scenarios and any FEN that claims to be a legal starting position.
+
+Mid-game scenarios (slice 1+ make/unmake tests, opening-fragment captures) must use plain `from_fen`. The strict variant will reject them as soon as a piece is taken.
+
+`setup_stack_m()` itself produces a known-valid position by construction; it does not run the validator.
 
 ---
 
