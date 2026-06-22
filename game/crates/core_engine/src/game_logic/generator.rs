@@ -345,7 +345,7 @@ fn iter_squares(bb: Bitboard) -> impl Iterator<Item = u8> {
 }
 
 /// 8-neighbour squares of `sq`, edge-clipped. Returns 3..=8 squares.
-fn eight_neighbours(sq: u8) -> impl Iterator<Item = u8> {
+pub(super) fn eight_neighbours(sq: u8) -> impl Iterator<Item = u8> {
     let rank = (sq / 8) as i8;
     let file = (sq % 8) as i8;
     const DELTAS: [(i8, i8); 8] = [
@@ -978,17 +978,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Skill::Lance resolver lands in Slice 4+")]
+    #[should_panic(expected = "Skill::Shield resolver lands in Slice 5+")]
     fn make_panics_on_skill_action() {
-        // Slice-3 contract: `make()` on any Skill action panics with
-        // unimplemented!(). Search/UI must gate on resolver availability.
+        // Slice-4 contract: Strike-skill resolvers (Lance/Break/Steal/Hook/
+        // Tempest) are implemented; the remaining 10 still panic with
+        // unimplemented!(). Search/UI gates on resolver availability.
         let mut p = skill_phase_pos(2);
         place_champ(&mut p, 28, Player::P1);
-        equip(&mut p, 28, super::skills::Skill::Lance as u8);
-        place_champ(&mut p, 36, Player::P2);
+        equip(&mut p, 28, super::skills::Skill::Shield as u8);
 
-        let lance_id = super::skills::Skill::Lance as u8;
-        let a = Action::encode(28, 36, ActionKind::Skill, lance_id, 0);
+        let shield_id = super::skills::Skill::Shield as u8;
+        let a = Action::encode(28, 28, ActionKind::Skill, shield_id, 0);
         let _ = super::super::make_unmake::make(&mut p, a);
     }
 }

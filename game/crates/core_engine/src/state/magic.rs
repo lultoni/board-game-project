@@ -208,6 +208,32 @@ pub fn on_ray(a: u8, b: u8) -> bool {
     dr == 0 || df == 0 || dr.abs() == df.abs()
 }
 
+/// One square step from `from` toward `to` along the queen-ray they share.
+/// Returns `None` if `from == to` or they aren't on a ray. The result is
+/// always on-board when `Some` (any ray between two on-board squares has
+/// at least one intermediate or one-step-from-`from` square also on-board).
+pub fn step_toward(from: u8, to: u8) -> Option<u8> {
+    if !on_ray(from, to) { return None; }
+    let dr = ((to / 8) as i8 - (from / 8) as i8).signum();
+    let df = ((to % 8) as i8 - (from % 8) as i8).signum();
+    let r = (from / 8) as i8 + dr;
+    let f = (from % 8) as i8 + df;
+    Some((r * 8 + f) as u8)
+}
+
+/// One square step from `at` in the direction *away* from `pivot`, i.e. the
+/// next square along the queen-ray going `pivot → at → ?`. Returns `None`
+/// if not on a ray, the same-square case, or the step would leave the board.
+pub fn step_away(pivot: u8, at: u8) -> Option<u8> {
+    if !on_ray(pivot, at) { return None; }
+    let dr = ((at / 8) as i8 - (pivot / 8) as i8).signum();
+    let df = ((at % 8) as i8 - (pivot % 8) as i8).signum();
+    let r = (at / 8) as i8 + dr;
+    let f = (at % 8) as i8 + df;
+    if !(0..8).contains(&r) || !(0..8).contains(&f) { return None; }
+    Some((r * 8 + f) as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,5 +328,39 @@ mod tests {
         assert!(!on_ray(0, 25));
         // Same square is not on a ray.
         assert!(!on_ray(0, 0));
+    }
+
+    #[test]
+    fn step_toward_diagonal_and_orthogonal() {
+        // a1 (sq 0) → h8 (sq 63) is the main diagonal. Step → b2 (sq 9).
+        assert_eq!(step_toward(0, 63), Some(9));
+        // e4 (sq 28) → e8 (sq 60), orthogonal N. Step → e5 (sq 36).
+        assert_eq!(step_toward(28, 60), Some(36));
+        // Same-square is None.
+        assert_eq!(step_toward(28, 28), None);
+        // Off-ray: a1 → b4 (sq 25). dr=3, df=1 — not a queen-ray.
+        assert_eq!(step_toward(0, 25), None);
+    }
+
+    #[test]
+    fn step_away_diagonal_and_orthogonal() {
+        // pivot a1 (0), at b2 (9) — step away → c3 (sq 18).
+        assert_eq!(step_away(0, 9), Some(18));
+        // pivot e8 (60), at e7 (52) — step away → e6 (sq 44).
+        assert_eq!(step_away(60, 52), Some(44));
+        // pivot == at → None.
+        assert_eq!(step_away(0, 0), None);
+        // Off-ray → None.
+        assert_eq!(step_away(0, 25), None);
+    }
+
+    #[test]
+    fn step_away_off_board_returns_none() {
+        // pivot b1 (sq 1), at a1 (sq 0). step_away → file -1 → off-board.
+        assert_eq!(step_away(1, 0), None);
+        // pivot b8 (sq 57), at a8 (sq 56). file -1 → None.
+        assert_eq!(step_away(57, 56), None);
+        // pivot b7 (sq 49), at a8 (sq 56). diagonal NW off-board.
+        assert_eq!(step_away(49, 56), None);
     }
 }

@@ -22,8 +22,8 @@ pub fn end_turn(pos: &mut Position) {
     //      about to move (mailbox.combo = 0 for all squares in their
     //      occupancy bitboard).
     //   2. Clear pending_modifiers (Focus / Charge are turn-scoped).
-    //   3. Clear champion_credit + tracked_enemies (next turn's tracking
-    //      starts fresh).
+    //   3. Clear champion_credit + tracked_enemies + tracked_casters (next
+    //      turn's tracking starts fresh).
     //   4. Flip to_move; if the new side-to-move is P1, increment
     //      `round_number` (a Round = P1 turn + P2 turn).
     //   5. Disburse start-of-turn income to the *new* side-to-move:

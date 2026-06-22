@@ -36,9 +36,10 @@
 //!
 //! # Fields NOT serialised
 //!
-//! - `tracked_enemies`, `tracked_enemies_len`, `champion_credit` — turn-scoped,
-//!   cleared at end of turn. `from_fen` zeroes them; `to_fen` only round-trips
-//!   a Position where they are already zero (FEN is between-turn state).
+//! - `tracked_enemies`, `tracked_enemies_len`, `tracked_casters`,
+//!   `tracked_casters_len`, `champion_credit` — turn-scoped, cleared at end
+//!   of turn. `from_fen` zeroes them; `to_fen` only round-trips a Position
+//!   where they are already zero (FEN is between-turn state).
 //! - `zobrist` — derived. `from_fen` sets it to 0 (Zobrist keys aren't wired
 //!   yet; slice 6 revisits). Tests use `position_eq_for_fen` to skip it.
 //!
@@ -48,7 +49,7 @@
 use crate::state::{
     bitboard::Bitboard,
     mailbox::EMPTY_MAILBOX_ENTRY,
-    position::{Phase, Player, Position, MAX_TRACKED_ENEMIES},
+    position::{Phase, Player, Position, MAX_TRACKED_ENEMIES, MAX_TRACKED_CASTERS},
 };
 use std::fmt::Write as _;
 
@@ -275,8 +276,10 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
 
     // Turn-scoped / derived fields are left at their `empty()` defaults.
     debug_assert_eq!(pos.tracked_enemies_len, 0);
+    debug_assert_eq!(pos.tracked_casters_len, 0);
     debug_assert_eq!(pos.champion_credit, 0);
     debug_assert_eq!(pos.tracked_enemies, [0u8; MAX_TRACKED_ENEMIES]);
+    debug_assert_eq!(pos.tracked_casters, [0u8; MAX_TRACKED_CASTERS]);
     debug_assert_eq!(pos.zobrist, 0);
 
     // Derive game_result from the bitboards: a side without a King has lost.
@@ -499,10 +502,11 @@ enum PieceKind { King, Champion, Guard }
 
 // --- Test helper: structural equality ignoring derived/transient fields -----
 
-/// Compare two Positions for FEN-roundtrip equivalence. Excludes the three
+/// Compare two Positions for FEN-roundtrip equivalence. Excludes the
 /// fields that FEN intentionally does not carry (`tracked_enemies*`,
-/// `champion_credit`, `zobrist`) plus the mailbox slots on unoccupied squares
-/// (per the bitboards-authoritative invariant, those are undefined).
+/// `tracked_casters*`, `champion_credit`, `zobrist`) plus the mailbox slots
+/// on unoccupied squares (per the bitboards-authoritative invariant, those
+/// are undefined).
 #[cfg(test)]
 pub(crate) fn position_eq_for_fen(a: &Position, b: &Position) -> bool {
     if a.p1_pieces.0 != b.p1_pieces.0 { return false; }

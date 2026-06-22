@@ -34,8 +34,17 @@ pub const CHAMPIONS_PER_PLAYER: usize = 5;
 /// struck for combo purposes within a single turn. 8 is loose upper bound:
 /// 2 actions × Skill Phase × multi-strike skills can realistically hit at
 /// most a handful of distinct enemies. Sized for u64 indexing convenience
-/// (`champion_idx * 8 + tracked_enemy_idx` fits in u64).
+/// (`caster_slot * 8 + target_slot` fits in u64 — see `champion_credit`).
 pub const MAX_TRACKED_ENEMIES: usize = 8;
+
+/// Maximum number of distinct caster squares tracked for combo-tick gating
+/// within a single turn. Stack-M's combo rule is identity-based ("new
+/// Champion"), but a Champion cannot cast from two squares in one turn
+/// (Move-Phase is over and Strike-skills don't relocate the caster), so
+/// caster-identity ≡ caster-square within a turn. NOTE for Slice 5: when
+/// Dash/Retreat self-relocate the caster, `tracked_casters` entries need to
+/// follow the move.
+pub const MAX_TRACKED_CASTERS: usize = 8;
 
 /// Bitfield positions in `Position::pending_modifiers`.
 pub mod modifier_bits {
@@ -88,15 +97,22 @@ pub struct Position {
 
     // === Layer 1: Per-turn combo-credit tracking. ===
     /// Squares of enemies struck this turn that contributed to a combo counter.
-    /// Index into this list is `tracked_enemy_idx` (0..MAX_TRACKED_ENEMIES).
+    /// Index into this list is `target_slot` (0..MAX_TRACKED_ENEMIES).
     /// `tracked_enemies_len` is the active count; positions beyond are stale.
     /// Cleared at end of turn.
     pub tracked_enemies: [u8; MAX_TRACKED_ENEMIES],
     pub tracked_enemies_len: u8,
 
-    /// Bitmap: bit `champion_idx * MAX_TRACKED_ENEMIES + tracked_enemy_idx` is
-    /// set iff that Champion has already ticked that enemy's combo counter
-    /// this turn. Cleared at end of turn.
+    /// Squares of casters that have ticked at least one enemy's combo counter
+    /// this turn. Index is `caster_slot` (0..MAX_TRACKED_CASTERS). See
+    /// `champion_credit` for the cross-product bitmap. Cleared at end of turn.
+    pub tracked_casters: [u8; MAX_TRACKED_CASTERS],
+    pub tracked_casters_len: u8,
+
+    /// Bitmap: bit `caster_slot * MAX_TRACKED_ENEMIES + target_slot` is set
+    /// iff the caster at `tracked_casters[caster_slot]` has already ticked
+    /// the combo counter of the enemy at `tracked_enemies[target_slot]` this
+    /// turn. 8 × 8 = 64 bits fits exactly in u64. Cleared at end of turn.
     pub champion_credit: u64,
 
     // === Layer 1: Incrementally maintained Zobrist hash. ===
@@ -131,6 +147,8 @@ impl Position {
             pending_modifiers: 0,
             tracked_enemies: [0; MAX_TRACKED_ENEMIES],
             tracked_enemies_len: 0,
+            tracked_casters: [0; MAX_TRACKED_CASTERS],
+            tracked_casters_len: 0,
             champion_credit: 0,
             zobrist: 0,
             game_result: None,
