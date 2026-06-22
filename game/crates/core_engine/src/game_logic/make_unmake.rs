@@ -241,9 +241,8 @@ fn deal_one_damage(pos: &mut Position, hit_sq: u8, undo: &mut Undo) {
 
 // === Skill-kind dispatch ===================================================
 
-/// Apply a Skill-kind action. Slice 4 wires the five Strike-skill resolvers
-/// (Lance, Break, Steal, Hook, Tempest). The other 10 still panic until
-/// their slices land.
+/// Apply a Skill-kind action. Slices 4+5 wire the thirteen non-Mystic
+/// resolvers. Focus and Charge (Mystic setters) still panic until Slice 6.
 fn apply_skill(pos: &mut Position, action: Action, undo: &mut Undo) {
     debug_assert!(pos.actions_remaining > 0, "make() invoked with zero actions");
     let skill = super::skills::skill_from_id(action.skill_id())
@@ -255,22 +254,25 @@ fn apply_skill(pos: &mut Position, action: Action, undo: &mut Undo) {
         Skill::Steal   => apply_steal(pos, action, undo),
         Skill::Hook    => apply_hook(pos, action, undo),
         Skill::Tempest => apply_tempest(pos, action, undo),
-        Skill::Shield
-        | Skill::Heal
-        | Skill::Plate
-        | Skill::Dash
-        | Skill::Blast
-        | Skill::Shove
-        | Skill::Swap
-        | Skill::Retreat
-        | Skill::Focus
-        | Skill::Charge => {
-            unimplemented!("Skill::{:?} resolver lands in Slice 5+", skill);
+        Skill::Shield  => apply_shield(pos, action, undo),
+        Skill::Heal    => apply_heal(pos, action, undo),
+        Skill::Plate   => apply_plate(pos, action, undo),
+        Skill::Dash    => apply_dash(pos, action, undo),
+        Skill::Blast   => apply_blast(pos, action, undo),
+        Skill::Shove   => apply_shove(pos, action, undo),
+        Skill::Swap    => apply_swap(pos, action, undo),
+        Skill::Retreat => apply_retreat(pos, action, undo),
+        Skill::Focus | Skill::Charge => {
+            unimplemented!("Skill::{:?} resolver lands in Slice 6", skill);
         }
     }
 }
 
 // === Strike-skill resolvers (Slice 4) ======================================
+
+const ARMOR_CAP: u8 = 2;
+const FULL_HP: u8 = 2;
+const INJURED_HP: u8 = 1;
 
 fn apply_lance(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
@@ -368,6 +370,154 @@ fn apply_tempest(pos: &mut Position, action: Action, undo: &mut Undo) {
     }
 
     debit_money(pos, src, /*cost=*/ 4, undo);
+    pos.actions_remaining -= 1;
+}
+
+// === Shield-class + Move-class resolvers (Slice 5) =========================
+
+fn apply_shield(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    debug_assert_eq!(src, action.target(), "Shield is SelfOnly");
+    let prev = pos.mailbox[src as usize];
+    debug_assert!(prev.armor() < ARMOR_CAP, "generator must filter at-cap");
+    record_affected(undo, src, prev);
+    pos.mailbox[src as usize] = prev.with_armor(prev.armor() + 1);
+    debit_money(pos, src, /*cost=*/ 2, undo);
+    pos.actions_remaining -= 1;
+}
+
+fn apply_heal(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    let tgt = action.target();
+    let prev = pos.mailbox[tgt as usize];
+    debug_assert!(prev.hp() == INJURED_HP, "generator must filter non-Injured");
+    record_affected(undo, tgt, prev);
+    pos.mailbox[tgt as usize] = prev.with_hp(FULL_HP);
+    debit_money(pos, src, /*cost=*/ 3, undo);
+    pos.actions_remaining -= 1;
+}
+
+fn apply_plate(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    let tgt = action.target();
+    let prev = pos.mailbox[tgt as usize];
+    debug_assert!(prev.armor() < ARMOR_CAP, "generator must filter at-cap");
+    record_affected(undo, tgt, prev);
+    pos.mailbox[tgt as usize] = prev.with_armor(prev.armor() + 1);
+    debit_money(pos, src, /*cost=*/ 3, undo);
+    pos.actions_remaining -= 1;
+}
+
+fn apply_dash(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    let dest = action.target();
+    debug_assert!(pos.is_occupied(src) && !pos.is_occupied(dest) && src != dest);
+    relocate_piece(pos, src, dest, undo);
+    // No combo-tick (self movement). No moved_this_phase write (Skill-Phase).
+    debit_money(pos, dest, /*cost=*/ 3, undo);
+    pos.actions_remaining -= 1;
+}
+
+/// Blast: pure push, no damage. Movement-causing → ticks combo on enemy
+/// target. Pre-tick combo counter is applied as bonus damage per Stack-M
+/// ("any skill that affects a target with counter > 0 deals +counter
+/// damage"). Push fizzles silently if blocked or off-board.
+fn apply_blast(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    let tgt = action.target();
+    let pre_tick_combo = pos.mailbox[tgt as usize].combo();
+    let _ = combo_tick(pos, src, tgt, undo);
+    if pre_tick_combo > 0 {
+        deal_damage(pos, tgt, pre_tick_combo, undo);
+    }
+    if pos.is_occupied(tgt) {
+        if let Some(push_dest) = magic::step_away(src, tgt) {
+            if !pos.is_occupied(push_dest) {
+                relocate_piece(pos, tgt, push_dest, undo);
+            }
+        }
+    }
+    debit_money(pos, src, /*cost=*/ 2, undo);
+    pos.actions_remaining -= 1;
+}
+
+/// Shove: push target 1 tile in chosen direction (encoded in choice_idx).
+/// Combo-tick gated by target-is-enemy (Stack-M: friendly pushes don't
+/// count). Pre-tick combo bonus damage applies on enemy only.
+fn apply_shove(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    let tgt = action.target();
+    let dir = action.choice_idx() as usize;
+    debug_assert!(dir < 8);
+
+    let push_dest = magic::neighbour_in_dir(tgt, dir)
+        .expect("generator must filter off-board pushes");
+    debug_assert!(!pos.is_occupied(push_dest),
+                  "generator must filter into-occupied pushes");
+
+    let caster_is_p1 = pos.p1_pieces.contains(src);
+    let target_is_enemy = if caster_is_p1 {
+        pos.p2_pieces.contains(tgt)
+    } else {
+        pos.p1_pieces.contains(tgt)
+    };
+
+    if target_is_enemy {
+        let pre_tick_combo = pos.mailbox[tgt as usize].combo();
+        let _ = combo_tick(pos, src, tgt, undo);
+        if pre_tick_combo > 0 {
+            deal_damage(pos, tgt, pre_tick_combo, undo);
+        }
+    }
+    if pos.is_occupied(tgt) {
+        relocate_piece(pos, tgt, push_dest, undo);
+    }
+    debit_money(pos, src, /*cost=*/ 3, undo);
+    pos.actions_remaining -= 1;
+}
+
+/// Swap: exchange caster + allied piece. Both squares allied → same-side
+/// bitboard unchanged. Kind layers (kings/champions/guards) XOR only where
+/// the two pieces differ in kind. No combo-tick (ally-only).
+fn apply_swap(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    let tgt = action.target();
+    debug_assert!(pos.is_occupied(src) && pos.is_occupied(tgt) && src != tgt);
+
+    let prev_src = pos.mailbox[src as usize];
+    let prev_tgt = pos.mailbox[tgt as usize];
+    record_affected(undo, src, prev_src);
+    record_affected(undo, tgt, prev_tgt);
+    pos.mailbox[src as usize] = prev_tgt;
+    pos.mailbox[tgt as usize] = prev_src;
+
+    let xor = Bitboard::from_square(src).0 | Bitboard::from_square(tgt).0;
+    let src_in_k = pos.kings.contains(src);     let tgt_in_k = pos.kings.contains(tgt);
+    let src_in_c = pos.champions.contains(src); let tgt_in_c = pos.champions.contains(tgt);
+    let src_in_g = pos.guards.contains(src);    let tgt_in_g = pos.guards.contains(tgt);
+    if src_in_k != tgt_in_k {
+        pos.kings = Bitboard(pos.kings.0 ^ xor);
+        undo.kings_xor ^= xor;
+    }
+    if src_in_c != tgt_in_c {
+        pos.champions = Bitboard(pos.champions.0 ^ xor);
+        undo.champions_xor ^= xor;
+    }
+    if src_in_g != tgt_in_g {
+        pos.guards = Bitboard(pos.guards.0 ^ xor);
+        undo.guards_xor ^= xor;
+    }
+
+    debit_money(pos, tgt, /*cost=*/ 4, undo);
+    pos.actions_remaining -= 1;
+}
+
+fn apply_retreat(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    let dest = action.target();
+    debug_assert!(pos.is_occupied(src) && !pos.is_occupied(dest) && src != dest);
+    relocate_piece(pos, src, dest, undo);
+    debit_money(pos, dest, /*cost=*/ 4, undo);
     pos.actions_remaining -= 1;
 }
 
@@ -1707,5 +1857,661 @@ mod tests {
 
         unmake(&mut pos, &undo);
         assert!(pos_eq(&snapshot, &pos));
+    }
+
+    // === Slice 5 — Shield-class + Move-class resolvers ====================
+
+    use super::super::generator::generate;
+
+    fn shove_action(src: u8, tgt: u8, dir: u8) -> Action {
+        Action::encode(src, tgt, ActionKind::Skill, Skill::Shove as u8, dir)
+    }
+
+    // --- Shield ---------------------------------------------------------
+
+    #[test]
+    fn shield_increments_armor_by_one() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shield as u8);
+
+        let _ = make(&mut pos, skill_action(28, 28, Skill::Shield));
+        assert_eq!(pos.mailbox[28].armor(), 1);
+    }
+
+    #[test]
+    fn shield_costs_2_money_decrements_action() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shield as u8);
+        let money_before = pos.p1_money;
+
+        let _ = make(&mut pos, skill_action(28, 28, Skill::Shield));
+        assert_eq!(pos.p1_money, money_before - 2);
+        assert_eq!(pos.actions_remaining, 1);
+    }
+
+    #[test]
+    fn shield_at_cap_filtered_by_generator() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 2);
+        equip(&mut pos, 28, Skill::Shield as u8);
+
+        let shield_id = Skill::Shield as u8;
+        let acts = generate(&pos);
+        assert!(
+            !acts.iter().any(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == shield_id),
+            "Shield at armor cap must not be emitted"
+        );
+    }
+
+    #[test]
+    fn shield_unmake_roundtrip() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shield as u8);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 28, Skill::Shield));
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "{:?}", pos_diff(&snap, &pos));
+    }
+
+    // --- Heal -----------------------------------------------------------
+
+    #[test]
+    fn heal_restores_injured_ally_to_full_hp() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Heal as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 1, 0);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Heal));
+        assert_eq!(pos.mailbox[36].hp(), 2);
+    }
+
+    #[test]
+    fn heal_on_non_injured_ally_filtered() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Heal as u8);
+        // Ally at full HP — not a legal Heal target.
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 0);
+
+        let heal_id = Skill::Heal as u8;
+        let acts = generate(&pos);
+        assert!(
+            !acts.iter().any(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == heal_id
+                && a.target() == 36),
+            "Heal on full-HP ally must not be emitted"
+        );
+    }
+
+    #[test]
+    fn heal_unmake_roundtrip() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Heal as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 1, 0);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Heal));
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "{:?}", pos_diff(&snap, &pos));
+    }
+
+    // --- Plate ----------------------------------------------------------
+
+    #[test]
+    fn plate_adds_armor_to_adjacent_ally() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Plate as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 0);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Plate));
+        assert_eq!(pos.mailbox[36].armor(), 1);
+    }
+
+    #[test]
+    fn plate_at_cap_filtered_by_generator() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Plate as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 2);
+
+        let plate_id = Skill::Plate as u8;
+        let acts = generate(&pos);
+        assert!(
+            !acts.iter().any(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == plate_id
+                && a.target() == 36),
+            "Plate on armor-capped ally must not be emitted"
+        );
+    }
+
+    #[test]
+    fn plate_unmake_roundtrip() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Plate as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 0);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Plate));
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "{:?}", pos_diff(&snap, &pos));
+    }
+
+    // --- Dash -----------------------------------------------------------
+
+    #[test]
+    fn dash_relocates_caster_one_tile() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Dash as u8);
+
+        // e4 → e5 (N).
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Dash));
+        assert!(!pos.is_occupied(28));
+        assert!(pos.is_occupied(36));
+        assert!(pos.p1_pieces.contains(36));
+        assert!(pos.champions.contains(36));
+    }
+
+    #[test]
+    fn dash_relocates_caster_two_tiles_diagonal() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 27, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 27, Skill::Dash as u8);
+
+        // d4 (27) → f6 (45) — diagonal NE, range 2.
+        let _ = make(&mut pos, skill_action(27, 45, Skill::Dash));
+        assert!(!pos.is_occupied(27));
+        assert!(pos.is_occupied(45));
+        assert!(pos.p1_pieces.contains(45));
+    }
+
+    #[test]
+    fn dash_path_blocked_no_emission() {
+        // Dash 2-tile target on a ray blocked by piece in between.
+        // Caster at e4 (sq 28). Ally at e5 (36). e6 (44) is the 2-tile target
+        // along the N-ray, but skill_attacks treats the ally as a blocker —
+        // so e6 must not appear as a Dash destination.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Dash as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 0);
+
+        let dash_id = Skill::Dash as u8;
+        let acts = generate(&pos);
+        assert!(
+            !acts.iter().any(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == dash_id
+                && a.src() == 28
+                && a.target() == 44),
+            "Dash through ally blocker must not be emitted"
+        );
+    }
+
+    #[test]
+    fn dash_unmake_roundtrip() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Dash as u8);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Dash));
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "{:?}", pos_diff(&snap, &pos));
+    }
+
+    // --- Blast ----------------------------------------------------------
+
+    #[test]
+    fn blast_pushes_enemy_one_tile_away_no_damage() {
+        // Caster e4 (28), enemy e5 (36). Blast pushes N → e6 (44).
+        // Stack-M: Blast deals NO base damage.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Blast as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Blast));
+        assert!(!pos.is_occupied(36), "enemy left e5");
+        assert!(pos.is_occupied(44), "enemy arrived at e6");
+        assert_eq!(pos.mailbox[44].hp(), 2, "Blast deals NO damage");
+    }
+
+    #[test]
+    fn blast_off_board_push_fizzles() {
+        // Caster at e7 (sq 52), enemy at e8 (sq 60). Push N is off-board.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 52, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 52, Skill::Blast as u8);
+        place(&mut pos, 60, Player::P2, PieceKind::Champion, 2, 0);
+
+        let _ = make(&mut pos, skill_action(52, 60, Skill::Blast));
+        assert!(pos.is_occupied(60), "enemy stays at e8, push fizzles off-board");
+        assert_eq!(pos.mailbox[60].hp(), 2);
+    }
+
+    #[test]
+    fn blast_into_occupied_push_fizzles() {
+        // Caster e4 (28), enemy e5 (36), blocker at e6 (44).
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Blast as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
+        place(&mut pos, 44, Player::P1, PieceKind::Champion, 2, 0);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Blast));
+        assert!(pos.is_occupied(36), "enemy stays — push blocked");
+        assert!(pos.is_occupied(44), "blocker undisturbed");
+    }
+
+    #[test]
+    fn blast_with_combo_counter_deals_bonus_damage() {
+        // Enemy at e5 with combo=2 (manually set). Caster at e4 with Blast.
+        // Pre-tick combo 2 → +2 bonus damage. Enemy HP=2, armor=0 → killed.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Blast as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
+        pos.mailbox[36] = pos.mailbox[36].with_combo(2);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Blast));
+        assert!(!pos.is_occupied(36), "combo-bonus damage 2 + HP 2 → removed");
+    }
+
+    #[test]
+    fn blast_unmake_roundtrip() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Blast as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
+        pos.mailbox[36] = pos.mailbox[36].with_combo(1);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Blast));
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "{:?}", pos_diff(&snap, &pos));
+    }
+
+    // --- Shove ----------------------------------------------------------
+
+    #[test]
+    fn shove_pushes_enemy_in_each_of_eight_directions() {
+        // Caster e4 (28), enemy at d4 (27). Shove can push in any direction
+        // because surrounding squares are empty. Verify each direction
+        // results in the expected push_dest via choice_idx.
+        // DELTAS order: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW.
+        // Enemy at d4 = sq 27 (rank 3, file 3). Expected push targets:
+        // 0=N→35, 1=NE→36, 2=E→28(caster!), 3=SE→20, 4=S→19, 5=SW→18,
+        // 6=W→26, 7=NW→34.
+        // Direction 2 (E) toward sq 28 would push onto the caster — blocked,
+        // generator wouldn't emit. We test 7 of the 8 directions here.
+        let expected: [(u8, u8); 7] = [
+            (0, 35), (1, 36), (3, 20), (4, 19),
+            (5, 18), (6, 26), (7, 34),
+        ];
+        for (dir, push_dest) in expected {
+            let mut pos = skill_phase_pos(2);
+            place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+            equip(&mut pos, 28, Skill::Shove as u8);
+            place(&mut pos, 27, Player::P2, PieceKind::Champion, 2, 0);
+
+            let _ = make(&mut pos, shove_action(28, 27, dir));
+            assert!(!pos.is_occupied(27), "enemy left dir={}", dir);
+            assert!(pos.is_occupied(push_dest),
+                    "enemy at push_dest={} for dir={}", push_dest, dir);
+            assert!(pos.p2_pieces.contains(push_dest), "ownership preserved");
+        }
+    }
+
+    #[test]
+    fn shove_pushes_ally_does_not_tick_combo() {
+        // Caster e4 (28), ally at d4 (27, combo=0). Shove N → d5 (35).
+        // Ally push — combo on ally must remain 0.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shove as u8);
+        place(&mut pos, 27, Player::P1, PieceKind::Champion, 2, 0);
+
+        let _ = make(&mut pos, shove_action(28, 27, /*dir=N*/0));
+        assert!(pos.is_occupied(35), "ally pushed to d5");
+        assert_eq!(pos.mailbox[35].combo(), 0, "no combo tick on ally push");
+    }
+
+    #[test]
+    fn shove_off_board_no_emission() {
+        // Caster b1 (1), enemy a1 (0). Pushes W or any S-ish dir are
+        // off-board; pushing E lands on caster (blocked); pushing N lands
+        // on a2 (sq 8) — legal. Generator should emit some dirs and skip
+        // off-board ones.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 1, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 1, Skill::Shove as u8);
+        place(&mut pos, 0, Player::P2, PieceKind::Champion, 2, 0);
+
+        let shove_id = Skill::Shove as u8;
+        let dirs: Vec<u8> = generate(&pos).into_iter()
+            .filter(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == shove_id
+                && a.target() == 0)
+            .map(|a| a.choice_idx())
+            .collect();
+        // SW/S/SE/W all push enemy off-board → must not appear.
+        for forbidden in [3u8, 4, 5, 6] {
+            assert!(!dirs.contains(&forbidden),
+                    "dir {} would push a1 off-board", forbidden);
+        }
+    }
+
+    #[test]
+    fn shove_into_occupied_no_emission() {
+        // Caster e4 (28), enemy d4 (27), blocker at d5 (35). Shove N (dir=0)
+        // would land on the blocker → generator must skip dir=0.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shove as u8);
+        place(&mut pos, 27, Player::P2, PieceKind::Champion, 2, 0);
+        place(&mut pos, 35, Player::P1, PieceKind::Champion, 2, 0);
+
+        let shove_id = Skill::Shove as u8;
+        let acts = generate(&pos);
+        assert!(
+            !acts.iter().any(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == shove_id
+                && a.target() == 27
+                && a.choice_idx() == 0),
+            "Shove into occupied d5 must not be emitted"
+        );
+    }
+
+    #[test]
+    fn shove_unmake_roundtrip() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shove as u8);
+        place(&mut pos, 27, Player::P2, PieceKind::Champion, 2, 0);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, shove_action(28, 27, 0));
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "{:?}", pos_diff(&snap, &pos));
+    }
+
+    // --- Swap -----------------------------------------------------------
+
+    #[test]
+    fn swap_exchanges_champion_and_guard() {
+        // Caster Champion at e4 (28), ally Guard at e5 (36). Swap → caster
+        // ends at 36, Guard at 28. Verify kind-layer XOR works.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Swap as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Guard, 2, 1);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Swap));
+        assert!(pos.guards.contains(28), "Guard now at 28");
+        assert!(pos.champions.contains(36), "Champion now at 36");
+        assert!(!pos.champions.contains(28));
+        assert!(!pos.guards.contains(36));
+        assert!(pos.p1_pieces.contains(28) && pos.p1_pieces.contains(36));
+    }
+
+    #[test]
+    fn swap_ignores_moved_this_phase() {
+        // moved_this_phase is Move-Phase only. Swap occurring in Skill-Phase
+        // must not be affected by what's set there. Set both squares as
+        // "moved" before swap; confirm swap proceeds and mailbox/bitboard
+        // state is correct.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Swap as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Guard, 2, 1);
+        pos.moved_this_phase = Bitboard::from_square(28) | Bitboard::from_square(36);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Swap));
+        // Skill-Phase: moved_this_phase is irrelevant to legality and not
+        // mutated by skill resolvers.
+        assert!(pos.champions.contains(36));
+        assert!(pos.guards.contains(28));
+    }
+
+    #[test]
+    fn swap_path_blocked_no_emission() {
+        // Caster e4 (28) with Swap (range 2). Ally e5 (36) is fine (range 1).
+        // Far ally e6 (44) is range 2 but blocked by e5 (the first piece on
+        // the ray). path::skill_targets only returns first-blocker — so e6
+        // must NOT be a Swap target.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Swap as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Guard, 2, 1);
+        place(&mut pos, 44, Player::P1, PieceKind::Guard, 2, 1);
+
+        let swap_id = Skill::Swap as u8;
+        let acts = generate(&pos);
+        assert!(
+            !acts.iter().any(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == swap_id
+                && a.src() == 28
+                && a.target() == 44),
+            "Swap to e6 past blocker at e5 must not be emitted"
+        );
+    }
+
+    #[test]
+    fn swap_unmake_roundtrip() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Swap as u8);
+        place(&mut pos, 36, Player::P1, PieceKind::Guard, 2, 1);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Swap));
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "{:?}", pos_diff(&snap, &pos));
+    }
+
+    // --- Retreat --------------------------------------------------------
+
+    #[test]
+    fn retreat_lands_adjacent_to_ally_guard() {
+        // Caster Champion at e4 (28). Ally Guard at a1 (0). Retreat range 3,
+        // queen-ray from e4. The diagonal SW reaches b1 (sq 1) at range 3,
+        // which IS adjacent to a1 → legal Retreat dest.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Retreat as u8);
+        place(&mut pos, 0, Player::P1, PieceKind::Guard, 2, 1);
+
+        // e4 → b1: dr=-3, df=-3 — pure SW diagonal at Chebyshev 3 ✓.
+        let _ = make(&mut pos, skill_action(28, 1, Skill::Retreat));
+        assert!(!pos.is_occupied(28));
+        assert!(pos.is_occupied(1));
+        assert!(pos.champions.contains(1));
+    }
+
+    #[test]
+    fn retreat_no_ally_guards_no_emission() {
+        // Caster Champion at e4 (28) with Retreat. No ally Guards anywhere
+        // → no Retreat actions emitted.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Retreat as u8);
+
+        let retreat_id = Skill::Retreat as u8;
+        let acts = generate(&pos);
+        assert!(
+            !acts.iter().any(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == retreat_id),
+            "Retreat without ally Guards must not emit"
+        );
+    }
+
+    #[test]
+    fn retreat_dest_not_adjacent_to_guard_no_emission() {
+        // Caster at a1 (0). Ally Guard at h8 (63). Caster has range 3
+        // queen-ray destinations. h8 has 3 neighbours: g7 (54), g8 (62),
+        // h7 (55). From a1, Chebyshev distances are g7=6, g8=7, h7=7.
+        // All > range 3 → no Retreat destination is adjacent to any ally
+        // Guard, so no emission.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 0, Skill::Retreat as u8);
+        place(&mut pos, 63, Player::P1, PieceKind::Guard, 2, 1);
+
+        let retreat_id = Skill::Retreat as u8;
+        let acts = generate(&pos);
+        let retreat_acts: Vec<_> = acts.iter()
+            .filter(|a| a.kind() == ActionKind::Skill
+                && a.skill_id() == retreat_id)
+            .collect();
+        assert!(retreat_acts.is_empty(),
+                "no Retreat dest from a1 in range 3 is adj to h8, got {:?}",
+                retreat_acts.iter().map(|a| a.target()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn retreat_unmake_roundtrip() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Retreat as u8);
+        place(&mut pos, 0, Player::P1, PieceKind::Guard, 2, 1);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 1, Skill::Retreat));
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "{:?}", pos_diff(&snap, &pos));
+    }
+
+    // --- Cross-cutting --------------------------------------------------
+
+    #[test]
+    fn slice5_all_eight_skills_unmake_identity() {
+        // Apply each Slice-5 skill in sequence on a fresh position; reverse-
+        // unmake each undo and assert full pos_eq against the snapshot.
+        // Each subtest builds its own position because the legal context for
+        // each skill is different.
+        let cases: Vec<(&str, Box<dyn Fn() -> (Position, Action)>)> = vec![
+            ("Shield", Box::new(|| {
+                let mut p = skill_phase_pos(2);
+                place(&mut p, 28, Player::P1, PieceKind::Champion, 2, 0);
+                equip(&mut p, 28, Skill::Shield as u8);
+                (p, skill_action(28, 28, Skill::Shield))
+            })),
+            ("Heal", Box::new(|| {
+                let mut p = skill_phase_pos(2);
+                place(&mut p, 28, Player::P1, PieceKind::Champion, 2, 0);
+                equip(&mut p, 28, Skill::Heal as u8);
+                place(&mut p, 36, Player::P1, PieceKind::Champion, 1, 0);
+                (p, skill_action(28, 36, Skill::Heal))
+            })),
+            ("Plate", Box::new(|| {
+                let mut p = skill_phase_pos(2);
+                place(&mut p, 28, Player::P1, PieceKind::Champion, 2, 0);
+                equip(&mut p, 28, Skill::Plate as u8);
+                place(&mut p, 36, Player::P1, PieceKind::Champion, 2, 0);
+                (p, skill_action(28, 36, Skill::Plate))
+            })),
+            ("Dash", Box::new(|| {
+                let mut p = skill_phase_pos(2);
+                place(&mut p, 28, Player::P1, PieceKind::Champion, 2, 0);
+                equip(&mut p, 28, Skill::Dash as u8);
+                (p, skill_action(28, 36, Skill::Dash))
+            })),
+            ("Blast", Box::new(|| {
+                let mut p = skill_phase_pos(2);
+                place(&mut p, 28, Player::P1, PieceKind::Champion, 2, 0);
+                equip(&mut p, 28, Skill::Blast as u8);
+                place(&mut p, 36, Player::P2, PieceKind::Champion, 2, 0);
+                (p, skill_action(28, 36, Skill::Blast))
+            })),
+            ("Shove", Box::new(|| {
+                let mut p = skill_phase_pos(2);
+                place(&mut p, 28, Player::P1, PieceKind::Champion, 2, 0);
+                equip(&mut p, 28, Skill::Shove as u8);
+                place(&mut p, 27, Player::P2, PieceKind::Champion, 2, 0);
+                (p, shove_action(28, 27, 0))
+            })),
+            ("Swap", Box::new(|| {
+                let mut p = skill_phase_pos(2);
+                place(&mut p, 28, Player::P1, PieceKind::Champion, 2, 0);
+                equip(&mut p, 28, Skill::Swap as u8);
+                place(&mut p, 36, Player::P1, PieceKind::Guard, 2, 1);
+                (p, skill_action(28, 36, Skill::Swap))
+            })),
+            ("Retreat", Box::new(|| {
+                let mut p = skill_phase_pos(2);
+                place(&mut p, 28, Player::P1, PieceKind::Champion, 2, 0);
+                equip(&mut p, 28, Skill::Retreat as u8);
+                place(&mut p, 0, Player::P1, PieceKind::Guard, 2, 1);
+                (p, skill_action(28, 1, Skill::Retreat))
+            })),
+        ];
+        for (name, build) in cases {
+            let (mut pos, action) = build();
+            let snap = pos.clone();
+            let undo = make(&mut pos, action);
+            unmake(&mut pos, &undo);
+            assert!(pos_eq(&snap, &pos),
+                    "{}: roundtrip diff: {:?}", name, pos_diff(&snap, &pos));
+        }
+    }
+
+    #[test]
+    fn dash_then_lance_uses_new_caster_position() {
+        // Caster at e4 (28) with Dash + Lance. Enemy at h4 (sq 31) — out of
+        // Lance range (1) from e4 but in range from e.g. g4 (30). Dash e4→g4
+        // first (dir E, range 2), then Lance from g4 hits h4.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        // Equip both Dash (slot 1) and Lance (slot 2).
+        pos.mailbox[28] = pos.mailbox[28]
+            .with_skill1(Skill::Dash as u8)
+            .with_skill2(Skill::Lance as u8);
+        place(&mut pos, 31, Player::P2, PieceKind::Champion, 2, 0);
+
+        let _ = make(&mut pos, skill_action(28, 30, Skill::Dash));
+        assert!(pos.is_occupied(30), "caster dashed to g4");
+
+        // Lance from g4 (30) targets h4 (31).
+        let _ = make(&mut pos, skill_action(30, 31, Skill::Lance));
+        assert_eq!(pos.mailbox[31].hp(), 1, "Lance dealt 1 dmg from new position");
+    }
+
+    #[test]
+    fn blast_then_shove_chained_combo_on_same_enemy() {
+        // Enemy at d5 (35) starting combo 0. Caster1 Champion at e4 (28) with
+        // Blast pushes enemy NW out of the way and ticks combo. Caster2 (a
+        // different Champion) Shoves the now-relocated enemy, ticks again
+        // and applies pre-tick bonus.
+        // After Blast: enemy at d6 (43), combo = 1.
+        // Caster2 at d5 (35) Shoves enemy at d6 (43) east → enemy at e6 (44).
+        // Pre-tick combo was 1 → 1 bonus damage applied; enemy HP 2 → 1.
+        let mut pos = skill_phase_pos(4);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Blast as u8);
+        place(&mut pos, 35, Player::P2, PieceKind::Champion, 2, 0);
+
+        // Blast e4 → enemy at d5 (35). step_away(28,35): dr=signum(4-3)=1,
+        // df=signum(3-4)=-1, so push goes from d5 to c6 (sq 42).
+        let _ = make(&mut pos, skill_action(28, 35, Skill::Blast));
+        assert!(pos.is_occupied(42), "enemy pushed to c6");
+        assert_eq!(pos.mailbox[42].combo(), 1, "combo ticked to 1");
+
+        // Now add caster2 at b6 (sq 41) with Shove, push enemy E.
+        place(&mut pos, 41, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 41, Skill::Shove as u8);
+        // Shove c6 (42) east → d6 (sq 43). dir=2 (E).
+        let _ = make(&mut pos, shove_action(41, 42, 2));
+        assert!(pos.is_occupied(43), "enemy at d6 after Shove");
+        assert_eq!(pos.mailbox[43].hp(), 1, "pre-tick combo 1 dealt 1 bonus dmg");
+        assert_eq!(pos.mailbox[43].combo(), 2, "combo ticked to 2");
     }
 }

@@ -46,10 +46,16 @@
 //! slice 4. Until then, the only legal Skill-Phase action is `EndPhase`.
 
 use super::action::{Action, ActionKind};
-use super::skills::{self, TargetOwner};
-use crate::state::path;
+use super::skills::{self, Skill, TargetOwner};
+use crate::state::{magic, path};
 use crate::state::position::{Phase, Player};
 use crate::state::{Bitboard, Position};
+
+// Mirrors the constants in make_unmake.rs. Kept private to the generator —
+// these are stack-M tuning values; promoting them to a shared module is a
+// later refactor when more sites need them.
+const ARMOR_CAP: u8 = 2;
+const INJURED_HP: u8 = 1;
 
 pub fn generate(pos: &Position) -> Vec<Action> {
     // Terminal positions emit no further legal actions. The game-over signal
@@ -121,21 +127,21 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
 
 // === Skill Phase ============================================================
 
-/// Enumerate Skill-Phase actions. Slice 3 wires *enumeration only* — the
-/// per-skill resolvers in `make_unmake::apply_skill` are still `unimplemented!`
-/// for every skill, so calling `make()` on any non-EndPhase emitted here will
-/// panic. Search / HvH consumers gate on resolver availability before playing
-/// these.
+/// Enumerate Skill-Phase actions. Slices 3–5 wire the per-skill emission;
+/// the resolvers in `make_unmake::apply_skill` are implemented for the 13
+/// non-Mystic skills (Lance/Break/Steal/Hook/Tempest + Shield/Heal/Plate +
+/// Dash/Blast/Shove/Swap/Retreat). Focus/Charge are still `unimplemented!`
+/// in the resolver, and currently no Mystic setter is wired here either.
 ///
 /// For each caster on the side-to-move with money ≥ skill cost, emit one
-/// action per (skill, legal-target) pair where "legal" means:
-///   - `TargetOwner::SelfOnly` → one action with `src == tgt`.
-///   - `TargetOwner::Empty` → skipped in Slice 3 (Move-skills land in Slice 5).
-///   - `TargetOwner::Ally|Enemy|Either` → use `path::skill_targets` and AND
-///     with the appropriate side bitboard.
-///
-/// `choice_idx` is always 0 in Slice 3. Shove direction, Retreat Guard-pick,
-/// and Tempest bodyguard live in Slice 4/5.
+/// action per legal target by `TargetOwner`:
+///   - `SelfOnly`  → one action with `src == tgt` (Shield filtered if at cap).
+///   - `Ally`      → `path::skill_targets` ∩ allies; Heal/Plate state filters.
+///   - `Enemy`     → `path::skill_targets` ∩ enemies.
+///   - `Either`    → Shove only; emits one action per (target, dir).
+///   - `Empty`     → Dash / Retreat; empty squares on queen-rays within range,
+///                   Retreat additionally constrained to be adjacent to an
+///                   ally Guard.
 fn generate_skill_phase(pos: &Position) -> Vec<Action> {
     let mut out = Vec::with_capacity(64);
 
@@ -163,33 +169,85 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
 
             match skills::skill_target_owner(skill) {
                 TargetOwner::SelfOnly => {
+                    // Shield at the Armor cap is an illegal cast (no effect).
+                    if skill == Skill::Shield
+                        && pos.mailbox[src as usize].armor() >= ARMOR_CAP {
+                        continue;
+                    }
                     out.push(Action::encode(
                         src, src, ActionKind::Skill, skill as u8, 0,
                     ));
                 }
                 TargetOwner::Empty => {
-                    // Move-skills (Dash/Retreat) — Slice 5 wires these.
-                    continue;
+                    // Move-skills (Dash/Retreat): enumerate empty squares on
+                    // queen-rays from `src` within `range`.
+                    let occ = (pos.p1_pieces | pos.p2_pieces).0;
+                    let attacks = magic::skill_attacks(src, occ, range).0;
+                    let empties = attacks & !occ;
+                    if empties == 0 { continue; }
+                    match skill {
+                        Skill::Dash => {
+                            for dest in iter_squares(Bitboard(empties)) {
+                                // skill_attacks excludes src by construction.
+                                out.push(Action::encode(
+                                    src, dest, ActionKind::Skill, skill as u8, 0,
+                                ));
+                            }
+                        }
+                        Skill::Retreat => {
+                            let ally_guards = stm_bb.0 & pos.guards.0;
+                            if ally_guards == 0 { continue; }
+                            for dest in iter_squares(Bitboard(empties)) {
+                                let adj_to_ally_guard = eight_neighbours(dest)
+                                    .any(|n| ally_guards & (1u64 << n) != 0);
+                                if !adj_to_ally_guard { continue; }
+                                out.push(Action::encode(
+                                    src, dest, ActionKind::Skill, skill as u8, 0,
+                                ));
+                            }
+                        }
+                        _ => unreachable!("only Dash/Retreat use TargetOwner::Empty"),
+                    }
                 }
-                owner @ (TargetOwner::Ally | TargetOwner::Enemy | TargetOwner::Either) => {
+                TargetOwner::Ally => {
                     let raw = path::skill_targets(pos, src, range).0;
-                    let filtered = match owner {
-                        TargetOwner::Ally   => raw & stm_bb.0,
-                        TargetOwner::Enemy  => raw & opp_bb.0,
-                        TargetOwner::Either => raw,
-                        _ => unreachable!(),
-                    };
-                    // Swap requires the caster to not be its own target, but
-                    // path::skill_targets already excludes src (the src
-                    // square is not on any of its own rays). Other ally-target
-                    // skills are likewise fine.
+                    let filtered = raw & stm_bb.0;
                     for tgt in iter_squares(Bitboard(filtered)) {
-                        // Skill::Swap with src==tgt impossible (see above).
-                        // Drop the `Skill` value here; the action encodes id only.
-                        let _ = skill;
+                        let tgt_entry = pos.mailbox[tgt as usize];
+                        match skill {
+                            Skill::Heal  if tgt_entry.hp()    != INJURED_HP => continue,
+                            Skill::Plate if tgt_entry.armor() >= ARMOR_CAP  => continue,
+                            _ => {}
+                        }
                         out.push(Action::encode(
                             src, tgt, ActionKind::Skill, skill as u8, 0,
                         ));
+                    }
+                }
+                TargetOwner::Enemy => {
+                    let raw = path::skill_targets(pos, src, range).0;
+                    let filtered = raw & opp_bb.0;
+                    for tgt in iter_squares(Bitboard(filtered)) {
+                        out.push(Action::encode(
+                            src, tgt, ActionKind::Skill, skill as u8, 0,
+                        ));
+                    }
+                }
+                TargetOwner::Either => {
+                    // Currently only Shove. Emit one action per (target, dir)
+                    // where the push lands on-board and onto an empty square.
+                    debug_assert_eq!(skill, Skill::Shove);
+                    let raw = path::skill_targets(pos, src, range).0;
+                    let occ = (pos.p1_pieces | pos.p2_pieces).0;
+                    for tgt in iter_squares(Bitboard(raw)) {
+                        for dir in 0..8u8 {
+                            let Some(push_dest) = magic::neighbour_in_dir(tgt, dir as usize)
+                                else { continue };
+                            if occ & (1u64 << push_dest) != 0 { continue; }
+                            out.push(Action::encode(
+                                src, tgt, ActionKind::Skill, skill as u8, dir,
+                            ));
+                        }
                     }
                 }
             }
@@ -879,11 +937,15 @@ mod tests {
 
     #[test]
     fn generate_skill_phase_heal_targets_only_allies() {
-        // P1 Champion at e4 (sq 28) with Heal (range 1, Ally). P1 ally at e5
-        // (36), P2 enemy at e3 (20). Heal must emit ally target, NOT enemy.
+        // P1 Champion at e4 (sq 28) with Heal (range 1, Ally). P1 INJURED ally
+        // at e5 (36) — Slice 5 added a non-Injured filter, so the target must
+        // be at HP=1 to be a legal Heal target. P2 enemy at e3 (20). Heal must
+        // emit ally target, NOT enemy.
         let mut p = skill_phase_pos(2);
         place_champ(&mut p, 28, Player::P1);
         place_champ(&mut p, 36, Player::P1);
+        // Drop ally HP to Injured so Heal is legal.
+        p.mailbox[36] = p.mailbox[36].with_hp(1);
         place_champ(&mut p, 20, Player::P2);
         equip(&mut p, 28, super::skills::Skill::Heal as u8);
 
@@ -940,19 +1002,26 @@ mod tests {
     }
 
     #[test]
-    fn generate_skill_phase_move_skill_emits_nothing_in_slice_3() {
-        // P1 Champion at e4 (sq 28) with Dash (TargetOwner::Empty).
-        // Slice 3 skips Move-skills entirely — no Dash actions emitted.
+    fn generate_skill_phase_dash_emits_empty_targets_in_slice_5() {
+        // P1 Champion at e4 (sq 28) with Dash (range 2, Empty). Empty board
+        // otherwise → every queen-ray square within Chebyshev 2 should emit
+        // a Dash action with dest != src.
         let mut p = skill_phase_pos(2);
         place_champ(&mut p, 28, Player::P1);
         equip(&mut p, 28, super::skills::Skill::Dash as u8);
 
         let actions = generate(&p);
         let dash_id = super::skills::Skill::Dash as u8;
-        assert!(
-            !actions.iter().any(|a| a.kind() == ActionKind::Skill && a.skill_id() == dash_id),
-            "Dash is a Move-skill — deferred to Slice 5"
-        );
+        let dash_dests: Vec<u8> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Skill
+                && a.src() == 28
+                && a.skill_id() == dash_id)
+            .map(|a| a.target())
+            .collect();
+        assert!(!dash_dests.is_empty(), "Dash now emits in Slice 5");
+        assert!(dash_dests.iter().all(|&d| d != 28), "no zero-move Dash");
+        // Spot-check: e5 (sq 36) is range-1 N from e4 on a clear ray.
+        assert!(dash_dests.contains(&36), "Dash → e5 expected");
     }
 
     #[test]
@@ -978,17 +1047,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Skill::Shield resolver lands in Slice 5+")]
+    #[should_panic(expected = "Skill::Focus resolver lands in Slice 6")]
     fn make_panics_on_skill_action() {
-        // Slice-4 contract: Strike-skill resolvers (Lance/Break/Steal/Hook/
-        // Tempest) are implemented; the remaining 10 still panic with
-        // unimplemented!(). Search/UI gates on resolver availability.
+        // Slice-5 contract: Strike + Shield-class + Move-class resolvers are
+        // implemented. The two "Mystic" setters (Focus / Charge) still panic
+        // with unimplemented!(). Search/UI gates on resolver availability.
         let mut p = skill_phase_pos(2);
         place_champ(&mut p, 28, Player::P1);
-        equip(&mut p, 28, super::skills::Skill::Shield as u8);
+        equip(&mut p, 28, super::skills::Skill::Focus as u8);
 
-        let shield_id = super::skills::Skill::Shield as u8;
-        let a = Action::encode(28, 28, ActionKind::Skill, shield_id, 0);
+        let focus_id = super::skills::Skill::Focus as u8;
+        let a = Action::encode(28, 28, ActionKind::Skill, focus_id, 0);
         let _ = super::super::make_unmake::make(&mut p, a);
     }
 }

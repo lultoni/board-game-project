@@ -234,6 +234,18 @@ pub fn step_away(pivot: u8, at: u8) -> Option<u8> {
     Some((r * 8 + f) as u8)
 }
 
+/// One-step neighbour from `sq` in direction `dir` (0..=7, matching DELTAS:
+/// 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW). Returns `None` if the step
+/// leaves the board.
+pub fn neighbour_in_dir(sq: u8, dir: usize) -> Option<u8> {
+    debug_assert!(sq < 64 && dir < 8);
+    let (dr, df) = DELTAS[dir];
+    let r = (sq / 8) as i8 + dr;
+    let f = (sq % 8) as i8 + df;
+    if !(0..8).contains(&r) || !(0..8).contains(&f) { return None; }
+    Some((r * 8 + f) as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,5 +374,32 @@ mod tests {
         assert_eq!(step_away(57, 56), None);
         // pivot b7 (sq 49), at a8 (sq 56). diagonal NW off-board.
         assert_eq!(step_away(49, 56), None);
+    }
+
+    #[test]
+    fn neighbour_in_dir_all_eight_from_centre() {
+        // sq 28 = e4. All 8 directions on-board.
+        // DELTAS order: N, NE, E, SE, S, SW, W, NW.
+        assert_eq!(neighbour_in_dir(28, 0), Some(36)); // N → e5
+        assert_eq!(neighbour_in_dir(28, 1), Some(37)); // NE → f5
+        assert_eq!(neighbour_in_dir(28, 2), Some(29)); // E → f4
+        assert_eq!(neighbour_in_dir(28, 3), Some(21)); // SE → f3
+        assert_eq!(neighbour_in_dir(28, 4), Some(20)); // S → e3
+        assert_eq!(neighbour_in_dir(28, 5), Some(19)); // SW → d3
+        assert_eq!(neighbour_in_dir(28, 6), Some(27)); // W → d4
+        assert_eq!(neighbour_in_dir(28, 7), Some(35)); // NW → d5
+    }
+
+    #[test]
+    fn neighbour_in_dir_off_board_returns_none() {
+        // a1 = sq 0. Off-board in S, SW, W, NW, SE.
+        assert_eq!(neighbour_in_dir(0, 0), Some(8));  // N → a2 on-board
+        assert_eq!(neighbour_in_dir(0, 1), Some(9));  // NE → b2 on-board
+        assert_eq!(neighbour_in_dir(0, 2), Some(1));  // E → b1 on-board
+        assert_eq!(neighbour_in_dir(0, 3), None);     // SE → off
+        assert_eq!(neighbour_in_dir(0, 4), None);     // S → off
+        assert_eq!(neighbour_in_dir(0, 5), None);     // SW → off
+        assert_eq!(neighbour_in_dir(0, 6), None);     // W → off
+        assert_eq!(neighbour_in_dir(0, 7), None);     // NW → off
     }
 }

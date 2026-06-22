@@ -2,49 +2,40 @@
 
 *One-screen re-entry doc. Read first after a gap. Regenerated from the DB at session end.*
 
-*Last updated: 2026-06-22 — mid Session 30 (audit pass, pre-Slice-1).*
+*Last updated: 2026-06-22 — end of Session 30 (Slices 1–5 complete).*
 
 ---
 
 ## Current focus
 
-**Digital engine implementation — Stack M ruleset.** Slice -1 (FEN serialisation) and Slice 0 (`setup_stack_m()` + setup-invariant validator) shipped in Session 29. Session 30 ran an audit pass: armor cap fixed to 2, Guards-no-skills enforced in FEN, `moved_this_phase` and `round_number` added to `Position` and FEN, stub doc-comments corrected for Move-Phase movement geometry and Bodyguard enumeration. Next: implement Slice 1.
+**Digital engine implementation — Stack M ruleset.** Session 30 absorbed the audit pass plus Slices 1–5 of the engine. The core engine now generates and applies the full Move Phase (plain moves + Move-Attack + Bodyguard), terminal-state detection, all 5 Strike-skill resolvers, and all 8 Shield/Move-class resolvers. 177 lib tests green; clean release build. Next: Slice 6 — Focus + Charge wiring, end-of-turn clearance, action-budget curve.
 
 ## Active stack
 
 **Stack M — Game Length Cut.** The engine executes Stack M's body as written. Full substance: `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"`.
 
-## Movement geometry (Move Phase) — corrected
+## What changed this session
 
-- Movement is **free in all 8 directions** per Stack M. Speed = Chebyshev distance (diagonal step costs 1).
-- A Guard (speed 2) may reach any empty square within Chebyshev distance 2 via *any* path of single-tile steps — zigzag is legal — provided every intermediate square is empty.
-- Move-Attack: same reachability, but the destination is an enemy square. Mover does NOT enter the tile; enemy takes 1 damage.
-- "Each piece can only be moved once per Move Phase" — tracked by the new `moved_this_phase` bitboard.
-- **Previous STATUS/HANDOVER incorrectly said "cardinal movement". This was wrong.**
-
-## What changed in Session 30 (audit pass)
-
-1. **Armor cap enforced to 2** — `mailbox::with_armor` debug-asserts ≤2, FEN validator rejects armor=3 with `MailboxFieldOutOfRange`. Bit-layout doc fixed.
-2. **Guards-no-skills enforced** — new `FenError::GuardCarriesSkill { rank_idx_from_top, slot }`. Plain and strict parsers both reject `G[…]` with non-zero skill1/skill2.
-3. **`Position::round_number`** added (u16, starts at 1, increments on flip-back to P1). Income disbursed per-turn: `2 + round_number / 5`.
-4. **`Position::moved_this_phase`** added (Bitboard, cleared on Move→Skill). Tracked destination squares of pieces already moved this phase.
-5. **FEN grammar extended** to 9 fields: `… <pending_modifiers> <round_number> <moved_this_phase>`. The new fields are `decimal 1..=65535` and `0x<hex>` respectively. SCENARIO_FORMAT.md updated.
-6. **Stub doc-comments rewritten** in `action.rs`, `generator.rs`, `turn_manager.rs`, `zobrist.rs` to reflect: Chebyshev movement, Move-Attack Bodyguard enumeration via `choice_idx`, Tempest target-not-pushed, round-based progression. `Undo` got two new snapshot fields (`prev_moved_this_phase`, `prev_round_number`).
-7. **All 40 `core_engine` tests green.**
+1. **Audit pass** (commit `5e4f316`) — armor cap fixed to 2, Guards-no-skills enforced in FEN, `moved_this_phase` + `round_number` added to `Position` and FEN (9-field grammar), stub doc-comments rewritten.
+2. **Slice 1** (commit `e938569`) — Move Phase plain movement + Move-Attack + Bodyguard. Chebyshev-BFS reachability, `make`/`unmake` for `ActionKind::Move`, `moved_this_phase` bookkeeping.
+3. **Slice 2** (commit `04d301b`) — King-capture game-over signal + Bodyguard edge cases. `GameResult` + `Position::game_result`; generator emits empty on terminal states.
+4. **Slice 3** (commit `55be8cc`) — Path/Range/Block primitives (`state::magic`, `state::path`) + Skill-Action framework (Action encoding, generator enumeration scaffold).
+5. **Slice 4** (commit `09db1de`) — Strike-skill resolvers: Lance, Break, Steal, Hook, Tempest. Combo counter, pending_modifiers (Charge), champion_credit dedup.
+6. **Slice 5** (this session, not yet committed at briefing time) — Shield-class + Move-class resolvers: Shield, Heal, Plate, Dash, Blast, Shove, Swap, Retreat. 8 designer decisions captured as **oq-73…oq-80** (Shield/Plate at cap illegal, Heal non-Injured illegal, Blast/Shove off-board asymmetry, all-movement-must-relocate, Swap ally-only, Retreat-no-guards illegal, friendly-push no combo, queen-ray geometry).
 
 ## Immediate next action
 
-**Slice 1 — Move Phase plain movement + Move-Attack + Bodyguard.** Deliverables:
-1. `make` / `unmake` for `ActionKind::Move` actions (both plain and Move-Attack variants), maintaining `moved_this_phase`.
-2. Legal-move generation (Chebyshev-BFS, blocked by occupied intermediate squares).
-3. Move-Attack target enumeration with Bodyguard `choice_idx` branching.
-
-Edge cases per `next_steps` id=8 Slice 1.
+**Slice 6 — Focus + Charge wiring, end-of-turn clearance, Skill-Phase action-budget curve.** Deliverables:
+1. `apply_focus` / `apply_charge` resolvers — set `pending_modifiers` bits.
+2. Generator: consume Focus's +1 Range buff before iterating Strike-skill ranges (OQ noted at generator.rs).
+3. `turn_manager::end_turn` — clear combo counters, `tracked_*`, `pending_modifiers`; advance round; disburse income.
+4. Skill-Phase action budget by round (currently hardcoded 2).
+5. Zobrist hashing — populate `undo.zobrist_xor`.
 
 ## Live critical / high-priority open questions
 
-Query: `sqlite3 design/design.db "SELECT id, title FROM open_questions WHERE status IN ('critical','high') ORDER BY priority, id;"`
+Query: `sqlite3 design/design.db "SELECT id, title FROM open_questions WHERE status IN ('critical','high') ORDER BY priority, id;"` (12 critical + 8 high as of session end; oq-73…oq-80 are resolved).
 
 ## DB sanity
 
-- 12 tables. `PRAGMA foreign_key_check` + `PRAGMA integrity_check` both ok at start of Session 30.
+- 12 tables. `PRAGMA foreign_key_check` + `PRAGMA integrity_check` both ok at session-30 end.
