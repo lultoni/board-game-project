@@ -15,4 +15,4 @@ pub mod zobrist;
 pub use bitboard::Bitboard;
 pub use fen::FenError;
 pub use mailbox::{MailboxEntry, EMPTY_MAILBOX_ENTRY};
-pub use position::{Position, Phase, Player};
+pub use position::{Position, Phase, Player, GameResult};

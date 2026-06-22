@@ -27,6 +27,11 @@ impl Bitboard {
     }
 
     #[inline]
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    #[inline]
     pub fn lsb(self) -> Option<u8> {
         if self.0 == 0 { None } else { Some(self.0.trailing_zeros() as u8) }
     }

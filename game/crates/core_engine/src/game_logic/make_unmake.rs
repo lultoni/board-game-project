@@ -22,12 +22,13 @@
 //! a debug-time panic (treated as an engine bug, not a user error).
 
 use super::action::{Action, ActionKind, Undo};
-use crate::state::position::{Phase, Player};
+use crate::state::position::{GameResult, Phase, Player};
 use crate::state::{Bitboard, MailboxEntry, Position, EMPTY_MAILBOX_ENTRY};
 
 pub fn make(pos: &mut Position, action: Action) -> Undo {
     let mut undo = Undo {
         action: action.0,
+        prev_game_result: game_result_to_tag(pos.game_result),
         prev_pending_modifiers: pos.pending_modifiers,
         prev_phase: phase_to_byte(pos.current_phase),
         prev_actions_remaining: pos.actions_remaining,
@@ -82,6 +83,7 @@ pub fn unmake(pos: &mut Position, undo: &Undo) {
     pos.champion_credit    = undo.prev_champion_credit;
     pos.tracked_enemies    = undo.prev_tracked_enemies;
     pos.tracked_enemies_len = undo.prev_tracked_enemies_len;
+    pos.game_result        = game_result_from_tag(undo.prev_game_result);
 
     // Money — invert deltas. Wrapping arithmetic is safe: any value that
     // produced a valid forward delta produces a valid reverse delta.
@@ -196,19 +198,31 @@ fn deal_one_damage(pos: &mut Position, hit_sq: u8, undo: &mut Undo) {
     // No armor — HP drops.
     let new_hp = prev_entry.hp().saturating_sub(1);
     if new_hp == 0 {
-        // Piece removed. Clear mailbox + bitboards.
+        // Piece removed. Capture King + owner identity *before* mutating any
+        // bitboards so we can set game_result correctly afterwards.
+        let was_king  = pos.kings.contains(hit_sq);
+        let owned_by_p1 = pos.p1_pieces.contains(hit_sq);
+
         pos.mailbox[hit_sq as usize] = EMPTY_MAILBOX_ENTRY;
         let bit = Bitboard::from_square(hit_sq).0;
-        if pos.p1_pieces.contains(hit_sq) {
+        if owned_by_p1 {
             pos.p1_pieces = Bitboard(pos.p1_pieces.0 ^ bit);
             undo.p1_pieces_xor ^= bit;
         } else {
             pos.p2_pieces = Bitboard(pos.p2_pieces.0 ^ bit);
             undo.p2_pieces_xor ^= bit;
         }
-        if pos.kings.contains(hit_sq) {
+        if was_king {
             pos.kings = Bitboard(pos.kings.0 ^ bit);
             undo.kings_xor ^= bit;
+            // Stack M: removing a King ends the game immediately. The other
+            // player wins. `unmake` restores the prior `game_result` via
+            // the Undo snapshot captured at the start of `make`.
+            pos.game_result = Some(if owned_by_p1 {
+                GameResult::P2Wins
+            } else {
+                GameResult::P1Wins
+            });
         } else if pos.champions.contains(hit_sq) {
             pos.champions = Bitboard(pos.champions.0 ^ bit);
             undo.champions_xor ^= bit;
@@ -265,6 +279,21 @@ fn phase_from_byte(b: u8) -> Phase {
     match b { 0 => Phase::Move, _ => Phase::Skill }
 }
 
+fn game_result_to_tag(r: Option<GameResult>) -> u8 {
+    match r {
+        None                       => 0,
+        Some(GameResult::P1Wins)   => 1,
+        Some(GameResult::P2Wins)   => 2,
+    }
+}
+fn game_result_from_tag(t: u8) -> Option<GameResult> {
+    match t {
+        1 => Some(GameResult::P1Wins),
+        2 => Some(GameResult::P2Wins),
+        _ => None,
+    }
+}
+
 #[allow(dead_code)]
 fn _unused_player(_p: Player) {} // keep Player in-scope without unused-import warning
 
@@ -290,6 +319,7 @@ mod tests {
             Player::P2 => pos.p2_pieces = pos.p2_pieces | bit,
         }
         match kind {
+            PieceKind::King     => pos.kings     = pos.kings     | bit,
             PieceKind::Champion => pos.champions = pos.champions | bit,
             PieceKind::Guard    => pos.guards    = pos.guards    | bit,
         }
@@ -298,7 +328,7 @@ mod tests {
             .with_armor(armor);
     }
 
-    enum PieceKind { Champion, Guard }
+    enum PieceKind { King, Champion, Guard }
 
     // --- Plain Move ------------------------------------------------------
 
@@ -520,5 +550,275 @@ mod tests {
         assert!(!pos.is_occupied(36));
         unmake(&mut pos, &undo);
         assert_eq!(pos.to_fen(), before);
+    }
+
+    // --- Slice 2: King-capture = game over ------------------------------
+
+    #[test]
+    fn move_attack_on_king_hp1_ends_game() {
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::King, 1, 0);
+        assert_eq!(pos.game_result, None);
+
+        let a = Action::encode(0, 1, ActionKind::Move, 0, 0);
+        let undo = make(&mut pos, a);
+
+        assert!(!pos.is_occupied(1), "King removed");
+        assert!(!pos.kings.contains(1));
+        assert!(!pos.p2_pieces.contains(1));
+        assert_eq!(pos.game_result, Some(GameResult::P1Wins));
+
+        unmake(&mut pos, &undo);
+        assert!(pos.kings.contains(1));
+        assert_eq!(pos.mailbox[1].hp(), 1);
+        assert_eq!(pos.game_result, None);
+    }
+
+    #[test]
+    fn move_attack_on_king_with_armor_does_not_end_game() {
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::King, 2, 2);
+
+        let a = Action::encode(0, 1, ActionKind::Move, 0, 0);
+        let _ = make(&mut pos, a);
+
+        assert_eq!(pos.mailbox[1].armor(), 1, "armor 2→1");
+        assert_eq!(pos.mailbox[1].hp(), 2);
+        assert!(pos.kings.contains(1));
+        assert_eq!(pos.game_result, None);
+    }
+
+    #[test]
+    fn bodyguard_can_protect_king_from_lethal_blow() {
+        // P2 King at sq 1, HP=1, Armor=0. P2 Guard at sq 2 (adjacent), HP=2.
+        // P1 Champion at sq 0 Move-Attacks with choice_idx=1 → Guard absorbs.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::King, 1, 0);
+        place(&mut pos, 2, Player::P2, PieceKind::Guard, 2, 0);
+
+        let a = Action::encode(0, 1, ActionKind::Move, 0, 1);
+        let undo = make(&mut pos, a);
+
+        assert!(pos.kings.contains(1), "King survives — Bodyguard absorbed");
+        assert_eq!(pos.mailbox[1].hp(), 1);
+        assert_eq!(pos.mailbox[2].hp(), 1, "Guard HP 2→1");
+        assert_eq!(pos.game_result, None);
+
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.mailbox[2].hp(), 2);
+        assert_eq!(pos.game_result, None);
+    }
+
+    #[test]
+    fn make_unmake_roundtrip_king_capture() {
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::King, 1, 0);
+        // FEN serialises position; game_result is derivable, not stored, but
+        // from_fen recomputes it deterministically. So a pre-capture FEN
+        // round-trips with game_result=None on both sides of unmake.
+        let before = pos.to_fen();
+
+        let a = Action::encode(0, 1, ActionKind::Move, 0, 0);
+        let undo = make(&mut pos, a);
+        assert_eq!(pos.game_result, Some(GameResult::P1Wins));
+
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.to_fen(), before);
+        assert_eq!(pos.game_result, None);
+    }
+
+    // --- Slice 2: Bodyguard edge cases (mostly generator-side) ----------
+
+    #[test]
+    fn move_attack_on_guard_offers_no_bodyguard_choice() {
+        // Generator-side: Move-Attack on a Guard must not enumerate any
+        // Bodyguard redirect — Bodyguard protects only Champion/King.
+        // Setup: P1 Champion at sq 0, P2 Guards at sq 1 (target) and sq 2
+        // (would-be protector). Generator should emit exactly one Move-Attack
+        // action against sq 1 (choice_idx = 0).
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::Guard, 2, 0);
+        place(&mut pos, 2, Player::P2, PieceKind::Guard, 2, 0);
+        pos.to_move = Player::P1;
+
+        let actions = super::super::generator::generate(&pos);
+        let attacks_on_1: Vec<_> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Move
+                     && a.src() == 0
+                     && a.target() == 1)
+            .collect();
+        assert_eq!(attacks_on_1.len(), 1, "exactly one Move-Attack on guard, no redirect");
+        assert_eq!(attacks_on_1[0].choice_idx(), 0);
+    }
+
+    #[test]
+    fn move_attack_with_no_adjacent_friendly_guards_offers_no_redirect() {
+        // P1 Champion at sq 0, P2 Champion at sq 1, no adjacent P2 Guards.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::Champion, 2, 0);
+        pos.to_move = Player::P1;
+
+        let actions = super::super::generator::generate(&pos);
+        let attacks_on_1: Vec<_> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Move
+                     && a.src() == 0
+                     && a.target() == 1)
+            .collect();
+        assert_eq!(attacks_on_1.len(), 1);
+        assert_eq!(attacks_on_1[0].choice_idx(), 0);
+    }
+
+    #[test]
+    fn move_attack_with_three_adjacent_guards_emits_four_variants() {
+        // P2 Champion at sq 9 (b2) with P2 Guards at sq 1, 8, 10 (b1, a2, c2).
+        // Sorted ascending: 1, 8, 10. Generator emits choice 0 (no redirect)
+        // plus 1..=3 mapped onto [1, 8, 10] in ascending order.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 9, Player::P2, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::Guard, 2, 0);
+        place(&mut pos, 8, Player::P2, PieceKind::Guard, 2, 0);
+        place(&mut pos, 10, Player::P2, PieceKind::Guard, 2, 0);
+        pos.to_move = Player::P1;
+
+        let actions = super::super::generator::generate(&pos);
+        let mut attacks_on_9: Vec<_> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Move
+                     && a.src() == 0
+                     && a.target() == 9)
+            .map(|a| a.choice_idx())
+            .collect();
+        attacks_on_9.sort_unstable();
+        assert_eq!(attacks_on_9, vec![0, 1, 2, 3]);
+
+        // Apply each redirect and confirm the right Guard takes the hit.
+        for (choice, guard_sq) in [(1u8, 1u8), (2, 8), (3, 10)] {
+            let mut p = pos.clone();
+            let a = Action::encode(0, 9, ActionKind::Move, 0, choice);
+            let _ = make(&mut p, a);
+            assert_eq!(p.mailbox[guard_sq as usize].hp(), 1,
+                "choice {} should hit guard at sq {}", choice, guard_sq);
+            // The other two Guards untouched.
+            for other in [1u8, 8, 10].iter().copied().filter(|&s| s != guard_sq) {
+                assert_eq!(p.mailbox[other as usize].hp(), 2,
+                    "guard at {} untouched when choice {} redirects to {}",
+                    other, choice, guard_sq);
+            }
+        }
+    }
+
+    #[test]
+    fn bodyguard_choice_zero_against_armored_king_burns_armor() {
+        // Sanity check: choice 0 with an armored King keeps the standard
+        // Armor→HP resolution path; King survives, game continues.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::King, 2, 1);
+        place(&mut pos, 2, Player::P2, PieceKind::Guard, 2, 0);
+
+        let a = Action::encode(0, 1, ActionKind::Move, 0, 0);
+        let _ = make(&mut pos, a);
+
+        assert_eq!(pos.mailbox[1].armor(), 0, "King armor consumed");
+        assert_eq!(pos.mailbox[1].hp(), 2);
+        assert!(pos.kings.contains(1));
+        assert_eq!(pos.mailbox[2].hp(), 2, "Guard untouched on choice 0");
+        assert_eq!(pos.game_result, None);
+    }
+
+    // --- Slice 2: Move-Phase integration --------------------------------
+
+    #[test]
+    fn move_phase_full_two_actions_then_endphase_roundtrips() {
+        // Plain Move (Guard b2→b4) + Move-Attack (Champion d1→d2 onto P2 Guard)
+        // + EndPhase. After all three: Skill phase, actions=2, moved_this_phase=0.
+        // Then unmake each in reverse and assert the starting FEN.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 9, Player::P1, PieceKind::Guard, 2, 0);     // b2
+        place(&mut pos, 3, Player::P1, PieceKind::Champion, 2, 0);  // d1
+        place(&mut pos, 11, Player::P2, PieceKind::Guard, 2, 0);    // d2
+        // Kings need to exist for game_result invariants — give each side
+        // an inert King far from the action.
+        place(&mut pos, 56, Player::P1, PieceKind::King, 2, 0);     // a8
+        place(&mut pos, 63, Player::P2, PieceKind::King, 2, 0);     // h8
+        let start = pos.to_fen();
+
+        let move1 = Action::encode(9, 25, ActionKind::Move, 0, 0);  // Guard b2 → b4
+        let move2 = Action::encode(3, 11, ActionKind::Move, 0, 0);  // Champion d1 Move-Attack onto d2
+        let end   = Action::encode(0, 0, ActionKind::EndPhase, 0, 0);
+
+        let u1 = make(&mut pos, move1);
+        let u2 = make(&mut pos, move2);
+        let u3 = make(&mut pos, end);
+
+        assert!(matches!(pos.current_phase, Phase::Skill));
+        assert_eq!(pos.actions_remaining, 2);
+        assert_eq!(pos.moved_this_phase.0, 0);
+        // Guard at sq 11 was Move-Attacked: HP 2 → 1.
+        assert_eq!(pos.mailbox[11].hp(), 1);
+        // Guard at b4 (sq 25) sits where b2 used to.
+        assert!(pos.is_occupied(25));
+        assert!(!pos.is_occupied(9));
+
+        // Reverse in opposite order.
+        unmake(&mut pos, &u3);
+        unmake(&mut pos, &u2);
+        unmake(&mut pos, &u1);
+        assert_eq!(pos.to_fen(), start);
+    }
+
+    // --- Slice 2: Generator filter on game-over -------------------------
+
+    #[test]
+    fn no_legal_actions_after_game_over() {
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 56, Player::P1, PieceKind::King, 2, 0);
+        // No P2 King → recompute_game_result sets P1Wins.
+        pos.recompute_game_result();
+        assert_eq!(pos.game_result, Some(GameResult::P1Wins));
+
+        let actions = super::super::generator::generate(&pos);
+        assert!(actions.is_empty(), "no legal actions after game over");
+    }
+
+    // --- Slice 2: FEN parser invariant + recompute helper ---------------
+
+    #[test]
+    fn recompute_game_result_handles_each_case() {
+        // Both Kings present → None.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::King, 2, 0);
+        place(&mut pos, 56, Player::P2, PieceKind::King, 2, 0);
+        pos.recompute_game_result();
+        assert_eq!(pos.game_result, None);
+
+        // P2 King missing → P1Wins.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::King, 2, 0);
+        pos.recompute_game_result();
+        assert_eq!(pos.game_result, Some(GameResult::P1Wins));
+
+        // P1 King missing → P2Wins.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 56, Player::P2, PieceKind::King, 2, 0);
+        pos.recompute_game_result();
+        assert_eq!(pos.game_result, Some(GameResult::P2Wins));
+    }
+
+    #[test]
+    fn from_fen_recomputes_game_result_for_normal_position() {
+        // Both Kings present in the canonical setup → game_result stays None
+        // after a FEN roundtrip (the recompute helper is invoked, and it
+        // returns None for a non-terminal position).
+        let pos = Position::setup_stack_m();
+        let parsed = Position::from_fen(&pos.to_fen()).expect("setup roundtrips");
+        assert_eq!(parsed.game_result, None);
     }
 }

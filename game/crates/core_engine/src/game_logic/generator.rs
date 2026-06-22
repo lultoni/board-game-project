@@ -50,6 +50,13 @@ use crate::state::position::{Phase, Player};
 use crate::state::{Bitboard, Position};
 
 pub fn generate(pos: &Position) -> Vec<Action> {
+    // Terminal positions emit no further legal actions. The game-over signal
+    // (Stack M: "The game ends immediately when a King is removed") is
+    // authoritative; downstream code (search, UI) interprets the empty list
+    // together with `pos.game_result` to drive end-of-game flow.
+    if pos.game_result.is_some() {
+        return Vec::new();
+    }
     match pos.current_phase {
         Phase::Move  => generate_move_phase(pos),
         Phase::Skill => generate_skill_phase(pos),

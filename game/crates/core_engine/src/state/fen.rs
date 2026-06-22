@@ -279,6 +279,9 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
     debug_assert_eq!(pos.tracked_enemies, [0u8; MAX_TRACKED_ENEMIES]);
     debug_assert_eq!(pos.zobrist, 0);
 
+    // Derive game_result from the bitboards: a side without a King has lost.
+    pos.recompute_game_result();
+
     Ok(pos)
 }
 

@@ -110,6 +110,13 @@ pub struct Undo {
     /// The action this Undo reverses, for sanity checks.
     pub action: u32,
 
+    /// Snapshot of `game_result` before this action. `unmake` restores it
+    /// so that a King-capturing Move-Attack is perfectly reversible. Stored
+    /// as a `u8` tag: 0 = None, 1 = P1Wins, 2 = P2Wins. Keeping the Undo
+    /// `Default` derivable trumps the type-safety win of `Option<GameResult>`
+    /// here — the conversion lives in two helpers on `make()` / `unmake()`.
+    pub prev_game_result: u8,
+
     /// Snapshot of `pending_modifiers` before this action consumed any.
     pub prev_pending_modifiers: u8,
 

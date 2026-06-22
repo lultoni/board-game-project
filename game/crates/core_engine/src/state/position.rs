@@ -17,6 +17,13 @@ pub enum Player { P1, P2 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase { Move, Skill }
 
+/// Terminal-state marker. `None` means the game is still in progress; a
+/// concrete variant means a King has been removed and the named player has
+/// won. Stack M has no draws (`"No draw conditions"`), so this enum has no
+/// Draw variant by design.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameResult { P1Wins, P2Wins }
+
 /// Stack M has 5 Champions per player. Index 0..5 identifies a specific
 /// Champion within a player's army; mapping from index to current square is
 /// maintained by the session/match layer (Champions are stable identities
@@ -94,6 +101,14 @@ pub struct Position {
 
     // === Layer 1: Incrementally maintained Zobrist hash. ===
     pub zobrist: u64,
+
+    /// Terminal-state marker. `Some(winner)` means a King has been removed
+    /// and the game is over; the engine emits no further legal actions.
+    /// Set by `make()` inside `deal_one_damage()` when a King's bit is about
+    /// to be cleared; cleared by `unmake()` via the Undo snapshot. Also
+    /// reconstructed deterministically from the bitboards by `from_fen()`
+    /// (a parsed FEN with one King missing is by definition a finished game).
+    pub game_result: Option<GameResult>,
 }
 
 impl Position {
@@ -118,6 +133,7 @@ impl Position {
             tracked_enemies_len: 0,
             champion_credit: 0,
             zobrist: 0,
+            game_result: None,
         }
     }
 
@@ -180,6 +196,28 @@ impl Position {
     /// describing the first parse failure encountered.
     pub fn from_fen(s: &str) -> Result<Self, super::fen::FenError> {
         super::fen::from_fen(s)
+    }
+
+    /// Derive `game_result` from the bitboards alone. A side with zero Kings
+    /// has lost (Stack M: "The game ends immediately when a King is removed
+    /// from the board."). Called by `from_fen()` after parsing, and by tests
+    /// that hand-build positions. `make()` maintains `game_result`
+    /// incrementally so this need not be called in the hot path.
+    pub fn recompute_game_result(&mut self) {
+        let p1_has_king = !(self.kings & self.p1_pieces).is_empty();
+        let p2_has_king = !(self.kings & self.p2_pieces).is_empty();
+        self.game_result = match (p1_has_king, p2_has_king) {
+            (true,  true)  => None,
+            (false, true)  => Some(GameResult::P2Wins),
+            (true,  false) => Some(GameResult::P1Wins),
+            // Both Kings removed in a single state is impossible in Stack M:
+            // a Move-Phase action removes at most one piece, and FEN parsing
+            // already requires ≥1 King per side via the strict validator
+            // (or accepts 0 Kings under lax mode — in which case we pick
+            // P2Wins as a deterministic fallback rather than introduce a
+            // Draw variant).
+            (false, false) => Some(GameResult::P2Wins),
+        };
     }
 }
 
