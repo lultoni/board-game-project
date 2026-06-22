@@ -5,6 +5,7 @@
 //! ```text
 //! <fen>           ::= <board> ' ' <to_move> ' ' <phase> ' ' <actions_remaining>
 //!                     ' ' <p1_money> ' ' <p2_money> ' ' <pending_modifiers>
+//!                     ' ' <round_number> ' ' <moved_this_phase>
 //! <board>         ::= <rank> ('/' <rank>){7}        ; rank 8 first, rank 1 last
 //! <rank>          ::= ( <piece-token> | <digit> ){1..}    ; squares per rank sum to 8
 //! <piece-token>   ::= <piece-char> [ '[' <hp> '/' <armor> '/' <combo>
@@ -17,6 +18,9 @@
 //! <actions_remaining> ::= 0..=255 decimal
 //! <p1_money>, <p2_money> ::= 0..=65535 decimal
 //! <pending_modifiers> ::= 0..=255 decimal (bit 0 = FOCUS, bit 1 = CHARGE)
+//! <round_number>  ::= 1..=65535 decimal
+//! <moved_this_phase> ::= 0x<hex>            ; u64 bitboard, lower-case hex,
+//!                                              no padding (0x0 is canonical empty)
 //! ```
 //!
 //! Bracketed mailbox fields default to `2/0/0/0/0` (full HP, no armor, no combo,
@@ -59,7 +63,7 @@ const DEFAULT_SKILL: u8 = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FenError {
-    /// FEN had the wrong number of space-separated fields. Expected 7.
+    /// FEN had the wrong number of space-separated fields. Expected 9.
     WrongFieldCount { got: usize },
     /// `<board>` did not contain exactly 8 `/`-separated ranks.
     WrongRankCount { got: usize },
@@ -71,8 +75,10 @@ pub enum FenError {
     UnterminatedBracket { rank_idx_from_top: usize },
     /// Bracket contents weren't 5 slash-separated decimals.
     MalformedBracket { rank_idx_from_top: usize },
-    /// Mailbox field out of range (e.g. HP > 2, armor > 3, combo > 7, skill > 15).
+    /// Mailbox field out of range (e.g. HP > 2, armor > 2, combo > 7, skill > 15).
     MailboxFieldOutOfRange { field: &'static str, value: u32 },
+    /// A Guard carried a non-zero skill field. Stack M: Guards have no skills.
+    GuardCarriesSkill { rank_idx_from_top: usize, slot: u8 },
     /// `<to_move>` was neither `P1` nor `P2`.
     BadToMove,
     /// `<phase>` was neither `M` nor `S`.
@@ -133,13 +139,15 @@ pub fn to_fen(pos: &Position) -> String {
 
     write!(
         &mut out,
-        " {} {} {} {} {} {}",
+        " {} {} {} {} {} {} {} 0x{:x}",
         to_move,
         phase,
         pos.actions_remaining,
         pos.p1_money,
         pos.p2_money,
         pos.pending_modifiers,
+        pos.round_number,
+        pos.moved_this_phase.0,
     ).unwrap();
 
     out
@@ -180,7 +188,7 @@ fn write_piece_token(out: &mut String, pos: &Position, sq: u8) {
 
 pub fn from_fen(s: &str) -> Result<Position, FenError> {
     let fields: Vec<&str> = s.split_ascii_whitespace().collect();
-    if fields.len() != 7 {
+    if fields.len() != 9 {
         return Err(FenError::WrongFieldCount { got: fields.len() });
     }
 
@@ -191,6 +199,8 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
     let p1_money_s = fields[4];
     let p2_money_s = fields[5];
     let modifiers_s = fields[6];
+    let round_s = fields[7];
+    let moved_s = fields[8];
 
     let mut pos = Position::empty();
 
@@ -218,6 +228,33 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
     pos.pending_modifiers = modifiers_s
         .parse::<u8>()
         .map_err(|_| FenError::BadDecimal { field: "pending_modifiers" })?;
+    pos.round_number = round_s
+        .parse::<u16>()
+        .map_err(|_| FenError::BadDecimal { field: "round_number" })?;
+    if pos.round_number == 0 {
+        return Err(FenError::BadDecimal { field: "round_number" });
+    }
+
+    let moved_hex = moved_s
+        .strip_prefix("0x")
+        .or_else(|| moved_s.strip_prefix("0X"))
+        .ok_or(FenError::BadDecimal { field: "moved_this_phase" })?;
+    let moved_bits = u64::from_str_radix(moved_hex, 16)
+        .map_err(|_| FenError::BadDecimal { field: "moved_this_phase" })?;
+    pos.moved_this_phase = crate::state::bitboard::Bitboard(moved_bits);
+
+    // moved_this_phase must be a subset of the current side-to-move's pieces.
+    // In Skill Phase it should be empty (cleared on Move→Skill transition).
+    let stm_bb = match pos.to_move {
+        Player::P1 => pos.p1_pieces,
+        Player::P2 => pos.p2_pieces,
+    };
+    if (pos.moved_this_phase.0 & !stm_bb.0) != 0 {
+        return Err(FenError::BadDecimal { field: "moved_this_phase" });
+    }
+    if matches!(pos.current_phase, Phase::Skill) && pos.moved_this_phase.0 != 0 {
+        return Err(FenError::BadDecimal { field: "moved_this_phase" });
+    }
 
     // Validate exactly one King per side.
     let p1_king_count = (pos.p1_pieces & pos.kings).count();
@@ -332,6 +369,16 @@ fn parse_board(board: &str, pos: &mut Position) -> Result<(), FenError> {
                 (DEFAULT_HP, DEFAULT_ARMOR, DEFAULT_COMBO, DEFAULT_SKILL, DEFAULT_SKILL)
             };
 
+            // Guards may not carry skills (Stack M).
+            if matches!(piece_kind, PieceKind::Guard) {
+                if s1 != 0 {
+                    return Err(FenError::GuardCarriesSkill { rank_idx_from_top: top_idx, slot: 1 });
+                }
+                if s2 != 0 {
+                    return Err(FenError::GuardCarriesSkill { rank_idx_from_top: top_idx, slot: 2 });
+                }
+            }
+
             if file >= 8 {
                 return Err(FenError::RankSquareCountMismatch {
                     rank_idx_from_top: top_idx,
@@ -436,7 +483,7 @@ fn parse_bracket(buf: &str, rank_idx_from_top: usize) -> Result<(u8, u8, u8, u8,
         .collect::<Result<_, _>>()?;
 
     if nums[0] > 2  { return Err(FenError::MailboxFieldOutOfRange { field: "hp",     value: nums[0] }); }
-    if nums[1] > 3  { return Err(FenError::MailboxFieldOutOfRange { field: "armor",  value: nums[1] }); }
+    if nums[1] > 2  { return Err(FenError::MailboxFieldOutOfRange { field: "armor",  value: nums[1] }); }
     if nums[2] > 7  { return Err(FenError::MailboxFieldOutOfRange { field: "combo",  value: nums[2] }); }
     if nums[3] > 15 { return Err(FenError::MailboxFieldOutOfRange { field: "skill1", value: nums[3] }); }
     if nums[4] > 15 { return Err(FenError::MailboxFieldOutOfRange { field: "skill2", value: nums[4] }); }
@@ -466,6 +513,8 @@ pub(crate) fn position_eq_for_fen(a: &Position, b: &Position) -> bool {
     if a.pending_modifiers != b.pending_modifiers { return false; }
     if a.to_move != b.to_move { return false; }
     if a.current_phase != b.current_phase { return false; }
+    if a.round_number != b.round_number { return false; }
+    if a.moved_this_phase.0 != b.moved_this_phase.0 { return false; }
     // Mailbox: only the occupied squares matter.
     let occ = (a.p1_pieces | a.p2_pieces).0;
     for sq in 0..64u8 {
@@ -519,7 +568,7 @@ mod tests {
         let s = to_fen(&p);
         // h8 is rank 7, file 7 → first rank in FEN. a1 is bitboard rank 0, last in FEN.
         // Expected board: "7k/8/8/8/8/8/8/K7"
-        assert_eq!(s, "7k/8/8/8/8/8/8/K7 P1 M 2 6 6 0");
+        assert_eq!(s, "7k/8/8/8/8/8/8/K7 P1 M 2 6 6 0 1 0x0");
     }
 
     #[test]
@@ -577,7 +626,7 @@ mod tests {
         let p2 = round(&p);
         assert!(position_eq_for_fen(&p, &p2));
         let s = to_fen(&p);
-        assert!(s.ends_with(" P2 S 17 42 1337 0"), "got: {}", s);
+        assert!(s.ends_with(" P2 S 17 42 1337 0 1 0x0"), "got: {}", s);
     }
 
     #[test]
@@ -591,12 +640,59 @@ mod tests {
     }
 
     #[test]
+    fn round_number_roundtrip() {
+        let mut p = two_kings();
+        p.round_number = 17;
+        let p2 = round(&p);
+        assert_eq!(p2.round_number, 17);
+        let s = to_fen(&p);
+        assert!(s.contains(" 17 0x0"), "got: {}", s);
+    }
+
+    #[test]
+    fn rejects_round_zero() {
+        let bad = "7k/8/8/8/8/8/8/K7 P1 M 2 6 6 0 0 0x0";
+        assert!(matches!(from_fen(bad), Err(FenError::BadDecimal { field: "round_number" })));
+    }
+
+    #[test]
+    fn moved_this_phase_roundtrip() {
+        // Mark P1's king square (a1 = sq 0) as already moved.
+        let mut p = two_kings();
+        p.moved_this_phase = Bitboard::from_square(0);
+        let s = to_fen(&p);
+        assert!(s.ends_with(" 0x1"), "got: {}", s);
+        let p2 = round(&p);
+        assert_eq!(p2.moved_this_phase.0, 1);
+    }
+
+    #[test]
+    fn rejects_moved_not_subset_of_stm() {
+        // P1 to move, but moved_this_phase points at h8 (P2's king's square).
+        let bad = "7k/8/8/8/8/8/8/K7 P1 M 2 6 6 0 1 0x8000000000000000";
+        assert!(matches!(from_fen(bad), Err(FenError::BadDecimal { field: "moved_this_phase" })));
+    }
+
+    #[test]
+    fn rejects_moved_during_skill_phase() {
+        // Phase=S forbids non-empty moved_this_phase.
+        let bad = "7k/8/8/8/8/8/8/K7 P1 S 2 6 6 0 1 0x1";
+        assert!(matches!(from_fen(bad), Err(FenError::BadDecimal { field: "moved_this_phase" })));
+    }
+
+    #[test]
+    fn rejects_moved_without_hex_prefix() {
+        let bad = "7k/8/8/8/8/8/8/K7 P1 M 2 6 6 0 1 1";
+        assert!(matches!(from_fen(bad), Err(FenError::BadDecimal { field: "moved_this_phase" })));
+    }
+
+    #[test]
     fn rejects_two_kings_one_side() {
         // Two P1 Kings, no P2 King.
-        let bad = "K6k/8/K7/8/8/8/8/8 P1 M 2 6 6 0";
+        let bad = "K6k/8/K7/8/8/8/8/8 P1 M 2 6 6 0 1 0x0";
         // Wait — that has 1 P1 king and 1 P2 king. Fix: both K's on top rank.
         let _ = bad;
-        let bad = "KK5k/8/8/8/8/8/8/8 P1 M 2 6 6 0";
+        let bad = "KK5k/8/8/8/8/8/8/8 P1 M 2 6 6 0 1 0x0";
         match from_fen(bad) {
             Err(FenError::KingCount { p1_kings: 2, p2_kings: 1 }) => {}
             other => panic!("expected KingCount(2,1), got {:?}", other),
@@ -605,7 +701,7 @@ mod tests {
 
     #[test]
     fn rejects_zero_kings() {
-        let bad = "8/8/8/8/8/8/8/8 P1 M 2 6 6 0";
+        let bad = "8/8/8/8/8/8/8/8 P1 M 2 6 6 0 1 0x0";
         match from_fen(bad) {
             Err(FenError::KingCount { p1_kings: 0, p2_kings: 0 }) => {}
             other => panic!("expected KingCount(0,0), got {:?}", other),
@@ -614,7 +710,7 @@ mod tests {
 
     #[test]
     fn rejects_rank_not_summing_to_8() {
-        let bad = "7k/7/8/8/8/8/8/K7 P1 M 2 6 6 0"; // rank "7" alone = 7 squares
+        let bad = "7k/7/8/8/8/8/8/K7 P1 M 2 6 6 0 1 0x0"; // rank "7" alone = 7 squares
         match from_fen(bad) {
             Err(FenError::RankSquareCountMismatch { .. }) => {}
             other => panic!("expected RankSquareCountMismatch, got {:?}", other),
@@ -623,7 +719,7 @@ mod tests {
 
     #[test]
     fn rejects_bad_piece_char() {
-        let bad = "7k/8/8/8/X7/8/8/K7 P1 M 2 6 6 0";
+        let bad = "7k/8/8/8/X7/8/8/K7 P1 M 2 6 6 0 1 0x0";
         match from_fen(bad) {
             Err(FenError::UnexpectedChar { ch: 'X', .. }) => {}
             other => panic!("expected UnexpectedChar('X'), got {:?}", other),
@@ -632,25 +728,25 @@ mod tests {
 
     #[test]
     fn rejects_bad_to_move() {
-        let bad = "7k/8/8/8/8/8/8/K7 P3 M 2 6 6 0";
+        let bad = "7k/8/8/8/8/8/8/K7 P3 M 2 6 6 0 1 0x0";
         assert!(matches!(from_fen(bad), Err(FenError::BadToMove)));
     }
 
     #[test]
     fn rejects_bad_phase() {
-        let bad = "7k/8/8/8/8/8/8/K7 P1 X 2 6 6 0";
+        let bad = "7k/8/8/8/8/8/8/K7 P1 X 2 6 6 0 1 0x0";
         assert!(matches!(from_fen(bad), Err(FenError::BadPhase)));
     }
 
     #[test]
     fn rejects_wrong_field_count() {
-        let bad = "7k/8/8/8/8/8/8/K7 P1 M 2 6 6"; // missing pending_modifiers
+        let bad = "7k/8/8/8/8/8/8/K7 P1 M 2 6 6"; // missing several fields
         assert!(matches!(from_fen(bad), Err(FenError::WrongFieldCount { got: 6 })));
     }
 
     #[test]
     fn rejects_mailbox_field_out_of_range() {
-        let bad = "7k/8/8/8/C[3/0/0/0/0]7/8/8/K7 P1 M 2 6 6 0"; // hp=3
+        let bad = "7k/8/8/8/C[3/0/0/0/0]7/8/8/K7 P1 M 2 6 6 0 1 0x0"; // hp=3
         match from_fen(bad) {
             Err(FenError::MailboxFieldOutOfRange { field: "hp", value: 3 }) => {}
             other => panic!("expected MailboxFieldOutOfRange(hp,3), got {:?}", other),
@@ -658,15 +754,51 @@ mod tests {
     }
 
     #[test]
+    fn rejects_armor_above_stack_m_cap() {
+        // Stack M caps armor at 2. armor=3 must be rejected even though 2 bits fit it.
+        let bad = "7k/8/8/8/C[2/3/0/0/0]7/8/8/K7 P1 M 2 6 6 0 1 0x0";
+        match from_fen(bad) {
+            Err(FenError::MailboxFieldOutOfRange { field: "armor", value: 3 }) => {}
+            other => panic!("expected MailboxFieldOutOfRange(armor,3), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn rejects_guard_with_skill1() {
+        // Guards may not carry skills (Stack M).
+        let bad = "7k/8/8/8/G[2/0/0/3/0]7/8/8/K7 P1 M 2 6 6 0 1 0x0";
+        match from_fen(bad) {
+            Err(FenError::GuardCarriesSkill { slot: 1, .. }) => {}
+            other => panic!("expected GuardCarriesSkill(slot=1), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn rejects_guard_with_skill2() {
+        let bad = "7k/8/8/8/g[2/0/0/0/5]7/8/8/K7 P1 M 2 6 6 0 1 0x0";
+        match from_fen(bad) {
+            Err(FenError::GuardCarriesSkill { slot: 2, .. }) => {}
+            other => panic!("expected GuardCarriesSkill(slot=2), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn accepts_guard_with_zero_skills_explicit() {
+        // Explicit zero brackets are fine.
+        let ok = "7k/8/8/8/G[1/1/0/0/0]7/8/8/K7 P1 M 2 6 6 0 1 0x0";
+        from_fen(ok).expect("Guard with zeroed skill fields parses");
+    }
+
+    #[test]
     fn rejects_malformed_bracket() {
-        let bad = "7k/8/8/8/C[1/2/3]7/8/8/K7 P1 M 2 6 6 0"; // 3 fields, not 5
+        let bad = "7k/8/8/8/C[1/2/3]7/8/8/K7 P1 M 2 6 6 0 1 0x0"; // 3 fields, not 5
         assert!(matches!(from_fen(bad), Err(FenError::MalformedBracket { .. })));
     }
 
     // --- Slice 0: setup_stack_m + strict validation -----------------------
 
     const CANONICAL_STACK_M_FEN: &str =
-        "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0";
+        "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0";
 
     #[test]
     fn setup_stack_m_matches_expected_fen() {
@@ -731,7 +863,7 @@ mod tests {
     fn strict_rejects_kings_same_file() {
         // Both Kings on file d (d1 and d8). Otherwise valid 1+5+6 setup.
         // Swap P2 king from e8 to d8, and one P2 champion from d8 to e8.
-        let bad = "1cckccc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0";
+        let bad = "1cckccc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0";
         match from_fen_strict(bad) {
             Err(FenError::KingsOnSameFile { file: 3 }) => {}
             other => panic!("expected KingsOnSameFile(3), got {:?}", other),
@@ -742,7 +874,7 @@ mod tests {
     fn strict_rejects_wrong_champion_count() {
         // P1 side has 4 Champions instead of 5 (one C replaced by a Guard).
         // 1CCKCCG1 → C,C,K,C,C,G = 4 champs.
-        let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCG1 P1 M 2 6 6 0";
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCG1 P1 M 2 6 6 0 1 0x0";
         match from_fen_strict(bad) {
             Err(FenError::WrongPieceCount { player: Player::P1, kind: "champions", expected: 5, got: 4 }) => {}
             other => panic!("expected WrongPieceCount(P1, champions, 5, 4), got {:?}", other),
@@ -752,7 +884,7 @@ mod tests {
     #[test]
     fn strict_rejects_wrong_guard_count() {
         // P1 side has 5 Guards instead of 6.
-        let bad = "1ccckcc1/1gggggg1/8/8/8/8/2GGGGG1/1CCKCCC1 P1 M 2 6 6 0";
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/2GGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0";
         match from_fen_strict(bad) {
             Err(FenError::WrongPieceCount { player: Player::P1, kind: "guards", expected: 6, got: 5 }) => {}
             other => panic!("expected WrongPieceCount(P1, guards, 6, 5), got {:?}", other),
@@ -762,7 +894,7 @@ mod tests {
     #[test]
     fn lax_accepts_wrong_counts() {
         // Same FEN as strict_rejects_wrong_champion_count — plain from_fen accepts it.
-        let mid_game = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCG1 P1 M 2 6 6 0";
+        let mid_game = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCG1 P1 M 2 6 6 0 1 0x0";
         from_fen(mid_game).expect("lax accepts mid-game piece counts");
     }
 }

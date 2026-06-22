@@ -11,7 +11,7 @@ Plain-text formats the engine's debug harness understands. Frozen so the designe
 Single-line, space-separated:
 
 ```
-<board> <to_move> <phase> <actions_remaining> <p1_money> <p2_money> <pending_modifiers>
+<board> <to_move> <phase> <actions_remaining> <p1_money> <p2_money> <pending_modifiers> <round_number> <moved_this_phase>
 ```
 
 ### Board
@@ -36,9 +36,11 @@ When the bracket is **omitted**, the piece defaults to `2/0/0/0/0` (full HP, no 
 
 Field ranges:
 - `hp` ∈ 0..=2
-- `armor` ∈ 0..=3
+- `armor` ∈ 0..=2 (Stack M cap)
 - `combo` ∈ 0..=7
 - `skill1`, `skill2` ∈ 0..=15 (0 = unequipped)
+
+Guards may not carry skills — `skill1` and `skill2` must both be 0 on any `G`/`g` token. Strict and lax parsers both reject Guards with non-zero skill fields.
 
 ### Trailing scalars
 
@@ -47,6 +49,8 @@ Field ranges:
 - `<actions_remaining>` decimal 0..=255
 - `<p1_money>`, `<p2_money>` decimal 0..=65535
 - `<pending_modifiers>` decimal 0..=255 (bit 0 = FOCUS, bit 1 = CHARGE; other bits reserved)
+- `<round_number>` decimal 1..=65535 — a Round = P1 turn + P2 turn. Increments when the turn flips back to P1. Drives round-based progression (income scaling, Skill-Phase action budget).
+- `<moved_this_phase>` `0x<hex>` — u64 bitboard of squares whose piece has already been moved in the current Move Phase. Must be a subset of the side-to-move's pieces; must be `0x0` whenever `<phase>` is `S`.
 
 ### Fields not in FEN
 
@@ -61,10 +65,10 @@ FEN represents between-turn state. Mid-turn search state stays in-memory only.
 ### Example
 
 ```
-7k/8/8/8/8/8/8/K7 P1 M 2 6 6 0
+7k/8/8/8/8/8/8/K7 P1 M 2 6 6 0 1 0x0
 ```
 
-P1 King at a1, P2 King at h8, otherwise empty. P1 to move, Move phase, 2 actions, 6 money each, no modifiers.
+P1 King at a1, P2 King at h8, otherwise empty. P1 to move, Move phase, 2 actions, 6 money each, no modifiers, Round 1, no piece moved this phase yet.
 
 ### Strict vs lax parsing
 

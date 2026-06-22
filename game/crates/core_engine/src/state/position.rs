@@ -57,6 +57,24 @@ pub struct Position {
     pub actions_remaining: u8,
     pub to_move: Player,
 
+    /// Current Round number. A Round = P1 turn + P2 turn. Increments when the
+    /// turn flips back to P1 (i.e. at the *start* of P1's next turn). Used
+    /// for round-based progression: income scaling is `2 + round_number / 5`,
+    /// Skill-Phase action budget grows on the same cadence. Income itself is
+    /// disbursed at the start of each Player turn (per Stack M).
+    pub round_number: u16,
+
+    /// Bitboard of squares whose piece has already been moved this Move Phase.
+    /// Stack M: "Each piece can only be moved once per Move Phase." Cleared
+    /// when the Move Phase ends. Skill Phase ignores this entirely.
+    /// Note: this tracks *origin* squares as they were *at the moment the
+    /// piece was moved*. Because each piece moves at most once per phase, and
+    /// nothing else relocates pieces during the Move Phase, the post-move
+    /// destination square is the relevant blocker the next time we generate.
+    /// Slice 1 will store *destination* squares here for that reason; this
+    /// stub leaves the exact semantics to the make/unmake implementation.
+    pub moved_this_phase: Bitboard,
+
     /// Turn-scoped modifier bits. See `modifier_bits` module.
     /// Cleared at end of every turn. Each bit has a dedicated Zobrist key.
     pub pending_modifiers: u8,
@@ -93,6 +111,8 @@ impl Position {
             current_phase: Phase::Move,
             actions_remaining: 0,
             to_move: Player::P1,
+            round_number: 1,
+            moved_this_phase: Bitboard::EMPTY,
             pending_modifiers: 0,
             tracked_enemies: [0; MAX_TRACKED_ENEMIES],
             tracked_enemies_len: 0,
@@ -144,6 +164,8 @@ impl Position {
         p.actions_remaining = 2;
         p.p1_money = 6;
         p.p2_money = 6;
+        p.round_number = 1;
+        p.moved_this_phase = Bitboard::EMPTY;
         p.pending_modifiers = 0;
         p
     }

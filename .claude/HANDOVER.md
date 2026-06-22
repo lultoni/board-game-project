@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-06-22 — end of Session 29.*
+*Last updated: 2026-06-22 — mid Session 30 (audit pass complete, pre-Slice-1).*
 
 ---
 
@@ -30,25 +30,33 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer. Mine load-bearing content into the DB.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (end of Session 29, 2026-06-22)
+### Where We Are (mid Session 30, 2026-06-22)
 
-- **Slice -1 + Slice 0 shipped.** Engine has FEN serialisation (`Position::to_fen()` / `from_fen()` / `from_fen_strict()`), the canonical Stack M starting position (`Position::setup_stack_m()`), and 30 passing tests. Rust toolchain on 1.96; Tauri compiles.
-- **Spec doc frozen** at `crates/core_engine/SCENARIO_FORMAT.md`: FEN grammar, action-text grammar, `.scenario` file format, strict-vs-lax parse rules.
-- **Inbox is clean** — evaluator philosophy folded into `crates/core_engine/src/search/evaluator.rs`.
-- **Slice plan stays binding.** `next_steps` id=8 (rule-coverage matrix) carries a slice-status header; -1 and 0 are ticked.
+- **Audit pass complete (pre-Slice-1).** Engine stubs no longer claim "cardinal" movement — Move-Phase movement is free in all 8 directions, speed = Chebyshev distance, zigzag legal (Stack M is explicit on this).
+- **`Position` has two new fields**: `round_number: u16` and `moved_this_phase: Bitboard`. FEN grammar is now 9 fields; `Undo` snapshots both for reversibility.
+- **Armor cap enforced to 2** in mailbox + FEN validator. **Guards-no-skills enforced** in FEN parser (new `FenError::GuardCarriesSkill`).
+- **Slice -1 + Slice 0 still shipped from S29** — FEN serialisation + `Position::setup_stack_m()` + strict validator. 40/40 tests green after audit-pass edits.
+- **Stub doc-comments updated** in `action.rs`, `generator.rs`, `turn_manager.rs`, `zobrist.rs` to reflect: Move-Phase reachability via Chebyshev BFS, Move-Attack Bodyguard enumeration via `choice_idx` (0=no redirect, k=k-th adjacent friendly Guard), Tempest target-not-pushed (only neighbours), round-based income (`2 + round_number/5` paid each turn).
 
 ### Immediate Next Action
 
-**Slice 1 — Move Phase: plain movement.** Three deliverables:
-1. `Action(u32)` movement encoding (origin square + dest square; phase = Move; piece type implicit via lookup).
-2. `make(&mut Position, Action) -> Undo` + `unmake(&mut Position, Undo)` for movement actions only (Stockfish-style fat Undo; cleared mailbox slot on origin, populated on dest, bitboard flips).
-3. Legal-move generation for Guard (speed 2) / Champion / King (speed 1) — cardinal movement, blocked by any piece, no off-board, one move per piece per phase, 2 actions per phase.
+**Slice 1 — Move Phase: plain movement + Move-Attack + Bodyguard enumeration.**
 
-Edge cases (per `next_steps` id=8 Slice 1): cannot move 3 with Guard, cannot move 2 with Champion/King, cannot move through ally/enemy, cannot reuse a piece in the same phase, `EndPhase` becomes legal when actions hit 0.
+1. `Action(u32)` Move-kind encoding (already designed; just wire it up).
+2. `make` / `unmake` for Move-kind actions:
+   - Plain move: clear src mailbox+bitboards, set dest, OR dest into `moved_this_phase`, decrement `actions_remaining`.
+   - Move-Attack: enemy at target takes 1 damage (Armor first, then HP, then remove if HP=0). Mover does *not* relocate. OR mover's *src* into `moved_this_phase` (since the mover stayed put — TODO confirm this semantics call; alternative is to consume the action without marking the piece moved, which would let it move again. Designer intent: Stack M says "Each piece can only be moved once per Move Phase" — Move-Attack *is* a Move action, so the attacker is marked).
+   - Bodyguard: `choice_idx>0` redirects damage to the k-th adjacent friendly Guard of the *defender*.
+3. Legal-move generator: Chebyshev-BFS bounded by speed (Guard=2, Champion=1, King=1), blocked by occupied intermediate squares. For each enemy-occupied target, enumerate Bodyguard-choice variants.
+4. `EndPhase` becomes legal whenever `actions_remaining == 0` or no piece has a legal move/attack.
 
-**Designer decision needed before this slice ships**: is diagonal movement legal in the Move Phase? Stack M body is silent. File an OQ at slice start if not pre-resolved; default to NO until designer says otherwise.
+Once Slice 1 lands, `gamedbg` CLI (`show / legal / apply / trace / perft`) and the `.scenario` runner become buildable.
 
-Once Slice 1 lands, `gamedbg` CLI (`show / legal / apply / trace / perft`) and the `.scenario` runner become buildable — `next_steps` id=9 deliverables 2 + 3.
+### Open methodological loose ends
+
+- **OQ: Skill-Phase action progression curve.** Stack M body says "starts at 2 per turn, scaling up over the game" with no numbers. File as OQ; treat as constant 2 until resolved.
+- **OQ: Focus on Move-Skills.** Stack M: "Move skills: caster chooses activation-range or effect-range, not both." Needs an action-encoding decision (extra `choice_idx` slot, or two separate skill IDs). Slice 4 concern; file as OQ now.
+- **Open question: Move-Attack effect on `moved_this_phase`.** Per Slice 1 deliverable 2 above. Default position: mark the attacker. Confirm at slice start.
 
 ### Key DB Queries (instead of file paths)
 

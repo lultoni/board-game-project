@@ -1,6 +1,6 @@
 //! Primitive Action and matching Undo Record.
 //!
-//! # Design (post-audit, see ADR-005 + session-28 audit)
+//! # Design (post-audit, see ADR-005 + session-28 audit + session-30 fixup)
 //!
 //! Action is **thin and uniform-width** — a single u32 encoding the player's
 //! *choice*. Effects (AOE expansion, path-implicit destinations, captured
@@ -12,21 +12,50 @@
 //! # Action bit layout (u32)
 //!
 //! ```text
-//!   bits  0..6   src           (6 bits, 0..=63)   caster square
+//!   bits  0..6   src           (6 bits, 0..=63)   caster / mover square
 //!   bits  6..12  target        (6 bits, 0..=63)   primary target square
 //!   bits 12..14  kind          (2 bits)           ActionKind variant
 //!   bits 14..18  skill_id      (4 bits, 0..=15)   skill index, 0 = none/sentinel
 //!   bits 18..22  choice_idx    (4 bits, 0..=15)   player disambiguation
-//!                                                  (e.g. Shove direction 0..=7,
-//!                                                   Retreat Guard-pick 0..=N)
+//!                                                  - Shove direction: 0..=7 (N..NW)
+//!                                                  - Retreat Guard-pick: 0..=N
+//!                                                  - Move-Attack bodyguard pick:
+//!                                                      0 = no redirect (attacker
+//!                                                      hits the named target),
+//!                                                      1..=k = redirect to k-th
+//!                                                      eligible adjacent Guard
+//!                                                      (canonical ordering by
+//!                                                      square index, ascending)
 //!   bits 22..32  reserved
 //! ```
 //!
-//! AOE skills (Tempest) carry `target` = primary; the resolver computes the
-//! 8 neighbour pushes and records them in the Undo. Path-implicit skills
-//! (Retreat) pre-resolve their destination in the generator and write it
-//! into `target`. Direction-only skills (Shove) use `choice_idx` for the
-//! 8 cardinal/diagonal directions.
+//! ## Move-phase actions (kind=Move)
+//!
+//! - **Plain move:** `target` is an empty square. `choice_idx` = 0 (unused).
+//! - **Move-Attack:** `target` is an *enemy*-occupied square. The mover does
+//!   NOT enter the target tile (Stack M); the enemy takes 1 damage. Bodyguard
+//!   redirect is encoded via `choice_idx` — see above.
+//! - Bodyguard enumeration in the generator: for every move-attack target
+//!   that has ≥1 eligible adjacent friendly Guard (i.e. the *defender's*
+//!   adjacent Guard), the generator emits one action per `choice_idx` value
+//!   (0 = no redirect, 1..=k = each Guard). The UI/Session layer mirrors this
+//!   by deferring on the defender's choice during HvH play before forwarding
+//!   the chosen action to `make()`.
+//!
+//! ## Tempest AOE (Skill kind)
+//!
+//! Stack M Tempest: "Target takes 1 damage. All pieces *adjacent to the
+//! target* are pushed 1 tile away from the target. Caster not affected."
+//! The target itself is NOT pushed — only its (up to 8) neighbours, minus
+//! the caster if the caster sits on a neighbour square. The resolver
+//! computes the push set inside `make()`; the Undo stores prior mailbox
+//! entries for any neighbour that ended up displaced or pushed off the
+//! board (which removes it, per the no-falling-off rule once defined —
+//! TODO file as OQ if Stack M is silent on push-off-board).
+//!
+//! Direction-only skills (Shove) use `choice_idx` for the 8 cardinal/
+//! diagonal directions. Path-implicit skills (Retreat) pre-resolve their
+//! destination in the generator and write it into `target`.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Action(pub u32);
@@ -87,6 +116,11 @@ pub struct Undo {
     /// Snapshot of phase + actions_remaining before this action.
     pub prev_phase: u8,
     pub prev_actions_remaining: u8,
+
+    /// Snapshot of `moved_this_phase` (Move-Phase only) and `round_number`.
+    /// Both must round-trip exactly under unmake.
+    pub prev_moved_this_phase: u64,
+    pub prev_round_number: u16,
 
     /// Money deltas (signed-on-paper, stored as signed i16 to capture
     /// Steal moving money between players).

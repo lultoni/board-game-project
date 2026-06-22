@@ -2,7 +2,7 @@
 //!
 //! Bit layout (LSB → MSB):
 //!   bits 0..2   HP            (2 bits, 0..=2)
-//!   bits 2..4   Armor         (2 bits, 0..=3)
+//!   bits 2..4   Armor         (2 bits, 0..=2; Stack M cap is 2, the 4th value is unused)
 //!   bits 4..7   Combo counter (3 bits, 0..=7)
 //!   bits 7..11  Skill 1 ID    (4 bits, 0..=15; 0 = unequipped sentinel)
 //!   bits 11..15 Skill 2 ID    (4 bits, 0..=15)
@@ -27,7 +27,7 @@ impl MailboxEntry {
     }
     #[inline]
     pub fn with_armor(self, a: u8) -> Self {
-        debug_assert!(a <= 3);
+        debug_assert!(a <= 2, "Stack M armor cap is 2");
         MailboxEntry((self.0 & !(0b11 << 2)) | ((a as u16 & 0b11) << 2))
     }
     #[inline]
@@ -55,12 +55,12 @@ mod tests {
     fn pack_and_unpack_roundtrip() {
         let e = MailboxEntry::default()
             .with_hp(2)
-            .with_armor(3)
+            .with_armor(2)
             .with_combo(5)
             .with_skill1(7)
             .with_skill2(15);
         assert_eq!(e.hp(),     2);
-        assert_eq!(e.armor(),  3);
+        assert_eq!(e.armor(),  2);
         assert_eq!(e.combo(),  5);
         assert_eq!(e.skill1(), 7);
         assert_eq!(e.skill2(), 15);

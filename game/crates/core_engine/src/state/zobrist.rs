@@ -4,7 +4,7 @@
 //! `zobrist` field is XOR-updated on every state change so equality checks
 //! and transposition-table lookups stay O(1).
 //!
-//! # Required key categories (per ADR-005 + audit)
+//! # Required key categories (per ADR-005 + audit + session-30 fixup)
 //!
 //! - Piece-on-square: 64 squares × {P1,P2} × {King,Champion,Guard}
 //!                    × HP {1,2} × Armor {0,1,2} × Skill1 {0..15} × Skill2 {0..15}
@@ -15,6 +15,13 @@
 //! - Pending modifier bits: 1 key per bit in `modifier_bits` (Focus, Charge,
 //!   plus reserved bits for future modifiers).
 //! - Combo counter state: per (square, counter-value) — folded as needed.
+//! - moved_this_phase: 64 keys, one per square. Folded into the hash so that
+//!   two positions with identical spatial state but different "already moved"
+//!   sets don't collide.
+//! - round_number: hash modulo the income-scaling cadence (every 5 rounds the
+//!   income jumps; identical round-number-mod-5 buckets *can* share keys
+//!   safely, but simplest is one key per concrete round_number value, lazy-
+//!   computed). Slice 6 decides.
 //! - Champion-credit + tracked-enemies: NOT hashed individually. These are
 //!   transient turn-state and cleared at end-of-turn. Including them in the
 //!   hash would prevent transposition between move orderings that arrive at
