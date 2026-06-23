@@ -1,21 +1,17 @@
-//! End-of-phase and end-of-turn bookkeeping. Resets combo counters and the
-//! turn-scoped state added in the audit pass: pending_modifiers, combo-
-//! credit tracking, tracked-enemies list, moved_this_phase.
+//! End-of-turn bookkeeping. Resets combo counters and the turn-scoped state
+//! added in the audit pass: pending_modifiers, combo-credit tracking,
+//! tracked-enemies list, moved_this_phase.
+//!
+//! Move → Skill phase transitions are handled inline in
+//! `make_unmake::apply_end_phase`, which already calls
+//! `make_unmake::skill_phase_budget(round_number)` to set the new action
+//! budget (oq-69 resolved, session-31). This module only handles the
+//! Skill → next-turn transition.
 
 use crate::state::Position;
 
-pub fn end_phase(_pos: &mut Position) {
-    // TODO:
-    // - Move → Skill transition:
-    //     * clear `moved_this_phase` (Move-Phase-only bitmap).
-    //     * set actions_remaining to `skill_phase_budget(round_number)` —
-    //       the paper-baseline progression curve adopted into Stack M
-    //       (oq-69 resolved): +1 action per 10 rounds, unbounded.
-    // - Skill → end of turn: delegate to `end_turn`.
-}
-
 pub fn end_turn(pos: &mut Position) {
-    // TODO:
+    // TODO (Slice 6):
     //   1. Clear combo counters on every square owned by the side that's
     //      about to move (mailbox.combo = 0 for all squares in their
     //      occupancy bitboard).
@@ -30,7 +26,8 @@ pub fn end_turn(pos: &mut Position) {
     //      (income value is round-based, but paid every turn; both players
     //      receive it on their own turn-start. The +1 step kicks in at
     //      rounds 5, 10, 15, …)
-    //   6. Reset current_phase = Move; reset actions_remaining = 2.
+    //   6. Reset current_phase = Move; reset actions_remaining = 2 (Move
+    //      Phase always has 2 actions per Stack M — only Skill Phase scales).
     //   7. Clear moved_this_phase (defence-in-depth — Move→Skill already did).
     //   8. XOR Zobrist for all of the above changes.
     let _ = pos; // silence unused-var until implementation lands
