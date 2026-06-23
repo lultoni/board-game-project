@@ -15,3 +15,10 @@ pub mod game_logic;
 pub mod search;
 pub mod session;
 pub mod telemetry;
+
+pub use session::{
+    Match, Config, SeatKind, AiBudget,
+    ApplyError, UndoError, AiError,
+    Snapshot, SnapshotError,
+    ApplyEvent, NetworkTransport, LocalTransport,
+};
