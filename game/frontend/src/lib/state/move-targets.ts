@@ -146,3 +146,18 @@ export function movableSources(legal: Uint32Array): Set<number> {
   }
   return out;
 }
+
+/** Squares that own either a Move or a Skill action — i.e. pieces the
+ *  player can pick up / select to act with. Used to drive piece-selection
+ *  interactivity; the resulting selection opens the radial wheel, whose
+ *  internal slice legality decides which actions are actually castable. */
+export function actableSources(legal: Uint32Array): Set<number> {
+  const out = new Set<number>();
+  for (let i = 0; i < legal.length; i++) {
+    const raw = legal[i];
+    const kind = (raw >>> 12) & 0x3;
+    if (kind !== ActionKind.Move && kind !== ActionKind.Skill) continue;
+    out.add(raw & 0x3f);
+  }
+  return out;
+}

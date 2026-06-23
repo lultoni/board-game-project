@@ -18,6 +18,9 @@
     moveTargets?: Set<number>;
     /** Squares that can be selected (i.e. own a piece with at least one legal action). */
     selectable?: Set<number>;
+    /** Subset of `selectable` whose piece can be picked up for a drag-to-move
+     *  gesture. Outside the Move Phase this is typically empty. */
+    draggable?: Set<number>;
     /** Squares whose piece has already used its Move this phase — greyed out. */
     usedSquares?: Set<number>;
     /** Approach-square chooser: when set, render highlights on these squares
@@ -103,6 +106,7 @@
     selection = null,
     moveTargets = new Set<number>(),
     selectable = new Set<number>(),
+    draggable = new Set<number>(),
     usedSquares = new Set<number>(),
     approachChoices = [],
     bodyguardChoice = null,
@@ -220,8 +224,8 @@
     // routed via `handleSquareClickInternal` on pointerup; taps on anything
     // else dismiss the chooser via the parent. Either way we still want a
     // press → pointerup tap to fire, so we record a non-draggable press.
-    const draggable =
-      selectable.has(sq) &&
+    const draggableHere =
+      draggable.has(sq) &&
       approachChoices.length === 0 &&
       bodyguardChoice === null;
     const wasSelected = selection === sq;
@@ -238,10 +242,10 @@
       dragging: false,
       path: [sq],
       overSq: sq,
-      draggable,
+      draggable: draggableHere,
       wasSelected,
     };
-    if (draggable) onPressStart?.(sq);
+    if (draggableHere) onPressStart?.(sq);
     // Capture on the SVG root, not the rect — the rect can be re-rendered
     // out from under us mid-drag and lose the capture, freezing the piece.
     svgEl?.setPointerCapture?.(ev.pointerId);
@@ -757,8 +761,44 @@
     {/each}
   </g>
 
-  <!-- Radial skill wheel. Sits above pieces but below the hit-test overlay
-       (slice clicks call stopPropagation so they beat the square hits). -->
+  <!-- Hit-test overlay — invisible rects on top to catch pointer events.
+       Pointer-down on a selectable square begins a drag; up routes to drop
+       (if the cursor crossed squares) or click (if it stayed put). -->
+  <g class="hits">
+    {#each squares as { sq, x, y } (sq)}
+      {@const isMoveTarget = moveTargets.has(sq)}
+      {@const isSelectable = selectable.has(sq)}
+      {@const isSelected = selection === sq}
+      {@const isApproach = approachChoices.includes(sq)}
+      {@const isHot = interactive && (isMoveTarget || isSelectable || isSelected || isApproach)}
+      <rect
+        {x}
+        {y}
+        width={SIZE}
+        height={SIZE}
+        fill="transparent"
+        role="button"
+        tabindex="-1"
+        aria-label={`square ${sq}`}
+        class:hot={isHot}
+        class:grab={interactive && draggable.has(sq) && !usedSquares.has(sq)}
+        onpointerdown={(e) => handleSquarePointerDown(sq, e)}
+        onkeydown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            const file = sq & 7;
+            const rank = (sq >> 3) & 7;
+            const cx = file * SIZE + SIZE / 2;
+            const cy = (7 - rank) * SIZE + SIZE / 2;
+            handleSquareClickInternal(sq, cx, cy);
+          }
+        }}
+      />
+    {/each}
+  </g>
+
+  <!-- Radial skill wheel. Rendered last so its slices paint on top of the
+       hit-test overlay and absorb pointer events before they reach the
+       underlying square rects. -->
   {#if wheelOpen}
     {@const wFile = wheelOpen.square & 7}
     {@const wRank = (wheelOpen.square >> 3) & 7}
@@ -782,41 +822,6 @@
       />
     </g>
   {/if}
-
-  <!-- Hit-test overlay — invisible rects on top to catch pointer events.
-       Pointer-down on a selectable square begins a drag; up routes to drop
-       (if the cursor crossed squares) or click (if it stayed put). -->
-  <g class="hits">
-    {#each squares as { sq, x, y } (sq)}
-      {@const isMoveTarget = moveTargets.has(sq)}
-      {@const isSelectable = selectable.has(sq)}
-      {@const isSelected = selection === sq}
-      {@const isApproach = approachChoices.includes(sq)}
-      {@const isHot = interactive && (isMoveTarget || isSelectable || isSelected || isApproach)}
-      <rect
-        {x}
-        {y}
-        width={SIZE}
-        height={SIZE}
-        fill="transparent"
-        role="button"
-        tabindex="-1"
-        aria-label={`square ${sq}`}
-        class:hot={isHot}
-        class:grab={interactive && isSelectable && !usedSquares.has(sq)}
-        onpointerdown={(e) => handleSquarePointerDown(sq, e)}
-        onkeydown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            const file = sq & 7;
-            const rank = (sq >> 3) & 7;
-            const cx = file * SIZE + SIZE / 2;
-            const cy = (7 - rank) * SIZE + SIZE / 2;
-            handleSquareClickInternal(sq, cx, cy);
-          }
-        }}
-      />
-    {/each}
-  </g>
 </svg>
 
 <style>

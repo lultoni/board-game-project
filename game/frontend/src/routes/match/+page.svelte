@@ -8,6 +8,7 @@
   import {
     moveTargetsFor,
     movableSources,
+    actableSources,
     findActionByKind,
     approachChoicesFor,
   } from "$lib/state/move-targets";
@@ -240,7 +241,15 @@
   let eng: Awaited<ReturnType<typeof getEngine>> | null = null;
 
   const moveTargets = $derived(moveTargetsFor(match.legal, match.selection));
-  const selectable = $derived(movableSources(match.legal));
+  // `selectable` gates piece-pickup interactivity (draggable, click-to-select,
+  // cursors). In Move Phase: pieces with at least one Move action. In Skill
+  // Phase: pieces with at least one Skill action (movable=empty there anyway).
+  // We always union both so the same primitive works across phases.
+  const selectable = $derived(actableSources(match.legal));
+  /** Pieces that own a *Move* action specifically. Used to render the Move-
+   *  Phase "pickup hint" ring (drives the dotted outline on movable pieces),
+   *  while `selectable` continues to drive selection / wheel-open. */
+  const movable = $derived(movableSources(match.legal));
   const endPhaseAction = $derived(findActionByKind(match.legal, ActionKind.EndPhase));
   const inMovePhase = $derived(match.position?.currentPhase === 0);
   const interactive = $derived(ready && !busy && match.position?.gameResult === 0);
@@ -790,6 +799,7 @@
           selection={match.selection}
           moveTargets={armedSkill ? armedSkillTargets : moveTargets.squares}
           {selectable}
+          draggable={movable}
           usedSquares={usedThisPhase}
           {shakingSquares}
           approachChoices={pendingApproach?.approaches ?? []}
