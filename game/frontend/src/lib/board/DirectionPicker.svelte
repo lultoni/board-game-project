@@ -63,21 +63,27 @@
     return m;
   });
 
-  /** Arrow length in SVG units. Reaches just past the neighbouring tile so
-   * the user reads "this is where the target ends up." Each arrow is anchored
-   * at the target tile's centre and points outward. */
-  const ARROW_LEN = $derived(size * 0.85);
+  /** Push distance per direction, in tiles. `focus_mode=1` Shove variants
+   *  push 2 tiles instead of 1; the generator only emits those when both
+   *  intermediate and final squares are empty + on-board, so an enabled
+   *  arrow in effect-mode IS a legal 2-tile push. Variants without
+   *  focus_mode=1 always push 1 (default Shove + activation-buff Shove). */
+  function pushDistance(v: SkillVariant): number {
+    return v.focusMode ? 2 : 1;
+  }
+
   const ARROW_HEAD = $derived(size * 0.18);
   const HIT_R = $derived(size * 0.32);
 </script>
 
 <g class="direction-picker" pointer-events="auto">
-  <!-- Backdrop: absorbs clicks outside the arrows (= cancel). -->
+  <!-- Backdrop: absorbs clicks outside the arrows (= cancel). Sized to
+       comfortably enclose 2-tile arrows for focus-effect Shove. -->
   <rect
-    x={cx - size * 1.6}
-    y={cy - size * 1.6}
-    width={size * 3.2}
-    height={size * 3.2}
+    x={cx - size * 2.4}
+    y={cy - size * 2.4}
+    width={size * 4.8}
+    height={size * 4.8}
     fill="rgba(0, 0, 0, 0.08)"
     role="presentation"
     onpointerdown={(ev) => {
@@ -105,7 +111,11 @@
   {#each DIRS as dir, i (i)}
     {@const variant = byDir.get(i)}
     {@const legal = variant !== undefined}
-    {@const len = ARROW_LEN}
+    <!-- Arrow length scales with the variant's push distance: 1 tile by
+         default, 2 tiles for focus-effect Shove. Illegal directions render
+         at 1-tile length so the dimmed silhouette still reads consistently. -->
+    {@const dist = variant ? pushDistance(variant) : 1}
+    {@const len = size * (0.55 + dist * 0.7)}
     <!-- For diagonals, scale so arrow tips form a circle (not a square). -->
     {@const norm = Math.sqrt(dir.dx * dir.dx + dir.dy * dir.dy)}
     {@const ux = dir.dx / norm}
