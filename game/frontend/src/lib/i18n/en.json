@@ -63,7 +63,9 @@
     "categoryMove": "Movement",
     "categoryMystic": "Mystic",
     "armed": "armed — click a target",
-    "staged": "staged"
+    "staged": "staged",
+    "focusStaged": "Focus is staged — your next non-mystic skill gains +1 Range.",
+    "chargeStaged": "Charge is staged — your next Strike skill deals +1 damage."
   },
   "result": {
     "p1Wins": "Player 1 wins",

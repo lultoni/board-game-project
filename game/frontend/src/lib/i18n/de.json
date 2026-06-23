@@ -19,7 +19,9 @@
     "categoryMove": "Bewegung",
     "categoryMystic": "Mystik",
     "armed": "bereit — Ziel anklicken",
-    "staged": "vorgemerkt"
+    "staged": "vorgemerkt",
+    "focusStaged": "Fokus ist vorgemerkt — dein nächster nicht-mystischer Skill erhält +1 Reichweite.",
+    "chargeStaged": "Ladung ist vorgemerkt — dein nächster Angriffs-Skill verursacht +1 Schaden."
   },
   "controls": {
     "endPhase": "Phase beenden",

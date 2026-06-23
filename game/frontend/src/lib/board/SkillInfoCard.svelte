@@ -22,8 +22,7 @@
 
   let { slice, focusActive, chargeActive, armed }: Props = $props();
 
-  // Resolve i18n + category for skill / modifier slices. End-Phase has its
-  // own hard-coded copy.
+  // Resolve i18n + category for skill / modifier-badge / end-phase slices.
   const info = $derived.by(() => {
     if (slice.kind === "skill") {
       const s = SKILLS[slice.skillId];
@@ -37,17 +36,23 @@
         staged: false,
       };
     }
-    if (slice.kind === "modifier") {
+    if (slice.kind === "modifierBadge") {
+      // Hover-only marker shown when a modifier is currently active on
+      // pendingModifiers. Cast was already done from the piece's skill
+      // slot — this card explains what's about to apply.
       const id = slice.modifier === "focus" ? 14 : 15;
       const s = SKILLS[id];
       if (!s) return null;
+      const stagedKey = slice.modifier === "focus"
+        ? "wheel.focusStaged"
+        : "wheel.chargeStaged";
       return {
         name: t(`skills.${s.key}.name`),
-        desc: t(`skills.${s.key}.desc`),
+        desc: t(stagedKey),
         category: s.category as SkillCategory,
-        cost: s.cost,
-        range: s.defaultRange,
-        staged: slice.modifier === "focus" ? focusActive : chargeActive,
+        cost: null,
+        range: null,
+        staged: true,
       };
     }
     // endphase
@@ -55,8 +60,8 @@
       name: t("wheel.endphase.name"),
       desc: t("wheel.endphase.desc"),
       category: null,
-      cost: 0,
-      range: 0,
+      cost: null,
+      range: null,
       staged: false,
     };
   });

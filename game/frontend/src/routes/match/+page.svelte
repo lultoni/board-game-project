@@ -20,12 +20,6 @@
     MODIFIER_FOCUS,
     MODIFIER_CHARGE,
   } from "$lib/engine/skills";
-
-  // Focus / Charge are themselves skills (ids 14 / 15). Casting them stages
-  // the corresponding modifier in `position.pendingModifiers`; we read the
-  // bitfield to drive the wheel's "active" glow.
-  const FOCUS_SKILL_ID = 14;
-  const CHARGE_SKILL_ID = 15;
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
@@ -273,32 +267,25 @@
     };
   });
 
-  // Per-slice legality on the wheel. A skill slice is enabled iff at least
-  // one Skill action with that (caster, skill_id) is in `legal`. Modifier
-  // slices are enabled iff an EndPhase or any Skill action exists (i.e.
-  // we're in the Skill Phase with at least one castable skill). End-Phase
-  // is enabled iff `endPhaseAction !== null`.
+  // Per-sector legality on the wheel. A skill sector is enabled iff at least
+  // one Skill action with that (caster, skill_id) is in `legal`. End-Phase
+  // is enabled iff `endPhaseAction !== null`. Focus / Charge are themselves
+  // skills (ids 14/15) — if the piece has one equipped they show up as the
+  // corresponding skill sector; they have NO dedicated sector of their own.
   const wheelLegality = $derived.by(() => {
     if (!wheelOpen) {
       return {
         skill1Legal: false,
         skill2Legal: false,
-        focusLegal: false,
-        chargeLegal: false,
         endPhaseLegal: false,
       };
     }
     const src = wheelOpen.square;
     const skill1Legal = wheelOpen.skill1 > 0 && skillIsCastable(match.legal, src, wheelOpen.skill1);
     const skill2Legal = wheelOpen.skill2 > 0 && skillIsCastable(match.legal, src, wheelOpen.skill2);
-    // Modifiers are always togglable while in Skill Phase with at least one
-    // castable skill; toggling itself doesn't consume an action.
-    const anyCastable = skill1Legal || skill2Legal;
     return {
       skill1Legal,
       skill2Legal,
-      focusLegal: anyCastable,
-      chargeLegal: anyCastable,
       endPhaseLegal: endPhaseAction !== null,
     };
   });
@@ -717,17 +704,10 @@
       return;
     }
 
-    if (slice.kind === "modifier") {
-      // Focus / Charge are themselves skills (ids 14 / 15). Cast as a
-      // self-cast skill action; the engine stages the modifier on the
-      // position. The wheel's "active" glow then lights up via the
-      // derived `focusActive` / `chargeActive` reading pendingModifiers.
-      const skillId = slice.modifier === "focus" ? FOCUS_SKILL_ID : CHARGE_SKILL_ID;
-      const raw = rawForSelfCast(src, skillId);
-      if (raw !== null) {
-        armedSkill = null;
-        applyRaw(raw);
-      }
+    // `modifierBadge` is hover-only — clicking it is a no-op. Focus / Charge
+    // are cast as regular skills via the piece's skill slot, not from the
+    // wheel directly.
+    if (slice.kind === "modifierBadge") {
       return;
     }
 
@@ -926,6 +906,11 @@
   }
   .board-stack {
     position: relative;
+    /* Padding around the SVG so the radial skill wheel — which renders
+       outside the board's viewBox via `overflow: visible` on the SVG —
+       has room to paint without being clipped by parent layout. */
+    padding: 4rem;
+    margin: -4rem;
   }
   .info-anchor {
     position: absolute;

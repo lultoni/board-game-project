@@ -87,12 +87,11 @@
     /** Focus / Charge modifier toggles staged for the next cast. */
     focusActive?: boolean;
     chargeActive?: boolean;
-    /** Legality of each slice (engine-derived). Disabled slices render greyed. */
+    /** Legality of each interactive sector (engine-derived). Disabled
+     *  sectors render greyed. */
     wheelLegality?: {
       skill1Legal: boolean;
       skill2Legal: boolean;
-      focusLegal: boolean;
-      chargeLegal: boolean;
       endPhaseLegal: boolean;
     };
     onWheelSliceClick?: (slice: SliceKind) => void;
@@ -129,8 +128,6 @@
     wheelLegality = {
       skill1Legal: false,
       skill2Legal: false,
-      focusLegal: false,
-      chargeLegal: false,
       endPhaseLegal: false,
     },
     onWheelSliceClick,
@@ -814,8 +811,6 @@
         {chargeActive}
         skill1Legal={wheelLegality.skill1Legal}
         skill2Legal={wheelLegality.skill2Legal}
-        focusLegal={wheelLegality.focusLegal}
-        chargeLegal={wheelLegality.chargeLegal}
         endPhaseLegal={wheelLegality.endPhaseLegal}
         onSliceClick={(s) => onWheelSliceClick?.(s)}
         onSliceHover={(s) => onWheelSliceHover?.(s)}
@@ -832,6 +827,10 @@
     user-select: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
+    /* Allow the radial skill wheel to spill outside the 800×824 viewBox
+       when a piece sits at the board edge — without this, edge-piece
+       wheels are clipped flush with the board. */
+    overflow: visible;
   }
   .board :global(*) {
     -webkit-tap-highlight-color: transparent;
