@@ -205,6 +205,7 @@ impl Position {
         p.round_number = 1;
         p.moved_this_phase = Bitboard::EMPTY;
         p.pending_modifiers = 0;
+        p.zobrist = super::zobrist::full_recompute(&p);
         p
     }
 

@@ -13,3 +13,4 @@ crate-type = ["rlib"]
 serde = { workspace = true }
 
 [dev-dependencies]
+rand = "0.8"

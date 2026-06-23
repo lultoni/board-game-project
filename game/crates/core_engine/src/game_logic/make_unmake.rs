@@ -23,6 +23,7 @@
 
 use super::action::{Action, ActionKind, Undo};
 use crate::state::position::{modifier_bits, GameResult, Phase, Player};
+use crate::state::zobrist::{self, PieceKind as ZKind};
 use crate::state::{magic, Bitboard, MailboxEntry, Position, EMPTY_MAILBOX_ENTRY};
 
 pub fn make(pos: &mut Position, action: Action) -> Undo {
@@ -32,6 +33,7 @@ pub fn make(pos: &mut Position, action: Action) -> Undo {
         prev_pending_modifiers: pos.pending_modifiers,
         prev_phase: phase_to_byte(pos.current_phase),
         prev_actions_remaining: pos.actions_remaining,
+        prev_to_move: player_to_byte(pos.to_move),
         prev_moved_this_phase: pos.moved_this_phase.0,
         prev_round_number: pos.round_number,
         p1_money_delta: 0,
@@ -56,7 +58,7 @@ pub fn make(pos: &mut Position, action: Action) -> Undo {
         ActionKind::Move      => apply_move(pos, action, &mut undo),
         ActionKind::Skill     => apply_skill(pos, action, &mut undo),
         ActionKind::EndPhase  => apply_end_phase(pos, &mut undo),
-        ActionKind::EndTurn   => super::turn_manager::end_turn(pos),
+        ActionKind::EndTurn   => super::turn_manager::end_turn(pos, &mut undo),
     }
 
     undo
@@ -80,6 +82,7 @@ pub fn unmake(pos: &mut Position, undo: &Undo) {
     pos.pending_modifiers  = undo.prev_pending_modifiers;
     pos.current_phase      = phase_from_byte(undo.prev_phase);
     pos.actions_remaining  = undo.prev_actions_remaining;
+    pos.to_move            = player_from_byte(undo.prev_to_move);
     pos.moved_this_phase   = Bitboard(undo.prev_moved_this_phase);
     pos.round_number       = undo.prev_round_number;
     pos.champion_credit    = undo.prev_champion_credit;
@@ -118,7 +121,7 @@ fn apply_move(pos: &mut Position, action: Action, undo: &mut Undo) {
     }
 
     debug_assert!(pos.actions_remaining > 0, "make() invoked with zero actions");
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 /// Move mover from `src` to `tgt`. `moved_this_phase` is set on `tgt`.
@@ -127,12 +130,12 @@ fn apply_plain_move(pos: &mut Position, src: u8, tgt: u8, undo: &mut Undo) {
     debug_assert!(!pos.is_occupied(tgt), "plain move into occupied square");
 
     let prev_entry = pos.mailbox[src as usize];
-    record_affected(undo, src, prev_entry);
-    record_affected(undo, tgt, pos.mailbox[tgt as usize]);
+    let owner = player_at(pos, src);
+    let kind  = piece_kind_at(pos, src);
 
-    // Mailbox: clear src, copy entry to tgt.
-    pos.mailbox[src as usize] = EMPTY_MAILBOX_ENTRY;
-    pos.mailbox[tgt as usize] = prev_entry;
+    // Mailbox: clear src, copy entry to tgt (zobrist-aware).
+    write_mailbox(pos, undo, src, EMPTY_MAILBOX_ENTRY);
+    write_mailbox(pos, undo, tgt, prev_entry);
 
     // Bitboards: src and tgt flip in every layer the piece belongs to.
     let xor = Bitboard::from_square(src).0 | Bitboard::from_square(tgt).0;
@@ -154,8 +157,12 @@ fn apply_plain_move(pos: &mut Position, src: u8, tgt: u8, undo: &mut Undo) {
         undo.guards_xor ^= xor;
     }
 
+    // Zobrist: piece leaves src, appears at tgt.
+    xor_piece(pos, undo, src, owner, kind);
+    xor_piece(pos, undo, tgt, owner, kind);
+
     // Mark destination as moved-this-phase.
-    pos.moved_this_phase = pos.moved_this_phase | Bitboard::from_square(tgt);
+    moved_set(pos, undo, tgt);
 }
 
 /// Move-Attack: mover stays put; defender (target, or a redirected Guard via
@@ -184,18 +191,17 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
     deal_one_damage(pos, hit_sq, undo);
 
     // Mark the mover's *origin* as moved-this-phase (mover stayed put).
-    pos.moved_this_phase = pos.moved_this_phase | Bitboard::from_square(src);
+    moved_set(pos, undo, src);
 }
 
 /// Deal 1 point of damage to the piece on `hit_sq`. Armor absorbs first;
 /// otherwise HP drops by 1; piece is removed from all bitboards if HP hits 0.
 fn deal_one_damage(pos: &mut Position, hit_sq: u8, undo: &mut Undo) {
     let prev_entry = pos.mailbox[hit_sq as usize];
-    record_affected(undo, hit_sq, prev_entry);
 
     if prev_entry.armor() > 0 {
         // Armor absorbs the hit — HP unchanged.
-        pos.mailbox[hit_sq as usize] = prev_entry.with_armor(prev_entry.armor() - 1);
+        write_mailbox(pos, undo, hit_sq, prev_entry.with_armor(prev_entry.armor() - 1));
         return;
     }
 
@@ -206,8 +212,10 @@ fn deal_one_damage(pos: &mut Position, hit_sq: u8, undo: &mut Undo) {
         // bitboards so we can set game_result correctly afterwards.
         let was_king  = pos.kings.contains(hit_sq);
         let owned_by_p1 = pos.p1_pieces.contains(hit_sq);
+        let owner = if owned_by_p1 { Player::P1 } else { Player::P2 };
+        let kind  = piece_kind_at(pos, hit_sq);
 
-        pos.mailbox[hit_sq as usize] = EMPTY_MAILBOX_ENTRY;
+        write_mailbox(pos, undo, hit_sq, EMPTY_MAILBOX_ENTRY);
         let bit = Bitboard::from_square(hit_sq).0;
         if owned_by_p1 {
             pos.p1_pieces = Bitboard(pos.p1_pieces.0 ^ bit);
@@ -222,11 +230,11 @@ fn deal_one_damage(pos: &mut Position, hit_sq: u8, undo: &mut Undo) {
             // Stack M: removing a King ends the game immediately. The other
             // player wins. `unmake` restores the prior `game_result` via
             // the Undo snapshot captured at the start of `make`.
-            pos.game_result = Some(if owned_by_p1 {
+            set_game_result(pos, undo, Some(if owned_by_p1 {
                 GameResult::P2Wins
             } else {
                 GameResult::P1Wins
-            });
+            }));
         } else if pos.champions.contains(hit_sq) {
             pos.champions = Bitboard(pos.champions.0 ^ bit);
             undo.champions_xor ^= bit;
@@ -234,20 +242,39 @@ fn deal_one_damage(pos: &mut Position, hit_sq: u8, undo: &mut Undo) {
             pos.guards = Bitboard(pos.guards.0 ^ bit);
             undo.guards_xor ^= bit;
         }
+
+        // Zobrist: piece disappears from hit_sq.
+        xor_piece(pos, undo, hit_sq, owner, kind);
     } else {
-        pos.mailbox[hit_sq as usize] = prev_entry.with_hp(new_hp);
+        write_mailbox(pos, undo, hit_sq, prev_entry.with_hp(new_hp));
     }
 }
 
 // === Skill-kind dispatch ===================================================
 
 /// Apply a Skill-kind action. Slices 4+5 wire the thirteen non-Mystic
-/// resolvers. Focus and Charge (Mystic setters) still panic until Slice 6.
+/// resolvers. Focus and Charge (Mystic setters) land here in Slice 6.
 fn apply_skill(pos: &mut Position, action: Action, undo: &mut Undo) {
     debug_assert!(pos.actions_remaining > 0, "make() invoked with zero actions");
     let skill = super::skills::skill_from_id(action.skill_id())
         .expect("generator emitted unknown skill id");
-    use super::skills::Skill;
+    use super::skills::{Skill, SkillCategory, skill_category};
+
+    // Stack-M (session-31 clarification): Focus = "the next non-Mystic skill",
+    // so a Mystic skill (Focus/Charge) cast does NOT consume a pending Focus.
+    // The legal sequence Charge → Focus → Strike applies BOTH buffs to the
+    // Strike; Focus → Charge → Strike applies only Charge (the Focus was
+    // consumed by Charge if Charge were non-Mystic — but it isn't, so we
+    // must NOT clear here). For non-Mystic skills, the generator already
+    // enumerated them at +1 Range when Focus is pending, so no recomputation
+    // is needed here — the legal-action set already reflects the buff. For
+    // Move-skills where Focus chose effect-range, the resolver below reads
+    // `action.focus_effect_mode()` to pick the buffed effect.
+    let is_mystic = matches!(skill_category(skill), SkillCategory::Mystic);
+    if !is_mystic {
+        clear_pending(pos, undo, modifier_bits::FOCUS);
+    }
+
     match skill {
         Skill::Lance   => apply_lance(pos, action, undo),
         Skill::Break   => apply_break(pos, action, undo),
@@ -262,9 +289,8 @@ fn apply_skill(pos: &mut Position, action: Action, undo: &mut Undo) {
         Skill::Shove   => apply_shove(pos, action, undo),
         Skill::Swap    => apply_swap(pos, action, undo),
         Skill::Retreat => apply_retreat(pos, action, undo),
-        Skill::Focus | Skill::Charge => {
-            unimplemented!("Skill::{:?} resolver lands in Slice 6", skill);
-        }
+        Skill::Focus   => apply_focus(pos, action, undo),
+        Skill::Charge  => apply_charge(pos, action, undo),
     }
 }
 
@@ -279,17 +305,16 @@ fn apply_lance(pos: &mut Position, action: Action, undo: &mut Undo) {
     let tgt = action.target();
     apply_strike_damage(pos, src, tgt, /*base=*/ 1, undo);
     debit_money(pos, src, /*cost=*/ 2, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let tgt = action.target();
     let prev = pos.mailbox[tgt as usize];
-    record_affected(undo, tgt, prev);
 
     let charge_active = pos.pending_modifiers & modifier_bits::CHARGE != 0;
-    if charge_active { pos.pending_modifiers &= !modifier_bits::CHARGE; }
+    if charge_active { clear_pending(pos, undo, modifier_bits::CHARGE); }
     let existing_combo = prev.combo();
 
     // Tick first (it modifies the mailbox entry's combo field).
@@ -299,7 +324,7 @@ fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
     // mailbox AGAIN because combo_tick may have written a new entry.
     let post_tick = pos.mailbox[tgt as usize];
     let new_armor = post_tick.armor().saturating_sub(1);
-    pos.mailbox[tgt as usize] = post_tick.with_armor(new_armor);
+    write_mailbox(pos, undo, tgt, post_tick.with_armor(new_armor));
 
     // HP-damage gate: Stack-M says Break "does not deal HP-Damage unless
     // boosted by Charge." But the universal combo bonus ("any skill that
@@ -309,7 +334,7 @@ fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
     if dmg > 0 { deal_damage(pos, tgt, dmg, undo); }
 
     debit_money(pos, src, /*cost=*/ 2, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 fn apply_steal(pos: &mut Position, action: Action, undo: &mut Undo) {
@@ -323,7 +348,7 @@ fn apply_steal(pos: &mut Position, action: Action, undo: &mut Undo) {
     };
     transfer_money(pos, from_p, to_p, /*amount=*/ 1, undo);
     debit_money(pos, src, /*cost=*/ 4, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 fn apply_hook(pos: &mut Position, action: Action, undo: &mut Undo) {
@@ -339,7 +364,7 @@ fn apply_hook(pos: &mut Position, action: Action, undo: &mut Undo) {
         }
     }
     debit_money(pos, src, /*cost=*/ 3, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 fn apply_tempest(pos: &mut Position, action: Action, undo: &mut Undo) {
@@ -370,20 +395,25 @@ fn apply_tempest(pos: &mut Position, action: Action, undo: &mut Undo) {
     }
 
     debit_money(pos, src, /*cost=*/ 4, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 // === Shield-class + Move-class resolvers (Slice 5) =========================
 
 fn apply_shield(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
-    debug_assert_eq!(src, action.target(), "Shield is SelfOnly");
-    let prev = pos.mailbox[src as usize];
+    // Focus retarget: when has_aux, the recipient is the adjacent ally at
+    // aux_sq, not the caster. The caster still pays the cost and consumes
+    // Focus, but the +1 armor lands on the ally.
+    let recipient = if action.has_aux() { action.aux_sq() } else {
+        debug_assert_eq!(src, action.target(), "Shield is SelfOnly (no retarget)");
+        src
+    };
+    let prev = pos.mailbox[recipient as usize];
     debug_assert!(prev.armor() < ARMOR_CAP, "generator must filter at-cap");
-    record_affected(undo, src, prev);
-    pos.mailbox[src as usize] = prev.with_armor(prev.armor() + 1);
+    write_mailbox(pos, undo, recipient, prev.with_armor(prev.armor() + 1));
     debit_money(pos, src, /*cost=*/ 2, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 fn apply_heal(pos: &mut Position, action: Action, undo: &mut Undo) {
@@ -391,10 +421,9 @@ fn apply_heal(pos: &mut Position, action: Action, undo: &mut Undo) {
     let tgt = action.target();
     let prev = pos.mailbox[tgt as usize];
     debug_assert!(prev.hp() == INJURED_HP, "generator must filter non-Injured");
-    record_affected(undo, tgt, prev);
-    pos.mailbox[tgt as usize] = prev.with_hp(FULL_HP);
+    write_mailbox(pos, undo, tgt, prev.with_hp(FULL_HP));
     debit_money(pos, src, /*cost=*/ 3, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 fn apply_plate(pos: &mut Position, action: Action, undo: &mut Undo) {
@@ -402,26 +431,40 @@ fn apply_plate(pos: &mut Position, action: Action, undo: &mut Undo) {
     let tgt = action.target();
     let prev = pos.mailbox[tgt as usize];
     debug_assert!(prev.armor() < ARMOR_CAP, "generator must filter at-cap");
-    record_affected(undo, tgt, prev);
-    pos.mailbox[tgt as usize] = prev.with_armor(prev.armor() + 1);
+    write_mailbox(pos, undo, tgt, prev.with_armor(prev.armor() + 1));
     debit_money(pos, src, /*cost=*/ 3, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 fn apply_dash(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let dest = action.target();
-    debug_assert!(pos.is_occupied(src) && !pos.is_occupied(dest) && src != dest);
-    relocate_piece(pos, src, dest, undo);
-    // No combo-tick (self movement). No moved_this_phase write (Skill-Phase).
-    debit_money(pos, dest, /*cost=*/ 3, undo);
-    pos.actions_remaining -= 1;
+    // Focus retarget: when has_aux, the ally at aux_sq moves (Range 2) and
+    // the caster (src) stays put — caster only pays the cost. The caster's
+    // square (used as the lookup for which side pays) is `src` if retargeted
+    // (caster didn't move), `dest` otherwise (caster moved there).
+    let (mover, payer_sq) = if action.has_aux() {
+        (action.aux_sq(), src)
+    } else {
+        (src, dest)
+    };
+    debug_assert!(pos.is_occupied(mover) && !pos.is_occupied(dest) && mover != dest);
+    relocate_piece(pos, mover, dest, undo);
+    // No combo-tick (self/ally movement). No moved_this_phase write (Skill-Phase).
+    debit_money(pos, payer_sq, /*cost=*/ 3, undo);
+    dec_actions(pos, undo);
 }
 
 /// Blast: pure push, no damage. Movement-causing → ticks combo on enemy
 /// target. Pre-tick combo counter is applied as bonus damage per Stack-M
 /// ("any skill that affects a target with counter > 0 deals +counter
 /// damage"). Push fizzles silently if blocked or off-board.
+///
+/// Focus-effect mode (`action.focus_effect_mode() == true`): push 2 tiles
+/// instead of 1. Intermediate tile must be empty; if it is occupied or
+/// off-board, the second hop is cancelled and the push lands at 1 tile
+/// (i.e. the same result as no-Focus). If the 1-tile destination is
+/// occupied/off-board, the whole push fizzles as usual.
 fn apply_blast(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let tgt = action.target();
@@ -431,29 +474,54 @@ fn apply_blast(pos: &mut Position, action: Action, undo: &mut Undo) {
         deal_damage(pos, tgt, pre_tick_combo, undo);
     }
     if pos.is_occupied(tgt) {
-        if let Some(push_dest) = magic::step_away(src, tgt) {
-            if !pos.is_occupied(push_dest) {
-                relocate_piece(pos, tgt, push_dest, undo);
+        if let Some(step1) = magic::step_away(src, tgt) {
+            if !pos.is_occupied(step1) {
+                // Focus-effect mode tries to extend to a 2-tile push.
+                // Use the SAME direction as step1 (away from src), not
+                // step_away(src, step1) which would re-anchor on step1.
+                let final_dest = if action.focus_effect_mode() {
+                    magic::step_away(src, step1)
+                        .filter(|&d| !pos.is_occupied(d))
+                        .unwrap_or(step1)
+                } else {
+                    step1
+                };
+                relocate_piece(pos, tgt, final_dest, undo);
             }
         }
     }
     debit_money(pos, src, /*cost=*/ 2, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 /// Shove: push target 1 tile in chosen direction (encoded in choice_idx).
 /// Combo-tick gated by target-is-enemy (Stack-M: friendly pushes don't
 /// count). Pre-tick combo bonus damage applies on enemy only.
+///
+/// Focus-effect mode (`action.focus_effect_mode() == true`): push 2 tiles
+/// in the chosen direction. The generator only emits Focus-effect Shove
+/// actions where both intermediate and final squares are empty and on-board,
+/// so the resolver can trust the destination is reachable.
 fn apply_shove(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let tgt = action.target();
     let dir = action.choice_idx() as usize;
     debug_assert!(dir < 8);
 
-    let push_dest = magic::neighbour_in_dir(tgt, dir)
+    let step1 = magic::neighbour_in_dir(tgt, dir)
         .expect("generator must filter off-board pushes");
-    debug_assert!(!pos.is_occupied(push_dest),
+    debug_assert!(!pos.is_occupied(step1),
                   "generator must filter into-occupied pushes");
+
+    let push_dest = if action.focus_effect_mode() {
+        let step2 = magic::neighbour_in_dir(step1, dir)
+            .expect("generator must filter off-board Focus-shoves");
+        debug_assert!(!pos.is_occupied(step2),
+                      "generator must filter into-occupied Focus-shoves");
+        step2
+    } else {
+        step1
+    };
 
     let caster_is_p1 = pos.p1_pieces.contains(src);
     let target_is_enemy = if caster_is_p1 {
@@ -473,7 +541,7 @@ fn apply_shove(pos: &mut Position, action: Action, undo: &mut Undo) {
         relocate_piece(pos, tgt, push_dest, undo);
     }
     debit_money(pos, src, /*cost=*/ 3, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 /// Swap: exchange caster + allied piece. Both squares allied → same-side
@@ -486,10 +554,19 @@ fn apply_swap(pos: &mut Position, action: Action, undo: &mut Undo) {
 
     let prev_src = pos.mailbox[src as usize];
     let prev_tgt = pos.mailbox[tgt as usize];
-    record_affected(undo, src, prev_src);
-    record_affected(undo, tgt, prev_tgt);
-    pos.mailbox[src as usize] = prev_tgt;
-    pos.mailbox[tgt as usize] = prev_src;
+    let owner_src = player_at(pos, src);
+    let owner_tgt = player_at(pos, tgt);
+    let kind_src  = piece_kind_at(pos, src);
+    let kind_tgt  = piece_kind_at(pos, tgt);
+
+    // Zobrist: each piece leaves its square and reappears at the other.
+    xor_piece(pos, undo, src, owner_src, kind_src);
+    xor_piece(pos, undo, tgt, owner_tgt, kind_tgt);
+    xor_piece(pos, undo, tgt, owner_src, kind_src);
+    xor_piece(pos, undo, src, owner_tgt, kind_tgt);
+
+    write_mailbox(pos, undo, src, prev_tgt);
+    write_mailbox(pos, undo, tgt, prev_src);
 
     let xor = Bitboard::from_square(src).0 | Bitboard::from_square(tgt).0;
     let src_in_k = pos.kings.contains(src);     let tgt_in_k = pos.kings.contains(tgt);
@@ -509,16 +586,67 @@ fn apply_swap(pos: &mut Position, action: Action, undo: &mut Undo) {
     }
 
     debit_money(pos, tgt, /*cost=*/ 4, undo);
-    pos.actions_remaining -= 1;
+    dec_actions(pos, undo);
 }
 
 fn apply_retreat(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let dest = action.target();
-    debug_assert!(pos.is_occupied(src) && !pos.is_occupied(dest) && src != dest);
-    relocate_piece(pos, src, dest, undo);
-    debit_money(pos, dest, /*cost=*/ 4, undo);
-    pos.actions_remaining -= 1;
+    // Focus retarget: when has_aux, the ally at aux_sq retreats (lands
+    // adjacent to a friendly Guard) while the caster stays put.
+    let (mover, payer_sq) = if action.has_aux() {
+        (action.aux_sq(), src)
+    } else {
+        (src, dest)
+    };
+    debug_assert!(pos.is_occupied(mover) && !pos.is_occupied(dest) && mover != dest);
+    relocate_piece(pos, mover, dest, undo);
+    debit_money(pos, payer_sq, /*cost=*/ 4, undo);
+    dec_actions(pos, undo);
+}
+
+// === Mystic-skill resolvers (Slice 6) =======================================
+
+/// Focus (cost 1): set the FOCUS bit in pending_modifiers.
+///
+/// Stack-M (session-31): "The next non-Mystic skill used by any of your
+/// pieces this turn gains +1 Range." A subsequent Mystic skill (Focus or
+/// Charge) does NOT consume the pending Focus — only a Strike/Shield/Move
+/// skill does. At most one Focus may be active at a time (generator filters
+/// the duplicate; we debug-assert here as defence-in-depth). No combo-tick
+/// (pure buff). Action encoding: `src == tgt == caster`.
+fn apply_focus(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    debug_assert_eq!(src, action.target(), "Focus is a self-cast");
+    debug_assert!(pos.is_occupied(src));
+    debug_assert_eq!(
+        pos.pending_modifiers & modifier_bits::FOCUS, 0,
+        "generator emitted Focus while Focus already pending — illegal per Stack-M"
+    );
+    add_pending(pos, undo, modifier_bits::FOCUS);
+    debit_money(pos, src, /*cost=*/ 1, undo);
+    dec_actions(pos, undo);
+}
+
+/// Charge (cost 3): set the CHARGE bit in pending_modifiers.
+///
+/// Stack-M (session-31): "The next Strike skill used by any of your pieces
+/// this turn deals +1 damage." Charge waits for the next *Strike* skill
+/// specifically (consumption is wired inside `apply_strike_damage`); other
+/// skills do not consume it. At most one Charge may be active at a time
+/// (generator filters the duplicate; debug-assert here as defence-in-depth).
+/// No combo-tick (pure buff).
+fn apply_charge(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let src = action.src();
+    debug_assert_eq!(src, action.target(), "Charge is a self-cast");
+    debug_assert!(pos.is_occupied(src));
+    debug_assert_eq!(
+        pos.pending_modifiers & modifier_bits::CHARGE, 0,
+        "generator emitted Charge while Charge already pending — illegal per Stack-M"
+    );
+    add_pending(pos, undo, modifier_bits::CHARGE);
+    debit_money(pos, src, /*cost=*/ 3, undo);
+    dec_actions(pos, undo);
 }
 
 // === Strike-skill helpers ==================================================
@@ -530,10 +658,13 @@ fn apply_retreat(pos: &mut Position, action: Action, undo: &mut Undo) {
 fn apply_strike_damage(pos: &mut Position, src_sq: u8, tgt_sq: u8,
                        base: u8, undo: &mut Undo) -> u8 {
     let prev = pos.mailbox[tgt_sq as usize];
+    // Snapshot the prior mailbox even if no damage is dealt — combo_tick or
+    // deal_damage may not actually mutate this square (if the target survives
+    // with combo bumped only), and we still want the dedup'd prior recorded.
     record_affected(undo, tgt_sq, prev);
 
     let charge_bonus = if pos.pending_modifiers & modifier_bits::CHARGE != 0 {
-        pos.pending_modifiers &= !modifier_bits::CHARGE;
+        clear_pending(pos, undo, modifier_bits::CHARGE);
         1u8
     } else {
         0
@@ -579,9 +710,8 @@ fn combo_tick(pos: &mut Position, src_sq: u8, tgt_sq: u8, undo: &mut Undo) -> bo
     pos.champion_credit |= bit;
 
     let prev = pos.mailbox[tgt_sq as usize];
-    record_affected(undo, tgt_sq, prev);
     let new_combo = (prev.combo() + 1).min(7);
-    pos.mailbox[tgt_sq as usize] = prev.with_combo(new_combo);
+    write_mailbox(pos, undo, tgt_sq, prev.with_combo(new_combo));
     true
 }
 
@@ -619,12 +749,11 @@ fn relocate_piece(pos: &mut Position, from: u8, to: u8, undo: &mut Undo) {
     debug_assert!(!pos.is_occupied(to));
 
     let prev_from = pos.mailbox[from as usize];
-    let prev_to   = pos.mailbox[to as usize];
-    record_affected(undo, from, prev_from);
-    record_affected(undo, to,   prev_to);
+    let owner = player_at(pos, from);
+    let kind  = piece_kind_at(pos, from);
 
-    pos.mailbox[from as usize] = EMPTY_MAILBOX_ENTRY;
-    pos.mailbox[to as usize]   = prev_from;
+    write_mailbox(pos, undo, from, EMPTY_MAILBOX_ENTRY);
+    write_mailbox(pos, undo, to,   prev_from);
 
     let xor = Bitboard::from_square(from).0 | Bitboard::from_square(to).0;
     if pos.p1_pieces.contains(from) {
@@ -644,18 +773,21 @@ fn relocate_piece(pos: &mut Position, from: u8, to: u8, undo: &mut Undo) {
         pos.guards = Bitboard(pos.guards.0 ^ xor);
         undo.guards_xor ^= xor;
     }
+
+    // Zobrist: piece leaves `from`, appears at `to`.
+    xor_piece(pos, undo, from, owner, kind);
+    xor_piece(pos, undo, to,   owner, kind);
 }
 
 /// Debit `cost` Money from the side that owns `caster_sq`.
 fn debit_money(pos: &mut Position, caster_sq: u8, cost: u8, undo: &mut Undo) {
     let cost_u16 = cost as u16;
-    let cost_i16 = cost as i16;
     if pos.p1_pieces.contains(caster_sq) {
-        pos.p1_money = pos.p1_money.saturating_sub(cost_u16);
-        undo.p1_money_delta -= cost_i16;
+        let new = pos.p1_money.saturating_sub(cost_u16);
+        set_p1_money(pos, undo, new);
     } else {
-        pos.p2_money = pos.p2_money.saturating_sub(cost_u16);
-        undo.p2_money_delta -= cost_i16;
+        let new = pos.p2_money.saturating_sub(cost_u16);
+        set_p2_money(pos, undo, new);
     }
 }
 
@@ -668,14 +800,13 @@ fn transfer_money(pos: &mut Position, from: Player, to: Player,
         Player::P2 => pos.p2_money,
     });
     if actual == 0 { return; }
-    let actual_i16 = actual as i16;
     match from {
-        Player::P1 => { pos.p1_money -= actual; undo.p1_money_delta -= actual_i16; }
-        Player::P2 => { pos.p2_money -= actual; undo.p2_money_delta -= actual_i16; }
+        Player::P1 => set_p1_money(pos, undo, pos.p1_money - actual),
+        Player::P2 => set_p2_money(pos, undo, pos.p2_money - actual),
     }
     match to {
-        Player::P1 => { pos.p1_money += actual; undo.p1_money_delta += actual_i16; }
-        Player::P2 => { pos.p2_money += actual; undo.p2_money_delta += actual_i16; }
+        Player::P1 => set_p1_money(pos, undo, pos.p1_money + actual),
+        Player::P2 => set_p2_money(pos, undo, pos.p2_money + actual),
     }
 }
 
@@ -687,15 +818,15 @@ fn transfer_money(pos: &mut Position, from: Player, to: Player,
 /// adopted into Stack M (oq-69 resolved, session-31): +1 action per 10 rounds,
 /// starting at 2. R1–10:2, R11–20:3, R21–30:4, R31–40:5, R41–50:6, …
 /// End-of-turn (Skill → next turn) is delegated to `turn_manager::end_turn`.
-fn apply_end_phase(pos: &mut Position, _undo: &mut Undo) {
+fn apply_end_phase(pos: &mut Position, undo: &mut Undo) {
     match pos.current_phase {
         Phase::Move => {
-            pos.moved_this_phase = Bitboard::EMPTY;
-            pos.current_phase = Phase::Skill;
-            pos.actions_remaining = skill_phase_budget(pos.round_number);
+            moved_clear_all(pos, undo);
+            set_phase(pos, undo, Phase::Skill);
+            set_actions(pos, undo, skill_phase_budget(pos.round_number));
         }
         Phase::Skill => {
-            super::turn_manager::end_turn(pos);
+            super::turn_manager::end_turn(pos, undo);
         }
     }
 }
@@ -714,7 +845,7 @@ pub(crate) fn skill_phase_budget(round_number: u16) -> u8 {
 
 // === Tiny helpers ===========================================================
 
-fn record_affected(undo: &mut Undo, sq: u8, prev: MailboxEntry) {
+pub(super) fn record_affected(undo: &mut Undo, sq: u8, prev: MailboxEntry) {
     // Dedup: if this square is already recorded, leave the *original* snapshot
     // in place — that's the value we need to restore back to.
     for i in 0..undo.affected_count as usize {
@@ -728,11 +859,172 @@ fn record_affected(undo: &mut Undo, sq: u8, prev: MailboxEntry) {
     undo.affected_count += 1;
 }
 
+// === Zobrist-aware mutation helpers =======================================
+//
+// These are the single source of state mutation for everything that affects
+// the hash. Callers that go around them will silently desync `pos.zobrist`
+// from the position's actual state. Slice 7 routed every existing mutation
+// site through this layer.
+
+#[inline]
+fn z_apply(pos: &mut Position, undo: &mut Undo, delta: u64) {
+    pos.zobrist ^= delta;
+    undo.zobrist_xor ^= delta;
+}
+
+/// Write `new` into `pos.mailbox[sq]`, recording the prior state in `undo`
+/// (dedup'd) and XOR-ing the mailbox-key delta into the zobrist hash. No-op
+/// if `new == prev`.
+pub(super) fn write_mailbox(pos: &mut Position, undo: &mut Undo, sq: u8, new: MailboxEntry) {
+    let prev = pos.mailbox[sq as usize];
+    if prev == new { return; }
+    record_affected(undo, sq, prev);
+    let delta = zobrist::mailbox_xor(sq, prev, new);
+    z_apply(pos, undo, delta);
+    pos.mailbox[sq as usize] = new;
+}
+
+/// XOR a piece-occupancy key into the zobrist hash. Call this each time a
+/// piece appears at or disappears from `sq` (the key is its own inverse).
+#[inline]
+pub(super) fn xor_piece(pos: &mut Position, undo: &mut Undo,
+                        sq: u8, player: Player, kind: ZKind) {
+    z_apply(pos, undo, zobrist::piece_key(sq, player, kind));
+}
+
+/// Determine the piece kind at `sq` from the bitboards. Panics in debug if
+/// `sq` is unoccupied. Slice 7: occupancy keys need this lookup.
+#[inline]
+pub(super) fn piece_kind_at(pos: &Position, sq: u8) -> ZKind {
+    if pos.kings.contains(sq)       { ZKind::King }
+    else if pos.champions.contains(sq) { ZKind::Champion }
+    else if pos.guards.contains(sq)    { ZKind::Guard }
+    else { debug_assert!(false, "piece_kind_at on empty sq {}", sq); ZKind::Guard }
+}
+
+/// Determine the owning player at `sq` from the bitboards.
+#[inline]
+pub(super) fn player_at(pos: &Position, sq: u8) -> Player {
+    if pos.p1_pieces.contains(sq) { Player::P1 } else { Player::P2 }
+}
+
+// --- Scalar setters: each XORs prev→new key delta into zobrist. ---------
+
+#[inline]
+pub(super) fn set_actions(pos: &mut Position, undo: &mut Undo, new: u8) {
+    if pos.actions_remaining == new { return; }
+    let delta = zobrist::actions_key(pos.actions_remaining) ^ zobrist::actions_key(new);
+    z_apply(pos, undo, delta);
+    pos.actions_remaining = new;
+}
+
+#[inline]
+pub(super) fn dec_actions(pos: &mut Position, undo: &mut Undo) {
+    debug_assert!(pos.actions_remaining > 0, "make() invoked with zero actions");
+    set_actions(pos, undo, pos.actions_remaining - 1);
+}
+
+#[inline]
+pub(super) fn set_phase(pos: &mut Position, undo: &mut Undo, new: Phase) {
+    if matches!(pos.current_phase, _) && phase_eq(pos.current_phase, new) { return; }
+    z_apply(pos, undo, zobrist::phase_key()); // Move↔Skill is a single key flip.
+    pos.current_phase = new;
+}
+
+#[inline]
+fn phase_eq(a: Phase, b: Phase) -> bool {
+    matches!((a, b), (Phase::Move, Phase::Move) | (Phase::Skill, Phase::Skill))
+}
+
+#[inline]
+pub(super) fn flip_to_move(pos: &mut Position, undo: &mut Undo) {
+    z_apply(pos, undo, zobrist::side_key());
+    pos.to_move = match pos.to_move { Player::P1 => Player::P2, Player::P2 => Player::P1 };
+}
+
+#[inline]
+pub(super) fn set_round(pos: &mut Position, undo: &mut Undo, new: u16) {
+    if pos.round_number == new { return; }
+    let delta = zobrist::round_key(pos.round_number) ^ zobrist::round_key(new);
+    z_apply(pos, undo, delta);
+    pos.round_number = new;
+}
+
+#[inline]
+pub(super) fn set_pending(pos: &mut Position, undo: &mut Undo, new: u8) {
+    if pos.pending_modifiers == new { return; }
+    z_apply(pos, undo, zobrist::pending_mod_xor(pos.pending_modifiers, new));
+    pos.pending_modifiers = new;
+}
+
+#[inline]
+pub(super) fn add_pending(pos: &mut Position, undo: &mut Undo, bits: u8) {
+    set_pending(pos, undo, pos.pending_modifiers | bits);
+}
+
+#[inline]
+pub(super) fn clear_pending(pos: &mut Position, undo: &mut Undo, bits: u8) {
+    set_pending(pos, undo, pos.pending_modifiers & !bits);
+}
+
+#[inline]
+pub(super) fn set_p1_money(pos: &mut Position, undo: &mut Undo, new: u16) {
+    if pos.p1_money == new { return; }
+    let delta = zobrist::money_key_p1(pos.p1_money) ^ zobrist::money_key_p1(new);
+    z_apply(pos, undo, delta);
+    undo.p1_money_delta = undo.p1_money_delta
+        .saturating_add(new as i32 as i16 - pos.p1_money as i32 as i16);
+    pos.p1_money = new;
+}
+
+#[inline]
+pub(super) fn set_p2_money(pos: &mut Position, undo: &mut Undo, new: u16) {
+    if pos.p2_money == new { return; }
+    let delta = zobrist::money_key_p2(pos.p2_money) ^ zobrist::money_key_p2(new);
+    z_apply(pos, undo, delta);
+    undo.p2_money_delta = undo.p2_money_delta
+        .saturating_add(new as i32 as i16 - pos.p2_money as i32 as i16);
+    pos.p2_money = new;
+}
+
+#[inline]
+pub(super) fn set_game_result(pos: &mut Position, undo: &mut Undo, new: Option<GameResult>) {
+    if pos.game_result == new { return; }
+    let delta = zobrist::game_result_key(pos.game_result) ^ zobrist::game_result_key(new);
+    z_apply(pos, undo, delta);
+    pos.game_result = new;
+}
+
+#[inline]
+pub(super) fn moved_set(pos: &mut Position, undo: &mut Undo, sq: u8) {
+    if pos.moved_this_phase.contains(sq) { return; }
+    z_apply(pos, undo, zobrist::moved_key(sq));
+    pos.moved_this_phase = pos.moved_this_phase | Bitboard::from_square(sq);
+}
+
+#[inline]
+pub(super) fn moved_clear_all(pos: &mut Position, undo: &mut Undo) {
+    let mut bits = pos.moved_this_phase.0;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        z_apply(pos, undo, zobrist::moved_key(sq));
+    }
+    pos.moved_this_phase = Bitboard::EMPTY;
+}
+
 fn phase_to_byte(p: Phase) -> u8 {
     match p { Phase::Move => 0, Phase::Skill => 1 }
 }
 fn phase_from_byte(b: u8) -> Phase {
     match b { 0 => Phase::Move, _ => Phase::Skill }
+}
+
+fn player_to_byte(p: Player) -> u8 {
+    match p { Player::P1 => 0, Player::P2 => 1 }
+}
+fn player_from_byte(b: u8) -> Player {
+    match b { 0 => Player::P1, _ => Player::P2 }
 }
 
 fn game_result_to_tag(r: Option<GameResult>) -> u8 {
@@ -1310,13 +1602,14 @@ mod tests {
                         pos.p1_money, pos.p2_money))
     }
 
-    /// Deep-equal positions ignoring zobrist (still 0 in Slice 4).
+    /// Deep-equal positions including the incremental zobrist hash.
     fn pos_eq(a: &Position, b: &Position) -> bool {
         pos_diff(a, b).is_none()
     }
 
     /// Returns a human-readable diff string if the two positions differ, else None.
     fn pos_diff(a: &Position, b: &Position) -> Option<String> {
+        if a.zobrist != b.zobrist { return Some(format!("zobrist: {:#x} vs {:#x}", a.zobrist, b.zobrist)); }
         if a.p1_pieces.0 != b.p1_pieces.0 { return Some(format!("p1_pieces: {:#x} vs {:#x}", a.p1_pieces.0, b.p1_pieces.0)); }
         if a.p2_pieces.0 != b.p2_pieces.0 { return Some(format!("p2_pieces: {:#x} vs {:#x}", a.p2_pieces.0, b.p2_pieces.0)); }
         if a.kings.0     != b.kings.0     { return Some("kings".into()); }
@@ -2545,5 +2838,336 @@ mod tests {
         assert_eq!(skill_phase_budget(50), 6);
         assert_eq!(skill_phase_budget(51), 7);
         assert_eq!(skill_phase_budget(100), 11);
+    }
+
+    // === Slice 6 — Focus / Charge / end_turn ===============================
+
+    #[test]
+    fn focus_sets_pending_bit_and_consumes_action() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Focus as u8);
+
+        let pre_money = pos.p1_money;
+        let _ = make(&mut pos, skill_action(28, 28, Skill::Focus));
+        assert_ne!(pos.pending_modifiers & modifier_bits::FOCUS, 0);
+        assert_eq!(pos.actions_remaining, 1);
+        assert_eq!(pos.p1_money, pre_money - 1);
+    }
+
+    #[test]
+    fn charge_sets_pending_bit_and_consumes_action() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Charge as u8);
+
+        let pre_money = pos.p1_money;
+        let _ = make(&mut pos, skill_action(28, 28, Skill::Charge));
+        assert_ne!(pos.pending_modifiers & modifier_bits::CHARGE, 0);
+        assert_eq!(pos.actions_remaining, 1);
+        assert_eq!(pos.p1_money, pre_money - 3);
+    }
+
+    #[test]
+    fn focus_is_not_consumed_by_charge() {
+        // Stack-M (session-31): Focus = next non-Mystic skill. Casting Charge
+        // (Mystic) while Focus is pending MUST leave Focus pending — so a
+        // subsequent Strike skill gets BOTH buffs.
+        let mut pos = skill_phase_pos(3);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        pos.mailbox[28] = pos.mailbox[28]
+            .with_skill1(Skill::Focus as u8)
+            .with_skill2(Skill::Charge as u8);
+
+        let _ = make(&mut pos, skill_action(28, 28, Skill::Focus));
+        assert_ne!(pos.pending_modifiers & modifier_bits::FOCUS, 0);
+        let _ = make(&mut pos, skill_action(28, 28, Skill::Charge));
+        // Focus must STILL be pending; Charge added on top.
+        assert_ne!(pos.pending_modifiers & modifier_bits::FOCUS, 0,
+            "Charge must not consume Focus");
+        assert_ne!(pos.pending_modifiers & modifier_bits::CHARGE, 0);
+    }
+
+    #[test]
+    fn charge_then_strike_grants_plus_one_damage() {
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Charge as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0); // e5
+
+        pos.pending_modifiers |= modifier_bits::CHARGE;
+        // Lance hits e5 with +1 from Charge → 2 damage. Target had HP 2 / armor 0,
+        // so this removes it.
+        equip(&mut pos, 28, Skill::Lance as u8);
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
+        assert!(!pos.is_occupied(36), "Charge+Lance should KO a HP2/armor0 enemy");
+        // CHARGE bit cleared.
+        assert_eq!(pos.pending_modifiers & modifier_bits::CHARGE, 0);
+    }
+
+    #[test]
+    fn focus_dash_retarget_moves_ally_two_tiles() {
+        // Caster Champ at e4 (28), ally Champ at e5 (36). Focus pending.
+        // Retarget Dash: aux_sq = 36 (ally), target = 52 (e7), 2 tiles N of ally.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Dash as u8);
+        pos.pending_modifiers |= modifier_bits::FOCUS;
+
+        let pre_money = pos.p1_money;
+        let action = Action::encode_with_aux(
+            28, 52, ActionKind::Skill, Skill::Dash as u8, 0, 36,
+        );
+        let _ = make(&mut pos, action);
+
+        assert!( pos.is_occupied(28), "caster stays put");
+        assert!(!pos.is_occupied(36), "ally moved off origin");
+        assert!( pos.is_occupied(52), "ally arrived at destination");
+        assert!( pos.champions.contains(52));
+        // Caster (still at 28) pays — that's the only P1 piece paying.
+        assert_eq!(pos.p1_money, pre_money - 3);
+        // FOCUS bit consumed.
+        assert_eq!(pos.pending_modifiers & modifier_bits::FOCUS, 0);
+    }
+
+    #[test]
+    fn focus_shield_retarget_buffs_adjacent_ally() {
+        // Caster Champ at e4 (28), ally Champ at e5 (36). Focus pending.
+        // Retarget Shield: ally gets +1 armor (not the caster).
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shield as u8);
+        pos.pending_modifiers |= modifier_bits::FOCUS;
+
+        let action = Action::encode_with_aux(
+            28, 36, ActionKind::Skill, Skill::Shield as u8, 0, 36,
+        );
+        let _ = make(&mut pos, action);
+
+        assert_eq!(pos.mailbox[36].armor(), 1, "ally got +1 armor");
+        assert_eq!(pos.mailbox[28].armor(), 0, "caster's armor unchanged");
+    }
+
+    #[test]
+    fn focus_unmake_roundtrip() {
+        // Focus + retarget Shield unmakes cleanly.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shield as u8);
+        pos.pending_modifiers |= modifier_bits::FOCUS;
+        let before = pos.clone();
+
+        let action = Action::encode_with_aux(
+            28, 36, ActionKind::Skill, Skill::Shield as u8, 0, 36,
+        );
+        let undo = make(&mut pos, action);
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&pos, &before), "diff: {:?}", pos_diff(&pos, &before));
+    }
+
+    #[test]
+    fn end_turn_clears_pending_and_disburses_income() {
+        // Skill Phase ends → EndTurn flips to_move, disburses income.
+        let mut pos = skill_phase_pos(0); // P1's Skill Phase, 0 actions left
+        pos.round_number = 1;
+        pos.p1_money = 5;
+        pos.p2_money = 5;
+        pos.pending_modifiers = modifier_bits::FOCUS | modifier_bits::CHARGE;
+
+        // EndPhase from Skill triggers end_turn.
+        let undo = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        assert_eq!(pos.to_move, Player::P2, "flipped to P2");
+        assert_eq!(pos.round_number, 1, "no bump (flip to P2)");
+        assert_eq!(pos.current_phase, Phase::Move);
+        assert_eq!(pos.actions_remaining, 2);
+        assert_eq!(pos.pending_modifiers, 0);
+        // P2 got income at round 1 = 2.
+        assert_eq!(pos.p2_money, 7);
+        assert_eq!(pos.p1_money, 5);
+
+        // Unmake restores everything.
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.to_move, Player::P1);
+        assert_eq!(pos.p2_money, 5);
+        assert_eq!(pos.pending_modifiers,
+            modifier_bits::FOCUS | modifier_bits::CHARGE);
+    }
+
+    #[test]
+    fn end_turn_p2_to_p1_bumps_round() {
+        let mut pos = skill_phase_pos(0);
+        pos.to_move = Player::P2;
+        pos.round_number = 1;
+        let undo = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        assert_eq!(pos.to_move, Player::P1);
+        assert_eq!(pos.round_number, 2, "bump on P2 → P1 flip");
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.round_number, 1, "unmake restores round");
+    }
+
+    #[test]
+    fn end_turn_clears_combo_on_new_stm_pieces() {
+        // P1's turn ended; P2's pieces should have their combo counters reset.
+        let mut pos = skill_phase_pos(0);
+        pos.to_move = Player::P1;
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0); // e5
+        pos.mailbox[36] = pos.mailbox[36].with_combo(2);
+        let _ = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        assert_eq!(pos.mailbox[36].combo(), 0,
+            "new STM (P2) pieces have combo counter cleared");
+    }
+
+    // --- Slice 7: Zobrist ----------------------------------------------------
+
+    use crate::state::zobrist;
+
+    /// Sync the zobrist field with what `full_recompute` says. Test setup
+    /// helpers (`place`, `equip`, `skill_phase_pos`) mutate fields directly
+    /// without going through the make_unmake choke points, so the field stays
+    /// at whatever `Position::empty()` left it. Tests that care about the
+    /// hash call this once after setup.
+    fn sync_zobrist(pos: &mut Position) {
+        pos.zobrist = zobrist::full_recompute(pos);
+    }
+
+    #[test]
+    fn zobrist_setup_nonzero() {
+        // setup_stack_m: full board, P1 to move, Move phase, 2 actions, round 1.
+        let pos = Position::setup_stack_m();
+        assert_ne!(pos.zobrist, 0, "setup_stack_m has a non-zero zobrist");
+        // And it equals the from-scratch recompute (the constructor wired it).
+        assert_eq!(pos.zobrist, zobrist::full_recompute(&pos),
+            "constructor's zobrist matches full_recompute");
+    }
+
+    #[test]
+    fn zobrist_distinct_positions_differ() {
+        // A position before and after a one-square move must hash differently.
+        let before = Position::setup_stack_m();
+        let mut after = before.clone();
+        let a = Action::encode(9, 17, ActionKind::Move, 0, 0); // b2 → b3
+        let _ = make(&mut after, a);
+        assert_ne!(before.zobrist, after.zobrist,
+            "single-square move must change the hash");
+    }
+
+    #[test]
+    fn zobrist_recompute_matches_incremental() {
+        // After a battery of actions from a Stack-M setup, the incremental
+        // hash must equal what `full_recompute` produces from scratch.
+        let mut pos = Position::setup_stack_m();
+
+        // Action 1: plain move b2→b3.
+        let _u1 = make(&mut pos, Action::encode(9, 17, ActionKind::Move, 0, 0));
+        assert_eq!(pos.zobrist, zobrist::full_recompute(&pos),
+            "after plain move: incremental matches full_recompute");
+
+        // Action 2: another plain move c2→c3.
+        let _u2 = make(&mut pos, Action::encode(10, 18, ActionKind::Move, 0, 0));
+        assert_eq!(pos.zobrist, zobrist::full_recompute(&pos),
+            "after second plain move: incremental matches full_recompute");
+
+        // Action 3: end Move Phase (Move→Skill transition).
+        let _u3 = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        assert_eq!(pos.zobrist, zobrist::full_recompute(&pos),
+            "after end-phase: incremental matches full_recompute");
+
+        // Action 4: end Skill Phase (triggers end_turn — flip + income + reset).
+        let _u4 = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        assert_eq!(pos.zobrist, zobrist::full_recompute(&pos),
+            "after end-turn: incremental matches full_recompute");
+    }
+
+    #[test]
+    fn zobrist_make_unmake_zero_delta() {
+        // Battery of representative actions from a known-good Stack-M setup:
+        // make then unmake must leave zobrist exactly where it started.
+        let pos0 = Position::setup_stack_m();
+
+        // 1. Plain move.
+        {
+            let mut pos = pos0.clone();
+            let snap = pos.zobrist;
+            let undo = make(&mut pos, Action::encode(9, 17, ActionKind::Move, 0, 0));
+            unmake(&mut pos, &undo);
+            assert_eq!(pos.zobrist, snap, "plain move round-trip preserves zobrist");
+        }
+
+        // 2. End Move Phase (no actions consumed).
+        {
+            let mut pos = pos0.clone();
+            let snap = pos.zobrist;
+            let undo = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+            unmake(&mut pos, &undo);
+            assert_eq!(pos.zobrist, snap, "end-phase round-trip preserves zobrist");
+        }
+
+        // 3. Skill action (Lance) — uses the same harness as the strike tests.
+        {
+            let mut pos = skill_phase_pos(2);
+            place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+            equip(&mut pos, 28, Skill::Lance as u8);
+            place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
+            sync_zobrist(&mut pos);
+            let snap = pos.zobrist;
+            let undo = make(&mut pos, skill_action(28, 36, Skill::Lance));
+            unmake(&mut pos, &undo);
+            assert_eq!(pos.zobrist, snap, "Lance round-trip preserves zobrist");
+        }
+
+        // 4. Focus (pending_modifier mutation).
+        {
+            let mut pos = skill_phase_pos(2);
+            place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+            equip(&mut pos, 28, Skill::Focus as u8);
+            sync_zobrist(&mut pos);
+            let snap = pos.zobrist;
+            let undo = make(&mut pos, skill_action(28, 28, Skill::Focus));
+            unmake(&mut pos, &undo);
+            assert_eq!(pos.zobrist, snap, "Focus round-trip preserves zobrist");
+        }
+
+        // 5. End-turn (Skill→Move + flip + income + round bump on P2→P1).
+        {
+            let mut pos = skill_phase_pos(0);
+            pos.to_move = Player::P2;
+            pos.round_number = 1;
+            sync_zobrist(&mut pos);
+            let snap = pos.zobrist;
+            let undo = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+            unmake(&mut pos, &undo);
+            assert_eq!(pos.zobrist, snap, "end-turn round-trip preserves zobrist");
+        }
+    }
+
+    #[test]
+    fn zobrist_transposition_same_hash() {
+        // Two move-orderings that arrive at the same Move-Phase end-state must
+        // produce identical hashes. P1 plays two plain moves in different
+        // orders, ends the Move Phase, ends the Skill Phase: state is the
+        // same end-of-turn position both ways, so zobrist must match.
+        //
+        // Sequence A: b2→b3, c2→c3, EndPhase (Move→Skill), EndPhase (end_turn)
+        // Sequence B: c2→c3, b2→b3, EndPhase (Move→Skill), EndPhase (end_turn)
+
+        let mut a = Position::setup_stack_m();
+        let _ = make(&mut a, Action::encode(9,  17, ActionKind::Move, 0, 0));
+        let _ = make(&mut a, Action::encode(10, 18, ActionKind::Move, 0, 0));
+        let _ = make(&mut a, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        let _ = make(&mut a, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+
+        let mut b = Position::setup_stack_m();
+        let _ = make(&mut b, Action::encode(10, 18, ActionKind::Move, 0, 0));
+        let _ = make(&mut b, Action::encode(9,  17, ActionKind::Move, 0, 0));
+        let _ = make(&mut b, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        let _ = make(&mut b, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+
+        assert_eq!(a.zobrist, b.zobrist,
+            "different move orderings reaching the same end-of-turn state must hash equal");
+        // And the broader position state must agree too (sanity check).
+        assert!(pos_eq(&a, &b), "transposition diff: {:?}", pos_diff(&a, &b));
     }
 }

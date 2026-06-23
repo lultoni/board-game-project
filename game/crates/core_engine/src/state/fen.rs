@@ -40,8 +40,9 @@
 //!   `tracked_casters_len`, `champion_credit` — turn-scoped, cleared at end
 //!   of turn. `from_fen` zeroes them; `to_fen` only round-trips a Position
 //!   where they are already zero (FEN is between-turn state).
-//! - `zobrist` — derived. `from_fen` sets it to 0 (Zobrist keys aren't wired
-//!   yet; slice 6 revisits). Tests use `position_eq_for_fen` to skip it.
+//! - `zobrist` — derived. `from_fen` recomputes the incremental hash from
+//!   scratch via `zobrist::full_recompute` (Slice 7). Tests may still use
+//!   `position_eq_for_fen` for round-trip equality on legacy paths.
 //!
 //! See `crates/core_engine/SCENARIO_FORMAT.md` for the action-text and
 //! scenario-file grammars built on top of FEN.
@@ -284,6 +285,9 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
 
     // Derive game_result from the bitboards: a side without a King has lost.
     pos.recompute_game_result();
+
+    // Compute the incremental Zobrist hash from scratch (Slice 7).
+    pos.zobrist = super::zobrist::full_recompute(&pos);
 
     Ok(pos)
 }

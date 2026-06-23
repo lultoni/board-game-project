@@ -127,21 +127,30 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
 
 // === Skill Phase ============================================================
 
-/// Enumerate Skill-Phase actions. Slices 3–5 wire the per-skill emission;
-/// the resolvers in `make_unmake::apply_skill` are implemented for the 13
-/// non-Mystic skills (Lance/Break/Steal/Hook/Tempest + Shield/Heal/Plate +
-/// Dash/Blast/Shove/Swap/Retreat). Focus/Charge are still `unimplemented!`
-/// in the resolver, and currently no Mystic setter is wired here either.
+/// Enumerate Skill-Phase actions. Slices 3–6 wire the per-skill emission;
+/// all 15 resolvers ship.
 ///
 /// For each caster on the side-to-move with money ≥ skill cost, emit one
 /// action per legal target by `TargetOwner`:
 ///   - `SelfOnly`  → one action with `src == tgt` (Shield filtered if at cap).
+///                   When Focus is pending, Shield/Dash/Retreat additionally
+///                   emit retarget actions onto adjacent allies (aux_sq).
 ///   - `Ally`      → `path::skill_targets` ∩ allies; Heal/Plate state filters.
 ///   - `Enemy`     → `path::skill_targets` ∩ enemies.
-///   - `Either`    → Shove only; emits one action per (target, dir).
+///   - `Either`    → Shove only; emits one action per (target, dir). When
+///                   Focus is pending, also emits focus-effect mode (2-tile push).
 ///   - `Empty`     → Dash / Retreat; empty squares on queen-rays within range,
 ///                   Retreat additionally constrained to be adjacent to an
 ///                   ally Guard.
+///
+/// Focus (`pending_modifiers & FOCUS`): +1 activation Range for ALL non-Mystic
+/// skills. Per oq-70 + session-31, Focus on Self-only-or-movement skills also
+/// surfaces retarget / effect-range interpretations as ADDITIONAL legal
+/// branches. The caster paying the Focus tax does NOT consume Focus by
+/// casting a Mystic skill (that's the new rule: Focus = "next non-Mystic").
+/// Focus / Charge stacking constraints:
+///   - Focus while Focus already pending: filtered out (illegal — max 1 stack).
+///   - Charge while Charge already pending: filtered out (illegal — max 1 stack).
 fn generate_skill_phase(pos: &Position) -> Vec<Action> {
     let mut out = Vec::with_capacity(64);
 
@@ -156,6 +165,10 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
         Player::P1 => pos.p1_money,
         Player::P2 => pos.p2_money,
     };
+    let focus_pending = pos.pending_modifiers
+        & crate::state::position::modifier_bits::FOCUS != 0;
+    let charge_pending = pos.pending_modifiers
+        & crate::state::position::modifier_bits::CHARGE != 0;
 
     for src in iter_squares(stm_bb) {
         let entry = pos.mailbox[src as usize];
@@ -163,20 +176,50 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
             let Some(skill) = skills::skill_from_id(slot_id) else { continue };
             if (skills::skill_cost(skill) as u16) > money { continue; }
 
-            // OQ-70: Focus-buff range is wired in Slice 6 (caster choice for
-            // Move-skills). For now, generator uses the unbuffed range.
-            let range = skills::skill_default_range(skill);
+            // Max-1-stack filter: cannot cast Focus while Focus is pending,
+            // cannot cast Charge while Charge is pending.
+            if skill == Skill::Focus && focus_pending { continue; }
+            if skill == Skill::Charge && charge_pending { continue; }
+
+            // Focus's +1 Range buff applies to every NON-Mystic skill. The
+            // resolver in `apply_skill` is what actually clears the FOCUS bit;
+            // we just use the buffed range here so legal-action enumeration
+            // matches what the resolver will accept.
+            let is_mystic = matches!(skills::skill_category(skill),
+                skills::SkillCategory::Mystic);
+            let base_range = skills::skill_default_range(skill);
+            let range = if focus_pending && !is_mystic { base_range + 1 } else { base_range };
 
             match skills::skill_target_owner(skill) {
                 TargetOwner::SelfOnly => {
-                    // Shield at the Armor cap is an illegal cast (no effect).
-                    if skill == Skill::Shield
-                        && pos.mailbox[src as usize].armor() >= ARMOR_CAP {
-                        continue;
+                    // Default branch: cast on self.
+                    let self_legal = match skill {
+                        // Shield at the Armor cap is illegal cast (no effect).
+                        Skill::Shield => entry.armor() < ARMOR_CAP,
+                        Skill::Focus | Skill::Charge => true,
+                        _ => true,
+                    };
+                    if self_legal {
+                        out.push(Action::encode(
+                            src, src, ActionKind::Skill, skill as u8, 0,
+                        ));
                     }
-                    out.push(Action::encode(
-                        src, src, ActionKind::Skill, skill as u8, 0,
-                    ));
+                    // Focus retarget branches: Shield/Dash/Retreat may channel
+                    // the skill onto an adjacent ally (1-tile away). When
+                    // Focus is pending, generate those as separate actions
+                    // carrying `aux_sq`.
+                    if focus_pending {
+                        match skill {
+                            Skill::Shield => emit_focus_shield_retargets(
+                                pos, src, skill, stm_bb, &mut out),
+                            // Dash/Retreat are TargetOwner::Empty in our
+                            // model, so retarget for those is emitted in the
+                            // Empty arm below. (Their default-targets are
+                            // EmptySq, not SelfOnly — only Shield is SelfOnly
+                            // among the retargetable-by-Focus skills.)
+                            _ => {}
+                        }
+                    }
                 }
                 TargetOwner::Empty => {
                     // Move-skills (Dash/Retreat): enumerate empty squares on
@@ -184,26 +227,35 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                     let occ = (pos.p1_pieces | pos.p2_pieces).0;
                     let attacks = magic::skill_attacks(src, occ, range).0;
                     let empties = attacks & !occ;
-                    if empties == 0 { continue; }
+                    if empties == 0 && !focus_pending { continue; }
                     match skill {
                         Skill::Dash => {
                             for dest in iter_squares(Bitboard(empties)) {
-                                // skill_attacks excludes src by construction.
                                 out.push(Action::encode(
                                     src, dest, ActionKind::Skill, skill as u8, 0,
                                 ));
                             }
+                            // Focus retarget: an adjacent ally moves up to 2.
+                            if focus_pending {
+                                emit_focus_dash_retargets(pos, src, skill, stm_bb, &mut out);
+                            }
                         }
                         Skill::Retreat => {
                             let ally_guards = stm_bb.0 & pos.guards.0;
-                            if ally_guards == 0 { continue; }
-                            for dest in iter_squares(Bitboard(empties)) {
-                                let adj_to_ally_guard = eight_neighbours(dest)
-                                    .any(|n| ally_guards & (1u64 << n) != 0);
-                                if !adj_to_ally_guard { continue; }
-                                out.push(Action::encode(
-                                    src, dest, ActionKind::Skill, skill as u8, 0,
-                                ));
+                            if ally_guards != 0 {
+                                for dest in iter_squares(Bitboard(empties)) {
+                                    let adj_to_ally_guard = eight_neighbours(dest)
+                                        .any(|n| ally_guards & (1u64 << n) != 0);
+                                    if !adj_to_ally_guard { continue; }
+                                    out.push(Action::encode(
+                                        src, dest, ActionKind::Skill, skill as u8, 0,
+                                    ));
+                                }
+                            }
+                            // Focus retarget: an adjacent ally retreats.
+                            if focus_pending && ally_guards != 0 {
+                                emit_focus_retreat_retargets(
+                                    pos, src, skill, stm_bb, ally_guards, &mut out);
                             }
                         }
                         _ => unreachable!("only Dash/Retreat use TargetOwner::Empty"),
@@ -232,6 +284,22 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                             src, tgt, ActionKind::Skill, skill as u8, 0,
                         ));
                     }
+                    // Focus-effect mode for Blast: push 2 instead of 1. We
+                    // can only land where intermediate + final squares allow
+                    // it — the resolver gracefully truncates to 1-tile, so a
+                    // separate enumeration here is needed only to give the
+                    // search the *option*. Emit the focus-effect variant at
+                    // the *unbuffed* activation range (Focus picks one or
+                    // the other interpretation, not both at once).
+                    if focus_pending && skill == Skill::Blast {
+                        let raw_eff = path::skill_targets(pos, src, base_range).0;
+                        let filtered_eff = raw_eff & opp_bb.0;
+                        for tgt in iter_squares(Bitboard(filtered_eff)) {
+                            out.push(Action::encode_focus_effect(
+                                src, tgt, ActionKind::Skill, skill as u8, 0,
+                            ));
+                        }
+                    }
                 }
                 TargetOwner::Either => {
                     // Currently only Shove. Emit one action per (target, dir)
@@ -249,6 +317,25 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                             ));
                         }
                     }
+                    // Focus-effect: 2-tile push. Both intermediate and final
+                    // squares must be empty + on-board. Activation range is
+                    // unbuffed (Focus picks effect-mode, not activation-mode).
+                    if focus_pending {
+                        let raw_eff = path::skill_targets(pos, src, base_range).0;
+                        for tgt in iter_squares(Bitboard(raw_eff)) {
+                            for dir in 0..8u8 {
+                                let Some(step1) = magic::neighbour_in_dir(tgt, dir as usize)
+                                    else { continue };
+                                if occ & (1u64 << step1) != 0 { continue; }
+                                let Some(step2) = magic::neighbour_in_dir(step1, dir as usize)
+                                    else { continue };
+                                if occ & (1u64 << step2) != 0 { continue; }
+                                out.push(Action::encode_focus_effect(
+                                    src, tgt, ActionKind::Skill, skill as u8, dir,
+                                ));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -256,6 +343,72 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
 
     out.push(Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
     out
+}
+
+// === Focus retarget helpers (Slice 6) ======================================
+
+/// Emit Shield-retarget actions when Focus is pending. The caster (src) may
+/// channel its Shield onto an adjacent friendly piece (not at Armor cap).
+/// The `aux_sq` carries the recipient ally; `target` mirrors `aux_sq` for
+/// human readability (the recipient *is* the target conceptually).
+fn emit_focus_shield_retargets(
+    pos: &Position, src: u8, skill: Skill, stm_bb: Bitboard, out: &mut Vec<Action>,
+) {
+    for n in eight_neighbours(src) {
+        if !stm_bb.contains(n) { continue; }
+        if pos.mailbox[n as usize].armor() >= ARMOR_CAP { continue; }
+        out.push(Action::encode_with_aux(
+            src, n, ActionKind::Skill, skill as u8, 0, n,
+        ));
+    }
+}
+
+/// Emit Dash-retarget actions when Focus is pending. The caster (src) stays
+/// put; an *adjacent ally* moves up to 2 tiles (queen-ray) onto an empty
+/// square. `target` = destination, `aux_sq` = the ally (mover).
+fn emit_focus_dash_retargets(
+    pos: &Position, src: u8, skill: Skill, stm_bb: Bitboard, out: &mut Vec<Action>,
+) {
+    let occ = (pos.p1_pieces | pos.p2_pieces).0;
+    for n in eight_neighbours(src) {
+        if !stm_bb.contains(n) { continue; }
+        // Range 2 from the ally, queen-rays.
+        let attacks = magic::skill_attacks(n, occ, 2).0;
+        let empties = attacks & !occ;
+        for dest in iter_squares(Bitboard(empties)) {
+            // Caster stays at src; ally moves n -> dest. Don't let dest == src.
+            if dest == src { continue; }
+            out.push(Action::encode_with_aux(
+                src, dest, ActionKind::Skill, skill as u8, 0, n,
+            ));
+        }
+    }
+}
+
+/// Emit Retreat-retarget actions when Focus is pending. An *adjacent ally*
+/// retreats onto an empty square adjacent to a friendly Guard. Range from the
+/// ally is the unbuffed default (3) — Focus picked the retarget interpretation,
+/// not the activation buff.
+fn emit_focus_retreat_retargets(
+    pos: &Position, src: u8, skill: Skill, stm_bb: Bitboard,
+    ally_guards: u64, out: &mut Vec<Action>,
+) {
+    let occ = (pos.p1_pieces | pos.p2_pieces).0;
+    let base_range = skills::skill_default_range(skill);
+    for n in eight_neighbours(src) {
+        if !stm_bb.contains(n) { continue; }
+        let attacks = magic::skill_attacks(n, occ, base_range).0;
+        let empties = attacks & !occ;
+        for dest in iter_squares(Bitboard(empties)) {
+            if dest == src { continue; }
+            let adj_to_ally_guard = eight_neighbours(dest)
+                .any(|g| ally_guards & (1u64 << g) != 0);
+            if !adj_to_ally_guard { continue; }
+            out.push(Action::encode_with_aux(
+                src, dest, ActionKind::Skill, skill as u8, 0, n,
+            ));
+        }
+    }
 }
 
 // === Reachability ===========================================================
@@ -1047,17 +1200,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Skill::Focus resolver lands in Slice 6")]
-    fn make_panics_on_skill_action() {
-        // Slice-5 contract: Strike + Shield-class + Move-class resolvers are
-        // implemented. The two "Mystic" setters (Focus / Charge) still panic
-        // with unimplemented!(). Search/UI gates on resolver availability.
+    fn focus_resolver_sets_pending_bit() {
+        // Slice-6 contract: Focus is implemented and sets the FOCUS bit.
         let mut p = skill_phase_pos(2);
         place_champ(&mut p, 28, Player::P1);
         equip(&mut p, 28, super::skills::Skill::Focus as u8);
 
         let focus_id = super::skills::Skill::Focus as u8;
         let a = Action::encode(28, 28, ActionKind::Skill, focus_id, 0);
-        let _ = super::super::make_unmake::make(&mut p, a);
+        let _undo = super::super::make_unmake::make(&mut p, a);
+        assert_ne!(p.pending_modifiers & crate::state::position::modifier_bits::FOCUS, 0,
+            "Focus must set the FOCUS bit");
+        assert_eq!(p.actions_remaining, 1, "Focus consumes one action");
     }
 }

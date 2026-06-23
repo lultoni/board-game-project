@@ -26,7 +26,31 @@
 //!                                                      eligible adjacent Guard
 //!                                                      (canonical ordering by
 //!                                                      square index, ascending)
-//!   bits 22..32  reserved
+//!   bit  22      focus_mode    (1 bit)            Focus interpretation tag
+//!                                                  (Slice 6 / oq-70 resolution).
+//!                                                  Only meaningful when the
+//!                                                  caster has Focus pending AND
+//!                                                  the skill is a Move-skill
+//!                                                  whose activation-range and
+//!                                                  effect-range are both real.
+//!                                                  0 = Focus buffs activation-range,
+//!                                                  1 = Focus buffs effect-range.
+//!                                                  Generator emits this bit
+//!                                                  per legal interpretation;
+//!                                                  resolver reads it.
+//!   bits 23..29  aux_sq        (6 bits, 0..=63)   Auxiliary square. Used by
+//!                                                  Focus-retargeted Self-only
+//!                                                  skills (Shield/Dash/Retreat):
+//!                                                  the caster (src) channels
+//!                                                  the skill onto an *adjacent
+//!                                                  ally* (aux_sq), which is the
+//!                                                  actual recipient/mover.
+//!                                                  Meaningless unless bit 29
+//!                                                  (has_aux) is set.
+//!   bit  29      has_aux       (1 bit)            1 iff aux_sq carries a real
+//!                                                  square. Cheaper than
+//!                                                  reserving a sentinel value.
+//!   bits 30..32  reserved
 //! ```
 //!
 //! ## Move-phase actions (kind=Move)
@@ -56,6 +80,19 @@
 //! Direction-only skills (Shove) use `choice_idx` for the 8 cardinal/
 //! diagonal directions. Path-implicit skills (Retreat) pre-resolve their
 //! destination in the generator and write it into `target`.
+//!
+//! ## Focus retargeting Self-only skills (Slice 6 / oq-70 final)
+//!
+//! Focus on Shield/Dash/Retreat lets the caster channel the skill onto an
+//! adjacent ally instead of themselves. Encoding:
+//! - `src` = caster (the one paying the cost and consuming Focus).
+//! - `target` = primary target (matches the un-retargeted convention: for
+//!   Shield this is the recipient; for Dash/Retreat this is the destination
+//!   the *recipient* moves to).
+//! - `aux_sq` = the adjacent-ally recipient.
+//! - `has_aux` = 1.
+//! The resolver applies the Shield-armor / Dash-move / Retreat-move effect
+//! to `aux_sq`, not `src`.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Action(pub u32);
@@ -84,6 +121,32 @@ impl Action {
         Action(bits)
     }
 
+    /// Same as `encode` but sets bit 22 (focus_mode) to mark this action as
+    /// "Focus buffs effect-range, not activation-range." Only used for
+    /// Move-skills (Dash/Blast/Shove) when Focus is pending and both
+    /// activation/effect interpretations are meaningful (per oq-70 resolution).
+    #[inline]
+    pub fn encode_focus_effect(src: u8, target: u8, kind: ActionKind,
+                               skill_id: u8, choice_idx: u8) -> Self {
+        let mut a = Self::encode(src, target, kind, skill_id, choice_idx);
+        a.0 |= 1 << 22;
+        a
+    }
+
+    /// Encode an action with an auxiliary square. Used for Focus-retargeted
+    /// Self-only skills (Shield/Dash/Retreat) where the caster channels the
+    /// effect onto an adjacent ally. Sets bit 29 (has_aux) and stores the
+    /// ally's square in bits 23..29.
+    #[inline]
+    pub fn encode_with_aux(src: u8, target: u8, kind: ActionKind,
+                           skill_id: u8, choice_idx: u8, aux_sq: u8) -> Self {
+        debug_assert!(aux_sq < 64);
+        let mut a = Self::encode(src, target, kind, skill_id, choice_idx);
+        a.0 |= (aux_sq as u32) << 23;
+        a.0 |= 1 << 29;
+        a
+    }
+
     #[inline] pub fn src(self)        -> u8 { (self.0        & 0b111111) as u8 }
     #[inline] pub fn target(self)     -> u8 { ((self.0 >>  6) & 0b111111) as u8 }
     #[inline] pub fn kind(self)       -> ActionKind {
@@ -96,6 +159,14 @@ impl Action {
     }
     #[inline] pub fn skill_id(self)   -> u8 { ((self.0 >> 14) & 0b1111)   as u8 }
     #[inline] pub fn choice_idx(self) -> u8 { ((self.0 >> 18) & 0b1111)   as u8 }
+    /// True iff bit 22 is set — Focus is buffing this skill's effect-range
+    /// rather than its activation-range. See `encode_focus_effect`.
+    #[inline] pub fn focus_effect_mode(self) -> bool { (self.0 >> 22) & 1 != 0 }
+    /// True iff bit 29 is set — `aux_sq()` carries a real square.
+    #[inline] pub fn has_aux(self)    -> bool { (self.0 >> 29) & 1 != 0 }
+    /// Auxiliary square (Focus-retargeted recipient). Only meaningful when
+    /// `has_aux()` is true; otherwise reads back the reserved zero bits.
+    #[inline] pub fn aux_sq(self)     -> u8 { ((self.0 >> 23) & 0b111111) as u8 }
 }
 
 /// Undo Record — written by `make()`, consumed by `unmake()` to perfectly
@@ -123,6 +194,10 @@ pub struct Undo {
     /// Snapshot of phase + actions_remaining before this action.
     pub prev_phase: u8,
     pub prev_actions_remaining: u8,
+
+    /// Snapshot of `to_move` before this action. Only end-of-turn flips it,
+    /// but unmake must restore it deterministically. 0 = P1, 1 = P2.
+    pub prev_to_move: u8,
 
     /// Snapshot of `moved_this_phase` (Move-Phase only) and `round_number`.
     /// Both must round-trip exactly under unmake.
@@ -187,5 +262,29 @@ mod tests {
         // The TT uses Action::default() as the "no entry" sentinel.
         // It must serialise to 0 so a freshly-allocated TT has no false hits.
         assert_eq!(Action::default().0, 0);
+    }
+
+    #[test]
+    fn action_encode_with_aux_roundtrip() {
+        let a = Action::encode_with_aux(
+            /*src*/ 12, /*target*/ 47, ActionKind::Skill,
+            /*skill*/ 9, /*choice*/ 5, /*aux*/ 33,
+        );
+        assert_eq!(a.src(),        12);
+        assert_eq!(a.target(),     47);
+        assert_eq!(a.kind(),       ActionKind::Skill);
+        assert_eq!(a.skill_id(),   9);
+        assert_eq!(a.choice_idx(), 5);
+        assert_eq!(a.aux_sq(),     33);
+        assert!(a.has_aux());
+        // focus_effect_mode unchanged (bit 22 stays 0).
+        assert!(!a.focus_effect_mode());
+    }
+
+    #[test]
+    fn action_plain_encode_has_no_aux() {
+        let a = Action::encode(0, 0, ActionKind::Skill, 1, 0);
+        assert!(!a.has_aux());
+        assert_eq!(a.aux_sq(), 0);
     }
 }

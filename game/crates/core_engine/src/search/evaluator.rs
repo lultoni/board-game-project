@@ -63,12 +63,262 @@
 //!      Bodyguard) — small bonuses, added last.
 
 use crate::state::Position;
+use crate::state::position::GameResult;
+use crate::game_logic::skills::{
+    Skill, SkillCategory, skill_from_id, skill_cost, skill_category, skill_default_range,
+};
 
 pub const MATE_SCORE: i32 = 1_000_000;
 
-pub fn evaluate(_pos: &Position) -> i32 {
-    // TODO(slice-7+): material → resources → tempo/money → positional hooks.
-    // See module docs above for the full design philosophy and the order
-    // in which terms should be added (start stupid, diff against complex).
-    0
+// === Slice 9: material weights ===========================================
+//
+// Order of magnitude: one Champion >> one HP swing >> one armor swing >>
+// one coin. MATE_SCORE (1_000_000) is three orders above any plausible
+// material sum (~24 pieces × ~1500 each ≈ 36k), so terminals never compete.
+
+/// King material weight = 0. The king's presence/absence is *already*
+/// encoded by the MATE_SCORE branch above; counting it again would only
+/// "reward" malformed positions (king missing, `game_result == None`).
+const KING_MATERIAL:   i32 = 0;
+const CHAMPION_VALUE:  i32 = 1000;
+const GUARD_VALUE:     i32 = 600;
+const HP_PER_POINT:    i32 = 150;
+const ARMOR_PER_POINT: i32 = 120;
+const MONEY_PER_UNIT:  i32 = 25;
+
+// PLACEHOLDER. A balance-slice will replace this with a tuned table once we
+// have playtest data. The current scheme — cost × 40 + range bonus + category
+// bonus — keeps each skill in a sensible 50..=220 range (well under
+// CHAMPION_VALUE) and orders skills roughly by their resource cost. It is
+// *consistent* (deterministic), so alpha-beta will still prefer the
+// objectively better of two material-equivalent positions; it is just not
+// strictly correct in absolute terms.
+#[inline]
+fn skill_value(s: Skill) -> i32 {
+    let base = skill_cost(s) as i32 * 40;
+    let range_bonus = match skill_default_range(s) {
+        0 => 0, 1 => 10, 2 => 20, _ => 30,
+    };
+    let category_bonus = match skill_category(s) {
+        SkillCategory::Strike => 30,
+        SkillCategory::Move   => 20,
+        SkillCategory::Shield => 15,
+        SkillCategory::Mystic => 10,
+    };
+    base + range_bonus + category_bonus
+}
+
+pub fn evaluate(pos: &Position) -> i32 {
+    // (a) Terminal — overrules everything.
+    match pos.game_result {
+        Some(GameResult::P1Wins) => return MATE_SCORE,
+        Some(GameResult::P2Wins) => return -MATE_SCORE,
+        None => {}
+    }
+
+    // (b) Single pass over occupied bits.
+    let mut score: i32 = 0;
+    let mut bits = (pos.p1_pieces | pos.p2_pieces).0;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let mask = 1u64 << sq;
+        let m = pos.mailbox[sq as usize];
+
+        let mut s: i32 =
+            if pos.kings.0     & mask != 0 { KING_MATERIAL }
+            else if pos.champions.0 & mask != 0 { CHAMPION_VALUE }
+            else                                { GUARD_VALUE };
+        s += HP_PER_POINT    * m.hp()    as i32;
+        s += ARMOR_PER_POINT * m.armor() as i32;
+        // Stack-M forbids king-equips at the generator level; eval reads
+        // skill ids straight from the mailbox without special-casing kings.
+        if let Some(sk) = skill_from_id(m.skill1()) { s += skill_value(sk); }
+        if let Some(sk) = skill_from_id(m.skill2()) { s += skill_value(sk); }
+
+        if pos.p1_pieces.0 & mask != 0 { score += s; } else { score -= s; }
+    }
+
+    // (c) Money is global, not per-square.
+    score += MONEY_PER_UNIT * pos.p1_money as i32;
+    score -= MONEY_PER_UNIT * pos.p2_money as i32;
+
+    score
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{Bitboard, MailboxEntry, Position};
+    use crate::state::position::{GameResult, Player};
+
+    /// Place a piece on `sq` for `player` of `kind` (0=King, 1=Champion, 2=Guard)
+    /// with mailbox `entry`. Mirrors the structure of `make_unmake::tests::place`
+    /// (which is pub(super)-scoped and not reachable from here).
+    fn place(p: &mut Position, sq: u8, player: Player, kind: u8, entry: MailboxEntry) {
+        let bit = Bitboard::from_square(sq);
+        match player {
+            Player::P1 => p.p1_pieces = p.p1_pieces | bit,
+            Player::P2 => p.p2_pieces = p.p2_pieces | bit,
+        }
+        match kind {
+            0 => p.kings     = p.kings     | bit,
+            1 => p.champions = p.champions | bit,
+            _ => p.guards    = p.guards    | bit,
+        }
+        p.mailbox[sq as usize] = entry;
+    }
+
+    #[test]
+    fn empty_board_is_zero() {
+        let pos = Position::empty();
+        assert_eq!(evaluate(&pos), 0);
+    }
+
+    #[test]
+    fn terminal_p1_wins() {
+        let mut pos = Position::empty();
+        pos.game_result = Some(GameResult::P1Wins);
+        assert_eq!(evaluate(&pos), MATE_SCORE);
+    }
+
+    #[test]
+    fn terminal_p2_wins() {
+        let mut pos = Position::empty();
+        pos.game_result = Some(GameResult::P2Wins);
+        assert_eq!(evaluate(&pos), -MATE_SCORE);
+    }
+
+    #[test]
+    fn terminal_overrules_material() {
+        // Place a P2 Champion (which would give P1 a negative material score)
+        // but set game_result = P1Wins. Terminal must short-circuit the loop
+        // and return exactly +MATE_SCORE.
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        pos.game_result = Some(GameResult::P1Wins);
+        assert_eq!(evaluate(&pos), MATE_SCORE);
+    }
+
+    #[test]
+    fn mirrored_single_champion_is_zero() {
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 63, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        assert_eq!(evaluate(&pos), 0);
+    }
+
+    #[test]
+    fn hp_differential() {
+        // P1 Champion HP=2 vs P2 Champion HP=1, no armor, no skills.
+        // Differential is exactly HP_PER_POINT.
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 63, Player::P2, 1, MailboxEntry::default().with_hp(1));
+        assert_eq!(evaluate(&pos), HP_PER_POINT);
+    }
+
+    #[test]
+    fn armor_differential() {
+        // P1 Champion armor=1 vs P2 Champion armor=0, identical otherwise.
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2).with_armor(1));
+        place(&mut pos, 63, Player::P2, 1, MailboxEntry::default().with_hp(2).with_armor(0));
+        assert_eq!(evaluate(&pos), ARMOR_PER_POINT);
+    }
+
+    #[test]
+    fn money_differential() {
+        let mut pos = Position::empty();
+        pos.p1_money = 10;
+        pos.p2_money = 4;
+        assert_eq!(evaluate(&pos), 6 * MONEY_PER_UNIT);
+    }
+
+    #[test]
+    fn skill_equipped_beats_unequipped() {
+        // P1 Champion with Lance equipped vs P2 Champion bare.
+        // Both HP=2, no armor → differential is exactly skill_value(Lance).
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        place(&mut pos, 63, Player::P2, 1,
+            MailboxEntry::default().with_hp(2));
+        assert_eq!(evaluate(&pos), skill_value(Skill::Lance));
+    }
+
+    #[test]
+    fn stack_m_setup_is_zero() {
+        // Canonical start: identical material on both sides, 6 money each.
+        let pos = Position::setup_stack_m();
+        assert_eq!(evaluate(&pos), 0);
+    }
+
+    #[test]
+    fn sign_convention_p1_positive_p2_negative() {
+        // A lone P1 Champion → positive score.
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        assert!(evaluate(&pos) > 0);
+
+        // Symmetric: a lone P2 Champion → negative.
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        assert!(evaluate(&pos) < 0);
+    }
+
+    #[test]
+    fn additivity() {
+        // Build three positions:
+        //   A: P1 +1 HP advantage (P1 HP=2, P2 HP=1, no armor)
+        //   B: P1 +1 armor advantage (HP=2 both, P1 armor=1, P2 armor=0)
+        //   AB: both effects combined
+        // Assert evaluate(AB) == evaluate(A) + evaluate(B).
+        let mut a = Position::empty();
+        place(&mut a, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut a, 63, Player::P2, 1, MailboxEntry::default().with_hp(1));
+
+        let mut b = Position::empty();
+        place(&mut b, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2).with_armor(1));
+        place(&mut b, 63, Player::P2, 1, MailboxEntry::default().with_hp(2));
+
+        let mut ab = Position::empty();
+        place(&mut ab, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2).with_armor(1));
+        place(&mut ab, 63, Player::P2, 1, MailboxEntry::default().with_hp(1));
+
+        assert_eq!(evaluate(&ab), evaluate(&a) + evaluate(&b));
+    }
+
+    #[test]
+    fn maxed_piece_formula() {
+        // Pin the math: single P1 Champion HP=2 armor=2 skill1=Tempest skill2=Charge,
+        // empty money. Score must equal the explicit sum.
+        let mut pos = Position::empty();
+        place(&mut pos, 28, Player::P1, 1,
+            MailboxEntry::default()
+                .with_hp(2)
+                .with_armor(2)
+                .with_skill1(Skill::Tempest as u8)
+                .with_skill2(Skill::Charge as u8));
+        let expected = CHAMPION_VALUE
+            + 2 * HP_PER_POINT
+            + 2 * ARMOR_PER_POINT
+            + skill_value(Skill::Tempest)
+            + skill_value(Skill::Charge);
+        assert_eq!(evaluate(&pos), expected);
+    }
+
+    #[test]
+    fn asymmetric_kings_no_panic() {
+        // Malformed: P2 has a king, P1 doesn't, but game_result is None.
+        // Eval must return a finite i32 without panicking.
+        let mut pos = Position::empty();
+        place(&mut pos, 4, Player::P2, 0, MailboxEntry::default().with_hp(2));
+        // game_result stays None.
+        let s = evaluate(&pos);
+        // We don't assert a specific value — just that it computed.
+        // KING_MATERIAL is 0, so the king contributes only its HP. P1 has nothing.
+        // The point is: no panic, no overflow.
+        assert!(s > i32::MIN && s < i32::MAX);
+    }
 }
