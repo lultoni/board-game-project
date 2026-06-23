@@ -9,10 +9,11 @@
 //!
 //! Implements Move-Phase mechanics only:
 //! - Plain Move: clear src, set dest, mark dest in `moved_this_phase`.
-//! - Move-Attack: enemy at target takes 1 damage (Armor → HP); mover stays
-//!   put and is marked at its origin square in `moved_this_phase`. Bodyguard
-//!   redirect is decoded via `choice_idx` and the resolver picks the same
-//!   k-th adjacent friendly Guard the generator enumerated.
+//! - Move-Attack: attacker advances to `approach_sq` (penultimate tile carried
+//!   in the action bits — `src` for speed-1, an empty neighbour of target for
+//!   speed-2), then the defender takes 1 damage. Bodyguard eligibility is
+//!   dual-adjacency (Guard adjacent to BOTH defender AND approach_sq);
+//!   `choice_idx` picks the k-th eligible Guard.
 //! - EndPhase: Move → Skill transition (clear `moved_this_phase`, reset
 //!   actions, flip current_phase). Skill→EndTurn deferred to a later slice.
 //! - EndTurn: full delegation to `turn_manager::end_turn` — not exercised
@@ -165,33 +166,95 @@ fn apply_plain_move(pos: &mut Position, src: u8, tgt: u8, undo: &mut Undo) {
     moved_set(pos, undo, tgt);
 }
 
-/// Move-Attack: mover stays put; defender (target, or a redirected Guard via
-/// Bodyguard `choice_idx`) takes 1 damage. Armor absorbs first; on Armor=0 the
-/// hit removes 1 HP; HP=0 removes the piece from the board.
+/// Move-Attack (Stack M canonical rule): the attacker advances 1 tile toward
+/// the target (stopping on `approach_sq`, the penultimate tile encoded in the
+/// action), then the defender takes 1 damage. If a Guard intercepts via
+/// `choice_idx`, that Guard takes the damage instead — but the attacker still
+/// advances. Armor absorbs first; on Armor=0 the hit removes 1 HP; HP=0
+/// removes the piece from the board.
+///
+/// For speed-1 attackers (Champion/King), `approach_sq == src`, so no
+/// physical relocation occurs and the function degenerates to "attacker
+/// stays put, defender takes damage" — the previous Stack-M behaviour for
+/// the speed-1 case.
 fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let tgt = action.target();
     let choice = action.choice_idx();
+    // approach_sq carried in bits 23..29 for any generator-emitted Move-Attack.
+    // Defensive fallback to src for any externally-constructed legacy action
+    // (no current code path produces one, but the make_unmake tests build
+    // raw Actions via `Action::encode` and pre-canon-rule fixtures may
+    // exist). When has_approach() is false, treat it as the speed-1
+    // "attacker stays put" case.
+    let approach = if action.has_approach() { action.approach_sq() } else { src };
 
     debug_assert!(pos.is_occupied(src), "move-attack from empty square");
     debug_assert!(pos.is_occupied(tgt), "move-attack on empty square");
+    debug_assert!(approach < 64, "approach_sq out of range");
+    debug_assert!(
+        approach == src || !pos.is_occupied(approach),
+        "approach_sq must be empty (or == src for speed-1)",
+    );
 
-    // Decide which square actually takes the hit.
+    // Decide which square actually takes the hit (defender or Bodyguard
+    // redirect). Bodyguard eligibility is dual-adjacency: Guard adjacent to
+    // BOTH defender AND approach_sq, on the defender's side.
     let hit_sq = if choice == 0 {
         tgt
     } else {
-        let guards = super::generator::bodyguard_guards_for(pos, tgt);
+        let guards = super::generator::bodyguard_guards_for(pos, tgt, approach);
         let k = (choice as usize).checked_sub(1).expect("choice_idx>=1 here");
         debug_assert!(k < guards.len(),
-            "Bodyguard choice_idx={} out of range (only {} eligible Guards for target {})",
-            choice, guards.len(), tgt);
+            "Bodyguard choice_idx={} out of range (only {} eligible Guards for target {} via approach {})",
+            choice, guards.len(), tgt, approach);
         guards[k]
     };
 
+    // Advance the attacker to approach_sq (only if it differs from src).
+    // The attacker NEVER enters the target tile; the damage step is separate.
+    if approach != src {
+        let prev_entry = pos.mailbox[src as usize];
+        let owner = player_at(pos, src);
+        let kind  = piece_kind_at(pos, src);
+
+        // Mailbox: clear src, copy entry to approach.
+        write_mailbox(pos, undo, src, EMPTY_MAILBOX_ENTRY);
+        write_mailbox(pos, undo, approach, prev_entry);
+
+        // Bitboards: src and approach flip in every layer the piece belongs to.
+        let xor = Bitboard::from_square(src).0 | Bitboard::from_square(approach).0;
+        if pos.p1_pieces.contains(src) {
+            pos.p1_pieces = Bitboard(pos.p1_pieces.0 ^ xor);
+            undo.p1_pieces_xor ^= xor;
+        } else {
+            pos.p2_pieces = Bitboard(pos.p2_pieces.0 ^ xor);
+            undo.p2_pieces_xor ^= xor;
+        }
+        if pos.kings.contains(src) {
+            pos.kings = Bitboard(pos.kings.0 ^ xor);
+            undo.kings_xor ^= xor;
+        } else if pos.champions.contains(src) {
+            pos.champions = Bitboard(pos.champions.0 ^ xor);
+            undo.champions_xor ^= xor;
+        } else if pos.guards.contains(src) {
+            pos.guards = Bitboard(pos.guards.0 ^ xor);
+            undo.guards_xor ^= xor;
+        }
+
+        // Zobrist: piece leaves src, appears at approach.
+        xor_piece(pos, undo, src, owner, kind);
+        xor_piece(pos, undo, approach, owner, kind);
+    }
+
+    // Deal damage AFTER the attacker relocates. The attacker's new square is
+    // `approach`, which by construction is empty AND adjacent to the target,
+    // so it's never `hit_sq`.
     deal_one_damage(pos, hit_sq, undo);
 
-    // Mark the mover's *origin* as moved-this-phase (mover stayed put).
-    moved_set(pos, undo, src);
+    // Mark the attacker's *final* square as moved-this-phase. For speed-1
+    // this is src; for speed-2 it's approach.
+    moved_set(pos, undo, approach);
 }
 
 /// Deal 1 point of damage to the piece on `hit_sq`. Armor absorbs first;
@@ -1340,23 +1403,25 @@ mod tests {
 
     #[test]
     fn bodyguard_can_protect_king_from_lethal_blow() {
-        // P2 King at sq 1, HP=1, Armor=0. P2 Guard at sq 2 (adjacent), HP=2.
-        // P1 Champion at sq 0 Move-Attacks with choice_idx=1 → Guard absorbs.
+        // Dual-adjacency Bodyguard. P1 Champion at a1 (sq 0, speed-1) →
+        // approach=src=0. P2 King at b1 (sq 1), HP=1. Protector P2 Guard at
+        // b2 (sq 9), adjacent to BOTH defender (b1) and approach (a1).
+        // choice_idx=1 → Guard absorbs.
         let mut pos = empty_pos_with_actions(2);
         place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
         place(&mut pos, 1, Player::P2, PieceKind::King, 1, 0);
-        place(&mut pos, 2, Player::P2, PieceKind::Guard, 2, 0);
+        place(&mut pos, 9, Player::P2, PieceKind::Guard, 2, 0);
 
-        let a = Action::encode(0, 1, ActionKind::Move, 0, 1);
+        let a = Action::encode_move_attack(0, 1, 1, 0);
         let undo = make(&mut pos, a);
 
         assert!(pos.kings.contains(1), "King survives — Bodyguard absorbed");
         assert_eq!(pos.mailbox[1].hp(), 1);
-        assert_eq!(pos.mailbox[2].hp(), 1, "Guard HP 2→1");
+        assert_eq!(pos.mailbox[9].hp(), 1, "Guard HP 2→1");
         assert_eq!(pos.game_result, None);
 
         unmake(&mut pos, &undo);
-        assert_eq!(pos.mailbox[2].hp(), 2);
+        assert_eq!(pos.mailbox[9].hp(), 2);
         assert_eq!(pos.game_result, None);
     }
 
@@ -1424,40 +1489,52 @@ mod tests {
 
     #[test]
     fn move_attack_with_three_adjacent_guards_emits_four_variants() {
-        // P2 Champion at sq 9 (b2) with P2 Guards at sq 1, 8, 10 (b1, a2, c2).
-        // Sorted ascending: 1, 8, 10. Generator emits choice 0 (no redirect)
-        // plus 1..=3 mapped onto [1, 8, 10] in ascending order.
+        // Dual-adjacency requires a speed-2 attacker so approach ≠ src can
+        // satisfy "Guard adjacent to BOTH defender AND approach" for three
+        // protectors simultaneously. Geometry:
+        //   P1 Guard at c1 (sq 2, speed-2). Defender P2 Champion at c3 (sq 18).
+        //   P2 Guards at b2 (sq 9), d2 (sq 11), b3 (sq 17). All sit adjacent
+        //   to defender c3. Approach c2 (sq 10) is reachable from c1 in 1
+        //   BFS step and is adjacent to all three Guards. With approach=10
+        //   the dual-adjacency Guard set is {9, 11, 17} (ascending) → 4
+        //   variants: choice 0 (no redirect), 1→9, 2→11, 3→17.
         let mut pos = empty_pos_with_actions(2);
-        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
-        place(&mut pos, 9, Player::P2, PieceKind::Champion, 2, 0);
-        place(&mut pos, 1, Player::P2, PieceKind::Guard, 2, 0);
-        place(&mut pos, 8, Player::P2, PieceKind::Guard, 2, 0);
-        place(&mut pos, 10, Player::P2, PieceKind::Guard, 2, 0);
+        place(&mut pos, 2, Player::P1, PieceKind::Guard, 2, 0);
+        place(&mut pos, 18, Player::P2, PieceKind::Champion, 2, 0);
+        place(&mut pos, 9, Player::P2, PieceKind::Guard, 2, 0);
+        place(&mut pos, 11, Player::P2, PieceKind::Guard, 2, 0);
+        place(&mut pos, 17, Player::P2, PieceKind::Guard, 2, 0);
         pos.to_move = Player::P1;
 
         let actions = super::super::generator::generate(&pos);
-        let mut attacks_on_9: Vec<_> = actions.iter()
+        let mut variants: Vec<u8> = actions.iter()
             .filter(|a| a.kind() == ActionKind::Move
-                     && a.src() == 0
-                     && a.target() == 9)
+                     && a.src() == 2
+                     && a.target() == 18
+                     && a.has_approach()
+                     && a.approach_sq() == 10)
             .map(|a| a.choice_idx())
             .collect();
-        attacks_on_9.sort_unstable();
-        assert_eq!(attacks_on_9, vec![0, 1, 2, 3]);
+        variants.sort_unstable();
+        assert_eq!(variants, vec![0, 1, 2, 3]);
 
         // Apply each redirect and confirm the right Guard takes the hit.
-        for (choice, guard_sq) in [(1u8, 1u8), (2, 8), (3, 10)] {
+        // Attacker also relocates from src=2 to approach=10.
+        for (choice, guard_sq) in [(1u8, 9u8), (2, 11), (3, 17)] {
             let mut p = pos.clone();
-            let a = Action::encode(0, 9, ActionKind::Move, 0, choice);
+            let a = Action::encode_move_attack(2, 18, choice, 10);
             let _ = make(&mut p, a);
             assert_eq!(p.mailbox[guard_sq as usize].hp(), 1,
                 "choice {} should hit guard at sq {}", choice, guard_sq);
-            // The other two Guards untouched.
-            for other in [1u8, 8, 10].iter().copied().filter(|&s| s != guard_sq) {
+            assert!(p.is_occupied(10) && !p.is_occupied(2),
+                "attacker relocates to approach sq 10");
+            // The other two Guards untouched, defender untouched.
+            for other in [9u8, 11, 17].iter().copied().filter(|&s| s != guard_sq) {
                 assert_eq!(p.mailbox[other as usize].hp(), 2,
                     "guard at {} untouched when choice {} redirects to {}",
                     other, choice, guard_sq);
             }
+            assert_eq!(p.mailbox[18].hp(), 2, "defender untouched on redirect");
         }
     }
 
@@ -1478,6 +1555,129 @@ mod tests {
         assert!(pos.kings.contains(1));
         assert_eq!(pos.mailbox[2].hp(), 2, "Guard untouched on choice 0");
         assert_eq!(pos.game_result, None);
+    }
+
+    // --- Slice 2 fixup: penultimate-tile + zig-zag-bypass semantics -----
+
+    #[test]
+    fn move_attack_speed2_attacker_advances_to_approach() {
+        // Speed-2 Guard moves c1→c2 (approach) then strikes c3. After make()
+        // the attacker sits on the approach tile, the source is empty, the
+        // defender lost 1 HP, and unmake fully reverses.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 2, Player::P1, PieceKind::Guard, 2, 0);        // c1
+        place(&mut pos, 18, Player::P2, PieceKind::Champion, 2, 0);    // c3
+        let start = pos.to_fen();
+
+        let a = Action::encode_move_attack(2, 18, 0, 10);              // approach c2
+        let undo = make(&mut pos, a);
+
+        assert!(!pos.is_occupied(2), "src c1 emptied");
+        assert!(pos.is_occupied(10), "attacker on approach c2");
+        assert!(pos.p1_pieces.contains(10) && pos.guards.contains(10));
+        assert_eq!(pos.mailbox[18].hp(), 1, "defender hit for 1");
+        assert!(pos.is_occupied(18), "defender still alive on c3");
+        // moved_this_phase records the *final* square, not src.
+        assert!(pos.moved_this_phase.0 & (1u64 << 10) != 0);
+        assert!(pos.moved_this_phase.0 & (1u64 << 2) == 0);
+
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.to_fen(), start);
+    }
+
+    #[test]
+    fn move_attack_speed1_keeps_attacker_on_src() {
+        // Speed-1 attacker: approach == src. The attacker does NOT relocate
+        // even if has_approach() is set, because make() compares approach
+        // to src. Plain encode (bit 29 = 0) also falls through to src.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 1, Player::P2, PieceKind::Champion, 2, 0);
+
+        let a = Action::encode_move_attack(0, 1, 0, 0);                // approach=src
+        let _ = make(&mut pos, a);
+
+        assert!(pos.is_occupied(0), "attacker stays on src for speed-1");
+        assert!(!pos.is_occupied(1) || pos.mailbox[1].hp() == 1);       // hit landed
+        // moved_this_phase marks src (the only square the mover ever sat on).
+        assert!(pos.moved_this_phase.0 & (1u64 << 0) != 0);
+    }
+
+    #[test]
+    fn move_attack_zigzag_bypass_chooses_clean_approach() {
+        // Speed-2 Guard at c1 (sq 2) attacks defender at c3 (sq 18). A single
+        // protector P2 Guard at b2 (sq 9) sits adjacent to defender and to
+        // approach c2 (sq 10) but NOT to approach d2 (sq 11). The generator
+        // emits both approach variants. With approach=11 the protector is
+        // bypassed (dual-adjacency excludes sq 9) and choice_idx=0 is the
+        // ONLY legal variant; the defender takes the hit directly.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 2, Player::P1, PieceKind::Guard, 2, 0);
+        place(&mut pos, 18, Player::P2, PieceKind::Champion, 2, 0);
+        place(&mut pos, 9, Player::P2, PieceKind::Guard, 2, 0);        // protector b2
+        pos.to_move = Player::P1;
+
+        let actions = super::super::generator::generate(&pos);
+        let to_18: Vec<&Action> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Move
+                     && a.src() == 2
+                     && a.target() == 18
+                     && a.has_approach())
+            .collect();
+
+        // approach=10 (c2): protector b2 (sq 9) is adjacent → 2 variants
+        // (choice 0 + choice 1 redirect onto sq 9).
+        let via_c2: Vec<u8> = to_18.iter()
+            .filter(|a| a.approach_sq() == 10)
+            .map(|a| a.choice_idx())
+            .collect();
+        let mut via_c2_sorted = via_c2.clone();
+        via_c2_sorted.sort_unstable();
+        assert_eq!(via_c2_sorted, vec![0, 1], "approach c2: redirect available");
+
+        // approach=11 (d2): protector b2 NOT adjacent → bypass; only choice 0.
+        let via_d2: Vec<u8> = to_18.iter()
+            .filter(|a| a.approach_sq() == 11)
+            .map(|a| a.choice_idx())
+            .collect();
+        assert_eq!(via_d2, vec![0], "approach d2: zig-zag bypasses the Guard");
+
+        // Apply the bypass: defender takes 1 damage; protector untouched.
+        let bypass = Action::encode_move_attack(2, 18, 0, 11);
+        let undo = make(&mut pos, bypass);
+        assert_eq!(pos.mailbox[18].hp(), 1, "defender hit on bypass");
+        assert_eq!(pos.mailbox[9].hp(), 2, "protector untouched on bypass");
+        assert!(pos.is_occupied(11) && !pos.is_occupied(2));
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.mailbox[18].hp(), 2);
+        assert!(pos.is_occupied(2) && !pos.is_occupied(11));
+    }
+
+    #[test]
+    fn move_attack_multiple_approaches_emit_distinct_actions() {
+        // A speed-2 Guard at b1 (sq 1) attacking a defender at b3 (sq 17) can
+        // physically end up on a2 (sq 8), b2 (sq 9), or c2 (sq 10) — three
+        // different penultimate tiles, each a distinct legal action with
+        // potentially different Bodyguard sets and different attacker end
+        // positions. The generator must emit one action per distinct
+        // approach_sq.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 1, Player::P1, PieceKind::Guard, 2, 0);        // b1
+        place(&mut pos, 17, Player::P2, PieceKind::Champion, 2, 0);    // b3
+        pos.to_move = Player::P1;
+
+        let actions = super::super::generator::generate(&pos);
+        let mut approaches: Vec<u8> = actions.iter()
+            .filter(|a| a.kind() == ActionKind::Move
+                     && a.src() == 1
+                     && a.target() == 17
+                     && a.has_approach()
+                     && a.choice_idx() == 0)
+            .map(|a| a.approach_sq())
+            .collect();
+        approaches.sort_unstable();
+        assert_eq!(approaches, vec![8, 9, 10],
+            "three distinct penultimate tiles between b1 and b3");
     }
 
     // --- Slice 2: Move-Phase integration --------------------------------

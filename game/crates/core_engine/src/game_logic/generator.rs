@@ -90,32 +90,40 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
     let movable = Bitboard(stm_bb.0 & !pos.moved_this_phase.0);
     for src in iter_squares(movable) {
         let speed = piece_speed(pos, src);
-        let (reach_empty, reach_attack) = reachable(src, speed, occ, opp_bb);
+        let (reach_empty, reach_attack, dist) = reachable(src, speed, occ, opp_bb);
 
         // Plain moves: every empty reachable square.
         for dest in iter_squares(reach_empty) {
             out.push(Action::encode(src, dest, ActionKind::Move, 0, 0));
         }
 
-        // Move-Attacks: every enemy square reachable AND not protected by
-        // moved_this_phase shenanigans (no such concept — the target square's
-        // occupancy is by the *opponent*, who has not yet moved this phase
-        // by definition since it's our turn).
+        // Move-Attacks: for every enemy reachable in <= speed steps, enumerate
+        // every empty neighbour `approach_sq` reachable in <= speed-1 steps.
+        // Each distinct approach_sq is a distinct legal action because:
+        // - the attacker physically ends on approach_sq (different end square
+        //   = different observable outcome);
+        // - Bodyguard eligibility is dual-adjacency (target-AND-approach), so
+        //   different approach_sqs can produce different eligible-Guard sets,
+        //   including the "zig-zag bypass" case where one approach has zero
+        //   eligible Guards.
         for tgt in iter_squares(reach_attack) {
-            // Enumerate Bodyguard choices for this defender.
-            let bg_guards = bodyguard_guards_for(pos, tgt);
-            // choice_idx = 0 → no redirect, defender takes the hit.
-            out.push(Action::encode(src, tgt, ActionKind::Move, 0, 0));
-            // choice_idx = k → redirect to k-th eligible adjacent friendly Guard.
-            // (k is 1-indexed in the action; we cap at 15 = 4 bits but stack-M
-            // never has more than 4 distinct adjacent allied Guards in
-            // practice — 8 neighbours minus enemy minus non-Guard.)
-            for (k, _guard_sq) in bg_guards.into_iter().enumerate() {
-                let choice_idx = (k as u8) + 1;
-                if choice_idx > 15 {
-                    break; // 4-bit limit
+            for approach in eight_neighbours(tgt) {
+                // approach must be reachable via empties in <= speed-1 steps
+                // (src itself counts, dist[src]=0).
+                let d = dist[approach as usize];
+                if d == 255 { continue; }
+                if d as u32 + 1 > speed as u32 { continue; }
+
+                // For each (src, tgt, approach), enumerate Bodyguard choices.
+                let bg_guards = bodyguard_guards_for(pos, tgt, approach);
+                // choice_idx = 0 → no redirect, defender takes the hit.
+                out.push(Action::encode_move_attack(src, tgt, 0, approach));
+                // choice_idx = k → redirect to k-th eligible Guard.
+                for (k, _guard_sq) in bg_guards.into_iter().enumerate() {
+                    let choice_idx = (k as u8) + 1;
+                    if choice_idx > 15 { break; } // 4-bit limit (never hit in Stack M)
+                    out.push(Action::encode_move_attack(src, tgt, choice_idx, approach));
                 }
-                out.push(Action::encode(src, tgt, ActionKind::Move, 0, choice_idx));
             }
         }
     }
@@ -427,7 +435,16 @@ fn emit_focus_retreat_retargets(
 ///
 /// `occ` is the full occupancy bitboard (both sides), `opp_bb` is the
 /// opponent's occupancy.
-fn reachable(src: u8, speed: u8, occ: Bitboard, opp_bb: Bitboard) -> (Bitboard, Bitboard) {
+///
+/// Returns `(reach_empty, reach_attack, dist)` where `dist[sq]` is the minimum
+/// Chebyshev BFS distance from `src` through empty squares (255 if unreached;
+/// 0 at `src` itself). The caller uses `dist` to enumerate every valid
+/// *approach square* per Move-Attack target (those neighbours `n` of target
+/// with `dist[n] ≤ speed - 1`). `src` always has `dist[src] = 0` and counts
+/// as a valid approach when it is adjacent to the target (speed-1 case).
+fn reachable(src: u8, speed: u8, occ: Bitboard, opp_bb: Bitboard)
+    -> (Bitboard, Bitboard, [u8; 64])
+{
     // dist[sq] = minimum Chebyshev steps from src, or 255 if unreached.
     let mut dist = [255u8; 64];
     dist[src as usize] = 0;
@@ -480,22 +497,32 @@ fn reachable(src: u8, speed: u8, occ: Bitboard, opp_bb: Bitboard) -> (Bitboard, 
         }
     }
 
-    (reach_empty, reach_attack)
+    (reach_empty, reach_attack, dist)
 }
 
 // === Bodyguard ==============================================================
 
-/// Returns the squares of friendly-to-the-defender Guards that are adjacent
-/// to the defender at `target_sq` and could absorb a Move-Attack hit, in
-/// canonical ascending-square-index order.
+/// Returns the squares of friendly-to-the-defender Guards that are eligible to
+/// intercept a Move-Attack against `target_sq` when the attacker advances to
+/// `approach_sq` (the penultimate tile along the attack path), in canonical
+/// ascending-square-index order.
 ///
-/// Stack M Bodyguard: "When a Champion or King is hit by a Move-Attack, you
-/// may have an adjacent friendly Guard take the hit instead."
+/// Stack M canonical rule: "the defender may choose to have a Guard intercept
+/// — if a friendly Guard is on a tile adjacent to BOTH the tile immediately
+/// before the target (along the attack path) AND the defending piece."
+///
+/// Both adjacencies are Chebyshev (8-neighbour). A Guard adjacent to the
+/// defender but NOT to `approach_sq` is *not* eligible — this is the
+/// "zig-zag bypass" mechanic: a speed-2 Guard attacker can pick an approach
+/// square that sidesteps Bodyguard entirely.
 ///
 /// Returns an empty Vec if:
 /// - the target is itself a Guard (Bodyguard only protects Champions/Kings);
-/// - there are no friendly-to-the-defender Guards in the 8 neighbour squares.
-pub(super) fn bodyguard_guards_for(pos: &Position, target_sq: u8) -> Vec<u8> {
+/// - target is not a defender's Champion or King;
+/// - no friendly-to-the-defender Guard satisfies dual-adjacency. The
+///   approach_sq itself is excluded by construction (it's empty along the
+///   BFS path), and the target square is excluded (it's the defender).
+pub(super) fn bodyguard_guards_for(pos: &Position, target_sq: u8, approach_sq: u8) -> Vec<u8> {
     // Only Champions and Kings are Bodyguard-eligible defenders.
     if pos.guards.contains(target_sq) {
         return Vec::new();
@@ -508,11 +535,24 @@ pub(super) fn bodyguard_guards_for(pos: &Position, target_sq: u8) -> Vec<u8> {
     } else {
         pos.p2_pieces
     };
+    // Build a bitmask of approach_sq's neighbours for cheap dual-adjacency check.
+    let approach_neighbours: u64 = {
+        let mut m = 0u64;
+        for n in eight_neighbours(approach_sq) {
+            m |= 1u64 << n;
+        }
+        m
+    };
     let mut out = Vec::with_capacity(8);
     for n in eight_neighbours(target_sq) {
-        if defender_bb.contains(n) && pos.guards.contains(n) {
-            out.push(n);
+        if !defender_bb.contains(n) || !pos.guards.contains(n) {
+            continue;
         }
+        // Dual-adjacency: Guard must also be adjacent to approach_sq.
+        if approach_neighbours & (1u64 << n) == 0 {
+            continue;
+        }
+        out.push(n);
     }
     out.sort_unstable();
     out
@@ -616,7 +656,7 @@ mod tests {
         p.current_phase = Phase::Move;
         p.actions_remaining = 2;
 
-        let (empty, attack) = reachable(28, 1, p.p1_pieces, Bitboard::EMPTY);
+        let (empty, attack, _dist) = reachable(28, 1, p.p1_pieces, Bitboard::EMPTY);
         assert_eq!(empty.count(), 8, "8 neighbours empty");
         assert_eq!(attack.count(), 0, "no enemies");
     }
@@ -628,7 +668,7 @@ mod tests {
         // (24 squares) minus the corners that BFS still reaches (all of them
         // do, since the board is empty). So 24 squares.
         let p1 = Bitboard::from_square(27);
-        let (empty, attack) = reachable(27, 2, p1, Bitboard::EMPTY);
+        let (empty, attack, _dist) = reachable(27, 2, p1, Bitboard::EMPTY);
         assert_eq!(empty.count(), 24);
         assert_eq!(attack.count(), 0);
     }
@@ -653,7 +693,7 @@ mod tests {
             | Bitboard::from_square(n_b2);
 
         let occ = p.p1_pieces;
-        let (empty, _attack) = reachable(g, 2, occ, Bitboard::EMPTY);
+        let (empty, _attack, _dist) = reachable(g, 2, occ, Bitboard::EMPTY);
         // No Chebyshev-1 neighbours reachable (all occupied by allies).
         assert!(!empty.contains(n_b1));
         assert!(!empty.contains(n_a2));
@@ -681,7 +721,7 @@ mod tests {
         p.champions = Bitboard::from_square(blocker);
 
         let occ = p.p1_pieces;
-        let (empty, _attack) = reachable(g, 2, occ, Bitboard::EMPTY);
+        let (empty, _attack, _dist) = reachable(g, 2, occ, Bitboard::EMPTY);
         assert!(empty.contains(16), "a3 reachable via b2 diagonal");
         assert!(!empty.contains(blocker), "a2 itself occupied");
     }
@@ -697,7 +737,7 @@ mod tests {
         p.to_move = Player::P1;
 
         let occ = p.p1_pieces | p.p2_pieces;
-        let (empty, attack) = reachable(28, 1, occ, p.p2_pieces);
+        let (empty, attack, _dist) = reachable(28, 1, occ, p.p2_pieces);
         assert!(attack.contains(36), "e5 is a move-attack target");
         // Plain-move destinations exclude e5 (it's enemy-occupied).
         assert!(!empty.contains(36));
@@ -726,7 +766,7 @@ mod tests {
             | Bitboard::from_square(enemy);
 
         let occ = p.p1_pieces | p.p2_pieces;
-        let (_empty, attack) = reachable(g, 2, occ, p.p2_pieces);
+        let (_empty, attack, _dist) = reachable(g, 2, occ, p.p2_pieces);
         assert!(!attack.contains(enemy), "c3 unreachable when all launch pads blocked");
     }
 
@@ -745,7 +785,7 @@ mod tests {
         p.champions = Bitboard::from_square(ally) | Bitboard::from_square(enemy);
 
         let occ = p.p1_pieces | p.p2_pieces;
-        let (_empty, attack) = reachable(g, 2, occ, p.p2_pieces);
+        let (_empty, attack, _dist) = reachable(g, 2, occ, p.p2_pieces);
         assert!(attack.contains(enemy), "b3 reachable via b2 launchpad");
     }
 
@@ -766,50 +806,92 @@ mod tests {
         p.champions = p.p1_pieces & !Bitboard::from_square(g) | Bitboard::from_square(enemy);
 
         let occ = p.p1_pieces | p.p2_pieces;
-        let (_empty, attack) = reachable(g, 2, occ, p.p2_pieces);
+        let (_empty, attack, _dist) = reachable(g, 2, occ, p.p2_pieces);
         assert!(!attack.contains(enemy), "all paths to c3 blocked by allies");
     }
 
-    // ---- Bodyguard enumeration ---------------------------------------
+    // ---- Bodyguard enumeration (dual-adjacency) ----------------------
 
     #[test]
-    fn bodyguard_finds_adjacent_friendly_guards() {
-        // P2 King at e8 (sq 60). Adjacent P2 Guards at d8 (59), e7 (52), f7 (53).
-        // Non-Guard adjacency at f8 (61, a Champion) — should NOT be picked.
-        // Adjacent P1 Guard at d7 (51) — should NOT be picked (wrong side).
+    fn bodyguard_dual_adjacency_filters_to_intersection() {
+        // P2 King at e8 (sq 60). P2 Guards at d8 (59), e7 (52), f7 (53). All
+        // three are adjacent to the King. Approach from d7 (51, empty) →
+        // d7's neighbours are c6, d6, e6, c7, e7, c8, d8, e8. So Guards
+        // adjacent to BOTH defender AND approach: e7 (52) and d8 (59) only.
+        // f7 (53) is adjacent to the King but NOT to d7 → excluded.
+        // Wrong-side P1 Guard at c8 (58) — adjacent to both King's neighbour
+        // d8 and to d7, but not to King itself; doubly excluded (wrong side
+        // AND not adjacent to defender).
         let mut p = Position::empty();
         let king = 60u8;
-        let g1 = 59u8; let g2 = 52u8; let g3 = 53u8;
-        let champ_neighbour = 61u8;
-        let enemy_guard = 51u8;
+        let g_d8 = 59u8; let g_e7 = 52u8; let g_f7 = 53u8;
+        let champ_neighbour = 61u8; // f8 — non-Guard, not picked
+        let approach = 51u8;        // d7 — empty
         p.p2_pieces = Bitboard::from_square(king)
-            | Bitboard::from_square(g1) | Bitboard::from_square(g2) | Bitboard::from_square(g3)
+            | Bitboard::from_square(g_d8) | Bitboard::from_square(g_e7) | Bitboard::from_square(g_f7)
             | Bitboard::from_square(champ_neighbour);
-        p.p1_pieces = Bitboard::from_square(enemy_guard);
         p.kings = Bitboard::from_square(king);
-        p.guards = Bitboard::from_square(g1) | Bitboard::from_square(g2)
-            | Bitboard::from_square(g3) | Bitboard::from_square(enemy_guard);
+        p.guards = Bitboard::from_square(g_d8) | Bitboard::from_square(g_e7)
+            | Bitboard::from_square(g_f7);
         p.champions = Bitboard::from_square(champ_neighbour);
 
-        let guards = bodyguard_guards_for(&p, king);
-        assert_eq!(guards, vec![g2, g3, g1], "should be ascending square index");
-        // Re-sort for stable assertion:
-        let mut sorted = guards.clone();
-        sorted.sort_unstable();
-        assert_eq!(sorted, vec![g2, g3, g1].into_iter().collect::<Vec<_>>().into_iter().fold(Vec::new(), |mut acc, x| { acc.push(x); acc.sort_unstable(); acc }));
+        let guards = bodyguard_guards_for(&p, king, approach);
+        // Sorted ascending: e7 (52), d8 (59).
+        assert_eq!(guards, vec![g_e7, g_d8],
+            "only Guards adjacent to BOTH defender AND approach are eligible");
+    }
+
+    #[test]
+    fn bodyguard_zigzag_bypass_yields_empty_set() {
+        // P2 King at e5 (sq 36). Single P2 Guard at e4 (sq 28) — adjacent to
+        // King. Approach from d6 (sq 43): d6's neighbours are c5,d5,e5,c6,e6,
+        // c7,d7,e7 — none of which is e4. So the Guard is adjacent to the
+        // defender but NOT to the approach → Bodyguard CANNOT intercept.
+        // This is the "zig-zag bypass" the canonical rule explicitly enables.
+        let mut p = Position::empty();
+        let king = 36u8;
+        let g = 28u8;       // e4 — Guard adjacent to King
+        let approach = 43u8; // d6 — approach square
+        p.p2_pieces = Bitboard::from_square(king) | Bitboard::from_square(g);
+        p.kings = Bitboard::from_square(king);
+        p.guards = Bitboard::from_square(g);
+
+        let guards = bodyguard_guards_for(&p, king, approach);
+        assert!(guards.is_empty(),
+            "approach d6 sidesteps Bodyguard at e4 — zig-zag bypass");
     }
 
     #[test]
     fn bodyguard_returns_empty_for_guard_target() {
         // Guards do not have Bodyguard protection — they ARE the Bodyguards.
+        // Approach square is irrelevant when the defender is a Guard.
         let mut p = Position::empty();
         let g = 27u8;
         let neighbour_g = 28u8;
+        let approach = 26u8;
         p.p1_pieces = Bitboard::from_square(g) | Bitboard::from_square(neighbour_g);
         p.guards = p.p1_pieces;
 
-        let guards = bodyguard_guards_for(&p, g);
+        let guards = bodyguard_guards_for(&p, g, approach);
         assert!(guards.is_empty(), "Guard target → no Bodyguard");
+    }
+
+    #[test]
+    fn bodyguard_excludes_wrong_side_guards() {
+        // P2 King at e8 (sq 60). P1 Guard at d8 (59) — adjacent to King AND
+        // would be adjacent to any approach from d7. Must NOT be returned:
+        // Bodyguards belong to the defender's side.
+        let mut p = Position::empty();
+        let king = 60u8;
+        let enemy_guard = 59u8;
+        let approach = 51u8; // d7
+        p.p2_pieces = Bitboard::from_square(king);
+        p.p1_pieces = Bitboard::from_square(enemy_guard);
+        p.kings = Bitboard::from_square(king);
+        p.guards = Bitboard::from_square(enemy_guard);
+
+        let guards = bodyguard_guards_for(&p, king, approach);
+        assert!(guards.is_empty(), "wrong-side Guards not eligible");
     }
 
     // ---- generate() top-level ----------------------------------------

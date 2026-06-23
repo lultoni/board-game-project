@@ -38,33 +38,53 @@
 //!                                                  Generator emits this bit
 //!                                                  per legal interpretation;
 //!                                                  resolver reads it.
-//!   bits 23..29  aux_sq        (6 bits, 0..=63)   Auxiliary square. Used by
-//!                                                  Focus-retargeted Self-only
-//!                                                  skills (Shield/Dash/Retreat):
-//!                                                  the caster (src) channels
-//!                                                  the skill onto an *adjacent
-//!                                                  ally* (aux_sq), which is the
-//!                                                  actual recipient/mover.
-//!                                                  Meaningless unless bit 29
-//!                                                  (has_aux) is set.
-//!   bit  29      has_aux       (1 bit)            1 iff aux_sq carries a real
-//!                                                  square. Cheaper than
-//!                                                  reserving a sentinel value.
+//!   bits 23..29  aux_sq /     (6 bits, 0..=63)   DUAL-USE — disambiguated
+//!                approach_sq                       by `kind()`:
+//!                                                  - kind=Skill: aux_sq, the
+//!                                                    Focus-retargeted Self-only
+//!                                                    recipient (Shield/Dash/
+//!                                                    Retreat onto adjacent ally).
+//!                                                  - kind=Move:  approach_sq,
+//!                                                    the penultimate tile the
+//!                                                    attacker stops on along a
+//!                                                    Move-Attack path. For
+//!                                                    speed-1, approach_sq=src.
+//!                                                    For speed-2, one of the
+//!                                                    empty tiles adjacent to
+//!                                                    target that the attacker
+//!                                                    reached via BFS.
+//!                                                  Meaningless unless bit 29 is set.
+//!   bit  29      has_aux /     (1 bit)            1 iff bits 23..29 carry a
+//!                has_approach                       real square (aux for Skill,
+//!                                                  approach for Move-Attack).
+//!                                                  Plain moves leave this 0
+//!                                                  and the mover's destination
+//!                                                  is `target`.
 //!   bits 30..32  reserved
 //! ```
 //!
 //! ## Move-phase actions (kind=Move)
 //!
 //! - **Plain move:** `target` is an empty square. `choice_idx` = 0 (unused).
-//! - **Move-Attack:** `target` is an *enemy*-occupied square. The mover does
-//!   NOT enter the target tile (Stack M); the enemy takes 1 damage. Bodyguard
-//!   redirect is encoded via `choice_idx` — see above.
-//! - Bodyguard enumeration in the generator: for every move-attack target
-//!   that has ≥1 eligible adjacent friendly Guard (i.e. the *defender's*
-//!   adjacent Guard), the generator emits one action per `choice_idx` value
-//!   (0 = no redirect, 1..=k = each Guard). The UI/Session layer mirrors this
-//!   by deferring on the defender's choice during HvH play before forwarding
-//!   the chosen action to `make()`.
+//!   Bit 29 (has_approach) = 0. Mover ends on `target`.
+//! - **Move-Attack:** `target` is an *enemy*-occupied square. The mover advances
+//!   to `approach_sq` (bits 23..29, with bit 29 set), then the defender takes
+//!   1 damage. The mover does NOT enter the target tile. For speed-1 attackers
+//!   `approach_sq == src` (no relocation). For speed-2 attackers reaching a
+//!   distance-2 enemy, `approach_sq` is one of the empty neighbours of the
+//!   target reachable from `src` in exactly one step.
+//! - Bodyguard redirect is encoded via `choice_idx`. Eligibility is
+//!   *dual-adjacency*: a Guard intercepts only if it sits adjacent to BOTH
+//!   the defender AND `approach_sq`.
+//! - Multiple zig-zag paths to the same `target` produce *different*
+//!   `approach_sq` values, each a distinct legal action with potentially
+//!   different Bodyguard-eligible Guards and different attacker end positions.
+//! - Bodyguard enumeration in the generator: for every (src, target,
+//!   approach_sq) triple, compute dual-adjacency Guard set; emit one action
+//!   per `choice_idx` value (0 = no redirect, 1..=k = each eligible Guard,
+//!   canonical ordering by square index ascending). The UI/Session layer
+//!   mirrors this by deferring on the defender's choice during HvH play
+//!   before forwarding the chosen action to `make()`.
 //!
 //! ## Tempest AOE (Skill kind)
 //!
@@ -148,6 +168,26 @@ impl Action {
         a
     }
 
+    /// Encode a Move-Attack action. `approach_sq` is the penultimate tile —
+    /// the empty tile adjacent to `target` that the attacker physically moves
+    /// onto along the attack path. For speed-1 attackers, `approach_sq` == `src`.
+    /// For speed-2 attackers at Chebyshev distance 2, it is one of the empty
+    /// neighbours of `target` reachable from `src` in exactly one BFS step.
+    ///
+    /// `approach_sq` is stored in bits 23..29 and bit 29 is set as a tag
+    /// (sharing the layout with `aux_sq` — disambiguated by `kind() == Move`).
+    /// `choice_idx`: 0 = no Bodyguard redirect; 1..=k = redirect to k-th
+    /// eligible Guard (sorted ascending by square index), where eligibility is
+    /// "Guard adjacent to BOTH the defender AND `approach_sq`."
+    #[inline]
+    pub fn encode_move_attack(src: u8, target: u8, choice_idx: u8, approach_sq: u8) -> Self {
+        debug_assert!(approach_sq < 64);
+        let mut a = Self::encode(src, target, ActionKind::Move, 0, choice_idx);
+        a.0 |= (approach_sq as u32) << 23;
+        a.0 |= 1 << 29;
+        a
+    }
+
     #[inline] pub fn src(self)        -> u8 { (self.0        & 0b111111) as u8 }
     #[inline] pub fn target(self)     -> u8 { ((self.0 >>  6) & 0b111111) as u8 }
     #[inline] pub fn kind(self)       -> ActionKind {
@@ -168,6 +208,17 @@ impl Action {
     /// Auxiliary square (Focus-retargeted recipient). Only meaningful when
     /// `has_aux()` is true; otherwise reads back the reserved zero bits.
     #[inline] pub fn aux_sq(self)     -> u8 { ((self.0 >> 23) & 0b111111) as u8 }
+    /// Approach square (Move-Attack penultimate tile). Only meaningful when
+    /// `kind() == Move` AND bit 29 is set. For plain moves, bit 29 is 0 and
+    /// the attacker's destination is `target()`. For Move-Attacks the
+    /// attacker stops on `approach_sq()`, then deals damage to `target()`
+    /// (or a Bodyguard redirect target).
+    #[inline] pub fn approach_sq(self) -> u8 { ((self.0 >> 23) & 0b111111) as u8 }
+    /// True iff this Move-Attack action carries an approach square (bit 29
+    /// set on a Move-kind action). Plain moves never set this bit.
+    #[inline] pub fn has_approach(self) -> bool {
+        matches!(self.kind(), ActionKind::Move) && (self.0 >> 29) & 1 != 0
+    }
 }
 
 /// Undo Record — written by `make()`, consumed by `unmake()` to perfectly
