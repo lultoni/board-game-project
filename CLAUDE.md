@@ -43,6 +43,19 @@ Everything design-related — sessions, principles, open questions, ADRs, mechan
 
 **12 tables:** `sessions`, `principles`, `open_questions`, `adrs`, `mechanics`, `stacks`, `playtests`, `backpocket`, `next_steps`, `essays`, `design_docs`, `links`.
 
+### Read the body. Never assume from the title. (MANDATORY)
+
+The `title` / `name` columns are *index entries*, not facts. They are abbreviations whose meaning is in the `body`. **Before saying anything about any row, querying it again to "be sure," paraphrasing it back to the user, proposing a resolution, suggesting a change, or treating it as a blocker, you MUST `SELECT body FROM <table> WHERE id='<id>';` and read the body.**
+
+This applies — without exception — to:
+- Any OQ, ADR, principle, stack, mechanic, essay, or playtest the user references by ID or title.
+- Any row that surfaces in `/start`'s briefing list (critical/high OQs, active stacks, top next_steps).
+- Any row you're about to update, resolve, withdraw, or cross-link.
+
+Common failure mode to avoid: an OQ title says "X Removal" and the body actually says "test whether removing X is justified" — those mean different things. A title says "Curve TBD" and the body actually points at the paper-baseline curve — those mean different things. A title says "X Balance" and the body has already absorbed the fix into a stack — those mean different things. **The title is a label. The body is the claim. Read the claim.**
+
+If a user message is ambiguous about which row they mean, ask — don't guess from titles.
+
 ### Working with the DB
 
 Query patterns (use `Bash` tool with `sqlite3 design/design.db "..."`):
