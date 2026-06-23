@@ -108,42 +108,84 @@ fn skill_value(s: Skill) -> i32 {
     base + range_bonus + category_bonus
 }
 
+/// Per-component decomposition of the static eval. `total` is exactly what
+/// `evaluate()` returns (so L3 sees zero behaviour change). The per-bucket
+/// fields are sign-corrected: P1 contributions go to `*_p1`, P2 to `*_p2`,
+/// both as positive magnitudes. `total = sum(*_p1) - sum(*_p2)` (terminal
+/// short-circuit aside).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct EvalBreakdown {
+    pub material_p1: i32,
+    pub material_p2: i32,
+    pub hp_p1:       i32,
+    pub hp_p2:       i32,
+    pub armor_p1:    i32,
+    pub armor_p2:    i32,
+    pub skills_p1:   i32,
+    pub skills_p2:   i32,
+    pub money_p1:    i32,
+    pub money_p2:    i32,
+    pub total:       i32,
+}
+
 pub fn evaluate(pos: &Position) -> i32 {
-    // (a) Terminal — overrules everything.
+    evaluate_breakdown(pos).total
+}
+
+pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
+    // (a) Terminal — overrules everything. Per-bucket fields stay zero;
+    //     only `total` carries the ±MATE_SCORE.
     match pos.game_result {
-        Some(GameResult::P1Wins) => return MATE_SCORE,
-        Some(GameResult::P2Wins) => return -MATE_SCORE,
+        Some(GameResult::P1Wins) => return EvalBreakdown { total:  MATE_SCORE, ..Default::default() },
+        Some(GameResult::P2Wins) => return EvalBreakdown { total: -MATE_SCORE, ..Default::default() },
         None => {}
     }
 
+    let mut b = EvalBreakdown::default();
+
     // (b) Single pass over occupied bits.
-    let mut score: i32 = 0;
     let mut bits = (pos.p1_pieces | pos.p2_pieces).0;
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
         bits &= bits - 1;
         let mask = 1u64 << sq;
         let m = pos.mailbox[sq as usize];
+        let is_p1 = pos.p1_pieces.0 & mask != 0;
 
-        let mut s: i32 =
-            if pos.kings.0     & mask != 0 { KING_MATERIAL }
+        let material =
+            if      pos.kings.0     & mask != 0 { KING_MATERIAL }
             else if pos.champions.0 & mask != 0 { CHAMPION_VALUE }
             else                                { GUARD_VALUE };
-        s += HP_PER_POINT    * m.hp()    as i32;
-        s += ARMOR_PER_POINT * m.armor() as i32;
-        // Stack-M forbids king-equips at the generator level; eval reads
-        // skill ids straight from the mailbox without special-casing kings.
-        if let Some(sk) = skill_from_id(m.skill1()) { s += skill_value(sk); }
-        if let Some(sk) = skill_from_id(m.skill2()) { s += skill_value(sk); }
+        let hp_term    = HP_PER_POINT    * m.hp()    as i32;
+        let armor_term = ARMOR_PER_POINT * m.armor() as i32;
+        let mut skill_term = 0;
+        if let Some(sk) = skill_from_id(m.skill1()) { skill_term += skill_value(sk); }
+        if let Some(sk) = skill_from_id(m.skill2()) { skill_term += skill_value(sk); }
 
-        if pos.p1_pieces.0 & mask != 0 { score += s; } else { score -= s; }
+        if is_p1 {
+            b.material_p1 += material;
+            b.hp_p1       += hp_term;
+            b.armor_p1    += armor_term;
+            b.skills_p1   += skill_term;
+        } else {
+            b.material_p2 += material;
+            b.hp_p2       += hp_term;
+            b.armor_p2    += armor_term;
+            b.skills_p2   += skill_term;
+        }
     }
 
     // (c) Money is global, not per-square.
-    score += MONEY_PER_UNIT * pos.p1_money as i32;
-    score -= MONEY_PER_UNIT * pos.p2_money as i32;
+    b.money_p1 = MONEY_PER_UNIT * pos.p1_money as i32;
+    b.money_p2 = MONEY_PER_UNIT * pos.p2_money as i32;
 
-    score
+    b.total =
+        (b.material_p1 - b.material_p2) +
+        (b.hp_p1       - b.hp_p2)       +
+        (b.armor_p1    - b.armor_p2)    +
+        (b.skills_p1   - b.skills_p2)   +
+        (b.money_p1    - b.money_p2);
+    b
 }
 
 #[cfg(test)]

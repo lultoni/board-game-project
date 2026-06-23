@@ -47,7 +47,9 @@
 //! This keeps the transport orthogonal to `Match` — trivially mockable in
 //! tests, and L7's real PeerJS implementation drops in without changing L4.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use serde::{Serialize, Deserialize};
 
 use crate::game_logic::action::{Action, Undo};
 use crate::game_logic::{generator, make_unmake};
@@ -55,15 +57,19 @@ use crate::search::alpha_beta::{find_best, SearchResult};
 use crate::search::transposition::TranspositionTable;
 use crate::state::Position;
 use crate::state::position::{GameResult, Player};
+use crate::telemetry::{
+    MatchLog, MatchResult, PlyRecord, SearchMeta, ActionDecoded,
+    snapshot_pre, snapshot_post,
+};
 
 // === Configuration ==========================================================
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SeatKind { Human, Ai }
 
 /// Per-seat AI budget. `time_limit_ms == 0` disables the time check (max_depth
 /// is the sole bound — useful in tests).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AiBudget {
     pub time_limit_ms: u64,
     pub max_depth:     u8,
@@ -73,7 +79,7 @@ impl Default for AiBudget {
     fn default() -> Self { AiBudget { time_limit_ms: 1000, max_depth: 6 } }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Config {
     pub p1:      SeatKind,
     pub p2:      SeatKind,
@@ -84,6 +90,9 @@ pub struct Config {
     /// Local-HvH allows take-backs; networked HvH does not (history would
     /// drift between peers).
     pub allow_undo: bool,
+    /// When true, `Match` allocates a `MatchLog` and records a `PlyRecord`
+    /// for every applied action. Default false to keep tight test loops fast.
+    pub auto_log: bool,
 }
 
 impl Config {
@@ -93,6 +102,7 @@ impl Config {
             p1_ai: AiBudget::default(), p2_ai: AiBudget::default(),
             aivai_step_delay: Duration::ZERO,
             allow_undo: true,
+            auto_log:   false,
         }
     }
     pub fn local_hvai() -> Self {
@@ -101,6 +111,7 @@ impl Config {
             p1_ai: AiBudget::default(), p2_ai: AiBudget::default(),
             aivai_step_delay: Duration::ZERO,
             allow_undo: true,
+            auto_log:   false,
         }
     }
     pub fn local_aivai() -> Self {
@@ -109,6 +120,7 @@ impl Config {
             p1_ai: AiBudget::default(), p2_ai: AiBudget::default(),
             aivai_step_delay: Duration::from_millis(300),
             allow_undo: false,
+            auto_log:   false,
         }
     }
     pub fn networked_hvh() -> Self {
@@ -117,6 +129,7 @@ impl Config {
             p1_ai: AiBudget::default(), p2_ai: AiBudget::default(),
             aivai_step_delay: Duration::ZERO,
             allow_undo: false,
+            auto_log:   false,
         }
     }
 }
@@ -178,9 +191,10 @@ pub struct Snapshot {
 
 // === Match ==================================================================
 
-/// One running game. Owns its position, action history, configuration, and a
+/// One running game. Owns its position, action history, configuration, a
 /// per-match transposition table that persists across AI calls (giving each
-/// `find_best` warm move-ordering hints from the previous search).
+/// `find_best` warm move-ordering hints from the previous search), and —
+/// when `config.auto_log` is set — a `MatchLog` accumulating per-ply data.
 pub struct Match {
     position: Position,
     history:  Vec<(Action, Undo)>,
@@ -190,19 +204,41 @@ pub struct Match {
     /// keeping the exact start string sidesteps any future FEN normalisation
     /// drift between save and load.
     start_fen: String,
+    /// L5 telemetry. `Some` iff `config.auto_log`. Caller-driven clock:
+    /// `Match` doesn't read system time itself.
+    log: Option<MatchLog>,
+    /// Unix-ms snapshot captured at match construction. Used to compute
+    /// total wall time on `finalise_log`. Held even when `auto_log` is off
+    /// so we don't pay a branch on every constructor.
+    #[allow(dead_code)]
+    started_at_unix_ms: u64,
 }
 
 impl Match {
-    /// Fresh match from Stack M's canonical starting position.
+    /// Fresh match from Stack M's canonical starting position. Equivalent to
+    /// `new_with_clock(config, 0)`.
     pub fn new(config: Config) -> Self {
+        Self::new_with_clock(config, 0)
+    }
+
+    /// Fresh match with an explicit unix-ms clock reading. Pass the current
+    /// `SystemTime::now()` here if you want telemetry timestamps to be real.
+    pub fn new_with_clock(config: Config, now_unix_ms: u64) -> Self {
         let position = Position::setup_stack_m();
         let start_fen = position.to_fen();
+        let log = if config.auto_log {
+            Some(MatchLog::new(now_unix_ms, config, &position))
+        } else {
+            None
+        };
         Match {
             position,
             history:  Vec::new(),
             config,
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
+            log,
+            started_at_unix_ms: now_unix_ms,
         }
     }
 
@@ -210,9 +246,18 @@ impl Match {
     /// generator. Rejects any action that doesn't appear in the legal list
     /// at its replay-time position — i.e. a tampered snapshot is rejected
     /// without trusting the actions.
+    ///
+    /// Replayed plies are NOT logged (we don't have their original timing or
+    /// AI metadata). If `s.config.auto_log` is set, the resulting `Match` has
+    /// a fresh empty `MatchLog`; subsequent applies populate it normally.
     pub fn from_snapshot(s: Snapshot) -> Result<Self, SnapshotError> {
+        Self::from_snapshot_with_clock(s, 0)
+    }
+
+    pub fn from_snapshot_with_clock(s: Snapshot, now_unix_ms: u64) -> Result<Self, SnapshotError> {
         let mut position = Position::from_fen(&s.start_fen)
             .map_err(|e| SnapshotError::BadFen(format!("{:?}", e)))?;
+        let start_pos_for_log = position.clone();
         let mut history: Vec<(Action, Undo)> = Vec::with_capacity(s.actions.len());
         for (i, &raw) in s.actions.iter().enumerate() {
             let action = Action(raw);
@@ -223,12 +268,19 @@ impl Match {
             let undo = make_unmake::make(&mut position, action);
             history.push((action, undo));
         }
+        let log = if s.config.auto_log {
+            Some(MatchLog::new(now_unix_ms, s.config, &start_pos_for_log))
+        } else {
+            None
+        };
         Ok(Match {
             position,
             history,
             config:    s.config,
             tt:        TranspositionTable::with_capacity_mb(16),
             start_fen: s.start_fen,
+            log,
+            started_at_unix_ms: now_unix_ms,
         })
     }
 
@@ -238,6 +290,8 @@ impl Match {
     #[inline] pub fn history(&self)  -> &[(Action, Undo)] { &self.history }
     #[inline] pub fn config(&self)   -> &Config { &self.config }
     #[inline] pub fn game_result(&self) -> Option<GameResult> { self.position.game_result }
+    #[inline] pub fn match_log(&self) -> Option<&MatchLog> { self.log.as_ref() }
+    #[inline] pub fn match_log_mut(&mut self) -> Option<&mut MatchLog> { self.log.as_mut() }
 
     /// Returns the seat-kind of the player whose turn it is.
     #[inline]
@@ -258,12 +312,66 @@ impl Match {
 
     /// Validate `action` against `generator::generate`, then apply via
     /// `make_unmake::make`. On rejection the position is unchanged.
+    ///
+    /// Delegates to `try_apply_timed` with zero timing / no AI metadata. Use
+    /// `try_apply_timed` directly when you have the data (e.g. from a UI
+    /// hand-clock or replay).
     pub fn try_apply(&mut self, action: Action) -> Result<(), ApplyError> {
+        self.try_apply_timed(action, 0, 0, None)
+    }
+
+    /// Validate + apply, plus record a `PlyRecord` into the match log when
+    /// `config.auto_log` is set. `thought_ms` and `applied_at_unix_ms` are
+    /// caller-supplied (engine has no clock); pass `None` for `ai` when a
+    /// human played, or `Some(SearchMeta::from_search(...))` for an AI move.
+    pub fn try_apply_timed(
+        &mut self,
+        action: Action,
+        thought_ms: u32,
+        applied_at_unix_ms: u64,
+        ai: Option<SearchMeta>,
+    ) -> Result<(), ApplyError> {
         if self.position.game_result.is_some() { return Err(ApplyError::GameOver); }
         let legal = generator::generate(&self.position);
         if !legal.contains(&action) { return Err(ApplyError::IllegalAction); }
+
+        // Capture pre-action telemetry BEFORE make() (only when logging — saves
+        // ~6 µs/ply when auto_log is off, which is the default path).
+        let pre = if self.log.is_some() {
+            let seat_player = self.position.to_move;
+            let seat_kind = self.to_move_kind();
+            let legal_count = legal.len() as u32;
+            let (prev_zobrist, prev_fen, prev_eval, prev_breakdown) = snapshot_pre(&self.position);
+            Some((seat_player, seat_kind, legal_count, prev_zobrist, prev_fen, prev_eval, prev_breakdown))
+        } else {
+            None
+        };
+
         let undo = make_unmake::make(&mut self.position, action);
         self.history.push((action, undo));
+
+        if let (Some((seat_player, seat_kind, legal_count, prev_zobrist, prev_fen, prev_eval, prev_breakdown)),
+                Some(log)) = (pre, self.log.as_mut()) {
+            let (post_zobrist, post_fen, post_eval, post_breakdown,
+                 post_game_result, post_phase, post_actions_remaining, post_round,
+                 post_focus_pending, post_charge_pending, post_moved_this_phase,
+                 post_p1_money, post_p2_money,
+                 post_tracked_enemies, post_tracked_casters) = snapshot_post(&self.position);
+            let ply_no = (log.plies.len() as u32).saturating_add(1);
+            log.record(PlyRecord {
+                ply_no, seat_player, seat_kind,
+                thought_ms, applied_at_unix_ms,
+                action: ActionDecoded::from_action(action),
+                legal_count,
+                prev_zobrist, prev_fen, prev_static_eval: prev_eval, prev_breakdown,
+                post_zobrist, post_fen, post_static_eval: post_eval, post_breakdown,
+                post_game_result, post_phase, post_actions_remaining, post_round,
+                post_focus_pending, post_charge_pending, post_moved_this_phase,
+                post_p1_money, post_p2_money,
+                post_tracked_enemies, post_tracked_casters,
+                ai,
+            });
+        }
         Ok(())
     }
 
@@ -281,17 +389,20 @@ impl Match {
     }
 
     /// Convenience for AIvAI loops: run search and auto-apply the chosen
-    /// action. If the search returned no move (shouldn't happen at a
-    /// non-terminal node), the call is a no-op and the result still carries
-    /// the score for inspection.
+    /// action. Times the search wall and feeds SearchMeta into the log when
+    /// `config.auto_log` is set.
     pub fn step_ai(&mut self) -> Result<SearchResult, AiError> {
+        let t0 = Instant::now();
         let r = self.request_ai_move()?;
+        let thought_ms = t0.elapsed().as_millis().min(u32::MAX as u128) as u32;
         if let Some(a) = r.best {
+            let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
             // try_apply could in principle reject if the AI returned an
             // action our generator no longer considers legal — that'd be a
             // bug in alpha-beta, not in this call site. Propagate as a panic
             // via expect so the failure surfaces immediately.
-            self.try_apply(a).expect("alpha-beta returned an illegal action");
+            self.try_apply_timed(a, thought_ms, 0, Some(meta))
+                .expect("alpha-beta returned an illegal action");
         }
         Ok(r)
     }
@@ -304,7 +415,31 @@ impl Match {
         // restores `game_result` to its pre-move value.
         let (_, undo) = self.history.pop().ok_or(UndoError::NoHistory)?;
         make_unmake::unmake(&mut self.position, &undo);
+        // Mirror the undo in the telemetry log so future replays don't carry
+        // ghost plies. We don't try to "un-undo" by re-recording when the user
+        // re-applies — that's a new ply by construction.
+        if let Some(log) = self.log.as_mut() {
+            if let Some(removed) = log.plies.pop() {
+                log.total_plies = log.total_plies.saturating_sub(1);
+                log.total_wall_ms = log.total_wall_ms.saturating_sub(removed.thought_ms as u64);
+                if let Some(ai) = removed.ai {
+                    log.total_ai_nodes = log.total_ai_nodes.saturating_sub(ai.nodes);
+                }
+            }
+        }
         Ok(())
+    }
+
+    // --- Telemetry ---------------------------------------------------------
+
+    /// Mark the log as finalised. Caller decides which `MatchResult` (the
+    /// engine reports `GameResult::P1Wins/P2Wins` for natural wins; abort and
+    /// draw decisions are the caller's). No-op when `auto_log` is off.
+    pub fn finalise_log(&mut self, now_unix_ms: u64, result: MatchResult) {
+        let pos = &self.position;
+        if let Some(log) = self.log.as_mut() {
+            log.finish(now_unix_ms, result, pos);
+        }
     }
 
     // --- Snapshot ----------------------------------------------------------

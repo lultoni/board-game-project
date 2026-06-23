@@ -22,3 +22,11 @@ pub use session::{
     Snapshot, SnapshotError,
     ApplyEvent, NetworkTransport, LocalTransport,
 };
+
+pub use telemetry::{
+    MatchLog, PlyRecord, ActionDecoded, SearchMeta,
+    MatchResult, Bundle,
+    to_json, to_json_pretty, from_json, config_hash, notation,
+};
+
+pub use search::evaluator::{evaluate, evaluate_breakdown, EvalBreakdown, MATE_SCORE};

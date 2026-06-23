@@ -94,7 +94,8 @@
 //! The resolver applies the Shield-armor / Dash-move / Retreat-move effect
 //! to `aux_sq`, not `src`.
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct Action(pub u32);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

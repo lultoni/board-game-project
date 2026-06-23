@@ -27,9 +27,11 @@ use core_engine::game_logic::skills::skill_from_id;
 use core_engine::state::Position;
 use core_engine::state::fen::to_fen;
 use core_engine::state::position::{Phase, Player, modifier_bits};
+use core_engine::telemetry::{notation, to_json, to_json_pretty, MatchResult};
 use core_engine::{AiBudget, Config, Match, SeatKind};
 
 use std::io::{BufRead, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const DEFAULT_MS:    u64   = 200;
 const DEFAULT_DEPTH: u8    = 6;
@@ -53,6 +55,10 @@ struct Args {
     color: bool,
     step: bool,
     step_delay_ms: u64,
+    export_json: Option<String>,
+    export_json_pretty: Option<String>,
+    export_notation: Option<String>,
+    note: Option<String>,
 }
 
 fn parse_args() -> Args {
@@ -65,6 +71,10 @@ fn parse_args() -> Args {
         color: true,
         step: false,
         step_delay_ms: 0,
+        export_json: None,
+        export_json_pretty: None,
+        export_notation: None,
+        note: None,
     };
     let raw: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -84,6 +94,10 @@ fn parse_args() -> Args {
             "--no-color"      => { a.color = false; i += 1; }
             "--step"          => { a.step = true; i += 1; }
             "--step-delay-ms" => { a.step_delay_ms = val().parse().expect("u64"); i += 2; }
+            "--export-json"        => { a.export_json        = Some(val()); i += 2; }
+            "--export-json-pretty" => { a.export_json_pretty = Some(val()); i += 2; }
+            "--export-notation"    => { a.export_notation    = Some(val()); i += 2; }
+            "--note"               => { a.note               = Some(val()); i += 2; }
             other => { eprintln!("unknown arg: {}", other); std::process::exit(2); }
         }
     }
@@ -255,7 +269,20 @@ fn main() {
     cfg.p1_ai = AiBudget { time_limit_ms: args.p1_ms, max_depth: args.p1_depth };
     cfg.p2_ai = AiBudget { time_limit_ms: args.p2_ms, max_depth: args.p2_depth };
 
-    let mut m = Match::new(cfg);
+    let want_export = args.export_json.is_some()
+                   || args.export_json_pretty.is_some()
+                   || args.export_notation.is_some();
+    cfg.auto_log = want_export;
+
+    let now_ms = || SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    let mut m = Match::new_with_clock(cfg, now_ms());
+    if let (Some(note), Some(log)) = (args.note.as_ref(), m.match_log_mut()) {
+        log.add_note(note);
+    }
     println!("# AIvAI demo");
     println!("  P1: {}  budget: {} ms / depth {}",
              paint("Ai", RED, args.color), args.p1_ms, args.p1_depth);
@@ -308,5 +335,32 @@ fn main() {
     match m.game_result() {
         Some(r) => println!("result: {:?}", r),
         None    => println!("result: cap hit (no winner within {} plies)", args.max_plies),
+    }
+
+    if want_export {
+        use core_engine::state::position::GameResult;
+        let final_result = match m.game_result() {
+            Some(GameResult::P1Wins) => MatchResult::P1Win,
+            Some(GameResult::P2Wins) => MatchResult::P2Win,
+            None                     => MatchResult::Aborted,
+        };
+        m.finalise_log(now_ms(), final_result);
+
+        let log = m.match_log().expect("auto_log enabled");
+        if let Some(p) = &args.export_json {
+            let s = to_json(log);
+            std::fs::write(p, s).expect("write export-json");
+            println!("wrote JSON to {} ({} plies)", p, log.total_plies);
+        }
+        if let Some(p) = &args.export_json_pretty {
+            let s = to_json_pretty(log);
+            std::fs::write(p, s).expect("write export-json-pretty");
+            println!("wrote pretty JSON to {} ({} plies)", p, log.total_plies);
+        }
+        if let Some(p) = &args.export_notation {
+            let s = notation::to_text(log);
+            std::fs::write(p, s).expect("write export-notation");
+            println!("wrote notation to {}", p);
+        }
     }
 }

@@ -11,17 +11,17 @@
 
 use super::{Bitboard, MailboxEntry, EMPTY_MAILBOX_ENTRY};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Player { P1, P2 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Phase { Move, Skill }
 
 /// Terminal-state marker. `None` means the game is still in progress; a
 /// concrete variant means a King has been removed and the named player has
 /// won. Stack M has no draws (`"No draw conditions"`), so this enum has no
 /// Draw variant by design.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GameResult { P1Wins, P2Wins }
 
 /// Stack M has 5 Champions per player. Index 0..5 identifies a specific
