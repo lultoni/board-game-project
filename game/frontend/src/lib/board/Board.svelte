@@ -135,6 +135,12 @@
   }: Props = $props();
 
   const SIZE = $derived(viewBox / 8);
+  /** Pad around the 8×8 grid inside the SVG's viewBox so the radial
+   *  skill wheel (which extends ~1.05 × SIZE beyond a piece's tile)
+   *  can render AND receive pointer events without spilling outside
+   *  the SVG element's hit-box. Using a negative-origin viewBox keeps
+   *  all square coordinates (0..viewBox) unchanged. */
+  const WHEEL_PAD = $derived(SIZE * 0.6);
 
   const pieces = $derived(
     position ? readPieces(position.bitboards, position.mailbox) : [],
@@ -346,7 +352,7 @@
   bind:this={svgEl}
   class="board"
   class:interactive
-  viewBox="0 0 {viewBox} {viewBox + 24}"
+  viewBox="{-WHEEL_PAD} {-WHEEL_PAD} {viewBox + 2 * WHEEL_PAD} {viewBox + 24 + 2 * WHEEL_PAD}"
   xmlns="http://www.w3.org/2000/svg"
   role="img"
   aria-label="game board"
@@ -827,10 +833,6 @@
     user-select: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
-    /* Allow the radial skill wheel to spill outside the 800×824 viewBox
-       when a piece sits at the board edge — without this, edge-piece
-       wheels are clipped flush with the board. */
-    overflow: visible;
   }
   .board :global(*) {
     -webkit-tap-highlight-color: transparent;

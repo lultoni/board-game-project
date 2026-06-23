@@ -5,11 +5,16 @@
   interface Props {
     /** SVG viewBox edge in pixels. Same value as Board. */
     viewBox: number;
+    /** Padding around the 8×8 grid baked into the SVG's viewBox so the
+     *  radial wheel can render outside the grid. Same value as Board's
+     *  WHEEL_PAD. The canvas fills the SVG element's outer box, so we
+     *  use this to map from grid-local coords to canvas pixels. */
+    wheelPad?: number;
     /** Effect queue — drained internally as effects expire. */
     queue: Effect[];
   }
 
-  let { viewBox, queue = $bindable() }: Props = $props();
+  let { viewBox, wheelPad = 0, queue = $bindable() }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let raf = 0;
@@ -71,11 +76,16 @@
     if (!ctx) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
-    // Map SVG viewBox coords (0..viewBox+24) to canvas pixel coords.
-    const scaleX = c.width / viewBox;
-    const scaleY = c.height / (viewBox + 24);
+    // Map the SVG's outer viewBox (which includes wheelPad on each side)
+    // to canvas pixel coords, then translate so grid (0,0) lines up with
+    // the visible board origin.
+    const outerW = viewBox + 2 * wheelPad;
+    const outerH = viewBox + 24 + 2 * wheelPad;
+    const scaleX = c.width / outerW;
+    const scaleY = c.height / outerH;
     const scale = Math.min(scaleX, scaleY);
     ctx.scale(scale, scale);
+    ctx.translate(wheelPad, wheelPad);
     const size = viewBox / 8;
 
     if (queue.length === 0) return;

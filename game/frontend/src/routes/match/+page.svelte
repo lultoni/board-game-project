@@ -248,11 +248,14 @@
   const inMovePhase = $derived(match.position?.currentPhase === 0);
   const interactive = $derived(ready && !busy && match.position?.gameResult === 0);
 
-  // Wheel state. Open whenever a piece is selected (and the player isn't
-  // mid-drag — we don't want the wheel popping up just from press-down).
+  // Wheel state. Open whenever a piece is selected in the Skill Phase
+  // (and the player isn't mid-drag — we don't want the wheel popping up
+  // just from press-down). In the Move Phase, selecting a piece highlights
+  // move targets only; the wheel is strictly a Skill-Phase affordance.
   const wheelOpen = $derived.by(() => {
     if (!interactive) return null;
     if (match.selection === null) return null;
+    if (inMovePhase) return null;
     if (dragSrc !== null) return null;
     if (pendingApproach !== null) return null;
     if (pendingBodyguard !== null) return null;
@@ -812,7 +815,7 @@
             }
           }}
         />
-        <EffectsLayer viewBox={800} bind:queue={effectQueue} />
+        <EffectsLayer viewBox={800} wheelPad={60} bind:queue={effectQueue} />
         {#if hoveredSlice && wheelOpen}
           <div class="info-anchor">
             <SkillInfoCard
@@ -906,11 +909,10 @@
   }
   .board-stack {
     position: relative;
-    /* Padding around the SVG so the radial skill wheel — which renders
-       outside the board's viewBox via `overflow: visible` on the SVG —
-       has room to paint without being clipped by parent layout. */
-    padding: 4rem;
-    margin: -4rem;
+    /* No padding/margin hack here — the wheel's spillover area is now
+       baked into the SVG's own viewBox (see WHEEL_PAD in Board.svelte),
+       so the SVG element's hit-box naturally contains it without
+       shadowing sibling controls (e.g. HUD buttons below). */
   }
   .info-anchor {
     position: absolute;

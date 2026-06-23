@@ -3315,7 +3315,8 @@ mod tests {
 
     #[test]
     fn end_turn_clears_pending_and_disburses_income() {
-        // Skill Phase ends → EndTurn flips to_move, disburses income.
+        // Skill Phase ends → EndTurn flips to_move; income is disbursed from
+        // Round 2 onward (R1 has no income per Stack M).
         let mut pos = skill_phase_pos(0); // P1's Skill Phase, 0 actions left
         pos.round_number = 1;
         pos.p1_money = 5;
@@ -3329,8 +3330,9 @@ mod tests {
         assert_eq!(pos.current_phase, Phase::Move);
         assert_eq!(pos.actions_remaining, 2);
         assert_eq!(pos.pending_modifiers, 0);
-        // P2 got income at round 1 = 2.
-        assert_eq!(pos.p2_money, 7);
+        // Stack M: R1 grants NO income to either side — both play the opening
+        // round on starting money. Neither balance changes here.
+        assert_eq!(pos.p2_money, 5, "no R1 income");
         assert_eq!(pos.p1_money, 5);
 
         // Unmake restores everything.
@@ -3339,6 +3341,26 @@ mod tests {
         assert_eq!(pos.p2_money, 5);
         assert_eq!(pos.pending_modifiers,
             modifier_bits::FOCUS | modifier_bits::CHARGE);
+    }
+
+    #[test]
+    fn end_turn_r2_disburses_income() {
+        // P2's Skill Phase ending in R1 flips to P1 AND bumps round to R2.
+        // R2 income is therefore granted to P1 (the new side-to-move).
+        let mut pos = skill_phase_pos(0);
+        pos.to_move = Player::P2;
+        pos.round_number = 1;
+        pos.p1_money = 5;
+        pos.p2_money = 5;
+        let undo = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        assert_eq!(pos.to_move, Player::P1);
+        assert_eq!(pos.round_number, 2);
+        // R2 income = 2 + 2/5 = 2.
+        assert_eq!(pos.p1_money, 7, "P1 collects R2 income");
+        assert_eq!(pos.p2_money, 5, "P2 unaffected — they already spent R1");
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.p1_money, 5);
+        assert_eq!(pos.round_number, 1);
     }
 
     #[test]

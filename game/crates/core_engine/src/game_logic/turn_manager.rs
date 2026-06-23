@@ -76,10 +76,17 @@ pub fn end_turn(pos: &mut Position, undo: &mut Undo) {
     }
 
     // 4. Disburse start-of-turn income to the new side-to-move.
-    let income = income_per_turn(pos.round_number);
-    match new_stm {
-        Player::P1 => set_p1_money(pos, undo, pos.p1_money.saturating_add(income)),
-        Player::P2 => set_p2_money(pos, undo, pos.p2_money.saturating_add(income)),
+    //    Stack M rule: Round 1 has NO income for either player — both sides
+    //    play the opening round on their starting money. Income begins in
+    //    Round 2 (each player's turn-start), and follows `income_per_turn`
+    //    thereafter. `pos.round_number` here already reflects the round the
+    //    new side-to-move is entering (the bump on P2→P1 happens above).
+    if pos.round_number >= 2 {
+        let income = income_per_turn(pos.round_number);
+        match new_stm {
+            Player::P1 => set_p1_money(pos, undo, pos.p1_money.saturating_add(income)),
+            Player::P2 => set_p2_money(pos, undo, pos.p2_money.saturating_add(income)),
+        }
     }
 
     // 5. Reset phase, actions, defensive moved_this_phase clear.
