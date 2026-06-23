@@ -14,6 +14,7 @@ core_engine = { workspace = true }
 tauri = { version = "2", features = [] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

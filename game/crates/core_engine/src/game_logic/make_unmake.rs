@@ -167,16 +167,25 @@ fn apply_plain_move(pos: &mut Position, src: u8, tgt: u8, undo: &mut Undo) {
 }
 
 /// Move-Attack (Stack M canonical rule): the attacker advances 1 tile toward
+/// Apply a Move-Attack action. The attacker first relocates one tile short of
 /// the target (stopping on `approach_sq`, the penultimate tile encoded in the
 /// action), then the defender takes 1 damage. If a Guard intercepts via
 /// `choice_idx`, that Guard takes the damage instead — but the attacker still
 /// advances. Armor absorbs first; on Armor=0 the hit removes 1 HP; HP=0
 /// removes the piece from the board.
 ///
+/// **Kill-follow-through** (Stack M, Session 31 clarification — engine fix):
+/// When the strike resolves on the defender (no Bodyguard) AND the defender
+/// dies (HP reaches 0), the attacker performs a second hop from `approach_sq`
+/// into the now-empty `target` tile. This holds for both speed-1 and speed-2
+/// attackers: a speed-1 attacker (approach == src) advances from src → target.
+/// Bodyguard interceptions leave the defender alive on `target`, so the
+/// attacker remains on `approach_sq` in that branch.
+///
 /// For speed-1 attackers (Champion/King), `approach_sq == src`, so no
-/// physical relocation occurs and the function degenerates to "attacker
-/// stays put, defender takes damage" — the previous Stack-M behaviour for
-/// the speed-1 case.
+/// physical relocation occurs in the first hop and the function degenerates
+/// to "attacker stays put, defender takes damage" UNLESS the kill-follow-
+/// through triggers — in which case the attacker advances from src → target.
 fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let tgt = action.target();
@@ -211,50 +220,110 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
         guards[k]
     };
 
-    // Advance the attacker to approach_sq (only if it differs from src).
-    // The attacker NEVER enters the target tile; the damage step is separate.
-    if approach != src {
-        let prev_entry = pos.mailbox[src as usize];
-        let owner = player_at(pos, src);
-        let kind  = piece_kind_at(pos, src);
+    // Snapshot attacker identity now — we may need it for the kill-follow-
+    // through second hop. Reading from src here is correct because the
+    // first-hop relocation (if any) below preserves the same piece kind/owner
+    // at `approach`.
+    let attacker_owner = player_at(pos, src);
+    let attacker_kind  = piece_kind_at(pos, src);
+    let attacker_entry = pos.mailbox[src as usize];
 
+    // First hop: advance the attacker to approach_sq (only if it differs
+    // from src). The attacker does NOT enter the target tile here; the
+    // damage step is separate, and the kill-follow-through (below) handles
+    // the second hop when applicable.
+    if approach != src {
         // Mailbox: clear src, copy entry to approach.
         write_mailbox(pos, undo, src, EMPTY_MAILBOX_ENTRY);
-        write_mailbox(pos, undo, approach, prev_entry);
+        write_mailbox(pos, undo, approach, attacker_entry);
 
         // Bitboards: src and approach flip in every layer the piece belongs to.
         let xor = Bitboard::from_square(src).0 | Bitboard::from_square(approach).0;
-        if pos.p1_pieces.contains(src) {
+        if attacker_owner == Player::P1 {
             pos.p1_pieces = Bitboard(pos.p1_pieces.0 ^ xor);
             undo.p1_pieces_xor ^= xor;
         } else {
             pos.p2_pieces = Bitboard(pos.p2_pieces.0 ^ xor);
             undo.p2_pieces_xor ^= xor;
         }
-        if pos.kings.contains(src) {
-            pos.kings = Bitboard(pos.kings.0 ^ xor);
-            undo.kings_xor ^= xor;
-        } else if pos.champions.contains(src) {
-            pos.champions = Bitboard(pos.champions.0 ^ xor);
-            undo.champions_xor ^= xor;
-        } else if pos.guards.contains(src) {
-            pos.guards = Bitboard(pos.guards.0 ^ xor);
-            undo.guards_xor ^= xor;
+        match attacker_kind {
+            ZKind::King => {
+                pos.kings = Bitboard(pos.kings.0 ^ xor);
+                undo.kings_xor ^= xor;
+            }
+            ZKind::Champion => {
+                pos.champions = Bitboard(pos.champions.0 ^ xor);
+                undo.champions_xor ^= xor;
+            }
+            ZKind::Guard => {
+                pos.guards = Bitboard(pos.guards.0 ^ xor);
+                undo.guards_xor ^= xor;
+            }
         }
 
         // Zobrist: piece leaves src, appears at approach.
-        xor_piece(pos, undo, src, owner, kind);
-        xor_piece(pos, undo, approach, owner, kind);
+        xor_piece(pos, undo, src, attacker_owner, attacker_kind);
+        xor_piece(pos, undo, approach, attacker_owner, attacker_kind);
     }
 
-    // Deal damage AFTER the attacker relocates. The attacker's new square is
-    // `approach`, which by construction is empty AND adjacent to the target,
-    // so it's never `hit_sq`.
+    // Deal damage AFTER the first-hop relocation. The attacker's current
+    // square is `approach`, which by construction is empty AND adjacent to
+    // the target, so it's never `hit_sq`.
     deal_one_damage(pos, hit_sq, undo);
 
-    // Mark the attacker's *final* square as moved-this-phase. For speed-1
-    // this is src; for speed-2 it's approach.
-    moved_set(pos, undo, approach);
+    // Kill-follow-through: when the strike landed on the defender (no
+    // Bodyguard intercept) and the defender died, the attacker advances
+    // from `approach` to `tgt`. This is the "you actually moved onto the
+    // square you attacked, because it's now empty" rule. Speed-1 case
+    // (approach == src) is handled by the same logic — the second hop
+    // becomes src → tgt.
+    let defender_died = hit_sq == tgt && !pos.is_occupied(tgt);
+    let attacker_final = if defender_died {
+        // Move the attacker from `approach` (or `src` for speed-1) into the
+        // vacated target tile. We must not call `write_mailbox` on the same
+        // square twice without the first write being recorded — the helper
+        // dedups on prev snapshot, so it's safe; but to be explicit we
+        // clear `approach` first, then write `tgt`.
+        let from = approach;
+        let to   = tgt;
+        // Mailbox.
+        write_mailbox(pos, undo, from, EMPTY_MAILBOX_ENTRY);
+        write_mailbox(pos, undo, to, attacker_entry);
+        // Bitboards: clear `from`, set `to` in every layer the attacker is in.
+        let xor = Bitboard::from_square(from).0 | Bitboard::from_square(to).0;
+        if attacker_owner == Player::P1 {
+            pos.p1_pieces = Bitboard(pos.p1_pieces.0 ^ xor);
+            undo.p1_pieces_xor ^= xor;
+        } else {
+            pos.p2_pieces = Bitboard(pos.p2_pieces.0 ^ xor);
+            undo.p2_pieces_xor ^= xor;
+        }
+        match attacker_kind {
+            ZKind::King => {
+                pos.kings = Bitboard(pos.kings.0 ^ xor);
+                undo.kings_xor ^= xor;
+            }
+            ZKind::Champion => {
+                pos.champions = Bitboard(pos.champions.0 ^ xor);
+                undo.champions_xor ^= xor;
+            }
+            ZKind::Guard => {
+                pos.guards = Bitboard(pos.guards.0 ^ xor);
+                undo.guards_xor ^= xor;
+            }
+        }
+        // Zobrist: piece leaves `from`, appears at `to`.
+        xor_piece(pos, undo, from, attacker_owner, attacker_kind);
+        xor_piece(pos, undo, to, attacker_owner, attacker_kind);
+        to
+    } else {
+        approach
+    };
+
+    // Mark the attacker's *final* square as moved-this-phase. For a non-kill,
+    // that's `approach` (== `src` for speed-1). For a kill-follow-through,
+    // it's `tgt`.
+    moved_set(pos, undo, attacker_final);
 }
 
 /// Deal 1 point of damage to the piece on `hit_sq`. Armor absorbs first;
@@ -648,7 +717,7 @@ fn apply_swap(pos: &mut Position, action: Action, undo: &mut Undo) {
         undo.guards_xor ^= xor;
     }
 
-    debit_money(pos, tgt, /*cost=*/ 4, undo);
+    debit_money(pos, src, /*cost=*/ 4, undo);
     dec_actions(pos, undo);
 }
 
@@ -1238,12 +1307,24 @@ mod tests {
         let a = Action::encode(0, 1, ActionKind::Move, 0, 0);
         let undo = make(&mut pos, a);
 
-        assert!(!pos.is_occupied(1), "guard removed");
-        assert!(!pos.p2_pieces.contains(1));
-        assert!(!pos.guards.contains(1));
-        assert_eq!(pos.mailbox[1].0, 0, "mailbox cleared on removal");
+        // Kill-follow-through (Stack M rule): the defender died on `tgt`,
+        // so the attacker advances from src (sq 0) into the vacated tile
+        // (sq 1). Source is empty, target now holds the P1 Champion.
+        assert!(!pos.is_occupied(0), "attacker vacated src");
+        assert!(pos.is_occupied(1), "attacker advanced into vacated tile");
+        assert!(pos.p1_pieces.contains(1));
+        assert!(pos.champions.contains(1));
+        assert!(!pos.p2_pieces.contains(1), "P2 guard cleared");
+        assert!(!pos.guards.contains(1), "guard layer cleared at tgt");
+        assert_eq!(pos.mailbox[1].hp(), 2, "attacker entry intact at tgt");
+        assert_eq!(pos.mailbox[1].armor(), 0);
+        assert_eq!(pos.mailbox[0].0, 0, "src mailbox cleared");
 
         unmake(&mut pos, &undo);
+        // Roundtrip: attacker back at sq 0, defender back at sq 1.
+        assert!(pos.is_occupied(0));
+        assert!(pos.p1_pieces.contains(0));
+        assert!(pos.champions.contains(0));
         assert!(pos.is_occupied(1));
         assert!(pos.p2_pieces.contains(1));
         assert!(pos.guards.contains(1));
@@ -1350,7 +1431,9 @@ mod tests {
 
     #[test]
     fn make_unmake_roundtrip_move_attack_killing_blow() {
-        // Removal must round-trip exactly.
+        // Removal + kill-follow-through must round-trip exactly. The
+        // attacker advances into the vacated tile on kill, so post-make
+        // we expect: src empty, tgt holds the attacker.
         let mut pos = empty_pos_with_actions(2);
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
         place(&mut pos, 36, Player::P2, PieceKind::Guard, 1, 0);
@@ -1358,7 +1441,10 @@ mod tests {
 
         let a = Action::encode(28, 36, ActionKind::Move, 0, 0);
         let undo = make(&mut pos, a);
-        assert!(!pos.is_occupied(36));
+        assert!(!pos.is_occupied(28), "src vacated after kill-follow-through");
+        assert!(pos.is_occupied(36), "attacker now on tgt");
+        assert!(pos.p1_pieces.contains(36));
+        assert!(pos.champions.contains(36));
         unmake(&mut pos, &undo);
         assert_eq!(pos.to_fen(), before);
     }
@@ -1375,14 +1461,24 @@ mod tests {
         let a = Action::encode(0, 1, ActionKind::Move, 0, 0);
         let undo = make(&mut pos, a);
 
-        assert!(!pos.is_occupied(1), "King removed");
-        assert!(!pos.kings.contains(1));
-        assert!(!pos.p2_pieces.contains(1));
+        // King died → kill-follow-through advances the attacker from src=0
+        // into the now-vacated King tile=1. P2 King is gone from sq 1, but
+        // sq 1 is re-occupied by the P1 Champion that struck the killing
+        // blow.
+        assert!(!pos.kings.contains(1), "King layer cleared at tgt");
+        assert!(!pos.p2_pieces.contains(1), "P2 owner cleared at tgt");
+        assert!(pos.is_occupied(1), "attacker advanced into vacated King tile");
+        assert!(pos.p1_pieces.contains(1));
+        assert!(pos.champions.contains(1));
+        assert!(!pos.is_occupied(0), "src vacated");
         assert_eq!(pos.game_result, Some(GameResult::P1Wins));
 
         unmake(&mut pos, &undo);
         assert!(pos.kings.contains(1));
+        assert!(pos.p2_pieces.contains(1));
         assert_eq!(pos.mailbox[1].hp(), 1);
+        assert!(pos.p1_pieces.contains(0));
+        assert!(pos.champions.contains(0));
         assert_eq!(pos.game_result, None);
     }
 
@@ -1579,6 +1675,36 @@ mod tests {
         assert!(pos.is_occupied(18), "defender still alive on c3");
         // moved_this_phase records the *final* square, not src.
         assert!(pos.moved_this_phase.0 & (1u64 << 10) != 0);
+        assert!(pos.moved_this_phase.0 & (1u64 << 2) == 0);
+
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.to_fen(), start);
+    }
+
+    #[test]
+    fn move_attack_speed2_kill_advances_attacker_to_target() {
+        // Speed-2 kill: Guard at c1 (sq 2), approach c2 (sq 10), defender at
+        // c3 (sq 18) with HP=1. Strike kills. Per Stack M rule clarification,
+        // the attacker should advance src → approach → target on the kill,
+        // landing on the now-empty defender tile (not on approach).
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 2, Player::P1, PieceKind::Guard, 2, 0);        // c1
+        place(&mut pos, 18, Player::P2, PieceKind::Champion, 1, 0);    // c3, HP 1
+        let start = pos.to_fen();
+
+        let a = Action::encode_move_attack(2, 18, 0, 10);              // approach c2
+        let undo = make(&mut pos, a);
+
+        assert!(!pos.is_occupied(2), "src c1 emptied");
+        assert!(!pos.is_occupied(10), "approach c2 vacated (attacker walked through)");
+        assert!(pos.is_occupied(18), "attacker landed on defender's tile c3");
+        assert!(pos.p1_pieces.contains(18), "attacker is P1");
+        assert!(pos.guards.contains(18), "attacker is a Guard");
+        assert!(!pos.p2_pieces.contains(18), "defender removed from p2 bitboard");
+        assert_eq!(pos.mailbox[18].hp(), 2, "attacker's HP carried to tgt (defender's mailbox replaced)");
+        // moved_this_phase records the *final* square.
+        assert!(pos.moved_this_phase.0 & (1u64 << 18) != 0);
+        assert!(pos.moved_this_phase.0 & (1u64 << 10) == 0);
         assert!(pos.moved_this_phase.0 & (1u64 << 2) == 0);
 
         unmake(&mut pos, &undo);
@@ -1949,6 +2075,25 @@ mod tests {
         assert_eq!(pos.mailbox[36].hp(), 1);
         assert_eq!(pos.pending_modifiers & modifier_bits::CHARGE, 0,
                    "Charge consumed");
+    }
+
+    #[test]
+    fn break_with_existing_combo_deals_bonus_hp_damage_no_charge() {
+        // Rule: Break with no Charge deals no BASE HP damage, but the universal
+        // combo bonus (+counter damage) still flows through to HP regardless.
+        // Otherwise a built-up combo counter would be wasted on a Break cast.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Break as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
+        // Seed a pre-existing combo counter of 1 on the target.
+        let prev = pos.mailbox[36];
+        pos.mailbox[36] = prev.with_combo(1);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Break));
+        assert_eq!(pos.mailbox[36].armor(), 0, "armor still removed");
+        assert_eq!(pos.mailbox[36].hp(), 1,
+                   "1 HP damage from pre-existing combo bonus, no Charge");
     }
 
     #[test]

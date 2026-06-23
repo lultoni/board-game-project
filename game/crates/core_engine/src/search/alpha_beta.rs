@@ -18,12 +18,16 @@
 //!
 //! # Time check
 //!
-//! Mask-bit every 1024 nodes — one `Instant::now()` call per ~1024 visits.
+//! Mask-bit every 1024 nodes — one `time::now_ms()` call per ~1024 visits.
 //! On expiry: `aborted = true`, return 0. Every caller checks the flag
 //! after the recursive call and propagates without storing TT garbage.
 //! `time_limit_ms == 0` ⇒ no deadline, max_depth is the sole bound.
+//!
+//! Clock source: `crate::time::now_ms()` is monotonic ms since a fixed
+//! origin. On native it wraps `Instant`; on wasm32 it imports `engine_now_ms`
+//! from the host (supplied by `wasm_wrapper`). See `crate::time`.
 
-use std::time::{Duration, Instant};
+use crate::time::now_ms;
 
 use super::evaluator::{evaluate, MATE_SCORE};
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
@@ -65,9 +69,9 @@ fn score_from_tt(s: i32, ply: i32) -> i32 {
 
 struct SearchCtx<'a> {
     tt:       &'a mut TranspositionTable,
-    // TODO: wasm clock — `Instant::now()` panics under `wasm32-unknown-unknown`.
-    // Slice 10 is desktop-only per ADR-005; revisit when the wasm target lands.
-    deadline: Option<Instant>,
+    /// Absolute deadline in `time::now_ms()` units. `None` disables the
+    /// time check (max_depth is the sole bound).
+    deadline: Option<u64>,
     nodes:    u64,
     aborted:  bool,
 }
@@ -78,7 +82,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 
     if ctx.nodes & TIME_CHECK_MASK == 0 {
         if let Some(d) = ctx.deadline {
-            if Instant::now() >= d { ctx.aborted = true; return 0; }
+            if now_ms() >= d { ctx.aborted = true; return 0; }
         }
     }
 
@@ -174,7 +178,7 @@ pub fn find_best(pos: &mut Position, tt: &mut TranspositionTable,
     let deadline = if time_limit_ms == 0 {
         None
     } else {
-        Some(Instant::now() + Duration::from_millis(time_limit_ms))
+        Some(now_ms().saturating_add(time_limit_ms))
     };
 
     let mut best = SearchResult::default();
@@ -196,7 +200,7 @@ pub fn find_best(pos: &mut Position, tt: &mut TranspositionTable,
         };
 
         if is_mate(score) { break; }
-        if let Some(d_) = deadline { if Instant::now() >= d_ { break; } }
+        if let Some(d_) = deadline { if now_ms() >= d_ { break; } }
     }
 
     best

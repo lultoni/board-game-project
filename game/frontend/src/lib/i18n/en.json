@@ -1,0 +1,70 @@
+{
+  "app": {
+    "title": "(game name)",
+    "engineVersion": "engine v{version}",
+    "loading": "loading…"
+  },
+  "match": {
+    "title": "match · {mode}"
+  },
+  "draft": {
+    "title": "draft",
+    "note": "Makeshift draft — assign two skills to each King and Champion. The real Stack M draft (alternating picks, possible simultaneous-reveal per OQ-62, pre-made loadouts per OQ-65) lands later as its own slice.",
+    "start": "Start match",
+    "clear": "Clear",
+    "mirror": "Mirror P1 → P2",
+    "preset": {
+      "aggro": "Aggro",
+      "defense": "Defense",
+      "combo": "Combo",
+      "random": "Random"
+    }
+  },
+  "menu": {
+    "newMatch": "New match",
+    "modeHvh": "Local hotseat (human vs human)",
+    "modeHvai": "Human vs AI",
+    "modeAivai": "AI vs AI (spectator)",
+    "openReplay": "Open replay…",
+    "resume": "Resume saved match"
+  },
+  "hud": {
+    "phaseMove": "Move",
+    "phaseSkill": "Skill",
+    "actionsRemaining": "{n} actions left",
+    "money": "Money: {amount}",
+    "round": "Round {n}",
+    "toMoveP1": "P1 to move",
+    "toMoveP2": "P2 to move"
+  },
+  "skills": {
+    "lance":   { "name": "Lance",   "desc": "Strike adjacent enemy for 1 damage." },
+    "hook":    { "name": "Hook",    "desc": "Pull target enemy 1 tile toward caster." },
+    "break":   { "name": "Break",   "desc": "Remove 1 armor from target." },
+    "steal":   { "name": "Steal",   "desc": "Damage target and steal 1 money." },
+    "tempest": { "name": "Tempest", "desc": "AOE: damage target, push adjacent pieces." },
+    "shield":  { "name": "Shield",  "desc": "Gain 1 armor on self." },
+    "heal":    { "name": "Heal",    "desc": "Remove Injured from adjacent ally." },
+    "plate":   { "name": "Plate",   "desc": "Adjacent ally gains 1 armor." },
+    "dash":    { "name": "Dash",    "desc": "Move self up to 2 tiles." },
+    "blast":   { "name": "Blast",   "desc": "Push target enemy 1 tile away from caster." },
+    "shove":   { "name": "Shove",   "desc": "Push target 1 tile in any direction." },
+    "swap":    { "name": "Swap",    "desc": "Swap positions with an allied piece." },
+    "retreat": { "name": "Retreat", "desc": "Move self adjacent to one of your Guards." },
+    "focus":   { "name": "Focus",   "desc": "Next non-mystic skill gains +1 Range." },
+    "charge":  { "name": "Charge",  "desc": "Next Strike skill deals +1 damage." }
+  },
+  "result": {
+    "p1Wins": "Player 1 wins",
+    "p2Wins": "Player 2 wins",
+    "draw": "Draw",
+    "aborted": "Match aborted"
+  },
+  "controls": {
+    "endPhase": "End phase",
+    "endTurn": "End turn",
+    "undo": "Undo",
+    "sandbox": "Sandbox",
+    "exitSandbox": "Exit sandbox"
+  }
+}

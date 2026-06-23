@@ -1,17 +1,25 @@
 import { defineConfig } from "vite";
-import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { sveltekit } from "@sveltejs/kit/vite";
 
-// Output to `dist/`, served statically by GitHub Pages (web build) or
-// loaded by Tauri 2 from the same path (desktop build).
+// SvelteKit in SPA mode (adapter-static + ssr=false + prerender=true).
+// Output is a relative-path static site that ships to GitHub Pages (web)
+// and is bundled by Tauri 2 (desktop). Same build, two targets.
 export default defineConfig({
-  plugins: [svelte()],
-  base: "./",
-  build: {
-    target: "es2022",
-    outDir: "dist",
-  },
+  plugins: [sveltekit()],
   server: {
     port: 5173,
     strictPort: true,
+    fs: {
+      // Allow Vite to serve the wasm-pack output that lives outside
+      // the frontend root (../crates/wasm_wrapper/pkg/).
+      allow: [".."],
+    },
+  },
+  // The wasm module ships its own glue + .wasm; treat it as an asset boundary.
+  optimizeDeps: {
+    exclude: ["wasm_wrapper"],
+  },
+  worker: {
+    format: "es",
   },
 });

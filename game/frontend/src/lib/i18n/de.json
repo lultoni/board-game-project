@@ -1,0 +1,20 @@
+{
+  "app": {
+    "title": "(spielname)"
+  },
+  "menu": {
+    "newMatch": "Neue Partie",
+    "modeHvh": "Hotseat (Mensch gegen Mensch)",
+    "modeHvai": "Mensch gegen KI",
+    "modeAivai": "KI gegen KI (Zuschauen)",
+    "openReplay": "Wiederholung öffnen…",
+    "resume": "Gespeicherte Partie fortsetzen"
+  },
+  "controls": {
+    "endPhase": "Phase beenden",
+    "endTurn": "Zug beenden",
+    "undo": "Zurück",
+    "sandbox": "Sandkasten",
+    "exitSandbox": "Sandkasten verlassen"
+  }
+}

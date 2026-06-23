@@ -1,0 +1,55 @@
+/* Global, paper-aesthetic baseline. Page-specific styles live in scoped
+   Svelte blocks. */
+
+:root {
+  --paper-bg: #f4ecd8;
+  --paper-ink: #3a2f1f;
+  --paper-ink-soft: rgba(58, 47, 31, 0.55);
+  --paper-line: rgba(58, 47, 31, 0.15);
+  --paper-line-strong: rgba(58, 47, 31, 0.32);
+  --accent: #c79b3a;
+  --p1: #4b6b8a;
+  --p2: #a94b3b;
+  --paper-square-light: #ece2c8;
+  --paper-square-dark: #d8c89e;
+  --bg-page: #efe7d2;
+  font-family: "Caveat", "Georgia", "Times New Roman", serif;
+  color: var(--paper-ink);
+  background: var(--bg-page);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(199, 155, 58, 0.06), transparent 60%),
+    radial-gradient(circle at 80% 90%, rgba(58, 47, 31, 0.05), transparent 50%),
+    var(--bg-page);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--paper-bg);
+  border: 1.5px solid var(--paper-line-strong);
+  border-radius: 6px;
+  padding: 0.4em 0.9em;
+  cursor: pointer;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+button:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+button:active {
+  transform: translateY(1px);
+}
+
+h1, h2, h3 {
+  margin: 0 0 0.4em;
+  font-weight: 600;
+}

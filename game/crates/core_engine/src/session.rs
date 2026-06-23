@@ -47,7 +47,7 @@
 //! This keeps the transport orthogonal to `Match` — trivially mockable in
 //! tests, and L7's real PeerJS implementation drops in without changing L4.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde::{Serialize, Deserialize};
 
@@ -182,7 +182,7 @@ impl NetworkTransport for LocalTransport {
 /// Compact, replayable game state: the starting FEN plus the full action
 /// list. `from_snapshot` replays every action through `try_apply`, so a
 /// tampered snapshot fails fast with `IllegalActionInHistory`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Snapshot {
     pub start_fen: String,
     pub actions:   Vec<u32>,
@@ -392,9 +392,9 @@ impl Match {
     /// action. Times the search wall and feeds SearchMeta into the log when
     /// `config.auto_log` is set.
     pub fn step_ai(&mut self) -> Result<SearchResult, AiError> {
-        let t0 = Instant::now();
+        let t0 = crate::time::now_ms();
         let r = self.request_ai_move()?;
-        let thought_ms = t0.elapsed().as_millis().min(u32::MAX as u128) as u32;
+        let thought_ms = crate::time::now_ms().saturating_sub(t0).min(u32::MAX as u64) as u32;
         if let Some(a) = r.best {
             let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
             // try_apply could in principle reject if the AI returned an

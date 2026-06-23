@@ -15,6 +15,8 @@ pub mod game_logic;
 pub mod search;
 pub mod session;
 pub mod telemetry;
+pub mod time;
+pub mod wrapper_api;
 
 pub use session::{
     Match, Config, SeatKind, AiBudget,
