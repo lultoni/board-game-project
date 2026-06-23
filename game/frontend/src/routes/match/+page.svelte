@@ -27,6 +27,7 @@
   const CHARGE_SKILL_ID = 15;
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
+  import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
   import type { Effect } from "$lib/viz/effects";
 
   const mode = $derived($page.url.searchParams.get("mode") ?? "hvh");
@@ -822,6 +823,17 @@
           }}
         />
         <EffectsLayer viewBox={800} bind:queue={effectQueue} />
+        {#if hoveredSlice && wheelOpen}
+          <div class="info-anchor">
+            <SkillInfoCard
+              slice={hoveredSlice}
+              {focusActive}
+              {chargeActive}
+              armed={hoveredSlice.kind === "skill"
+                && armedSkill?.skillId === hoveredSlice.skillId}
+            />
+          </div>
+        {/if}
       </div>
       {#if pendingApproach}
         <p class="hint">choose the path the attacker takes — click a highlighted square, or press Esc to cancel</p>
@@ -904,6 +916,19 @@
   }
   .board-stack {
     position: relative;
+  }
+  .info-anchor {
+    position: absolute;
+    top: 0;
+    left: calc(100% + 1rem);
+    z-index: 5;
+    pointer-events: none;
+  }
+  @media (max-width: 980px) {
+    .info-anchor {
+      position: static;
+      margin-top: 0.6rem;
+    }
   }
   .hint {
     margin: 0.4rem 0 0;

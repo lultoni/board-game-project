@@ -54,6 +54,17 @@
     "focus":   { "name": "Focus",   "desc": "Next non-mystic skill gains +1 Range." },
     "charge":  { "name": "Charge",  "desc": "Next Strike skill deals +1 damage." }
   },
+  "wheel": {
+    "endphase": { "name": "End Phase", "desc": "End the Skill Phase. Unspent actions are forfeit." },
+    "cost": "Cost {n}",
+    "range": "Range {n}",
+    "categoryStrike": "Strike",
+    "categoryShield": "Shield",
+    "categoryMove": "Movement",
+    "categoryMystic": "Mystic",
+    "armed": "armed — click a target",
+    "staged": "staged"
+  },
   "result": {
     "p1Wins": "Player 1 wins",
     "p2Wins": "Player 2 wins",

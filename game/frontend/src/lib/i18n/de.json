@@ -10,6 +10,17 @@
     "openReplay": "Wiederholung öffnen…",
     "resume": "Gespeicherte Partie fortsetzen"
   },
+  "wheel": {
+    "endphase": { "name": "Phase beenden", "desc": "Die Skill-Phase beenden. Ungenutzte Aktionen verfallen." },
+    "cost": "Kosten {n}",
+    "range": "Reichweite {n}",
+    "categoryStrike": "Angriff",
+    "categoryShield": "Schutz",
+    "categoryMove": "Bewegung",
+    "categoryMystic": "Mystik",
+    "armed": "bereit — Ziel anklicken",
+    "staged": "vorgemerkt"
+  },
   "controls": {
     "endPhase": "Phase beenden",
     "endTurn": "Zug beenden",
