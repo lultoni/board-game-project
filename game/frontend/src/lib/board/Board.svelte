@@ -3,6 +3,8 @@
   import { readPieces } from "$lib/engine/mailbox";
   import Piece from "./Piece.svelte";
   import SkillWheel, { type SliceKind } from "./SkillWheel.svelte";
+  import DirectionPicker from "./DirectionPicker.svelte";
+  import type { SkillVariant } from "$lib/state/skill-targets";
 
   interface Props {
     position: PositionView | null;
@@ -96,6 +98,14 @@
     };
     onWheelSliceClick?: (slice: SliceKind) => void;
     onWheelSliceHover?: (slice: SliceKind | null) => void;
+    /** Direction picker (Shove). When non-null, render an arrow ring on
+     *  `target` and pass clicks back via the handlers below. */
+    directionPicker?: {
+      target: number;
+      variants: SkillVariant[];
+    } | null;
+    onDirectionPick?: (raw: number) => void;
+    onDirectionCancel?: () => void;
   }
 
   let {
@@ -132,6 +142,9 @@
     },
     onWheelSliceClick,
     onWheelSliceHover,
+    directionPicker = null,
+    onDirectionPick,
+    onDirectionCancel,
   }: Props = $props();
 
   const SIZE = $derived(viewBox / 8);
@@ -822,6 +835,18 @@
         onSliceHover={(s) => onWheelSliceHover?.(s)}
       />
     </g>
+  {/if}
+
+  <!-- Shove direction picker. Rendered last so its arrows paint above pieces
+       and squares; absorbs pointer events on its backdrop + arrows. -->
+  {#if directionPicker}
+    <DirectionPicker
+      size={SIZE}
+      target={directionPicker.target}
+      variants={directionPicker.variants}
+      onPick={(raw) => onDirectionPick?.(raw)}
+      onCancel={() => onDirectionCancel?.()}
+    />
   {/if}
 </svg>
 

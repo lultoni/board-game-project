@@ -10,6 +10,23 @@
     "openReplay": "Wiederholung öffnen…",
     "resume": "Gespeicherte Partie fortsetzen"
   },
+  "skills": {
+    "lance":   { "name": "Lanze",   "desc": "Trifft angrenzenden Gegner für 1 Schaden." },
+    "hook":    { "name": "Haken",   "desc": "Ziehe gegnerische Figur 1 Feld zum Caster. Das Ziel erhält 1 Schaden." },
+    "break":   { "name": "Bruch",   "desc": "Entferne 1 Rüstung vom Ziel. Hat das Ziel 0 Rüstung und Ladung ist vorgemerkt, wird stattdessen 1 LP Schaden verursacht." },
+    "steal":   { "name": "Raub",    "desc": "Füge dem Ziel 1 Schaden zu. Der Caster erhält 1 Geld; das Ziel verliert 1 Geld." },
+    "tempest": { "name": "Sturm",   "desc": "Ziel erhält 1 Schaden. Figuren im Ring um das Ziel werden 1 Feld nach außen gedrückt. Der Caster ist nicht betroffen." },
+    "shield":  { "name": "Schild",  "desc": "Selbst 1 Rüstung erhalten." },
+    "heal":    { "name": "Heilen",  "desc": "Stelle 1 LP eines angrenzenden Verbündeten wieder her." },
+    "plate":   { "name": "Panzer",  "desc": "Angrenzender Verbündeter erhält 1 Rüstung." },
+    "dash":    { "name": "Sprint",  "desc": "Bewege dich bis zu 2 Felder entlang des Pfads." },
+    "blast":   { "name": "Stoß",    "desc": "Drücke gegnerische Figur 1 Feld vom Caster weg (Richtung entlang der Caster→Ziel-Linie)." },
+    "shove":   { "name": "Schubs",  "desc": "Schiebe Verbündeten oder Gegner 1 Feld in eine gewählte Richtung." },
+    "swap":    { "name": "Tausch",  "desc": "Tausche Position mit einer verbündeten Figur. Erfordert einen freien Pfad." },
+    "retreat": { "name": "Rückzug", "desc": "Bewege dich entlang des Pfads auf ein Feld angrenzend zu einem deiner Wachen." },
+    "focus":   { "name": "Fokus",   "desc": "Diese Runde erhält ein nicht-mystischer Skill einer deiner Figuren +1 Reichweite. Bei Bewegungs-Skills wählst du, ob +1 für Aktivierungsreichweite oder Effektreichweite gilt." },
+    "charge":  { "name": "Ladung",  "desc": "Diese Runde verursacht ein Angriffs-Skill einer deiner Figuren +1 Schaden." }
+  },
   "wheel": {
     "endphase": { "name": "Phase beenden", "desc": "Die Skill-Phase beenden. Ungenutzte Aktionen verfallen." },
     "cost": "Kosten {n}",
@@ -20,8 +37,8 @@
     "categoryMystic": "Mystik",
     "armed": "bereit — Ziel anklicken",
     "staged": "vorgemerkt",
-    "focusStaged": "Fokus ist vorgemerkt — dein nächster nicht-mystischer Skill erhält +1 Reichweite.",
-    "chargeStaged": "Ladung ist vorgemerkt — dein nächster Angriffs-Skill verursacht +1 Schaden."
+    "focusStaged": "Fokus ist vorgemerkt — ein nicht-mystischer Skill diese Runde erhält +1 Reichweite (bei Bewegungs-Skills wählst du Aktivierungs- oder Effektreichweite).",
+    "chargeStaged": "Ladung ist vorgemerkt — ein Angriffs-Skill einer deiner Figuren diese Runde verursacht +1 Schaden."
   },
   "controls": {
     "endPhase": "Phase beenden",

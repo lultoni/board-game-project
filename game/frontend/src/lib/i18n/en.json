@@ -39,20 +39,20 @@
   },
   "skills": {
     "lance":   { "name": "Lance",   "desc": "Strike adjacent enemy for 1 damage." },
-    "hook":    { "name": "Hook",    "desc": "Pull target enemy 1 tile toward caster." },
-    "break":   { "name": "Break",   "desc": "Remove 1 armor from target." },
-    "steal":   { "name": "Steal",   "desc": "Damage target and steal 1 money." },
-    "tempest": { "name": "Tempest", "desc": "AOE: damage target, push adjacent pieces." },
+    "hook":    { "name": "Hook",    "desc": "Pull target enemy 1 tile toward caster. Target takes 1 damage." },
+    "break":   { "name": "Break",   "desc": "Remove 1 armor from target. If target has 0 armor and Charge is staged, deals 1 HP damage instead." },
+    "steal":   { "name": "Steal",   "desc": "Deal 1 damage to target. Caster gains 1 money; target loses 1 money." },
+    "tempest": { "name": "Tempest", "desc": "Target takes 1 damage. Pieces in the ring around the target are pushed 1 tile outward. Caster is unaffected." },
     "shield":  { "name": "Shield",  "desc": "Gain 1 armor on self." },
-    "heal":    { "name": "Heal",    "desc": "Remove Injured from adjacent ally." },
+    "heal":    { "name": "Heal",    "desc": "Restore 1 HP to adjacent ally." },
     "plate":   { "name": "Plate",   "desc": "Adjacent ally gains 1 armor." },
-    "dash":    { "name": "Dash",    "desc": "Move self up to 2 tiles." },
-    "blast":   { "name": "Blast",   "desc": "Push target enemy 1 tile away from caster." },
-    "shove":   { "name": "Shove",   "desc": "Push target 1 tile in any direction." },
-    "swap":    { "name": "Swap",    "desc": "Swap positions with an allied piece." },
-    "retreat": { "name": "Retreat", "desc": "Move self adjacent to one of your Guards." },
-    "focus":   { "name": "Focus",   "desc": "Next non-mystic skill gains +1 Range." },
-    "charge":  { "name": "Charge",  "desc": "Next Strike skill deals +1 damage." }
+    "dash":    { "name": "Dash",    "desc": "Move self up to 2 tiles along the Path." },
+    "blast":   { "name": "Blast",   "desc": "Push target enemy 1 tile away from caster (direction implied by caster→target line)." },
+    "shove":   { "name": "Shove",   "desc": "Push target ally or enemy 1 tile in a chosen direction." },
+    "swap":    { "name": "Swap",    "desc": "Swap positions with an allied piece. Requires an unobstructed Path." },
+    "retreat": { "name": "Retreat", "desc": "Move self along the Path to a square adjacent to one of your Guards." },
+    "focus":   { "name": "Focus",   "desc": "This turn, one non-mystic skill used by any of your pieces gains +1 Range. For Move skills, you choose whether +1 applies to activation range or effect range." },
+    "charge":  { "name": "Charge",  "desc": "This turn, one Strike skill used by any of your pieces deals +1 damage." }
   },
   "wheel": {
     "endphase": { "name": "End Phase", "desc": "End the Skill Phase. Unspent actions are forfeit." },
@@ -64,8 +64,8 @@
     "categoryMystic": "Mystic",
     "armed": "armed — click a target",
     "staged": "staged",
-    "focusStaged": "Focus is staged — your next non-mystic skill gains +1 Range.",
-    "chargeStaged": "Charge is staged — your next Strike skill deals +1 damage."
+    "focusStaged": "Focus is staged — one non-mystic skill of yours this turn gains +1 Range (for Move skills, you pick activation- or effect-range).",
+    "chargeStaged": "Charge is staged — one Strike skill used by any of your pieces this turn deals +1 damage."
   },
   "result": {
     "p1Wins": "Player 1 wins",

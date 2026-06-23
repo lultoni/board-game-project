@@ -13,7 +13,7 @@
     approachChoicesFor,
   } from "$lib/state/move-targets";
   import { bodyguardGuardsFor } from "$lib/state/bodyguard";
-  import { skillTargetsFor, skillIsCastable } from "$lib/state/skill-targets";
+  import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, type SkillVariant } from "$lib/state/skill-targets";
   import {
     isSelfCast,
     SKILLS,
@@ -73,6 +73,15 @@
   // state. Cleared on any non-target click, on selection change, or after
   // firing.
   let armedSkill = $state<{ square: number; skillId: number } | null>(null);
+  /** When the armed skill needs a direction (Shove), clicking a target opens
+   *  this picker instead of firing. Cleared on cancel / pick / disarm. */
+  let pendingDirection = $state<{ target: number; variants: SkillVariant[] } | null>(null);
+  /** Focus-mode preference. Only consulted when Focus is staged AND the
+   *  armed skill is Blast or Shove (the two skills with two distinct Focus
+   *  interpretations). "activation" = +1 to range (broader target set);
+   *  "effect" = base range, but the effect itself is boosted (Blast pushes 2,
+   *  Shove pushes 2). Player toggles via SkillInfoCard while armed. */
+  let focusModePref = $state<"activation" | "effect">("activation");
   /** Focus / Charge are derived from the engine's pendingModifiers bitfield.
    *  Casting Focus / Charge (skills 14 / 15) stages the modifier; the wheel
    *  reads these flags to render the slice as "active". */
@@ -259,6 +268,7 @@
     if (dragSrc !== null) return null;
     if (pendingApproach !== null) return null;
     if (pendingBodyguard !== null) return null;
+    if (pendingDirection !== null) return null;
     const pos = match.position;
     if (!pos) return null;
     const m = decodeMailbox(pos.mailbox[match.selection]);
@@ -293,10 +303,29 @@
     };
   });
 
-  // Target set for the currently-armed skill. Empty when no skill armed.
+  // Whether the currently-armed skill has a Focus-mode choice for the player
+  // to make. True only for Blast (10) and Shove (11) when Focus is staged
+  // AND the engine emitted both `focus_mode=0` (activation-buff) and
+  // `focus_mode=1` (effect-buff) variants. Other skills under Focus have a
+  // single interpretation, so no toggle is shown.
+  const armedHasFocusModeChoice = $derived.by(() => {
+    if (!armedSkill) return false;
+    return hasFocusModeChoice(match.legal, armedSkill.square, armedSkill.skillId);
+  });
+
+  // Target set for the currently-armed skill. Filtered by focusModePref when
+  // both interpretations exist; otherwise unfiltered.
   const armedSkillTargets = $derived.by(() => {
     if (!armedSkill) return new Set<number>();
-    return skillTargetsFor(match.legal, armedSkill.square, armedSkill.skillId).squares;
+    const ts = skillTargetsFor(match.legal, armedSkill.square, armedSkill.skillId);
+    if (!armedHasFocusModeChoice) return ts.squares;
+    // Filter by focus-mode preference. `focusMode=true` → effect-buff variant.
+    const wantEffect = focusModePref === "effect";
+    const filtered = new Set<number>();
+    for (const [tgt, vs] of ts.variantsByTarget) {
+      if (vs.some((v) => v.focusMode === wantEffect)) filtered.add(tgt);
+    }
+    return filtered;
   });
 
   onMount(async () => {
@@ -491,6 +520,8 @@
       match.lastApplied = raw;
       match.selection = null;
       pendingApproach = null;
+      pendingDirection = null;
+      focusModePref = "activation";
 
       // Phase / side flip → clear used-this-phase set.
       const k = phaseKey();
@@ -599,6 +630,12 @@
     // disarms but keeps the selection.
     if (armedSkill && armedSkill.square === match.selection) {
       if (armedSkillTargets.has(sq)) {
+        // Shove (11) needs a push-direction pick before firing. Open the
+        // direction picker on the target tile and let the player choose.
+        if (armedSkill.skillId === 11) {
+          openDirectionPicker(armedSkill.square, armedSkill.skillId, sq);
+          return;
+        }
         const raw = rawForArmedTarget(armedSkill.square, armedSkill.skillId, sq);
         if (raw !== null) {
           armedSkill = null;
@@ -729,25 +766,43 @@
   }
 
   // Pick the raw u32 for an armed skill firing at `target`. The engine emits
-  // one variant per legal (caster, skill, target); modifier state lives in
-  // `position.pendingModifiers`, not on the action. Just return the first
-  // matching variant.
+  // one variant per legal (caster, skill, target, choice_idx, focus_mode);
+  // for skills with a Focus-mode choice we filter to the player's preference,
+  // otherwise we just return the first matching variant. Direction skills
+  // (Shove) shouldn't go through this path — they hit the DirectionPicker
+  // first — but we fall through to "any matching" for safety.
   function rawForArmedTarget(src: number, skillId: number, target: number): number | null {
-    for (let i = 0; i < match.legal.length; i++) {
-      const raw = match.legal[i];
-      const a = decodeAction(raw);
-      if (a.kind !== ActionKind.Skill) continue;
-      if (a.src !== src) continue;
-      if (a.skillId !== skillId) continue;
-      if (a.target !== target) continue;
-      return raw;
+    const ts = skillTargetsFor(match.legal, src, skillId);
+    const variants = ts.variantsByTarget.get(target);
+    if (!variants || variants.length === 0) return null;
+    if (hasFocusModeChoice(match.legal, src, skillId)) {
+      const wantEffect = focusModePref === "effect";
+      const v = variants.find((x) => x.focusMode === wantEffect);
+      if (v) return v.raw;
     }
-    return null;
+    return variants[0].raw;
+  }
+
+  /** Build a variant list for the Shove (or generally direction-skill) target
+   *  square and open the direction picker. Filters by focus-mode preference
+   *  when the (src, skill) has a Focus-mode choice. */
+  function openDirectionPicker(src: number, skillId: number, target: number) {
+    const ts = skillTargetsFor(match.legal, src, skillId);
+    let variants = ts.variantsByTarget.get(target) ?? [];
+    if (hasFocusModeChoice(match.legal, src, skillId)) {
+      const wantEffect = focusModePref === "effect";
+      variants = variants.filter((v) => v.focusMode === wantEffect);
+    }
+    if (variants.length === 0) return;
+    pendingDirection = { target, variants };
   }
 
   function handleKeyDown(ev: KeyboardEvent) {
     if (ev.key === "Escape") {
-      if (pendingApproach) {
+      if (pendingDirection) {
+        pendingDirection = null;
+        ev.preventDefault();
+      } else if (pendingApproach) {
         pendingApproach = null;
         ev.preventDefault();
       } else if (armedSkill) {
@@ -758,6 +813,18 @@
         ev.preventDefault();
       }
     }
+  }
+
+  function handleDirectionPick(raw: number) {
+    pendingDirection = null;
+    armedSkill = null;
+    applyRaw(raw);
+  }
+
+  function handleDirectionCancel() {
+    pendingDirection = null;
+    // Keep `armedSkill` so the player can pick a different target without
+    // re-arming the skill.
   }
 </script>
 
@@ -799,6 +866,9 @@
           {wheelLegality}
           onWheelSliceClick={handleWheelSliceClick}
           onWheelSliceHover={handleWheelSliceHover}
+          directionPicker={pendingDirection}
+          onDirectionPick={handleDirectionPick}
+          onDirectionCancel={handleDirectionCancel}
           onSquareClick={handleSquareClick}
           onPieceDrop={handlePieceDrop}
           onPressStart={handlePressStart}
@@ -833,6 +903,30 @@
       {/if}
       {#if pendingBodyguard}
         <p class="hint">bodyguard: defender may redirect the hit — click the red defender to take the hit, or a blue guard to intercept</p>
+      {/if}
+      {#if pendingDirection}
+        <p class="hint">choose a push direction — click an arrow, or press Esc to cancel</p>
+      {/if}
+      {#if armedHasFocusModeChoice && !pendingDirection}
+        <div class="focus-mode">
+          <span class="focus-mode-label">Focus boosts:</span>
+          <div class="focus-mode-toggle" role="radiogroup" aria-label="focus mode">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={focusModePref === "activation"}
+              class:active={focusModePref === "activation"}
+              onclick={() => (focusModePref = "activation")}
+            >Range (+1 tile)</button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={focusModePref === "effect"}
+              class:active={focusModePref === "effect"}
+              onclick={() => (focusModePref = "effect")}
+            >Effect (push 2)</button>
+          </div>
+        </div>
       {/if}
     </section>
 
@@ -932,6 +1026,44 @@
     text-align: center;
     font-size: 0.9rem;
     color: var(--paper-ink-soft, #6a6055);
+  }
+  .focus-mode {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin: 0.5rem 0 0;
+    font-size: 0.85rem;
+  }
+  .focus-mode-label {
+    color: var(--paper-ink-soft, #6a6055);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.72rem;
+  }
+  .focus-mode-toggle {
+    display: inline-flex;
+    border: 1.5px solid #8a4abd;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .focus-mode-toggle button {
+    font: inherit;
+    padding: 0.25em 0.65em;
+    border: none;
+    background: var(--paper-bg, #f3ecd9);
+    color: inherit;
+    cursor: pointer;
+    border-right: 1px solid #8a4abd;
+  }
+  .focus-mode-toggle button:last-child { border-right: none; }
+  .focus-mode-toggle button.active {
+    background: #8a4abd;
+    color: #f8f1de;
+    font-weight: 600;
+  }
+  .focus-mode-toggle button:not(.active):hover {
+    background: rgba(138, 74, 189, 0.15);
   }
   .hud {
     display: flex;
