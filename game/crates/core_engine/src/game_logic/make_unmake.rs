@@ -683,21 +683,33 @@ fn transfer_money(pos: &mut Position, from: Player, to: Player,
 
 /// Move → Skill transition (Slice 1 simplification).
 ///
-/// Stack M does not yet specify the Skill-Phase action budget curve
-/// (OQ-69, critical). Until that resolves, we reset to a placeholder budget
-/// of 2 actions when leaving the Move Phase. End-of-turn (Skill → next turn)
-/// is delegated to `turn_manager::end_turn`.
+/// Skill-Phase action budget follows the paper-baseline progression curve
+/// adopted into Stack M (oq-69 resolved, session-31): +1 action per 10 rounds,
+/// starting at 2. R1–10:2, R11–20:3, R21–30:4, R31–40:5, R41–50:6, …
+/// End-of-turn (Skill → next turn) is delegated to `turn_manager::end_turn`.
 fn apply_end_phase(pos: &mut Position, _undo: &mut Undo) {
     match pos.current_phase {
         Phase::Move => {
             pos.moved_this_phase = Bitboard::EMPTY;
             pos.current_phase = Phase::Skill;
-            pos.actions_remaining = 2; // OQ-69: progression curve TBD.
+            pos.actions_remaining = skill_phase_budget(pos.round_number);
         }
         Phase::Skill => {
             super::turn_manager::end_turn(pos);
         }
     }
+}
+
+/// Skill-Phase action budget for the given round (Stack M).
+///
+/// Formula: `2 + (round_number - 1) / 10`. Unbounded — +1 per 10 rounds.
+/// The paper rule sheet shows "R31+: 5" as a table cut-off, not a cap;
+/// R41–50 is 6, R51–60 is 7, and so on. Saturates at u8::MAX defensively
+/// (games will never reach that, but we don't want to panic on overflow).
+#[inline]
+pub(crate) fn skill_phase_budget(round_number: u16) -> u8 {
+    let tier = round_number.saturating_sub(1) / 10;
+    (2u16 + tier).min(u8::MAX as u16) as u8
 }
 
 // === Tiny helpers ===========================================================
@@ -2513,5 +2525,25 @@ mod tests {
         assert!(pos.is_occupied(43), "enemy at d6 after Shove");
         assert_eq!(pos.mailbox[43].hp(), 1, "pre-tick combo 1 dealt 1 bonus dmg");
         assert_eq!(pos.mailbox[43].combo(), 2, "combo ticked to 2");
+    }
+
+    #[test]
+    fn skill_phase_budget_paper_curve() {
+        // Paper baseline: R1–10:2, R11–20:3, R21–30:4, R31+:5… and unbounded
+        // beyond. The "R31+:5" line in the paper rule sheet was shorthand
+        // for the table cut-off, NOT a cap.
+        assert_eq!(skill_phase_budget(1), 2);
+        assert_eq!(skill_phase_budget(10), 2);
+        assert_eq!(skill_phase_budget(11), 3);
+        assert_eq!(skill_phase_budget(20), 3);
+        assert_eq!(skill_phase_budget(21), 4);
+        assert_eq!(skill_phase_budget(30), 4);
+        assert_eq!(skill_phase_budget(31), 5);
+        assert_eq!(skill_phase_budget(40), 5);
+        // Crucially: it keeps climbing past 31.
+        assert_eq!(skill_phase_budget(41), 6);
+        assert_eq!(skill_phase_budget(50), 6);
+        assert_eq!(skill_phase_budget(51), 7);
+        assert_eq!(skill_phase_budget(100), 11);
     }
 }

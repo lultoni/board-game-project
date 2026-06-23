@@ -75,9 +75,13 @@ pub struct Position {
 
     /// Current Round number. A Round = P1 turn + P2 turn. Increments when the
     /// turn flips back to P1 (i.e. at the *start* of P1's next turn). Used
-    /// for round-based progression: income scaling is `2 + round_number / 5`,
-    /// Skill-Phase action budget grows on the same cadence. Income itself is
-    /// disbursed at the start of each Player turn (per Stack M).
+    /// for round-based progression — both curves are **unbounded** (+1 per
+    /// N rounds, no cap):
+    ///   * Per-turn income: `2 + round_number / 5` — +1 per 5 rounds.
+    ///   * Skill-Phase action budget: `2 + (round_number - 1) / 10` — +1 per
+    ///     10 rounds. The paper rule sheet's "R31+: 5" line was shorthand
+    ///     for the table cut-off, NOT a cap — R41+ is 6, R51+ is 7, etc.
+    /// Income is disbursed at the start of each Player turn (per Stack M).
     pub round_number: u16,
 
     /// Bitboard of squares whose piece has already been moved this Move Phase.
