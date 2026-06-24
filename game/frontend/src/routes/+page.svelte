@@ -2,10 +2,14 @@
   import { onMount } from "svelte";
   import { getEngine } from "$lib/engine";
   import { t } from "$lib/state/i18n";
+  import { getTelemetryStore } from "$lib/storage";
 
   let engineVersion = $state<string>(t("app.loading"));
   let backend = $state<"wasm" | "tauri" | "unknown">("unknown");
   let bootError = $state<string | null>(null);
+  let resumeCount = $state(0);
+
+  const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
   onMount(async () => {
     try {
@@ -14,6 +18,22 @@
       engineVersion = await eng.version();
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
+    }
+    // Surface a banner when there are resumable multiplayer sessions. Best-
+    // effort: any storage error is swallowed (the banner just doesn't show).
+    try {
+      const rows = await getTelemetryStore().listMatches({
+        mode: "multiplayer",
+        status: "mid-match-network-lost",
+      });
+      const cutoff = Date.now() - RECENT_WINDOW_MS;
+      resumeCount = rows.filter((r) =>
+        r.startedAtUnixMs >= cutoff
+        && !!r.multiplayerCode
+        && !!r.multiplayerRole
+      ).length;
+    } catch {
+      resumeCount = 0;
     }
   });
 </script>
@@ -29,6 +49,14 @@
 
   {#if bootError}
     <p class="err">boot error: {bootError}</p>
+  {/if}
+
+  {#if resumeCount > 0}
+    <a class="resume-banner" href="./multiplayer/">
+      {resumeCount === 1
+        ? t("menu.resumeBannerOne")
+        : t("menu.resumeBannerMany", { n: resumeCount })}
+    </a>
   {/if}
 
   <section class="menu">
@@ -63,6 +91,22 @@
   }
   small {
     color: var(--paper-ink-soft);
+  }
+  .resume-banner {
+    display: block;
+    margin: 0 0 1rem;
+    padding: 0.6em 0.9em;
+    border: 1.5px solid #8a6a1f;
+    border-left: 4px solid #8a6a1f;
+    border-radius: 6px;
+    background: var(--paper-bg);
+    color: inherit;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .resume-banner:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
   }
   .menu {
     margin-top: 1.5rem;

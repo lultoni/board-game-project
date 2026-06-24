@@ -12,7 +12,9 @@
     "openInspector": "Inspektor öffnen…",
     "openLibrary": "Bibliothek",
     "openMultiplayer": "Mehrspieler",
-    "resume": "Gespeicherte Partie fortsetzen"
+    "resume": "Gespeicherte Partie fortsetzen",
+    "resumeBannerOne": "Du hast 1 Mehrspieler-Sitzung zum Fortsetzen.",
+    "resumeBannerMany": "Du hast {n} Mehrspieler-Sitzungen zum Fortsetzen."
   },
   "library": {
     "title": "Bibliothek",
@@ -141,6 +143,14 @@
     "pillLive": "live",
     "pillUnstable": "instabil",
     "pillDisconnected": "getrennt",
-    "pillForfeit": "Aufgabe"
+    "pillForfeit": "Aufgabe",
+    "recentSessionsTitle": "Eine kürzliche Sitzung fortsetzen",
+    "recentNone": "Keine kürzlichen Sitzungen zum Fortsetzen.",
+    "rejoin": "Wieder beitreten",
+    "dismiss": "Verwerfen",
+    "youWerePlayer": "du warst Spieler {n}",
+    "rejoinFailedCodeTaken": "Dieser Code ist nicht mehr verfügbar — jemand anderes hat ihn beansprucht.",
+    "beforeUnloadPrompt": "Beim Verlassen wird die Mehrspieler-Sitzung beendet. Bist du sicher?",
+    "startedAt": "begonnen {time}"
   }
 }

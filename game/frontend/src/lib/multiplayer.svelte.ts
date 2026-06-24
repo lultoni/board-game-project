@@ -205,6 +205,46 @@ export function host(): Promise<string> {
   });
 }
 
+/** Re-host a session under a specific code. Used by the lobby's Rejoin flow
+ *  to reclaim the same PeerJS ID we held before the tab closed. Unlike
+ *  `host()`, this does NOT retry on collision — if the code is already taken,
+ *  someone else grabbed it while we were away, and the caller surfaces that
+ *  to the user. */
+export function hostWithCode(code: string): Promise<string> {
+  disconnect();
+  mpState.role = "host";
+  mpState.status = "hosting";
+  return new Promise((resolve, reject) => {
+    const p = new Peer(ID_PREFIX + code);
+    p.on("open", () => {
+      peer = p;
+      mpState.code = code;
+      p.on("connection", (c) => {
+        if (conn && conn.open) {
+          c.on("open", () => {
+            try {
+              c.send(encodeMessage({ kind: "error", reason: "session-full" }));
+            } finally {
+              try { c.close(); } catch { /* noop */ }
+            }
+          });
+          return;
+        }
+        mpState.status = "connecting";
+        bindConnection(c);
+      });
+      resolve(code);
+    });
+    p.on("error", (e) => {
+      const msg = e?.message ?? String(e);
+      mpState.lastError = msg;
+      mpState.status = "error";
+      try { p.destroy(); } catch { /* noop */ }
+      reject(e);
+    });
+  });
+}
+
 /** Join a session by 6-digit code. Resolves when the data channel opens. */
 export function join(code: string): Promise<void> {
   disconnect();

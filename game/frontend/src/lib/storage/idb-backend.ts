@@ -194,6 +194,18 @@ export class IdbTelemetryStore implements TelemetryStore {
     await this.#setStatusIfInProgress(matchId, "mid-match-network-lost", partialLogJson);
   }
 
+  async dismissNetworkLost(matchId: string): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_MATCHES, "readwrite");
+    const store = tx.objectStore(STORE_MATCHES);
+    const existing = await awaitReq<MatchRow | undefined>(store.get(matchId));
+    if (!existing) return;
+    if (existing.status !== "mid-match-network-lost") return;
+    const updated: MatchRow = { ...existing, status: "abandoned" };
+    store.put(updated);
+    await awaitTx(tx);
+  }
+
   async #setStatusIfInProgress(
     matchId: string,
     status: MatchStatus,

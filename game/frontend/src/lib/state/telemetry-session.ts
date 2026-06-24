@@ -134,3 +134,31 @@ export async function abandonTelemetrySession(
     logFail("abandonTelemetrySession", e);
   }
 }
+
+/** Marks an in-progress multiplayer telemetry session as network-lost.
+ *  Used by /match/ when the user leaves the route during a multiplayer match
+ *  (tab close, navigation away). Mirrors `abandonTelemetrySession`'s
+ *  swallow-errors policy and partial-log capture. The lobby's recent-sessions
+ *  card list reads rows in this state. */
+export async function networkLostTelemetrySession(
+  carrier: TelemetryCarrier,
+  eng?: EngineClient,
+): Promise<void> {
+  if (!carrier.telemetryMatchId || telemetryDisabledForSession) return;
+  const id = carrier.telemetryMatchId;
+  carrier.telemetryMatchId = null;
+  try {
+    let partial: string | undefined;
+    if (eng) {
+      try {
+        partial = (await eng.matchLogJson()) ?? undefined;
+      } catch {
+        // Engine in a bad state — store the marker without a log.
+      }
+    }
+    const store = getTelemetryStore();
+    await store.markNetworkLost(id, partial);
+  } catch (e) {
+    logFail("networkLostTelemetrySession", e);
+  }
+}

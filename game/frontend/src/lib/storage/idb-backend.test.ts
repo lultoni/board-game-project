@@ -121,6 +121,38 @@ describe("IdbTelemetryStore", () => {
     expect(meta!.multiplayerCode).toBe("482917");
   });
 
+  it("dismissNetworkLost transitions mid-match-network-lost → abandoned and preserves the partial log", async () => {
+    const id = await store.startMatch({
+      mode: "hvh",
+      multiplayerCode: "194723",
+      multiplayerRole: "joiner",
+    });
+    const partial = JSON.stringify({ plies: [{ action: { raw: 7 } }], total_plies: 1, total_wall_ms: 50 });
+    await store.markNetworkLost(id, partial);
+
+    await store.dismissNetworkLost(id);
+    const meta = await store.getMatchMeta(id);
+    expect(meta!.status).toBe("abandoned");
+    expect(meta!.multiplayerCode).toBe("194723");
+    expect(meta!.totalPlies).toBe(1);
+
+    // Partial log still recoverable via getMatch.
+    const full = await store.getMatch(id);
+    expect(full).not.toBeNull();
+    expect(JSON.parse(full!.matchLogJson).total_plies).toBe(1);
+  });
+
+  it("dismissNetworkLost is a no-op on non-network-lost rows", async () => {
+    const inProg = await store.startMatch({ mode: "hvh" });
+    await store.dismissNetworkLost(inProg);
+    expect((await store.getMatchMeta(inProg))!.status).toBe("in-progress");
+
+    const finished = await store.startMatch({ mode: "hvai" });
+    await store.finalizeMatch(finished, "{}", "checkmate", 0, 1, 100);
+    await store.dismissNetworkLost(finished);
+    expect((await store.getMatchMeta(finished))!.status).toBe("ended");
+  });
+
   it("listMatches sorts most-recent-first and filters by mode + status", async () => {
     const a = await store.startMatch({ mode: "hvh" });
     await new Promise((r) => setTimeout(r, 5));

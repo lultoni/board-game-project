@@ -110,3 +110,7 @@ export function finalizeTelemetrySession(
 export function abandonTelemetrySession(eng?: EngineClient): Promise<void> {
   return telemetry.abandonTelemetrySession(match, eng);
 }
+
+export function networkLostTelemetrySession(eng?: EngineClient): Promise<void> {
+  return telemetry.networkLostTelemetrySession(match, eng);
+}

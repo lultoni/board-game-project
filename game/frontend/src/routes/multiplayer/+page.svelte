@@ -4,6 +4,7 @@
   import { t } from "$lib/state/i18n";
   import {
     host as mpHost,
+    hostWithCode as mpHostWithCode,
     join as mpJoin,
     disconnect as mpDisconnect,
     mpState,
@@ -12,6 +13,7 @@
   } from "$lib/multiplayer.svelte";
   import { isValidCode } from "$lib/multiplayer-protocol";
   import { match, resetMatchState } from "$lib/state/match-store.svelte";
+  import { getTelemetryStore, type MatchMeta } from "$lib/storage";
 
   type LobbyView = "choose" | "hosting" | "joining" | "joined";
 
@@ -21,6 +23,49 @@
   let busy = $state(false);
 
   let unsub: (() => void) | null = null;
+
+  // Network-lost multiplayer sessions from the last 24h, surfaced as cards
+  // above the Host/Join panel so the user can reclaim a session after a
+  // dropped tab or network blip. Loaded on mount and refreshed after
+  // Dismiss.
+  const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+  let recentLostSessions = $state<MatchMeta[]>([]);
+  let recentError = $state<string | null>(null);
+
+  async function loadRecentLost(): Promise<void> {
+    try {
+      const store = getTelemetryStore();
+      const rows = await store.listMatches({
+        mode: "multiplayer",
+        status: "mid-match-network-lost",
+      });
+      const cutoff = Date.now() - RECENT_WINDOW_MS;
+      recentLostSessions = rows
+        .filter((r) =>
+          r.startedAtUnixMs >= cutoff
+          && !!r.multiplayerCode
+          && !!r.multiplayerRole
+        )
+        .sort((a, b) => b.startedAtUnixMs - a.startedAtUnixMs);
+    } catch (e) {
+      recentError = (e as Error)?.message ?? String(e);
+    }
+  }
+
+  function formatStartedAt(unixMs: number): string {
+    const d = new Date(unixMs);
+    // Locale-aware short time; falls back to ISO if Intl is unavailable.
+    try {
+      return d.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return d.toISOString();
+    }
+  }
 
   // Shareable URL derived from the host's current code. Built once per code
   // change so we don't construct a new string per keystroke.
@@ -88,6 +133,58 @@
     }
   }
 
+  // Rejoin a recent network-lost session by re-dialling the saved code in
+  // whichever role we held last time. For the host we attempt to claim the
+  // same PeerJS ID via hostWithCode; on collision the broker rejects and we
+  // surface "code taken". For the joiner we dial the host like any normal
+  // join — if the host hasn't come back yet, the dial fails with
+  // peer-unavailable, which the existing UI maps to "no such session".
+  async function rejoinSession(meta: MatchMeta): Promise<void> {
+    const code = meta.multiplayerCode!;
+    const role = meta.multiplayerRole!;
+    busy = true;
+    codeError = null;
+    try {
+      resetMatchState();
+      if (role === "host") {
+        view = "hosting";
+        await mpHostWithCode(code);
+        match.multiplayerRole = "host";
+        match.multiplayerCode = code;
+        // $effect below picks up "connected" and forwards to /setup/.
+      } else {
+        codeInput = code;
+        view = "joining";
+        await mpJoin(code);
+        match.multiplayerRole = "joiner";
+        match.multiplayerCode = code;
+        view = "joined";
+      }
+    } catch (e) {
+      const msg = (e as Error)?.message ?? String(e);
+      if (role === "host" && /taken|unavailable-id/i.test(msg)) {
+        codeError = t("multiplayer.rejoinFailedCodeTaken");
+      } else if (/peer-unavailable/i.test(msg)) {
+        codeError = t("multiplayer.noSuchSession");
+      } else {
+        codeError = t("multiplayer.connectionError", { msg });
+      }
+      view = "choose";
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function dismissSession(meta: MatchMeta): Promise<void> {
+    try {
+      const store = getTelemetryStore();
+      await store.dismissNetworkLost(meta.matchId);
+      await loadRecentLost();
+    } catch (e) {
+      recentError = (e as Error)?.message ?? String(e);
+    }
+  }
+
   function cancel(): void {
     mpDisconnect();
     match.multiplayerRole = null;
@@ -136,6 +233,11 @@
   }
 
   onMount(async () => {
+    // Load recent network-lost rows so we can offer Rejoin. This is best-
+    // effort: if IDB isn't available (private browsing in some Safari
+    // modes) the lobby still works without recent-sessions UI.
+    await loadRecentLost();
+
     // Auto-attempt connect from `?join=XXXXXX` query param.
     const params = typeof window !== "undefined"
       ? new URLSearchParams(window.location.search)
@@ -167,6 +269,41 @@
   </header>
 
   {#if view === "choose"}
+    {#if recentLostSessions.length > 0}
+      <section class="recent">
+        <h2>{t("multiplayer.recentSessionsTitle")}</h2>
+        <ul class="recent-list">
+          {#each recentLostSessions as meta (meta.matchId)}
+            {@const playerNo = meta.multiplayerRole === "host" ? 1 : 2}
+            <li class="recent-card">
+              <div class="recent-meta">
+                <span class="recent-time">
+                  {t("multiplayer.startedAt", { time: formatStartedAt(meta.startedAtUnixMs) })}
+                </span>
+                <span class="recent-role">
+                  {t("multiplayer.youWerePlayer", { n: playerNo })}
+                </span>
+                <span class="recent-code">{meta.multiplayerCode}</span>
+              </div>
+              <div class="recent-actions">
+                <button class="primary" type="button" disabled={busy}
+                  onclick={() => rejoinSession(meta)}>
+                  {t("multiplayer.rejoin")}
+                </button>
+                <button class="ghost" type="button" disabled={busy}
+                  onclick={() => dismissSession(meta)}>
+                  {t("multiplayer.dismiss")}
+                </button>
+              </div>
+            </li>
+          {/each}
+        </ul>
+        {#if recentError}
+          <p class="err">{recentError}</p>
+        {/if}
+      </section>
+    {/if}
+
     <section class="cards">
       <article class="card host">
         <h2>{t("multiplayer.hostTitle")}</h2>
@@ -273,6 +410,53 @@
   }
   @media (max-width: 640px) {
     .cards { grid-template-columns: 1fr; }
+  }
+  .recent {
+    margin-bottom: 1.2rem;
+    border: 1.5px solid var(--paper-line-strong);
+    border-left: 4px solid #8a6a1f;
+    border-radius: 8px;
+    padding: 0.7rem 1rem 0.9rem;
+    background: var(--paper-bg);
+  }
+  .recent h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+  }
+  .recent-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .recent-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px dashed var(--paper-line);
+    border-radius: 6px;
+  }
+  .recent-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+  .recent-time { color: var(--paper-ink-soft); font-size: 0.88rem; }
+  .recent-role { font-size: 0.9rem; }
+  .recent-code {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+  }
+  .recent-actions {
+    display: flex;
+    gap: 0.4rem;
   }
   .card {
     border: 1.5px solid var(--paper-line-strong);

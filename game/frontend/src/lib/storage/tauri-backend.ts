@@ -36,6 +36,9 @@ export class TauriTelemetryStore implements TelemetryStore {
   async markNetworkLost(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");
   }
+  async dismissNetworkLost(): Promise<void> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
   async getMatchMeta(): Promise<MatchMeta | null> {
     throw new Error("TauriTelemetryStore not implemented");
   }

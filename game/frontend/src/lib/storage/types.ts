@@ -98,6 +98,11 @@ export interface TelemetryStore {
    *  Used by L7b's reconnect flow. `partialLogJson` semantics match
    *  markAbandoned. */
   markNetworkLost(matchId: string, partialLogJson?: string): Promise<void>;
+  /** Transitions a `mid-match-network-lost` row to `abandoned` (carrying any
+   *  partial MatchLog through). No-op if the row is in any other state. Used
+   *  by the lobby's "Dismiss" button so the row stops appearing in the
+   *  recent-sessions list but stays in the library. */
+  dismissNetworkLost(matchId: string): Promise<void>;
   /** Returns a match's metadata (without the full log) by ID. */
   getMatchMeta(matchId: string): Promise<MatchMeta | null>;
   /** Returns a finalised match including its consolidated log. */

@@ -30,7 +30,9 @@
     "openInspector": "Open inspector…",
     "openLibrary": "Library",
     "openMultiplayer": "Multiplayer",
-    "resume": "Resume saved match"
+    "resume": "Resume saved match",
+    "resumeBannerOne": "You have 1 multiplayer session to resume.",
+    "resumeBannerMany": "You have {n} multiplayer sessions to resume."
   },
   "library": {
     "title": "Library",
@@ -174,6 +176,14 @@
     "pillLive": "live",
     "pillUnstable": "unstable",
     "pillDisconnected": "disconnected",
-    "pillForfeit": "forfeit"
+    "pillForfeit": "forfeit",
+    "recentSessionsTitle": "Resume a recent session",
+    "recentNone": "No recent sessions to resume.",
+    "rejoin": "Rejoin",
+    "dismiss": "Dismiss",
+    "youWerePlayer": "you were Player {n}",
+    "rejoinFailedCodeTaken": "That code is no longer available — someone else may have claimed it.",
+    "beforeUnloadPrompt": "Leaving will end the multiplayer session. Are you sure?",
+    "startedAt": "started {time}"
   }
 }

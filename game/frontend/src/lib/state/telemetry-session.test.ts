@@ -11,6 +11,7 @@ import {
   recordPly,
   finalizeTelemetrySession,
   abandonTelemetrySession,
+  networkLostTelemetrySession,
   extractPlyNo,
   type TelemetryCarrier,
 } from "./telemetry-session";
@@ -155,6 +156,26 @@ describe("telemetry-session helpers", () => {
     expect(full).not.toBeNull();
     expect(full!.status).toBe("abandoned");
     expect(JSON.parse(full!.matchLogJson).total_plies).toBe(2);
+  });
+
+  it("networkLostTelemetrySession marks status network-lost and stashes the partial MatchLog", async () => {
+    const carrier = newCarrier();
+    const state: StubState = { plies: [], finaliseCalled: 0 };
+    const eng = stubEngine(state);
+    const id = (await startTelemetrySession(carrier, "multiplayer", {
+      multiplayerCode: "281947",
+      multiplayerRole: "host",
+    }))!;
+    state.plies.push(JSON.stringify({ ply_no: 1 }));
+    await recordPly(carrier, eng);
+    await networkLostTelemetrySession(carrier, eng);
+    expect(carrier.telemetryMatchId).toBeNull();
+
+    const meta = await getTelemetryStore().getMatchMeta(id);
+    expect(meta!.status).toBe("mid-match-network-lost");
+    expect(meta!.multiplayerCode).toBe("281947");
+    expect(meta!.multiplayerRole).toBe("host");
+    expect(meta!.totalPlies).toBe(1);
   });
 
   it("extractPlyNo handles the engine's field-order convention", () => {

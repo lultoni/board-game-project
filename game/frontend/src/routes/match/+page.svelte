@@ -11,6 +11,7 @@
     recordPly,
     finalizeTelemetrySession,
     abandonTelemetrySession,
+    networkLostTelemetrySession,
   } from "$lib/state/match-store.svelte";
   import { settings } from "$lib/state/settings.svelte";
   import {
@@ -1357,11 +1358,41 @@
     })();
   });
 
+  // Multiplayer: prompt before tab close while a match is in progress. The
+  // browser ignores the returned string in modern Chromium/Firefox but still
+  // shows its built-in confirmation dialog. The listener is gated on
+  // `match.mode` so local matches don't prompt on close. We mount it once
+  // and let the guard read the current `match` state at fire time.
+  function beforeUnloadGuard(e: BeforeUnloadEvent): string | undefined {
+    if (match.mode !== "multiplayer") return undefined;
+    if (telemetryFinalised) return undefined;
+    const msg = t("multiplayer.beforeUnloadPrompt");
+    e.preventDefault();
+    // Some browsers still read the returnValue assignment.
+    (e as BeforeUnloadEvent & { returnValue: string }).returnValue = msg;
+    return msg;
+  }
+
+  onMount(() => {
+    if (typeof window !== "undefined") {
+      window.addEventListener("beforeunload", beforeUnloadGuard);
+    }
+  });
+
   onDestroy(() => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("beforeunload", beforeUnloadGuard);
+    }
     // If the user leaves /match/ before a natural end, mark the session
     // abandoned. Per-ply records on disk remain — replay still works.
+    // In multiplayer mode the row is marked `mid-match-network-lost` so the
+    // lobby's recent-sessions card list can pick it up for resume.
     if (match.telemetryMatchId && !telemetryFinalised) {
-      abandonTelemetrySession(eng ?? undefined);
+      if (match.mode === "multiplayer") {
+        networkLostTelemetrySession(eng ?? undefined);
+      } else {
+        abandonTelemetrySession(eng ?? undefined);
+      }
     }
     if (mpUnsub) {
       mpUnsub();
