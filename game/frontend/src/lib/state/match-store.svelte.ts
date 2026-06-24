@@ -36,6 +36,13 @@ export interface MatchState {
   /** Active telemetry session ID (ULID) — null when not logging (sandbox,
    *  inspector, or before startTelemetrySession is called). */
   telemetryMatchId: string | null;
+  /** Which seat we hold in a multiplayer session. Host plays P1, joiner P2.
+   *  Null outside multiplayer. Used by /match/ to decide whether input on a
+   *  given seat should be accepted locally or ignored as the peer's. */
+  multiplayerRole: "host" | "joiner" | null;
+  /** The 6-digit session code for the active multiplayer session, kept on
+   *  the carrier so /match/ can pass it to telemetry's startMatch opts. */
+  multiplayerCode: string | null;
 }
 
 export const match = $state<MatchState>({
@@ -49,6 +56,8 @@ export const match = $state<MatchState>({
   trueSnapshotJson: null,
   sandboxMovesApplied: 0,
   telemetryMatchId: null,
+  multiplayerRole: null,
+  multiplayerCode: null,
 });
 
 export function resetMatchState(): void {
@@ -63,6 +72,9 @@ export function resetMatchState(): void {
   match.trueSnapshotJson = null;
   match.sandboxMovesApplied = 0;
   match.telemetryMatchId = null;
+  // multiplayerRole and multiplayerCode are owned by the lobby; routes
+  // downstream (setup/draft/match) only read them. The lobby is responsible
+  // for clearing them on session teardown.
 }
 
 /** Derive the user-facing mode label from the two seat assignments. */

@@ -4,6 +4,8 @@
   import { match, type SeatKind } from "$lib/state/match-store.svelte";
   import { settings } from "$lib/state/settings.svelte";
 
+  const isMultiplayer = $derived(match.mode === "multiplayer");
+
   let p1: SeatKind = $state(match.side.p1);
   let p2: SeatKind = $state(match.side.p2);
 
@@ -11,7 +13,12 @@
   const isAivAi = $derived(p1 === "ai" && p2 === "ai");
 
   async function start(): Promise<void> {
-    match.side = { p1, p2 };
+    if (isMultiplayer) {
+      // Seats are forced human in multiplayer; nothing to copy back.
+      match.side = { p1: "human", p2: "human" };
+    } else {
+      match.side = { p1, p2 };
+    }
     await goto("../draft/");
   }
 </script>
@@ -22,35 +29,39 @@
     <h1>{t("setup.title")}</h1>
   </header>
 
-  <section class="seats">
-    {#each [{ id: "p1", label: t("setup.p1Label") }, { id: "p2", label: t("setup.p2Label") }] as seat}
-      <fieldset class="seat" class:p1={seat.id === "p1"} class:p2={seat.id === "p2"}>
-        <legend>{seat.label}</legend>
-        <label>
-          <input
-            type="radio"
-            name={seat.id}
-            value="human"
-            checked={(seat.id === "p1" ? p1 : p2) === "human"}
-            onchange={() => (seat.id === "p1" ? (p1 = "human") : (p2 = "human"))}
-          />
-          {t("setup.human")}
-        </label>
-        <label>
-          <input
-            type="radio"
-            name={seat.id}
-            value="ai"
-            checked={(seat.id === "p1" ? p1 : p2) === "ai"}
-            onchange={() => (seat.id === "p1" ? (p1 = "ai") : (p2 = "ai"))}
-          />
-          {t("setup.ai")}
-        </label>
-      </fieldset>
-    {/each}
-  </section>
+  {#if isMultiplayer}
+    <p class="banner">{t("multiplayer.sessionFor", { n: 1 })}</p>
+  {:else}
+    <section class="seats">
+      {#each [{ id: "p1", label: t("setup.p1Label") }, { id: "p2", label: t("setup.p2Label") }] as seat}
+        <fieldset class="seat" class:p1={seat.id === "p1"} class:p2={seat.id === "p2"}>
+          <legend>{seat.label}</legend>
+          <label>
+            <input
+              type="radio"
+              name={seat.id}
+              value="human"
+              checked={(seat.id === "p1" ? p1 : p2) === "human"}
+              onchange={() => (seat.id === "p1" ? (p1 = "human") : (p2 = "human"))}
+            />
+            {t("setup.human")}
+          </label>
+          <label>
+            <input
+              type="radio"
+              name={seat.id}
+              value="ai"
+              checked={(seat.id === "p1" ? p1 : p2) === "ai"}
+              onchange={() => (seat.id === "p1" ? (p1 = "ai") : (p2 = "ai"))}
+            />
+            {t("setup.ai")}
+          </label>
+        </fieldset>
+      {/each}
+    </section>
+  {/if}
 
-  {#if hasAi}
+  {#if hasAi && !isMultiplayer}
     <section class="ai">
       <h2>{t("setup.aiHeader")}</h2>
       <div class="grid">
@@ -148,6 +159,15 @@
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
     margin: 1rem 0;
+  }
+  .banner {
+    border: 1.5px solid var(--paper-line-strong);
+    border-left: 4px solid var(--p1, #2b4a8a);
+    border-radius: 6px;
+    padding: 0.7em 1em;
+    margin: 1rem 0;
+    background: var(--paper-bg);
+    font-weight: 600;
   }
   .seat {
     border: 1.5px solid var(--paper-line-strong);

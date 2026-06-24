@@ -11,6 +11,7 @@
     modeFromSeats,
     resetMatchState,
   } from "$lib/state/match-store.svelte";
+  import { sendData } from "$lib/multiplayer.svelte";
   import {
     presetLoadout,
     mergeLoadouts,
@@ -54,6 +55,10 @@
 
   onMount(async () => {
     try {
+      // Preserve the multiplayer flag across `resetMatchState()` — the lobby
+      // set `match.mode = "multiplayer"` before navigating here, and the
+      // reset would otherwise wipe it back to "idle".
+      const wasMultiplayer = match.mode === "multiplayer";
       // Inspector handoff: if a snapshot is already staged we bypass the
       // makeshift draft entirely and forward straight to the match route.
       // The user picked seats/AI settings in /setup/, which buildEngineConfigJson
@@ -67,11 +72,12 @@
         const newSnap = JSON.stringify(parsed);
         await eng.restoreFromSnapshot(newSnap);
         match.pendingSnapshotJson = newSnap;
-        match.mode = modeFromSeats(match.side);
+        match.mode = wasMultiplayer ? "multiplayer" : modeFromSeats(match.side);
         await goto("../match/");
         return;
       }
       resetMatchState();
+      if (wasMultiplayer) match.mode = "multiplayer";
       const eng = await getEngine();
       const configJson = buildEngineConfigJson(match.side);
       await eng.createEngine(configJson);
@@ -128,7 +134,13 @@
       await eng.restoreFromSnapshot(newSnap);
 
       match.pendingSnapshotJson = newSnap;
-      match.mode = modeFromSeats(match.side);
+      match.mode = match.mode === "multiplayer" ? "multiplayer" : modeFromSeats(match.side);
+      // In multiplayer, ship the freshly-drafted snapshot to the joiner so
+      // both sides start from identical state. The joiner's lobby route is
+      // already subscribed to onData and will navigate to /match/ on receipt.
+      if (match.mode === "multiplayer") {
+        sendData({ kind: "snapshot", snapshotJson: newSnap });
+      }
       await goto(`../match/`);
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);

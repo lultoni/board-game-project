@@ -29,6 +29,7 @@
     "openReplay": "Open replay…",
     "openInspector": "Open inspector…",
     "openLibrary": "Library",
+    "openMultiplayer": "Multiplayer",
     "resume": "Resume saved match"
   },
   "library": {
@@ -146,5 +147,33 @@
   },
   "sandbox": {
     "confirmDiscard": "Discard {n} sandbox move(s) and return to the true position?"
+  },
+  "multiplayer": {
+    "title": "Multiplayer",
+    "back": "← back",
+    "hostTitle": "Host a session",
+    "joinTitle": "Join a session",
+    "hostHint": "Generate a 6-digit code, share it, and play as Player 1.",
+    "joinHint": "Enter the host's 6-digit code, or follow a shared link, to play as Player 2.",
+    "hostButton": "Host a session",
+    "joinButton": "Connect",
+    "codeLabel": "Session code",
+    "urlLabel": "Shareable link",
+    "copy": "Copy",
+    "copied": "Copied",
+    "waitingForOpponent": "Waiting for opponent…",
+    "connecting": "Connecting…",
+    "connected": "Connected!",
+    "waitingForHost": "Connected — waiting for the host to set up the match…",
+    "sessionFull": "That session is already full.",
+    "noSuchSession": "No session found with that code.",
+    "connectionError": "Connection error: {msg}",
+    "enterCode": "Enter 6-digit code",
+    "invalidCode": "Code must be 6 digits.",
+    "sessionFor": "Multiplayer session — you are Player {n}.",
+    "pillLive": "live",
+    "pillUnstable": "unstable",
+    "pillDisconnected": "disconnected",
+    "pillForfeit": "forfeit"
   }
 }

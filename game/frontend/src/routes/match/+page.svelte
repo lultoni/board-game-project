@@ -31,10 +31,12 @@
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
+  import ConnectivityPill from "$lib/multiplayer/ConnectivityPill.svelte";
+  import { sendData as mpSendData, onData as mpOnData } from "$lib/multiplayer.svelte";
   import type { Effect } from "$lib/viz/effects";
   import { sfx } from "$lib/audio/sfx";
 
-  const mode = $derived(modeFromSeats(match.side));
+  const mode = $derived(match.mode === "multiplayer" ? "multiplayer" : modeFromSeats(match.side));
 
   let bootError = $state<string | null>(null);
   let ready = $state(false);
@@ -57,6 +59,17 @@
     if (match.position.gameResult !== 0) return false;
     const seat = match.position.toMove === 0 ? match.side.p1 : match.side.p2;
     return seat === "ai";
+  });
+
+  /** True iff (in multiplayer) the side currently to move is ours. Outside
+   *  multiplayer this is always true — both seats are local. */
+  const currentSeatIsLocal = $derived.by(() => {
+    if (match.mode !== "multiplayer") return true;
+    if (!match.position) return false;
+    const toMove = match.position.toMove; // 0 = P1, 1 = P2
+    if (match.multiplayerRole === "host") return toMove === 0;
+    if (match.multiplayerRole === "joiner") return toMove === 1;
+    return false;
   });
 
   // Track which squares used their Move action this phase. Stored as the
@@ -284,7 +297,7 @@
   const movable = $derived(movableSources(match.legal));
   const endPhaseAction = $derived(findActionByKind(match.legal, ActionKind.EndPhase));
   const inMovePhase = $derived(match.position?.currentPhase === 0);
-  const interactive = $derived(ready && !busy && match.position?.gameResult === 0 && !currentSeatIsAi);
+  const interactive = $derived(ready && !busy && match.position?.gameResult === 0 && !currentSeatIsAi && currentSeatIsLocal);
 
   // Wheel state. Open whenever a piece is selected in the Skill Phase
   // (and the player isn't mid-drag — we don't want the wheel popping up
@@ -407,8 +420,18 @@
       // Snapshot side before reset so it survives the reset (which clears
       // mode/position/legal but preserves side by design).
       const sideAtBoot = { p1: match.side.p1, p2: match.side.p2 };
+      // Preserve multiplayer mode + role/code through the reset — the lobby
+      // set these before navigating here and the reset would otherwise drop
+      // mode back to "idle".
+      const wasMultiplayer = match.mode === "multiplayer";
+      const mpRole = match.multiplayerRole;
+      const mpCode = match.multiplayerCode;
       resetMatchState();
       match.side = sideAtBoot;
+      if (wasMultiplayer) {
+        match.multiplayerRole = mpRole;
+        match.multiplayerCode = mpCode;
+      }
       if (pending) {
         await eng.restoreFromSnapshot(pending);
       } else {
@@ -417,17 +440,30 @@
       await refresh();
       reconcilePieceIds();
       lastPhaseKey = phaseKey();
-      match.mode = modeFromSeats(match.side);
+      match.mode = wasMultiplayer ? "multiplayer" : modeFromSeats(match.side);
       await refreshMatchLogAvailable();
       // Start the telemetry session for non-analysis modes. No-op for
       // sandbox; sandbox enters via /match/ but flips mode immediately,
       // so we'd never reach this with mode === "sandbox" on boot.
-      await startTelemetrySession(match.mode);
+      await startTelemetrySession(match.mode, {
+        multiplayerCode: mpCode,
+        multiplayerRole: mpRole,
+      });
+      // In multiplayer, subscribe to action messages from the peer and
+      // apply them locally (with fromWire: true so we don't echo back).
+      if (wasMultiplayer) {
+        mpUnsub = mpOnData((msg) => {
+          if (msg.kind === "action") void applyRaw(msg.raw, { fromWire: true });
+        });
+      }
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     }
   });
+
+  /** Disposer for the multiplayer onData subscription. */
+  let mpUnsub: (() => void) | null = null;
 
   function phaseKey(): string {
     return `${match.position?.toMove ?? -1}:${match.position?.currentPhase ?? -1}`;
@@ -782,12 +818,18 @@
     }
   }
 
-  async function applyRaw(raw: number) {
+  async function applyRaw(raw: number, opts: { fromWire?: boolean } = {}) {
     if (!eng || busy) return;
     busy = true;
     try {
       const { preFull, preTarget, preBodyguard } = snapshotPreState(raw);
       await eng.tryApply(raw);
+      // Mirror to the peer BEFORE rendering — this keeps the two sides as
+      // close to lockstep as possible. Suppressed when the action arrived
+      // from the wire (`fromWire`), and outside multiplayer mode.
+      if (match.mode === "multiplayer" && !opts.fromWire) {
+        mpSendData({ kind: "action", raw });
+      }
       if (match.mode === "sandbox") match.sandboxMovesApplied += 1;
       else await recordPly(eng);
       await renderApplied(raw, preFull, preTarget, preBodyguard);
@@ -808,6 +850,7 @@
   async function runAiStep(): Promise<void> {
     if (!eng || busy) return;
     if (match.mode === "sandbox") return;
+    if (match.mode === "multiplayer") return;
     if (!match.position) return;
     if (match.position.gameResult !== 0) return;
     busy = true;
@@ -1320,6 +1363,10 @@
     if (match.telemetryMatchId && !telemetryFinalised) {
       abandonTelemetrySession(eng ?? undefined);
     }
+    if (mpUnsub) {
+      mpUnsub();
+      mpUnsub = null;
+    }
   });
 </script>
 
@@ -1329,6 +1376,9 @@
   <header>
     <p class="back"><a href="../">← back</a></p>
     <h1>{t("match.title", { mode })}</h1>
+    {#if match.mode === "multiplayer"}
+      <ConnectivityPill />
+    {/if}
   </header>
 
   {#if bootError}

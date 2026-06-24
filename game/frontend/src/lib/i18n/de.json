@@ -11,6 +11,7 @@
     "openReplay": "Wiederholung öffnen…",
     "openInspector": "Inspektor öffnen…",
     "openLibrary": "Bibliothek",
+    "openMultiplayer": "Mehrspieler",
     "resume": "Gespeicherte Partie fortsetzen"
   },
   "library": {
@@ -113,5 +114,33 @@
   },
   "sandbox": {
     "confirmDiscard": "{n} Sandkasten-Züge verwerfen und zur echten Position zurückkehren?"
+  },
+  "multiplayer": {
+    "title": "Mehrspieler",
+    "back": "← zurück",
+    "hostTitle": "Sitzung hosten",
+    "joinTitle": "Sitzung beitreten",
+    "hostHint": "Erzeuge einen 6-stelligen Code, teile ihn und spiele als Spieler 1.",
+    "joinHint": "Gib den 6-stelligen Code des Hosts ein oder folge einem geteilten Link, um als Spieler 2 zu spielen.",
+    "hostButton": "Sitzung hosten",
+    "joinButton": "Verbinden",
+    "codeLabel": "Sitzungscode",
+    "urlLabel": "Teilbarer Link",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "waitingForOpponent": "Warte auf Gegner…",
+    "connecting": "Verbinde…",
+    "connected": "Verbunden!",
+    "waitingForHost": "Verbunden — warte darauf, dass der Host die Partie einrichtet…",
+    "sessionFull": "Diese Sitzung ist bereits voll.",
+    "noSuchSession": "Keine Sitzung mit diesem Code gefunden.",
+    "connectionError": "Verbindungsfehler: {msg}",
+    "enterCode": "6-stelligen Code eingeben",
+    "invalidCode": "Der Code muss 6 Ziffern haben.",
+    "sessionFor": "Mehrspieler-Sitzung — du bist Spieler {n}.",
+    "pillLive": "live",
+    "pillUnstable": "instabil",
+    "pillDisconnected": "getrennt",
+    "pillForfeit": "Aufgabe"
   }
 }

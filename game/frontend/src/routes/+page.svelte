@@ -35,6 +35,7 @@
     <h2>{t("menu.newMatch")}</h2>
     <ul>
       <li><a href="./setup/">{t("menu.localPlay")}</a></li>
+      <li><a href="./multiplayer/">{t("menu.openMultiplayer")}</a></li>
       <li><a href="./inspector/">{t("menu.openInspector")}</a></li>
       <li><a href="./replay/">{t("menu.openReplay")}</a></li>
       <li><a href="./library/">{t("menu.openLibrary")}</a></li>
