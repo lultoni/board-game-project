@@ -22,6 +22,14 @@ export interface MatchState {
    * engine. Cleared after consumption.
    */
   pendingSnapshotJson: string | null;
+  /**
+   * Snapshot of the live position taken at sandbox-mode entry. While
+   * `mode === "sandbox"`, all engine state changes are tentative; on exit
+   * the engine is restored from this snapshot and the field is cleared.
+   */
+  trueSnapshotJson: string | null;
+  /** Count of player/AI applications since sandbox-mode was entered. */
+  sandboxMovesApplied: number;
 }
 
 export const match = $state<MatchState>({
@@ -32,6 +40,8 @@ export const match = $state<MatchState>({
   selection: null,
   lastApplied: null,
   pendingSnapshotJson: null,
+  trueSnapshotJson: null,
+  sandboxMovesApplied: 0,
 });
 
 export function resetMatchState(): void {
@@ -43,6 +53,8 @@ export function resetMatchState(): void {
   match.selection = null;
   match.lastApplied = null;
   match.pendingSnapshotJson = null;
+  match.trueSnapshotJson = null;
+  match.sandboxMovesApplied = 0;
 }
 
 /** Derive the user-facing mode label from the two seat assignments. */

@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { decodeAction, ActionKind } from "$lib/engine/action";
-  import { skillById } from "$lib/engine/skills";
+  import { formatAction } from "$lib/engine/action-label";
   import type { AiHint } from "$lib/state/inspector-store.svelte";
 
   interface Props {
@@ -10,27 +9,7 @@
   }
   let { hint, onApply, onDismiss }: Props = $props();
 
-  function fmtSquare(sq: number): string {
-    const file = String.fromCharCode("a".charCodeAt(0) + (sq % 8));
-    const rank = Math.floor(sq / 8) + 1;
-    return `${file}${rank}`;
-  }
-
-  const description = $derived.by(() => {
-    if (hint.best === 0) return "no move found";
-    const d = decodeAction(hint.best);
-    if (d.kind === ActionKind.EndPhase) return "End phase";
-    if (d.kind === ActionKind.EndTurn) return "End turn";
-    if (d.kind === ActionKind.Move) {
-      return `Move ${fmtSquare(d.src)}→${fmtSquare(d.target)}`;
-    }
-    if (d.kind === ActionKind.Skill) {
-      const info = skillById(d.skillId);
-      const name = info?.key ?? `skill${d.skillId}`;
-      return `${name} ${fmtSquare(d.src)}→${fmtSquare(d.target)}`;
-    }
-    return "?";
-  });
+  const description = $derived(hint.best === 0 ? "no move found" : formatAction(hint.best));
 </script>
 
 <div class="banner">

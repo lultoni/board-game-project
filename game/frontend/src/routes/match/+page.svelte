@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
   import { getEngine, ActionKind, decodeAction } from "$lib/engine";
   import { decodeMailbox } from "$lib/engine/mailbox";
   import { t } from "$lib/state/i18n";
@@ -37,6 +36,12 @@
   /** AIvAI playback control. When true, the AI loop auto-chains turns. */
   let aiAutoPlay = $state(true);
   let lastAppliedPair = $state<{ src: number; target: number } | null>(null);
+  /** Transient toast for export / sandbox feedback. Cleared by a timer. */
+  let toast = $state<string>("");
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Whether `eng.matchLogJson()` currently returns a log (config.auto_log on).
+   *  Refreshed lazily on toast-bar interaction; cheap to recompute. */
+  let matchLogAvailable = $state(false);
 
   /** True iff the side currently to move is an AI seat. */
   const currentSeatIsAi = $derived.by(() => {
@@ -369,6 +374,7 @@
   $effect(() => {
     if (!ready) return;
     if (busy) return;
+    if (match.mode === "sandbox") return;
     if (!currentSeatIsAi) return;
     // For AIvAI, gate on the play/pause toggle. For HvAI, always run.
     if (match.mode === "aivai" && !aiAutoPlay) return;
@@ -404,6 +410,7 @@
       reconcilePieceIds();
       lastPhaseKey = phaseKey();
       match.mode = modeFromSeats(match.side);
+      await refreshMatchLogAvailable();
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
@@ -769,6 +776,7 @@
     try {
       const { preFull, preTarget, preBodyguard } = snapshotPreState(raw);
       await eng.tryApply(raw);
+      if (match.mode === "sandbox") match.sandboxMovesApplied += 1;
       await renderApplied(raw, preFull, preTarget, preBodyguard);
       match.selection = null;
       pendingApproach = null;
@@ -786,6 +794,7 @@
    *  from the current `match.position` BEFORE the call. */
   async function runAiStep(): Promise<void> {
     if (!eng || busy) return;
+    if (match.mode === "sandbox") return;
     if (!match.position) return;
     if (match.position.gameResult !== 0) return;
     busy = true;
@@ -1133,11 +1142,138 @@
     // Keep `armedSkill` so the player can pick a different target without
     // re-arming the skill.
   }
+
+  // === Export / Sandbox ====================================================
+
+  function showToast(msg: string): void {
+    toast = msg;
+    if (toastTimer !== null) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast = ""; toastTimer = null; }, 2200);
+  }
+
+  async function refreshMatchLogAvailable(): Promise<void> {
+    if (!eng) { matchLogAvailable = false; return; }
+    try {
+      const log = await eng.matchLogJson();
+      matchLogAvailable = log !== null;
+    } catch {
+      matchLogAvailable = false;
+    }
+  }
+
+  async function copyFen(): Promise<void> {
+    if (!eng) return;
+    try {
+      const fen = await eng.positionFen();
+      await navigator.clipboard.writeText(fen);
+      showToast(t("toast.fenCopied"));
+    } catch {
+      showToast(t("toast.clipboardBlocked"));
+    }
+  }
+
+  async function copyMatchLog(): Promise<void> {
+    if (!eng) return;
+    try {
+      const log = await eng.matchLogJson();
+      if (log === null) { showToast(t("toast.logUnavailable")); return; }
+      await navigator.clipboard.writeText(log);
+      showToast(t("toast.logCopied"));
+    } catch {
+      showToast(t("toast.clipboardBlocked"));
+    }
+  }
+
+  async function downloadMatchLog(): Promise<void> {
+    if (!eng) return;
+    try {
+      const log = await eng.matchLogJson();
+      if (log === null) { showToast(t("toast.logUnavailable")); return; }
+      const blob = new Blob([log], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      a.download = `match-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(t("toast.logDownloaded"));
+    } catch {
+      showToast(t("toast.clipboardBlocked"));
+    }
+  }
+
+  /** Reset local picker / armed-skill state. Used on sandbox toggle so a
+   *  half-armed action doesn't bleed across the mode boundary. */
+  function clearAllPickers(): void {
+    match.selection = null;
+    pendingApproach = null;
+    pendingBodyguard = null;
+    armedSkill = null;
+    pendingDirection = null;
+    focusModePref = "activation";
+  }
+
+  /** Pull engine state into the reactive `match` store after a snapshot
+   *  restore. Mirrors the shape of inspector/+page.svelte:syncEngineToNode. */
+  async function syncFromEngine(): Promise<void> {
+    if (!eng) return;
+    const pv = await eng.positionView();
+    const la = await eng.legalActions();
+    match.position = pv;
+    match.legal = la;
+    reconcilePieceIds();
+    await refreshMatchLogAvailable();
+  }
+
+  async function enterSandbox(): Promise<void> {
+    if (!eng || busy || aiThinking) return;
+    if (match.mode === "sandbox") return;
+    busy = true;
+    try {
+      // Capture pre-sandbox snapshot BEFORE flipping mode — otherwise an
+      // in-flight AI scheduler tick could mutate state between capture and
+      // mode-flip.
+      const snap = await eng.snapshotJson();
+      clearAllPickers();
+      match.trueSnapshotJson = snap;
+      match.sandboxMovesApplied = 0;
+      match.mode = "sandbox";
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function exitSandbox(): Promise<void> {
+    if (!eng || busy || aiThinking) return;
+    if (match.mode !== "sandbox" || !match.trueSnapshotJson) return;
+    if (match.sandboxMovesApplied > 0) {
+      const msg = t("sandbox.confirmDiscard", { n: match.sandboxMovesApplied });
+      if (!window.confirm(msg)) return;
+    }
+    busy = true;
+    try {
+      await eng.restoreFromSnapshot(match.trueSnapshotJson);
+      match.trueSnapshotJson = null;
+      match.sandboxMovesApplied = 0;
+      match.mode = modeFromSeats(match.side);
+      clearAllPickers();
+      await syncFromEngine();
+    } catch (e) {
+      bootError = (e as Error)?.message ?? String(e);
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
 <svelte:window onkeydown={handleKeyDown} />
 
-<main>
+<main class:sandbox-mode={match.mode === "sandbox"}>
   <header>
     <p class="back"><a href="../">← back</a></p>
     <h1>{t("match.title", { mode })}</h1>
@@ -1292,17 +1428,35 @@
             onclick={endPhase}
           >{t("controls.endPhase")}</button>
         {/if}
-        <button
-          type="button"
-          disabled={busy}
-          onclick={async () => {
-            const eng = await getEngine();
-            match.pendingSnapshotJson = await eng.snapshotJson();
-            await goto("../inspector/");
-          }}
-        >{t("controls.openInInspector")}</button>
+        <div class="export-group">
+          <button
+            type="button"
+            disabled={busy}
+            onclick={() => void copyFen()}
+          >{t("controls.copyFen")}</button>
+          <button
+            type="button"
+            disabled={busy || !matchLogAvailable}
+            onclick={() => void copyMatchLog()}
+          >{t("controls.copyMatchLog")}</button>
+          <button
+            type="button"
+            disabled={busy || !matchLogAvailable}
+            onclick={() => void downloadMatchLog()}
+          >{t("controls.downloadMatchLog")}</button>
+          <button
+            type="button"
+            class="sandbox-toggle"
+            disabled={busy || aiThinking}
+            onclick={() => void (match.mode === "sandbox" ? exitSandbox() : enterSandbox())}
+          >{match.mode === "sandbox" ? t("controls.exitSandbox") : t("controls.sandbox")}</button>
+        </div>
       </div>
     </aside>
+
+    {#if toast}
+      <div class="toast" role="status" aria-live="polite">{toast}</div>
+    {/if}
 
     {#if match.position?.gameResult !== 0}
       <p class="result">
@@ -1321,6 +1475,50 @@
     max-width: 960px;
     margin: 0 auto;
     padding: 0.6rem 1rem 2rem;
+    position: relative;
+  }
+  main.sandbox-mode {
+    box-shadow:
+      inset 0 0 0 4px rgba(56, 178, 255, 0.85),
+      inset 0 0 24px 8px rgba(56, 178, 255, 0.30);
+    animation: sandbox-pulse 2.4s ease-in-out infinite;
+    border-radius: 6px;
+  }
+  @keyframes sandbox-pulse {
+    0%, 100% {
+      box-shadow:
+        inset 0 0 0 4px rgba(56, 178, 255, 0.85),
+        inset 0 0 24px 8px rgba(56, 178, 255, 0.25);
+    }
+    50% {
+      box-shadow:
+        inset 0 0 0 4px rgba(56, 178, 255, 1.00),
+        inset 0 0 32px 12px rgba(56, 178, 255, 0.45);
+    }
+  }
+  .export-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid rgba(127, 127, 127, 0.25);
+  }
+  .export-group button { flex: 1 1 auto; }
+  .sandbox-toggle { flex-basis: 100% !important; }
+  .toast {
+    position: fixed;
+    bottom: 1.2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 24, 32, 0.92);
+    color: #fff;
+    padding: 0.55rem 1rem;
+    border-radius: 6px;
+    font-size: 0.92rem;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    z-index: 1000;
+    pointer-events: none;
   }
   header {
     display: flex;

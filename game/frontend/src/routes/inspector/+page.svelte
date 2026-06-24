@@ -4,9 +4,9 @@
   import Board from "$lib/board/Board.svelte";
   import { getEngine } from "$lib/engine";
   import { buildEngineConfigJson } from "$lib/engine/config";
-  import { decodeAction, ActionKind, actionKindName } from "$lib/engine/action";
+  import { decodeAction, ActionKind } from "$lib/engine/action";
+  import { formatAction, formatSquare } from "$lib/engine/action-label";
   import { readPieces } from "$lib/engine/mailbox";
-  import { skillById } from "$lib/engine/skills";
   import type { PositionView } from "$lib/engine/types";
   import { match } from "$lib/state/match-store.svelte";
   import {
@@ -91,7 +91,7 @@
     approachContext = null;
     try {
       const eng = await getEngine();
-      await eng.restoreFromSnapshot(buildSnapshotForNode(tree, node));
+      await eng.restoreFromSnapshot(buildSnapshotForNode(tree, node, defaultConfigJson()));
       const pv = await eng.positionView();
       const la = await eng.legalActions();
       inspector.position = pv;
@@ -486,7 +486,7 @@
 
   async function playThisPosition(): Promise<void> {
     if (!tree || !currentNode) return;
-    const snap = buildSnapshotForNode(tree, currentNode);
+    const snap = buildSnapshotForNode(tree, currentNode, defaultConfigJson());
     match.pendingSnapshotJson = snap;
     await goto("../setup/");
   }
@@ -506,26 +506,6 @@
     label: string;
   }
 
-  function fmtSq(sq: number): string {
-    const file = String.fromCharCode("a".charCodeAt(0) + (sq % 8));
-    const rank = Math.floor(sq / 8) + 1;
-    return `${file}${rank}`;
-  }
-
-  function actionLabel(raw: number): string {
-    const d = decodeAction(raw);
-    if (d.kind === ActionKind.EndPhase) return "End phase";
-    if (d.kind === ActionKind.EndTurn) return "End turn";
-    if (d.kind === ActionKind.Move) return `Move ${fmtSq(d.src)}→${fmtSq(d.target)}`;
-    if (d.kind === ActionKind.Skill) {
-      const info = skillById(d.skillId);
-      const name = info?.key ?? `s${d.skillId}`;
-      const mods = d.focusMode ? " [focus]" : "";
-      return `${name} ${fmtSq(d.src)}→${fmtSq(d.target)}${mods}`;
-    }
-    return actionKindName(d.kind);
-  }
-
   const groupedActions = $derived.by(() => {
     const out = new Map<string, ActionRow[]>();
     const legal = inspector.legal;
@@ -536,9 +516,9 @@
       if (d.kind === ActionKind.EndPhase || d.kind === ActionKind.EndTurn) {
         key = "—";
       } else {
-        key = fmtSq(d.src);
+        key = formatSquare(d.src);
       }
-      const row: ActionRow = { raw, label: actionLabel(raw) };
+      const row: ActionRow = { raw, label: formatAction(raw) };
       if (!out.has(key)) out.set(key, []);
       out.get(key)!.push(row);
     }

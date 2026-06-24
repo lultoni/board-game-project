@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { actionKindName, decodeAction, ActionKind } from "$lib/engine/action";
-  import { skillById } from "$lib/engine/skills";
+  import { formatAction } from "$lib/engine/action-label";
   import type { InspectorNode } from "$lib/state/inspector-store.svelte";
 
   interface Props {
@@ -13,27 +12,9 @@
   }
   let { node, selected, depth, onSelect, onMarkPoi, onUnmarkPoi }: Props = $props();
 
-  function fmtSquare(sq: number): string {
-    const file = String.fromCharCode("a".charCodeAt(0) + (sq % 8));
-    const rank = Math.floor(sq / 8) + 1;
-    return `${file}${rank}`;
-  }
-
   function fmtEdge(): string {
     if (node.edgeAction === null) return "[start]";
-    const d = decodeAction(node.edgeAction);
-    const kind = actionKindName(d.kind);
-    if (d.kind === ActionKind.EndPhase) return "EndPhase";
-    if (d.kind === ActionKind.EndTurn) return "EndTurn";
-    if (d.kind === ActionKind.Move) {
-      return `Move ${fmtSquare(d.src)}→${fmtSquare(d.target)}`;
-    }
-    if (d.kind === ActionKind.Skill) {
-      const info = skillById(d.skillId);
-      const name = info?.key ?? `skill${d.skillId}`;
-      return `${name} ${fmtSquare(d.src)}→${fmtSquare(d.target)}`;
-    }
-    return kind;
+    return formatAction(node.edgeAction);
   }
 </script>
 

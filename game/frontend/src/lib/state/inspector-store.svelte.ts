@@ -174,15 +174,22 @@ export function dfs(tree: InspectorTree): InspectorNode[] {
   return out;
 }
 
-/** Build a snapshot JSON the engine can restore for `node`. */
+/** Build a snapshot JSON the engine can restore for `node`. If the tree
+ * was built without a `configJson` (e.g. a stale pasted tree from before
+ * the field was required), the caller can supply `fallbackConfigJson`
+ * which is also written back onto the tree to repair it. */
 export function buildSnapshotForNode(
   tree: InspectorTree,
   node: InspectorNode,
+  fallbackConfigJson?: string,
 ): string {
   // Mirror `core_engine::session::Snapshot` shape: { start_fen, actions, config }.
   // We piggyback off the configJson captured at tree-build time.
   if (!tree || typeof tree.configJson !== "string") {
-    throw new Error("inspector: tree has no configJson — was it loaded correctly?");
+    if (typeof fallbackConfigJson !== "string") {
+      throw new Error("inspector: tree has no configJson — was it loaded correctly?");
+    }
+    tree.configJson = fallbackConfigJson;
   }
   const cfg = JSON.parse(tree.configJson);
   return JSON.stringify({
@@ -213,6 +220,7 @@ export function loadTree(json: string): InspectorTree {
   if (
     !parsed ||
     typeof parsed.startFen !== "string" ||
+    typeof parsed.configJson !== "string" ||
     typeof parsed.rootId !== "string" ||
     typeof parsed.nodes !== "object"
   ) {

@@ -60,12 +60,24 @@
     "endPhase": "Phase beenden",
     "endTurn": "Zug beenden",
     "undo": "Zurück",
-    "sandbox": "Sandkasten",
+    "sandbox": "Sandkasten betreten",
     "exitSandbox": "Sandkasten verlassen",
     "play": "Abspielen",
     "pause": "Pause",
     "step": "Schritt",
     "aiThinking": "KI denkt nach…",
-    "openInInspector": "Im Inspektor öffnen"
+    "copyFen": "FEN kopieren",
+    "copyMatchLog": "Partieprotokoll kopieren",
+    "downloadMatchLog": "Partieprotokoll herunterladen"
+  },
+  "toast": {
+    "fenCopied": "FEN in Zwischenablage kopiert",
+    "logCopied": "Partieprotokoll kopiert",
+    "logUnavailable": "Kein Partieprotokoll verfügbar",
+    "clipboardBlocked": "Zwischenablage vom Browser blockiert",
+    "logDownloaded": "Partieprotokoll heruntergeladen"
+  },
+  "sandbox": {
+    "confirmDiscard": "{n} Sandkasten-Züge verwerfen und zur echten Position zurückkehren?"
   }
 }

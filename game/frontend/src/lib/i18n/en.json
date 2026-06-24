@@ -93,12 +93,24 @@
     "endPhase": "End phase",
     "endTurn": "End turn",
     "undo": "Undo",
-    "sandbox": "Sandbox",
+    "sandbox": "Enter sandbox",
     "exitSandbox": "Exit sandbox",
     "play": "Play",
     "pause": "Pause",
     "step": "Step",
     "aiThinking": "AI is thinking…",
-    "openInInspector": "Open in inspector"
+    "copyFen": "Copy FEN",
+    "copyMatchLog": "Copy match log",
+    "downloadMatchLog": "Download match log"
+  },
+  "toast": {
+    "fenCopied": "FEN copied to clipboard",
+    "logCopied": "Match log copied to clipboard",
+    "logUnavailable": "Match log not available",
+    "clipboardBlocked": "Clipboard blocked by browser",
+    "logDownloaded": "Match log downloaded"
+  },
+  "sandbox": {
+    "confirmDiscard": "Discard {n} sandbox move(s) and return to the true position?"
   }
 }
