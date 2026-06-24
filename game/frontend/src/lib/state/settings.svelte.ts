@@ -18,6 +18,14 @@ export interface Settings {
   audioVolume: number;
   /** UI language. Falls back to en when key missing. */
   locale: "en" | "de";
+  /** AI think budgets (used when a seat is AI). Mirror Rust AiBudget defaults. */
+  p1ThinkTimeMs: number;
+  p2ThinkTimeMs: number;
+  p1MaxDepth: number;
+  p2MaxDepth: number;
+  /** Delay between AI plies in AIvAI mode (ms). Frontend-paced; engine does
+   *  not sleep on its own. */
+  aivaiStepDelayMs: number;
 }
 
 const DEFAULTS: Settings = {
@@ -27,6 +35,11 @@ const DEFAULTS: Settings = {
   showBlockedByFriendly: true,
   audioVolume: 0.6,
   locale: "en",
+  p1ThinkTimeMs: 1000,
+  p2ThinkTimeMs: 1000,
+  p1MaxDepth: 6,
+  p2MaxDepth: 6,
+  aivaiStepDelayMs: 300,
 };
 
 function load(): Settings {
@@ -62,6 +75,11 @@ export function initSettingsPersistence() {
     void settings.showBlockedByFriendly;
     void settings.audioVolume;
     void settings.locale;
+    void settings.p1ThinkTimeMs;
+    void settings.p2ThinkTimeMs;
+    void settings.p1MaxDepth;
+    void settings.p2MaxDepth;
+    void settings.aivaiStepDelayMs;
     persist();
   });
 }

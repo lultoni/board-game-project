@@ -388,6 +388,34 @@ impl Match {
                      budget.time_limit_ms, budget.max_depth))
     }
 
+    /// Inspector / debugger variant: run the search for whoever is to move,
+    /// regardless of whether they're a human seat. Falls back to a default
+    /// AiBudget when the side has no AI configured (i.e. HvH matches). Does
+    /// NOT apply the result. Returns `GameOver` if the position is decided.
+    pub fn request_ai_move_forced(&mut self) -> Result<SearchResult, AiError> {
+        if self.position.game_result.is_some() { return Err(AiError::GameOver); }
+        let budget = match self.position.to_move {
+            Player::P1 => self.config.p1_ai,
+            Player::P2 => self.config.p2_ai,
+        };
+        let budget = if budget.time_limit_ms == 0 && budget.max_depth == 0 {
+            AiBudget::default()
+        } else {
+            budget
+        };
+        Ok(find_best(&mut self.position, &mut self.tt,
+                     budget.time_limit_ms, budget.max_depth))
+    }
+
+    /// Inspector variant for "infinite iterative deepening": runs the
+    /// search with no time limit, capped at `max_depth`. The caller drives
+    /// the deepening loop, polling cancellation between calls. The shared
+    /// transposition table makes repeated calls progressively cheaper.
+    pub fn request_ai_move_at_depth(&mut self, max_depth: u8) -> Result<SearchResult, AiError> {
+        if self.position.game_result.is_some() { return Err(AiError::GameOver); }
+        Ok(find_best(&mut self.position, &mut self.tt, 0, max_depth.max(1)))
+    }
+
     /// Convenience for AIvAI loops: run search and auto-apply the chosen
     /// action. Times the search wall and feeds SearchMeta into the log when
     /// `config.auto_log` is set.

@@ -22,11 +22,27 @@
   },
   "menu": {
     "newMatch": "New match",
+    "localPlay": "Local play",
     "modeHvh": "Local hotseat (human vs human)",
     "modeHvai": "Human vs AI",
     "modeAivai": "AI vs AI (spectator)",
     "openReplay": "Open replay…",
+    "openInspector": "Open inspector…",
     "resume": "Resume saved match"
+  },
+  "setup": {
+    "title": "Local play setup",
+    "back": "← back",
+    "p1Label": "Player 1",
+    "p2Label": "Player 2",
+    "human": "Human",
+    "ai": "AI",
+    "aiHeader": "AI settings",
+    "thinkTime": "Think time (ms)",
+    "maxDepth": "Max search depth",
+    "aivaiDelay": "AIvAI delay between plies (ms)",
+    "continue": "Continue →",
+    "summary": "{p1Label} vs {p2Label}"
   },
   "hud": {
     "phaseMove": "Move",
@@ -48,7 +64,7 @@
     "plate":   { "name": "Plate",   "desc": "Adjacent ally gains 1 armor." },
     "dash":    { "name": "Dash",    "desc": "Move self up to 2 tiles along the Path." },
     "blast":   { "name": "Blast",   "desc": "Push target enemy 1 tile away from caster (direction implied by caster→target line)." },
-    "shove":   { "name": "Shove",   "desc": "Push target ally or enemy 1 tile in a chosen direction." },
+    "shove":   { "name": "Shove",   "desc": "Push target enemy 1 tile in a chosen direction." },
     "swap":    { "name": "Swap",    "desc": "Swap positions with an allied piece. Requires an unobstructed Path." },
     "retreat": { "name": "Retreat", "desc": "Move self along the Path to a square adjacent to one of your Guards." },
     "focus":   { "name": "Focus",   "desc": "This turn, one non-mystic skill used by any of your pieces gains +1 Range. For Move skills, you choose whether +1 applies to activation range or effect range." },
@@ -78,6 +94,11 @@
     "endTurn": "End turn",
     "undo": "Undo",
     "sandbox": "Sandbox",
-    "exitSandbox": "Exit sandbox"
+    "exitSandbox": "Exit sandbox",
+    "play": "Play",
+    "pause": "Pause",
+    "step": "Step",
+    "aiThinking": "AI is thinking…",
+    "openInInspector": "Open in inspector"
   }
 }

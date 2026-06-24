@@ -287,10 +287,26 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                 TargetOwner::Enemy => {
                     let raw = path::skill_targets(pos, src, range).0;
                     let filtered = raw & opp_bb.0;
+                    let occ = (pos.p1_pieces | pos.p2_pieces).0;
                     for tgt in iter_squares(Bitboard(filtered)) {
-                        out.push(Action::encode(
-                            src, tgt, ActionKind::Skill, skill as u8, 0,
-                        ));
+                        // Shove emits one Action per legal (target, direction)
+                        // pair where the 1-tile push lands on-board and empty.
+                        // Other Enemy skills (Lance/Hook/Break/Steal/Tempest/
+                        // Blast) emit one Action per target with choice_idx=0.
+                        if skill == Skill::Shove {
+                            for dir in 0..8u8 {
+                                let Some(push_dest) = magic::neighbour_in_dir(tgt, dir as usize)
+                                    else { continue };
+                                if occ & (1u64 << push_dest) != 0 { continue; }
+                                out.push(Action::encode(
+                                    src, tgt, ActionKind::Skill, skill as u8, dir,
+                                ));
+                            }
+                        } else {
+                            out.push(Action::encode(
+                                src, tgt, ActionKind::Skill, skill as u8, 0,
+                            ));
+                        }
                     }
                     // Focus-effect mode for Blast: push 2 instead of 1. We
                     // can only land where intermediate + final squares allow
@@ -308,29 +324,13 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                             ));
                         }
                     }
-                }
-                TargetOwner::Either => {
-                    // Currently only Shove. Emit one action per (target, dir)
-                    // where the push lands on-board and onto an empty square.
-                    debug_assert_eq!(skill, Skill::Shove);
-                    let raw = path::skill_targets(pos, src, range).0;
-                    let occ = (pos.p1_pieces | pos.p2_pieces).0;
-                    for tgt in iter_squares(Bitboard(raw)) {
-                        for dir in 0..8u8 {
-                            let Some(push_dest) = magic::neighbour_in_dir(tgt, dir as usize)
-                                else { continue };
-                            if occ & (1u64 << push_dest) != 0 { continue; }
-                            out.push(Action::encode(
-                                src, tgt, ActionKind::Skill, skill as u8, dir,
-                            ));
-                        }
-                    }
-                    // Focus-effect: 2-tile push. Both intermediate and final
-                    // squares must be empty + on-board. Activation range is
-                    // unbuffed (Focus picks effect-mode, not activation-mode).
-                    if focus_pending {
+                    // Focus-effect mode for Shove: 2-tile push. Both intermediate
+                    // and final squares must be empty + on-board. Activation
+                    // range is unbuffed (Focus picks effect-mode here).
+                    if focus_pending && skill == Skill::Shove {
                         let raw_eff = path::skill_targets(pos, src, base_range).0;
-                        for tgt in iter_squares(Bitboard(raw_eff)) {
+                        let filtered_eff = raw_eff & opp_bb.0;
+                        for tgt in iter_squares(Bitboard(filtered_eff)) {
                             for dir in 0..8u8 {
                                 let Some(step1) = magic::neighbour_in_dir(tgt, dir as usize)
                                     else { continue };
@@ -344,6 +344,9 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                             }
                         }
                     }
+                }
+                TargetOwner::Either => {
+                    debug_assert!(false, "TargetOwner::Either is no longer used (Shove → Enemy)");
                 }
             }
         }
@@ -1197,9 +1200,10 @@ mod tests {
     }
 
     #[test]
-    fn generate_skill_phase_shove_targets_either_side() {
-        // P1 Champion at e4 (sq 28) with Shove (range 3, Either). P1 ally at
-        // e5 (36), P2 enemy at e3 (20). Both should be valid Shove targets.
+    fn generate_skill_phase_shove_enemy_only() {
+        // P1 Champion at e4 (sq 28) with Shove (range 3, Enemy). P1 ally at
+        // e5 (36), P2 enemy at e3 (20). Only the enemy is a valid Shove
+        // target — Stack-M says Shove pushes enemy pieces only.
         let mut p = skill_phase_pos(2);
         place_champ(&mut p, 28, Player::P1);
         place_champ(&mut p, 36, Player::P1);
@@ -1214,7 +1218,7 @@ mod tests {
                 && a.skill_id() == shove_id)
             .map(|a| a.target())
             .collect();
-        assert!(shove_targets.contains(&36), "Shove emits ally target");
+        assert!(!shove_targets.contains(&36), "Shove must not emit ally target");
         assert!(shove_targets.contains(&20), "Shove emits enemy target");
     }
 

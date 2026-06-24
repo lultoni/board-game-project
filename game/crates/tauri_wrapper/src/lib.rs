@@ -277,6 +277,61 @@ async fn step_ai(
     res?
 }
 
+/// Like `step_ai` but does not apply. Returns the AI's best candidate move
+/// (in `applied_action`) so the caller can highlight or apply at will.
+#[tauri::command]
+async fn request_ai_move(
+    handle:   u64,
+    registry: State<'_, EngineRegistry>,
+) -> Result<StepResultDto, String> {
+    let res: Result<Result<StepResultDto, String>, String> =
+        tokio::task::block_in_place(|| {
+            registry.with(handle, |e| {
+                api::request_ai_move(&mut e.m)
+                    .map(StepResultDto::from)
+                    .map_err(|err| format!("{err:?}"))
+            })
+        });
+    res?
+}
+
+/// Inspector variant: runs the AI search regardless of seat kind. Used so
+/// "Ask AI" works in HvH positions too.
+#[tauri::command]
+async fn request_ai_move_forced(
+    handle:   u64,
+    registry: State<'_, EngineRegistry>,
+) -> Result<StepResultDto, String> {
+    let res: Result<Result<StepResultDto, String>, String> =
+        tokio::task::block_in_place(|| {
+            registry.with(handle, |e| {
+                api::request_ai_move_forced(&mut e.m)
+                    .map(StepResultDto::from)
+                    .map_err(|err| format!("{err:?}"))
+            })
+        });
+    res?
+}
+
+/// Inspector iterative-deepening helper. Runs ID up to `max_depth` with
+/// no time bound; caller drives the loop.
+#[tauri::command]
+async fn request_ai_move_at_depth(
+    handle:    u64,
+    max_depth: u8,
+    registry:  State<'_, EngineRegistry>,
+) -> Result<StepResultDto, String> {
+    let res: Result<Result<StepResultDto, String>, String> =
+        tokio::task::block_in_place(|| {
+            registry.with(handle, |e| {
+                api::request_ai_move_at_depth(&mut e.m, max_depth)
+                    .map(StepResultDto::from)
+                    .map_err(|err| format!("{err:?}"))
+            })
+        });
+    res?
+}
+
 #[tauri::command]
 fn match_log_json(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Option<String>, String> {
     registry.with(handle, |e| api::match_log_json(&e.m))
@@ -316,6 +371,9 @@ pub fn run() {
             legal_actions,
             try_apply,
             step_ai,
+            request_ai_move,
+            request_ai_move_forced,
+            request_ai_move_at_depth,
             match_log_json,
             finalise_log,
             snapshot_json,

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { getEngine, ActionKind, decodeAction } from "$lib/engine";
   import { decodeMailbox } from "$lib/engine/mailbox";
   import { t } from "$lib/state/i18n";
-  import { match, resetMatchState } from "$lib/state/match-store.svelte";
+  import { match, modeFromSeats, resetMatchState } from "$lib/state/match-store.svelte";
+  import { settings } from "$lib/state/settings.svelte";
   import {
     moveTargetsFor,
     movableSources,
@@ -13,7 +14,7 @@
     approachChoicesFor,
   } from "$lib/state/move-targets";
   import { bodyguardGuardsFor } from "$lib/state/bodyguard";
-  import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, type SkillVariant } from "$lib/state/skill-targets";
+  import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, type SkillVariant } from "$lib/state/skill-targets";
   import {
     isSelfCast,
     SKILLS,
@@ -24,13 +25,26 @@
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
   import type { Effect } from "$lib/viz/effects";
+  import { sfx } from "$lib/audio/sfx";
 
-  const mode = $derived($page.url.searchParams.get("mode") ?? "hvh");
+  const mode = $derived(modeFromSeats(match.side));
 
   let bootError = $state<string | null>(null);
   let ready = $state(false);
   let busy = $state(false);
+  /** True while a `stepAi` call is in flight. Drives the "AI is thinking…" overlay. */
+  let aiThinking = $state(false);
+  /** AIvAI playback control. When true, the AI loop auto-chains turns. */
+  let aiAutoPlay = $state(true);
   let lastAppliedPair = $state<{ src: number; target: number } | null>(null);
+
+  /** True iff the side currently to move is an AI seat. */
+  const currentSeatIsAi = $derived.by(() => {
+    if (!match.position) return false;
+    if (match.position.gameResult !== 0) return false;
+    const seat = match.position.toMove === 0 ? match.side.p1 : match.side.p2;
+    return seat === "ai";
+  });
 
   // Track which squares used their Move action this phase. Stored as the
   // attacker's final square (target for plain Move, approach_sq for
@@ -173,6 +187,8 @@
   });
 
   function handlePressStart(src: number) {
+    sfx.unlock();
+    sfx.play("pickup");
     match.selection = src;
     dragSrc = src;
     dragTrail = [src];
@@ -255,7 +271,7 @@
   const movable = $derived(movableSources(match.legal));
   const endPhaseAction = $derived(findActionByKind(match.legal, ActionKind.EndPhase));
   const inMovePhase = $derived(match.position?.currentPhase === 0);
-  const interactive = $derived(ready && !busy && match.position?.gameResult === 0);
+  const interactive = $derived(ready && !busy && match.position?.gameResult === 0 && !currentSeatIsAi);
 
   // Wheel state. Open whenever a piece is selected in the Skill Phase
   // (and the player isn't mid-drag — we don't want the wheel popping up
@@ -269,6 +285,9 @@
     if (pendingApproach !== null) return null;
     if (pendingBodyguard !== null) return null;
     if (pendingDirection !== null) return null;
+    // Hide the wheel once a skill is armed — the player is now choosing a
+    // target, so the wheel chrome would just obscure the board.
+    if (armedSkill !== null) return null;
     const pos = match.position;
     if (!pos) return null;
     const m = decodeMailbox(pos.mailbox[match.selection]);
@@ -328,11 +347,54 @@
     return filtered;
   });
 
+  // Wheel open/close SFX. Fires once each time the wheel transitions
+  // from null → open (a piece is selected in skill phase). We avoid an
+  // open sound during boot by gating on `ready`.
+  let wheelWasOpen = false;
+  $effect(() => {
+    const open = wheelOpen !== null;
+    if (open && !wheelWasOpen && ready) {
+      sfx.play("wheelOpen");
+    }
+    wheelWasOpen = open;
+  });
+
+  /** AI scheduler. Whenever it's an AI seat's turn and the loop is allowed
+   *  to run, queue a `runAiStep()`. For HvAI this fires automatically on
+   *  every AI ply. For AIvAI it chains turn-after-turn while `aiAutoPlay`
+   *  is true; pausing freezes the loop after the in-flight call returns.
+   *  Anchored on `phaseKey()` rather than `position` directly so a stable
+   *  side+phase pair doesn't re-trigger when other position fields change. */
+  let aiScheduled = false;
+  $effect(() => {
+    if (!ready) return;
+    if (busy) return;
+    if (!currentSeatIsAi) return;
+    // For AIvAI, gate on the play/pause toggle. For HvAI, always run.
+    if (match.mode === "aivai" && !aiAutoPlay) return;
+    if (aiScheduled) return;
+    aiScheduled = true;
+    // Defer just long enough for the UI to paint state + "thinking" pill
+    // before we block on the engine. For AIvAI, honour the user-configured
+    // step delay so a spectator can actually watch the game.
+    const delay = match.mode === "aivai"
+      ? Math.max(16, settings.aivaiStepDelayMs)
+      : 30;
+    setTimeout(() => {
+      aiScheduled = false;
+      void runAiStep();
+    }, delay);
+  });
+
   onMount(async () => {
     try {
       eng = await getEngine();
       const pending = match.pendingSnapshotJson;
+      // Snapshot side before reset so it survives the reset (which clears
+      // mode/position/legal but preserves side by design).
+      const sideAtBoot = { p1: match.side.p1, p2: match.side.p2 };
       resetMatchState();
+      match.side = sideAtBoot;
       if (pending) {
         await eng.restoreFromSnapshot(pending);
       } else {
@@ -341,7 +403,7 @@
       await refresh();
       reconcilePieceIds();
       lastPhaseKey = phaseKey();
-      match.mode = mode as typeof match.mode;
+      match.mode = modeFromSeats(match.side);
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
@@ -356,6 +418,17 @@
     if (!eng) return;
     match.position = await eng.positionView();
     match.legal = await eng.legalActions();
+  }
+
+  /** Fetch fresh position+legal from the engine WITHOUT assigning to
+   *  `match.position` / `match.legal` yet. Lets the caller stage UI changes
+   *  (impact effects on the pre-state board) before flipping the rendered
+   *  state to the new one. */
+  async function fetchFreshState() {
+    if (!eng) return null;
+    const pos = await eng.positionView();
+    const legal = await eng.legalActions();
+    return { pos, legal };
   }
 
   // Build the walked-square path for dust. For a plain Move (no approach),
@@ -385,21 +458,354 @@
     effectQueue.push({ kind: "impact", at: targetSq, startedAt: now });
     effectQueue.push({ kind: "damageNumber", at: targetSq, amount: dmg, startedAt: now + 80 });
     triggerShake(targetSq);
+    sfx.play("damage");
+  }
+
+  /** Chebyshev distance between two squares (max of rank/file deltas). */
+  function chebyshev(a: number, b: number): number {
+    const dx = Math.abs((a & 7) - (b & 7));
+    const dy = Math.abs(((a >> 3) & 7) - ((b >> 3) & 7));
+    return Math.max(dx, dy);
+  }
+
+  /** Pre→post diff summary for a skill action. */
+  interface SkillDiff {
+    /** Squares where a piece remained at the same square (delta in stats). */
+    stayed: number[];
+    /** Vacated→arrived pairings (a piece relocated). Includes Chebyshev dist. */
+    moves: { from: number; to: number; dist: number }[];
+    /** Unpaired vacated squares (a piece died here). */
+    deaths: number[];
+  }
+
+  /** Pair vacated squares with arrived squares by nearest Chebyshev. */
+  function diffSkillMailbox(pre: Uint16Array, post: Uint16Array): SkillDiff {
+    const stayed: number[] = [];
+    const vacated: number[] = [];
+    const arrived: number[] = [];
+    for (let sq = 0; sq < 64; sq++) {
+      const a = decodeMailbox(pre[sq]);
+      const b = decodeMailbox(post[sq]);
+      if (a.empty && b.empty) continue;
+      if (!a.empty && !b.empty) { stayed.push(sq); continue; }
+      if (!a.empty && b.empty) { vacated.push(sq); continue; }
+      if (a.empty && !b.empty) { arrived.push(sq); continue; }
+    }
+    const moves: { from: number; to: number; dist: number }[] = [];
+    const usedV = new Set<number>();
+    for (const dst of arrived) {
+      let bestV = -1;
+      let bestD = Infinity;
+      for (const v of vacated) {
+        if (usedV.has(v)) continue;
+        const d = chebyshev(v, dst);
+        if (d < bestD) { bestD = d; bestV = v; }
+      }
+      if (bestV >= 0) {
+        usedV.add(bestV);
+        moves.push({ from: bestV, to: dst, dist: bestD });
+      }
+    }
+    const deaths: number[] = vacated.filter((v) => !usedV.has(v));
+    return { stayed, moves, deaths };
+  }
+
+  /** Emit the impact-class effects (damage, heal, armor) for stayed pieces
+   *  AND for relocated pieces (damage delta computed across the pairing).
+   *  Returns whether any such event fired. */
+  function emitImpactEvents(pre: Uint16Array, post: Uint16Array, diff: SkillDiff): boolean {
+    const now = performance.now();
+    let fired = false;
+    const visit = (preSq: number, postSq: number) => {
+      const a = decodeMailbox(pre[preSq]);
+      const b = decodeMailbox(post[postSq]);
+      if (a.empty || b.empty) return;
+      const hpDelta = b.hp - a.hp;
+      const arDelta = b.armor - a.armor;
+      // Render damage/heal on the piece's POST-MOVE square so the number
+      // travels with the relocated piece.
+      const renderSq = postSq;
+      if (hpDelta < 0) {
+        pushDamageEffect(renderSq, a.hp + a.armor, b.hp + b.armor);
+        fired = true;
+      } else if (hpDelta > 0) {
+        effectQueue.push({ kind: "heal", at: renderSq, amount: hpDelta, startedAt: now });
+        sfx.play("heal");
+        fired = true;
+      }
+      if (arDelta > 0) {
+        effectQueue.push({ kind: "armor", at: renderSq, amount: arDelta, startedAt: now + 40 });
+        sfx.play("armor");
+        fired = true;
+      } else if (arDelta < 0 && hpDelta === 0) {
+        effectQueue.push({ kind: "armor", at: renderSq, amount: arDelta, startedAt: now });
+        sfx.play("armorBreak");
+        fired = true;
+      }
+    };
+    for (const sq of diff.stayed) visit(sq, sq);
+    for (const m of diff.moves) visit(m.from, m.to);
+    return fired;
+  }
+
+  /** Emit dust + move-SFX for each relocation and death-flash for each
+   *  unpaired vacated square. Transfers piece ids along each move. */
+  function emitRelocationAndDeathEvents(pre: Uint16Array, diff: SkillDiff) {
+    const now = performance.now();
+    for (const m of diff.moves) {
+      const path = straightPath(m.from, m.to);
+      if (path.length >= 2) {
+        effectQueue.push({ kind: "dust", path, startedAt: now });
+      }
+      const id = pieceIds.get(m.from);
+      if (id !== undefined) {
+        pieceIds.delete(m.from);
+        pieceIds.set(m.to, id);
+      }
+      sfx.play("move", { tiles: m.dist });
+    }
+    for (const v of diff.deaths) {
+      const a = decodeMailbox(pre[v]);
+      const dmg = a.hp + a.armor;
+      effectQueue.push({ kind: "impact", at: v, startedAt: now });
+      if (dmg > 0) {
+        effectQueue.push({ kind: "damageNumber", at: v, amount: dmg, startedAt: now + 80 });
+      }
+      triggerShake(v);
+      pieceIds.delete(v);
+      sfx.play("death");
+    }
+  }
+
+  /** True iff diff contains any relocations or deaths. */
+  function hasRelocationOrDeath(diff: SkillDiff): boolean {
+    return diff.moves.length > 0 || diff.deaths.length > 0;
+  }
+
+  /** Straight-line path of squares from `from` to `to` along a queen-ray
+   *  direction. Returns [from, …, to] inclusive. If they're not on a queen
+   *  ray (shouldn't happen for skill relocations), returns [from, to]. */
+  function straightPath(from: number, to: number): number[] {
+    const fF = from & 7, fR = (from >> 3) & 7;
+    const tF = to & 7, tR = (to >> 3) & 7;
+    const dF = Math.sign(tF - fF);
+    const dR = Math.sign(tR - fR);
+    const steps = Math.max(Math.abs(tF - fF), Math.abs(tR - fR));
+    if (steps === 0) return [from];
+    // Sanity: only emit a ray-walk if Chebyshev matches both axes.
+    const okF = dF === 0 || Math.abs(tF - fF) === steps;
+    const okR = dR === 0 || Math.abs(tR - fR) === steps;
+    if (!okF || !okR) return [from, to];
+    const out: number[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const f = fF + dF * i;
+      const r = fR + dR * i;
+      out.push((r << 3) | f);
+    }
+    return out;
+  }
+
+  type BodyguardSnapshot = { sq: number; entry: ReturnType<typeof decodeMailbox> }[];
+
+  /** Snapshot the pre-state slice we need to render `raw`'s effects. */
+  function snapshotPreState(raw: number): {
+    preFull: Uint16Array | null;
+    preTarget: ReturnType<typeof decodeMailbox> | null;
+    preBodyguard: BodyguardSnapshot;
+  } {
+    const decoded = decodeAction(raw);
+    const preMailbox = match.position?.mailbox;
+    const preFull: Uint16Array | null = preMailbox ? new Uint16Array(preMailbox) : null;
+    const preTarget = preMailbox ? decodeMailbox(preMailbox[decoded.target]) : null;
+    const preBodyguard: BodyguardSnapshot = [];
+    if (preMailbox && decoded.kind === ActionKind.Move && decoded.hasAux) {
+      const tFile = decoded.target & 7;
+      const tRank = (decoded.target >> 3) & 7;
+      for (let df = -1; df <= 1; df++) {
+        for (let dr = -1; dr <= 1; dr++) {
+          if (df === 0 && dr === 0) continue;
+          const nf = tFile + df, nr = tRank + dr;
+          if (nf < 0 || nf > 7 || nr < 0 || nr > 7) continue;
+          const sq = (nr << 3) | nf;
+          const ent = decodeMailbox(preMailbox[sq]);
+          if (!ent.empty) preBodyguard.push({ sq, entry: ent });
+        }
+      }
+    }
+    return { preFull, preTarget, preBodyguard };
+  }
+
+  /** Render effects for an action that the engine has ALREADY applied.
+   *  Caller is responsible for: snapshotting pre-state, calling tryApply
+   *  (or stepAi), and clearing UI affordances (selection, pending choosers)
+   *  after this completes. */
+  async function renderApplied(
+    raw: number,
+    preFull: Uint16Array | null,
+    preTarget: ReturnType<typeof decodeMailbox> | null,
+    preBodyguard: BodyguardSnapshot,
+  ): Promise<void> {
+    const decoded = decodeAction(raw);
+    if (decoded.kind === ActionKind.Skill) {
+      sfx.play("skillFire");
+    } else if (decoded.kind === ActionKind.EndPhase) {
+      sfx.play("phaseEnd");
+    }
+
+    // Transfer piece ids along the move BEFORE refresh, so the new
+    // bitboards see a piece with a stable identity at the destination.
+    if (decoded.kind === ActionKind.Move) {
+      const approach = decoded.hasAux ? decoded.auxSq : decoded.target;
+      const srcId = pieceIds.get(decoded.src);
+      if (srcId !== undefined) {
+        pieceIds.delete(decoded.src);
+        pieceIds.set(approach, srcId);
+      }
+    }
+
+    // For Move / EndPhase we refresh immediately. For Skill we DEFER the
+    // state flip — see the skill-effects block below.
+    if (decoded.kind !== ActionKind.Skill) {
+      await refresh();
+    }
+
+    let killed = false;
+    if (decoded.kind === ActionKind.Move && decoded.hasAux && preTarget && match.position) {
+      const postTarget = decodeMailbox(match.position.mailbox[decoded.target]);
+      const approach = decoded.auxSq;
+      if (!postTarget.empty && approach !== decoded.target) {
+        const postApproach = decodeMailbox(match.position.mailbox[approach]);
+        if (postApproach.empty) {
+          killed = true;
+          const aid = pieceIds.get(approach);
+          if (aid !== undefined) {
+            pieceIds.delete(approach);
+            pieceIds.set(decoded.target, aid);
+          }
+        }
+      } else if (!postTarget.empty && approach === decoded.target) {
+        killed = true;
+      }
+    }
+
+    if (decoded.kind !== ActionKind.Skill) {
+      reconcilePieceIds();
+    }
+
+    if (decoded.kind === ActionKind.Move) {
+      const path = walkedPath(decoded, killed);
+      if (path.length >= 2) {
+        effectQueue.push({ kind: "dust", path, startedAt: performance.now() });
+      }
+      const finalAttackerSq = decoded.hasAux
+        ? (killed ? decoded.target : decoded.auxSq)
+        : decoded.target;
+      const tiles = chebyshev(decoded.src, finalAttackerSq);
+      sfx.play(decoded.hasAux ? "attack" : "move", { tiles });
+      if (killed) sfx.play("death");
+      if (decoded.hasAux && preTarget && match.position) {
+        const postTarget = decodeMailbox(match.position.mailbox[decoded.target]);
+        const before = preTarget.hp + preTarget.armor;
+        const after = killed ? 0 : postTarget.hp + postTarget.armor;
+        if (after < before) {
+          pushDamageEffect(decoded.target, before, after);
+        } else {
+          for (const bg of preBodyguard) {
+            const post = decodeMailbox(match.position.mailbox[bg.sq]);
+            const bgBefore = bg.entry.hp + bg.entry.armor;
+            const bgAfter = post.hp + post.armor;
+            if (bgAfter < bgBefore) {
+              pushDamageEffect(bg.sq, bgBefore, bgAfter);
+              break;
+            }
+          }
+        }
+      }
+      const finalSq = decoded.hasAux
+        ? (killed ? decoded.target : decoded.auxSq)
+        : decoded.target;
+      usedThisPhase = new Set([...usedThisPhase, finalSq]);
+    }
+
+    const RELOC_DELAY_MS = 260;
+    if (decoded.kind === ActionKind.Skill && preFull) {
+      const fresh = await fetchFreshState();
+      if (!fresh) return;
+      const newMailbox = fresh.pos.mailbox;
+      const diff = diffSkillMailbox(preFull, newMailbox);
+      const hasReloc = hasRelocationOrDeath(diff);
+      const impactFired = emitImpactEvents(preFull, newMailbox, diff);
+      if (hasReloc && impactFired) {
+        setTimeout(() => {
+          match.position = fresh.pos;
+          match.legal = fresh.legal;
+          emitRelocationAndDeathEvents(preFull, diff);
+          reconcilePieceIds();
+        }, RELOC_DELAY_MS);
+      } else {
+        match.position = fresh.pos;
+        match.legal = fresh.legal;
+        if (hasReloc) emitRelocationAndDeathEvents(preFull, diff);
+        reconcilePieceIds();
+      }
+    }
+
+    lastAppliedPair =
+      decoded.kind === ActionKind.Move || decoded.kind === ActionKind.Skill
+        ? { src: decoded.src, target: decoded.target }
+        : null;
+    match.lastApplied = raw;
+
+    const k = phaseKey();
+    if (k !== lastPhaseKey) {
+      usedThisPhase = new Set();
+      lastPhaseKey = k;
+    }
   }
 
   async function applyRaw(raw: number) {
     if (!eng || busy) return;
     busy = true;
     try {
+      const { preFull, preTarget, preBodyguard } = snapshotPreState(raw);
+      await eng.tryApply(raw);
+      await renderApplied(raw, preFull, preTarget, preBodyguard);
+      match.selection = null;
+      pendingApproach = null;
+      pendingDirection = null;
+      focusModePref = "activation";
+    } catch (e) {
+      bootError = (e as Error)?.message ?? String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** Run one AI step for the side-to-move, then render the result. The engine
+   *  applies the action atomically inside stepAi, so we snapshot pre-state
+   *  from the current `match.position` BEFORE the call. */
+  async function runAiStep(): Promise<void> {
+    if (!eng || busy) return;
+    if (!match.position) return;
+    if (match.position.gameResult !== 0) return;
+    busy = true;
+    aiThinking = true;
+    try {
+      // Snapshot from the pre-call position (we don't know the action yet,
+      // but the mailbox + adjacency snapshot is action-agnostic).
+      const preMailbox = match.position.mailbox;
+      const preFull = new Uint16Array(preMailbox);
+      const result = await eng.stepAi();
+      const raw = result.appliedAction;
+      if (raw === 0) {
+        // AI returned no move (terminal or error). Refresh and bail.
+        await refresh();
+        return;
+      }
       const decoded = decodeAction(raw);
-      // Snapshot pre-state on the target so we can compute damage on attacks.
-      const preMailbox = match.position?.mailbox;
-      const preTarget = preMailbox ? decodeMailbox(preMailbox[decoded.target]) : null;
-      const preBodyguard: { sq: number; entry: ReturnType<typeof decodeMailbox> }[] = [];
-      // Bodyguard candidates: adjacent friendly Guards of the defender. We
-      // capture all friendly-Guard mailbox entries adjacent to the target so
-      // we can detect whichever one absorbed the hit afterwards.
-      if (preMailbox && decoded.kind === ActionKind.Move && decoded.hasAux) {
+      const preTarget = decodeMailbox(preFull[decoded.target]);
+      const preBodyguard: BodyguardSnapshot = [];
+      if (decoded.kind === ActionKind.Move && decoded.hasAux) {
         const tFile = decoded.target & 7;
         const tRank = (decoded.target >> 3) & 7;
         for (let df = -1; df <= 1; df++) {
@@ -408,130 +814,16 @@
             const nf = tFile + df, nr = tRank + dr;
             if (nf < 0 || nf > 7 || nr < 0 || nr > 7) continue;
             const sq = (nr << 3) | nf;
-            const ent = decodeMailbox(preMailbox[sq]);
+            const ent = decodeMailbox(preFull[sq]);
             if (!ent.empty) preBodyguard.push({ sq, entry: ent });
           }
         }
       }
-
-      await eng.tryApply(raw);
-
-      // Transfer piece ids along the move BEFORE refresh, so the new
-      // bitboards from refresh see a piece with a stable identity at the
-      // destination square. For plain Move: src → target. For Move-Attack
-      // (no kill): src → approach_sq. For Move-Attack with kill: the attacker
-      // advances all the way to target, and the defender's id is dropped.
-      // We detect kill by comparing pre/post mailbox at target.
-      let killed = false;
-      if (decoded.kind === ActionKind.Move && decoded.hasAux && preTarget) {
-        // Defender died iff their pre-state HP+armor was 1 AND post is empty
-        // AND no bodyguard absorbed (we re-check by reading post target).
-        // Easier: after refresh below, check if mailbox[target] now holds
-        // the attacker. But we want to transfer ids BEFORE refresh, so use
-        // the pre-target totals plus the rule: kill happens when defender's
-        // hp+armor was 1 and Bodyguard didn't intercept.
-        // The clean signal: read mailbox[target] post-apply. Engine state
-        // is already updated by tryApply; the cached `match.position` is
-        // stale until refresh, but `eng.positionView()` is what we need.
-        // We'll defer the kill check to AFTER refresh, then fix up ids.
-        killed = false; // placeholder; overwritten after refresh
-      }
-
-      if (decoded.kind === ActionKind.Move) {
-        const approach = decoded.hasAux ? decoded.auxSq : decoded.target;
-        const srcId = pieceIds.get(decoded.src);
-        if (srcId !== undefined) {
-          pieceIds.delete(decoded.src);
-          pieceIds.set(approach, srcId);
-        }
-      }
-
-      await refresh();
-
-      // Now detect kill by reading the refreshed mailbox at target.
-      if (decoded.kind === ActionKind.Move && decoded.hasAux && preTarget && match.position) {
-        const postTarget = decodeMailbox(match.position.mailbox[decoded.target]);
-        // A kill means the defender vacated AND the tile is now occupied by
-        // the attacker (post-hop). If postTarget is empty, no kill-advance
-        // happened (defender survived). If postTarget is non-empty and the
-        // attacker's approach tile is now empty, the attacker walked the
-        // final hop into the defender's square.
-        const approach = decoded.auxSq;
-        if (!postTarget.empty && approach !== decoded.target) {
-          const postApproach = decodeMailbox(match.position.mailbox[approach]);
-          if (postApproach.empty) {
-            killed = true;
-            // Move the attacker's id from approach → target.
-            const aid = pieceIds.get(approach);
-            if (aid !== undefined) {
-              pieceIds.delete(approach);
-              pieceIds.set(decoded.target, aid);
-            }
-          }
-        } else if (!postTarget.empty && approach === decoded.target) {
-          // Speed-1 attack that killed: attacker is at src→target in one hop.
-          // pieceIds was set to approach (=target), nothing to fix.
-          killed = true;
-        }
-      }
-
-      reconcilePieceIds();
-
-      // Effects.
-      if (decoded.kind === ActionKind.Move) {
-        const path = walkedPath(decoded, killed);
-        if (path.length >= 2) {
-          effectQueue.push({ kind: "dust", path, startedAt: performance.now() });
-        }
-        // Move-Attack damage detection.
-        if (decoded.hasAux && preTarget && match.position) {
-          const postTarget = decodeMailbox(match.position.mailbox[decoded.target]);
-          const before = preTarget.hp + preTarget.armor;
-          // On kill, the attacker now occupies target — so postTarget reads
-          // the attacker's stats, not the defender's. Treat that as "after = 0".
-          const after = killed ? 0 : postTarget.hp + postTarget.armor;
-          if (after < before) {
-            pushDamageEffect(decoded.target, before, after);
-          } else {
-            // Defender unhurt: a Bodyguard likely ate the hit. Find which
-            // adjacent friendly Guard lost HP or armor.
-            for (const bg of preBodyguard) {
-              const post = decodeMailbox(match.position.mailbox[bg.sq]);
-              const bgBefore = bg.entry.hp + bg.entry.armor;
-              const bgAfter = post.hp + post.armor;
-              if (bgAfter < bgBefore) {
-                pushDamageEffect(bg.sq, bgBefore, bgAfter);
-                break;
-              }
-            }
-          }
-        }
-        // Mark attacker's final square as used this phase.
-        const finalSq = decoded.hasAux
-          ? (killed ? decoded.target : decoded.auxSq)
-          : decoded.target;
-        usedThisPhase = new Set([...usedThisPhase, finalSq]);
-      }
-
-      lastAppliedPair =
-        decoded.kind === ActionKind.Move || decoded.kind === ActionKind.Skill
-          ? { src: decoded.src, target: decoded.target }
-          : null;
-      match.lastApplied = raw;
-      match.selection = null;
-      pendingApproach = null;
-      pendingDirection = null;
-      focusModePref = "activation";
-
-      // Phase / side flip → clear used-this-phase set.
-      const k = phaseKey();
-      if (k !== lastPhaseKey) {
-        usedThisPhase = new Set();
-        lastPhaseKey = k;
-      }
+      await renderApplied(raw, preFull, preTarget, preBodyguard);
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
+      aiThinking = false;
       busy = false;
     }
   }
@@ -593,6 +885,7 @@
 
   function handleSquareClick(sq: number, cx: number, cy: number) {
     if (!interactive) return;
+    sfx.unlock();
 
     // Bodyguard chooser is active: clicks select defender or a Guard.
     if (pendingBodyguard) {
@@ -656,11 +949,13 @@
 
     if (match.selection === sq) {
       match.selection = null;
+      sfx.play("drop");
       return;
     }
 
     if (selectable.has(sq)) {
       match.selection = sq;
+      sfx.play("pickup");
       return;
     }
 
@@ -682,6 +977,8 @@
     const dropSq = path[path.length - 1];
     const candidates = targets.byTarget.get(dropSq);
     if (!candidates || candidates.size === 0) {
+      // Dropped on illegal tile (or back on src) — soft drop thud.
+      sfx.play("drop");
       return;
     }
     if (candidates.size === 1) {
@@ -723,17 +1020,27 @@
   function handleWheelSliceClick(slice: import("$lib/board/SkillWheel.svelte").SliceKind) {
     if (!interactive) return;
     if (!wheelOpen) return;
+    sfx.unlock();
+    sfx.play("click");
     const src = wheelOpen.square;
 
     if (slice.kind === "skill") {
-      // Self-cast skills fire immediately.
+      // Self-cast skills normally fire immediately — BUT when Focus is staged
+      // and the engine emitted retarget variants (Shield → adjacent ally,
+      // Dash/Retreat → adjacent ally), we arm instead so the player can pick
+      // a recipient (or click self to take the self-cast).
       if (isSelfCast(slice.skillId)) {
-        const raw = rawForSelfCast(src, slice.skillId);
-        if (raw !== null) {
-          armedSkill = null;
-          applyRaw(raw);
+        const retargetable = hasRetargetVariants(match.legal, src, slice.skillId);
+        if (!retargetable) {
+          const raw = rawForSelfCast(src, slice.skillId);
+          if (raw !== null) {
+            armedSkill = null;
+            applyRaw(raw);
+          }
+          return;
         }
-        return;
+        // Fall through to arm — the target picker will surface src + ally
+        // recipients as legal targets.
       }
       // Otherwise arm it (or disarm if already armed with the same skill).
       if (armedSkill && armedSkill.skillId === slice.skillId) {
@@ -852,6 +1159,7 @@
           draggable={movable}
           usedSquares={usedThisPhase}
           {shakingSquares}
+          effectsActive={effectQueue.length > 0}
           approachChoices={pendingApproach?.approaches ?? []}
           bodyguardChoice={pendingBodyguard ? {
             defender: pendingBodyguard.target,
@@ -886,6 +1194,12 @@
           }}
         />
         <EffectsLayer viewBox={800} wheelPad={60} bind:queue={effectQueue} />
+        {#if aiThinking}
+          <div class="thinking" role="status" aria-live="polite">
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="thinking-label">{t("controls.aiThinking")}</span>
+          </div>
+        {/if}
         {#if hoveredSlice && wheelOpen}
           <div class="info-anchor">
             <SkillInfoCard
@@ -960,11 +1274,33 @@
         <span class="value">{match.legal.length}</span>
       </div>
       <div class="actions">
+        {#if match.mode === "aivai"}
+          <button
+            type="button"
+            disabled={busy || match.position?.gameResult !== 0}
+            onclick={() => (aiAutoPlay = !aiAutoPlay)}
+          >{aiAutoPlay ? t("controls.pause") : t("controls.play")}</button>
+          <button
+            type="button"
+            disabled={busy || aiAutoPlay || match.position?.gameResult !== 0}
+            onclick={() => void runAiStep()}
+          >{t("controls.step")}</button>
+        {:else}
+          <button
+            type="button"
+            disabled={!interactive || endPhaseAction === null}
+            onclick={endPhase}
+          >{t("controls.endPhase")}</button>
+        {/if}
         <button
           type="button"
-          disabled={!interactive || endPhaseAction === null}
-          onclick={endPhase}
-        >{t("controls.endPhase")}</button>
+          disabled={busy}
+          onclick={async () => {
+            const eng = await getEngine();
+            match.pendingSnapshotJson = await eng.snapshotJson();
+            await goto("../inspector/");
+          }}
+        >{t("controls.openInInspector")}</button>
       </div>
     </aside>
 
@@ -1122,5 +1458,38 @@
     border: 1.5px dashed currentColor;
     padding: 0.5em 0.8em;
     border-radius: 6px;
+  }
+  .thinking {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.4em 0.7em;
+    border: 1.5px solid var(--paper-line-strong, #8a7a4e);
+    border-radius: 999px;
+    background: var(--paper-bg, #f3ecd9);
+    font-size: 0.85rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    pointer-events: none;
+  }
+  .thinking-label {
+    color: var(--paper-ink, #1c1a17);
+  }
+  .spinner {
+    width: 0.9em;
+    height: 0.9em;
+    border: 2px solid var(--paper-line, #c7b894);
+    border-top-color: var(--paper-ink, #1c1a17);
+    border-radius: 50%;
+    animation: spinner-rot 0.9s linear infinite;
+  }
+  @keyframes spinner-rot {
+    to { transform: rotate(1turn); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation-duration: 2.4s; }
   }
 </style>

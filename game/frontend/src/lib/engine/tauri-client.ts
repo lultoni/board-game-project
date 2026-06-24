@@ -104,6 +104,24 @@ export class TauriClient implements EngineClient {
     return normaliseStepResult(dto);
   }
 
+  async requestAiMove(): Promise<StepResult> {
+    const dto = await invoke<StepResultDto>("request_ai_move", { handle: this.#handle });
+    return normaliseStepResult(dto);
+  }
+
+  async requestAiMoveForced(): Promise<StepResult> {
+    const dto = await invoke<StepResultDto>("request_ai_move_forced", { handle: this.#handle });
+    return normaliseStepResult(dto);
+  }
+
+  async requestAiMoveAtDepth(maxDepth: number): Promise<StepResult> {
+    const dto = await invoke<StepResultDto>("request_ai_move_at_depth", {
+      handle: this.#handle,
+      maxDepth,
+    });
+    return normaliseStepResult(dto);
+  }
+
   async positionFen(): Promise<string> {
     return await invoke<string>("position_fen", { handle: this.#handle });
   }

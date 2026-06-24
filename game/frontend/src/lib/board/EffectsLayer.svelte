@@ -156,6 +156,77 @@
       const text = `-${eff.amount}`;
       ctx.strokeText(text, c.x, y);
       ctx.fillText(text, c.x, y);
+    } else if (eff.kind === "heal") {
+      // Soft green ring + + glyph rising. Lifetime 720ms.
+      const ttl = FX_LIFETIME_MS.heal;
+      const t = age / ttl;
+      const c = squareCenter(eff.at, size);
+      // Expanding ring.
+      const r = size * 0.18 + t * size * 0.42;
+      ctx.strokeStyle = `rgba(80, 158, 96, ${(1 - t) * 0.85})`;
+      ctx.lineWidth = size * (0.07 * (1 - t * 0.5));
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // Soft inner glow.
+      const innerA = Math.max(0, 1 - t * 1.8);
+      if (innerA > 0) {
+        const grd = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, size * 0.42);
+        grd.addColorStop(0, `rgba(170, 230, 180, ${innerA * 0.65})`);
+        grd.addColorStop(1, "rgba(170, 230, 180, 0)");
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, size * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Rising "+" glyph (or +N if amount > 1).
+      const a = Math.max(0, 1 - t);
+      const y = c.y - size * 0.18 - t * size * 0.5;
+      ctx.fillStyle = `rgba(56, 124, 70, ${a})`;
+      ctx.strokeStyle = `rgba(28, 26, 23, ${a * 0.8})`;
+      ctx.lineWidth = size * 0.04;
+      ctx.font = `bold ${size * 0.34}px ui-rounded, system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const text = eff.amount > 1 ? `+${eff.amount}` : "+";
+      ctx.strokeText(text, c.x, y);
+      ctx.fillText(text, c.x, y);
+    } else if (eff.kind === "armor") {
+      // Steel-blue shield rune that pulses then fades. Negative amount =
+      // armor stripped (Break) → coppery flash instead of blue.
+      const ttl = FX_LIFETIME_MS.armor;
+      const t = age / ttl;
+      const c = squareCenter(eff.at, size);
+      const positive = eff.amount > 0;
+      const stroke = positive
+        ? `rgba(94, 130, 168, ${(1 - t) * 0.9})`
+        : `rgba(176, 96, 48, ${(1 - t) * 0.9})`;
+      const fill = positive ? "rgba(160, 190, 220, " : "rgba(220, 168, 124, ";
+      // Hexagonal shield outline expanding outward.
+      const r = size * 0.22 + t * size * 0.18;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = size * (0.07 * (1 - t * 0.4));
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const ang = (Math.PI / 3) * i - Math.PI / 2;
+        const px = c.x + Math.cos(ang) * r;
+        const py = c.y + Math.sin(ang) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      // Soft fill flash.
+      const innerA = Math.max(0, 1 - t * 1.8);
+      if (innerA > 0) {
+        const grd = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, size * 0.35);
+        grd.addColorStop(0, `${fill}${innerA * 0.5})`);
+        grd.addColorStop(1, `${fill}0)`);
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, size * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 

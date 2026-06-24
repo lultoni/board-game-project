@@ -36,10 +36,18 @@ export const match = $state<MatchState>({
 
 export function resetMatchState(): void {
   match.mode = "idle";
-  match.side = { p1: "human", p2: "human" };
+  // Preserve `side` across resets — it's set by the setup screen before
+  // entering draft, and we don't want draft's reset to wipe it.
   match.position = null;
   match.legal = new Uint32Array();
   match.selection = null;
   match.lastApplied = null;
   match.pendingSnapshotJson = null;
+}
+
+/** Derive the user-facing mode label from the two seat assignments. */
+export function modeFromSeats(side: { p1: SeatKind; p2: SeatKind }): MatchMode {
+  if (side.p1 === "human" && side.p2 === "human") return "hvh";
+  if (side.p1 === "ai"    && side.p2 === "ai")    return "aivai";
+  return "hvai";
 }

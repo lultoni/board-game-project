@@ -155,7 +155,7 @@ pub fn skill_target_owner(s: Skill) -> TargetOwner {
         Skill::Heal    => TargetOwner::Ally,
         Skill::Plate   => TargetOwner::Ally,
         Skill::Swap    => TargetOwner::Ally,
-        Skill::Shove   => TargetOwner::Either,
+        Skill::Shove   => TargetOwner::Enemy,
         Skill::Dash    => TargetOwner::Empty,
         Skill::Retreat => TargetOwner::Empty,
         Skill::Shield  => TargetOwner::SelfOnly,
@@ -229,17 +229,15 @@ mod tests {
 
     #[test]
     fn skill_target_owner_matches_stack_m() {
-        // Strike + Blast → Enemy.
+        // Strike + Blast + Shove → Enemy.
         for s in [Skill::Lance, Skill::Hook, Skill::Break, Skill::Steal,
-                  Skill::Tempest, Skill::Blast] {
+                  Skill::Tempest, Skill::Blast, Skill::Shove] {
             assert_eq!(skill_target_owner(s), TargetOwner::Enemy);
         }
         // Heal/Plate/Swap → Ally.
         for s in [Skill::Heal, Skill::Plate, Skill::Swap] {
             assert_eq!(skill_target_owner(s), TargetOwner::Ally);
         }
-        // Shove → Either.
-        assert_eq!(skill_target_owner(Skill::Shove), TargetOwner::Either);
         // Dash/Retreat → Empty (Move-skills).
         assert_eq!(skill_target_owner(Skill::Dash),    TargetOwner::Empty);
         assert_eq!(skill_target_owner(Skill::Retreat), TargetOwner::Empty);

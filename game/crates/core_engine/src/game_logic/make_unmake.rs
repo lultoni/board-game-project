@@ -449,8 +449,14 @@ fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
     if charge_active { clear_pending(pos, undo, modifier_bits::CHARGE); }
     let existing_combo = prev.combo();
 
-    // Tick first (it modifies the mailbox entry's combo field).
-    let _ = combo_tick(pos, src, tgt, undo);
+    // Tick first (gated by caster identity). Combo bonus only applies when
+    // THIS caster has not yet ticked THIS target this turn — same champion
+    // firing Break twice does not capitalise on its own first tick.
+    let combo_bonus = if combo_tick(pos, src, tgt, undo) {
+        existing_combo
+    } else {
+        0
+    };
 
     // Armor reduction — applies regardless of HP-damage gating. Read the
     // mailbox AGAIN because combo_tick may have written a new entry.
@@ -461,8 +467,8 @@ fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
     // HP-damage gate: Stack-M says Break "does not deal HP-Damage unless
     // boosted by Charge." But the universal combo bonus ("any skill that
     // affects a target with counter > 0 deals +counter damage") still
-    // applies on top.
-    let dmg = (if charge_active { 1u8 } else { 0 }) + existing_combo;
+    // applies on top — gated as above so the same caster doesn't double-dip.
+    let dmg = (if charge_active { 1u8 } else { 0 }) + combo_bonus;
     if dmg > 0 { deal_damage(pos, tgt, dmg, undo); }
 
     debit_money(pos, src, /*cost=*/ 2, undo);
@@ -601,8 +607,8 @@ fn apply_blast(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let tgt = action.target();
     let pre_tick_combo = pos.mailbox[tgt as usize].combo();
-    let _ = combo_tick(pos, src, tgt, undo);
-    if pre_tick_combo > 0 {
+    let ticked = combo_tick(pos, src, tgt, undo);
+    if ticked && pre_tick_combo > 0 {
         deal_damage(pos, tgt, pre_tick_combo, undo);
     }
     if pos.is_occupied(tgt) {
@@ -664,8 +670,8 @@ fn apply_shove(pos: &mut Position, action: Action, undo: &mut Undo) {
 
     if target_is_enemy {
         let pre_tick_combo = pos.mailbox[tgt as usize].combo();
-        let _ = combo_tick(pos, src, tgt, undo);
-        if pre_tick_combo > 0 {
+        let ticked = combo_tick(pos, src, tgt, undo);
+        if ticked && pre_tick_combo > 0 {
             deal_damage(pos, tgt, pre_tick_combo, undo);
         }
     }
@@ -804,14 +810,17 @@ fn apply_strike_damage(pos: &mut Position, src_sq: u8, tgt_sq: u8,
     let existing_combo = prev.combo();
 
     // Tick BEFORE damage so the post-state reflects the combo bump even if
-    // the piece is removed (the mailbox slot is overwritten on removal, but
-    // the `record_affected` snapshot we just took is what restores on
-    // unmake). The bonus damage uses the *pre-tick* counter — Stack-M:
-    // "+counter damage to that target" using the counter the target had
-    // when the skill landed.
-    let _ = combo_tick(pos, src_sq, tgt_sq, undo);
+    // the piece is removed. The bonus damage is gated on combo_tick actually
+    // ticking — same caster firing again at the same target does NOT cash in
+    // the counter it built itself ("Multi-Champion Combo Bonus" means a new
+    // champion must be the one capitalising on the buildup).
+    let combo_bonus = if combo_tick(pos, src_sq, tgt_sq, undo) {
+        existing_combo
+    } else {
+        0
+    };
 
-    let total = base + existing_combo + charge_bonus;
+    let total = base + combo_bonus + charge_bonus;
     deal_damage(pos, tgt_sq, total, undo);
     total
 }
@@ -2393,8 +2402,9 @@ mod tests {
         pos.p1_money = 20;
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 28, Skill::Lance as u8);
-        // Armor=2 absorbs first cast; second cast (with combo bonus) deals 2,
-        // armor 1→0 then HP 2→1. Target alive both times.
+        // First cast: 1 base dmg. Second cast from same caster: still 1 base
+        // dmg — the combo bonus is gated on combo_tick succeeding (i.e. a NEW
+        // caster), so the same champion does NOT cash in its own prior tick.
         place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 2);
 
         let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
@@ -2404,9 +2414,10 @@ mod tests {
 
         let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
         assert_eq!(pos.mailbox[36].combo(), 1, "same caster does not re-tick");
-        // Second cast: 1 base + 1 combo bonus = 2 dmg. Armor 1→0, HP 2→1.
+        // Second cast: 1 base + 0 combo bonus (same caster) = 1 dmg.
+        // Armor 1→0, HP unchanged.
         assert_eq!(pos.mailbox[36].armor(), 0);
-        assert_eq!(pos.mailbox[36].hp(), 1);
+        assert_eq!(pos.mailbox[36].hp(), 2, "same-caster bonus suppressed");
     }
 
     #[test]
@@ -2442,9 +2453,10 @@ mod tests {
         assert_eq!(pos.pending_modifiers & modifier_bits::CHARGE, 0);
 
         let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
-        // Second cast: existing_combo=1, same caster won't re-tick → dmg = 2.
-        // Armor 0, so HP takes 2 → HP 0 → target removed.
-        assert!(!pos.is_occupied(36), "1 base + 1 combo bonus = 2 dmg kills");
+        // Second cast: same caster as first → combo_tick is no-op, combo
+        // bonus = 0. 1 base + 0 = 1 dmg. Armor 0 already, HP 2→1.
+        assert_eq!(pos.mailbox[36].hp(), 1, "1 base + 0 combo bonus = 1 dmg");
+        assert!(pos.is_occupied(36));
     }
 
     // --- Cross-skill roundtrip (2) ----------------------------------------

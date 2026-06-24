@@ -4,11 +4,27 @@
   },
   "menu": {
     "newMatch": "Neue Partie",
+    "localPlay": "Lokales Spiel",
     "modeHvh": "Hotseat (Mensch gegen Mensch)",
     "modeHvai": "Mensch gegen KI",
     "modeAivai": "KI gegen KI (Zuschauen)",
     "openReplay": "Wiederholung öffnen…",
+    "openInspector": "Inspektor öffnen…",
     "resume": "Gespeicherte Partie fortsetzen"
+  },
+  "setup": {
+    "title": "Lokales Spiel — Einrichtung",
+    "back": "← zurück",
+    "p1Label": "Spieler 1",
+    "p2Label": "Spieler 2",
+    "human": "Mensch",
+    "ai": "KI",
+    "aiHeader": "KI-Einstellungen",
+    "thinkTime": "Bedenkzeit (ms)",
+    "maxDepth": "Max. Suchtiefe",
+    "aivaiDelay": "KI-gegen-KI Pause zwischen Zügen (ms)",
+    "continue": "Weiter →",
+    "summary": "{p1Label} gegen {p2Label}"
   },
   "skills": {
     "lance":   { "name": "Lanze",   "desc": "Trifft angrenzenden Gegner für 1 Schaden." },
@@ -21,7 +37,7 @@
     "plate":   { "name": "Panzer",  "desc": "Angrenzender Verbündeter erhält 1 Rüstung." },
     "dash":    { "name": "Sprint",  "desc": "Bewege dich bis zu 2 Felder entlang des Pfads." },
     "blast":   { "name": "Stoß",    "desc": "Drücke gegnerische Figur 1 Feld vom Caster weg (Richtung entlang der Caster→Ziel-Linie)." },
-    "shove":   { "name": "Schubs",  "desc": "Schiebe Verbündeten oder Gegner 1 Feld in eine gewählte Richtung." },
+    "shove":   { "name": "Schubs",  "desc": "Schiebe gegnerische Figur 1 Feld in eine gewählte Richtung." },
     "swap":    { "name": "Tausch",  "desc": "Tausche Position mit einer verbündeten Figur. Erfordert einen freien Pfad." },
     "retreat": { "name": "Rückzug", "desc": "Bewege dich entlang des Pfads auf ein Feld angrenzend zu einem deiner Wachen." },
     "focus":   { "name": "Fokus",   "desc": "Diese Runde erhält ein nicht-mystischer Skill einer deiner Figuren +1 Reichweite. Bei Bewegungs-Skills wählst du, ob +1 für Aktivierungsreichweite oder Effektreichweite gilt." },
@@ -45,6 +61,11 @@
     "endTurn": "Zug beenden",
     "undo": "Zurück",
     "sandbox": "Sandkasten",
-    "exitSandbox": "Sandkasten verlassen"
+    "exitSandbox": "Sandkasten verlassen",
+    "play": "Abspielen",
+    "pause": "Pause",
+    "step": "Schritt",
+    "aiThinking": "KI denkt nach…",
+    "openInInspector": "Im Inspektor öffnen"
   }
 }

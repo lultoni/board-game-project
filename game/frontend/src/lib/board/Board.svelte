@@ -41,6 +41,8 @@
     shakingSquares?: Set<number>;
     /** Whether the human can act right now. */
     interactive?: boolean;
+    /** Pause piece idle-breathing while overlay effects are mid-play. */
+    effectsActive?: boolean;
     /** Pointer-up handler — passes the clicked square index (0..63) and the
      * cursor position within the SVG (used to pick a sub-tile approach for
      * multi-path Move-Attacks). */
@@ -122,6 +124,7 @@
     shakingSquares = new Set<number>(),
     lastApplied = null,
     interactive = true,
+    effectsActive = false,
     onSquareClick,
     onPieceDrop,
     onApproachChoice,
@@ -773,6 +776,10 @@
         used={usedSquares.has(piece.square)}
         overrideXY={overrideForPiece(piece.square)}
         shake={shakingSquares.has(piece.square)}
+        {effectsActive}
+        dormant={position
+          ? (piece.owner === "p1" ? 0 : 1) !== position.toMove
+          : false}
       />
     {/each}
   </g>

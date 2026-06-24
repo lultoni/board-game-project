@@ -17,6 +17,11 @@
     /** Run a brief "hit" shake animation. Toggled by the parent for ~320ms
      * after this piece was damaged. */
     shake?: boolean;
+    /** Pause idle breathing while effects are mid-play (keeps eyes on action). */
+    effectsActive?: boolean;
+    /** When true, this piece belongs to the side whose turn is NOT current —
+     *  suppress idle breathing so the active side reads as "alive". */
+    dormant?: boolean;
   }
 
   let {
@@ -26,6 +31,8 @@
     overrideXY = null,
     animate = true,
     shake = false,
+    effectsActive = false,
+    dormant = false,
   }: Props = $props();
 
   const file = $derived(piece.square & 7);
@@ -111,6 +118,14 @@
       .filter((id) => id > 0)
       .map((id) => SKILLS[id]?.key ?? `?${id}`),
   );
+
+  // Stagger the idle-breathe animation by a deterministic offset derived from
+  // the piece's square so neighbours don't pulse in lockstep. 3.6s loop.
+  const breatheDelay = $derived(-((piece.square * 137) % 3600) + "ms");
+  // Centre of the piece's local square coords. Drives the SVG transform-origin
+  // for the breathing animation so the whole body scales around its centre.
+  const centerX = $derived(size / 2);
+  const centerY = $derived(size / 2);
 </script>
 
 <g
@@ -120,8 +135,11 @@
   class:used
   class:dragging={overrideXY !== null}
   class:shake
+  class:effects-active={effectsActive}
+  class:dormant
   style:transform="translate({x}px, {y}px)"
   style:transition
+  style:--breathe-delay={breatheDelay}
   data-square={piece.square}
 >
   <title>
@@ -129,6 +147,11 @@
       ? "\n" + skillNames.join(", ")
       : ""}
   </title>
+
+  <g
+    class="body"
+    style:transform-origin="{centerX}px {centerY}px"
+  >
 
   {#if piece.kind === "king"}
     <!--
@@ -270,6 +293,7 @@
       stroke-width="1.4"
     />
   {/each}
+  </g>
 
   <!-- Combo badge, only when > 0 -->
   {#if piece.combo > 0}
@@ -308,8 +332,26 @@
   .piece.dragging {
     filter: drop-shadow(0 6px 4px rgba(0, 0, 0, 0.25));
   }
-  .piece.shake :global(> *:not(.combo)) {
+  /* Subtle idle breathing: gentle scale pulse on the body group, around the
+     centre of the piece's local square coords (set via inline transform-origin).
+     Paused while a hit-shake is mid-flight, while dragging, while a piece is
+     "used", and while the parent has signalled that effects are mid-play. */
+  .piece .body {
+    animation: piece-breathe 3.6s ease-in-out infinite;
+    animation-delay: var(--breathe-delay, 0ms);
+  }
+  .piece.dragging .body,
+  .piece.used .body,
+  .piece.effects-active .body,
+  .piece.dormant .body {
+    animation: none;
+  }
+  .piece.shake .body {
     animation: piece-shake 320ms ease-out;
+  }
+  @keyframes piece-breathe {
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    50%      { transform: scale(1.06) rotate(0.6deg); }
   }
   @keyframes piece-shake {
     0%   { transform: translate(0, 0) rotate(0deg); }
@@ -319,5 +361,10 @@
     60%  { transform: translate(2px, -2px) rotate(1.5deg); }
     80%  { transform: translate(-1px, 0px) rotate(-0.5deg); }
     100% { transform: translate(0, 0) rotate(0deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .piece .body {
+      animation: none;
+    }
   }
 </style>

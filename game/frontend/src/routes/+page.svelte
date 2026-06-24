@@ -34,9 +34,8 @@
   <section class="menu">
     <h2>{t("menu.newMatch")}</h2>
     <ul>
-      <li><a href="./draft/?mode=hvh">{t("menu.modeHvh")}</a></li>
-      <li><a href="./draft/?mode=hvai">{t("menu.modeHvai")}</a></li>
-      <li><a href="./draft/?mode=aivai">{t("menu.modeAivai")}</a></li>
+      <li><a href="./setup/">{t("menu.localPlay")}</a></li>
+      <li><a href="./inspector/">{t("menu.openInspector")}</a></li>
       <li><a href="./replay/">{t("menu.openReplay")}</a></li>
     </ul>
   </section>

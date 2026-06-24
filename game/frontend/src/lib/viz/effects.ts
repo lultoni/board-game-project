@@ -26,6 +26,22 @@ export type Effect =
       /** Square whose piece should shake briefly. */
       at: number;
       startedAt: number;
+    }
+  | {
+      kind: "heal";
+      /** Square of the piece that was healed. */
+      at: number;
+      /** HP restored (currently always 1). */
+      amount: number;
+      startedAt: number;
+    }
+  | {
+      kind: "armor";
+      /** Square of the piece that gained armor. */
+      at: number;
+      /** Armor delta (currently always 1, or -1 when stripped). */
+      amount: number;
+      startedAt: number;
     };
 
 export const FX_LIFETIME_MS = {
@@ -33,4 +49,6 @@ export const FX_LIFETIME_MS = {
   impact: 450,
   damageNumber: 800,
   shake: 320,
+  heal: 720,
+  armor: 720,
 } as const;

@@ -103,3 +103,26 @@ export function hasFocusModeChoice(
   }
   return false;
 }
+
+/** Whether the (src, skillId) pair has retarget variants — i.e. Focus is
+ *  staged and the engine emitted variants where `aux_sq` (or for non-aux
+ *  skills, `target`) names a different recipient than the caster. Used to
+ *  detect when a normally self-cast skill (Shield) needs to ARM and let the
+ *  player pick a recipient instead of auto-firing on self. */
+export function hasRetargetVariants(
+  legal: Uint32Array,
+  src: number,
+  skillId: number,
+): boolean {
+  for (let i = 0; i < legal.length; i++) {
+    const raw = legal[i];
+    const a = decodeAction(raw);
+    if (a.kind !== ActionKind.Skill) continue;
+    if (a.src !== src) continue;
+    if (a.skillId !== skillId) continue;
+    // Focus-retargeted Shield/Dash/Retreat carry hasAux=true; aux_sq is the
+    // recipient. (Non-Focus self-casts have target == src and hasAux=false.)
+    if (a.hasAux && a.auxSq !== src) return true;
+  }
+  return false;
+}

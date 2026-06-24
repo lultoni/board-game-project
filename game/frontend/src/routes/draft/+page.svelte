@@ -1,12 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { page } from "$app/stores";
   import { getEngine } from "$lib/engine";
+  import { buildEngineConfigJson } from "$lib/engine/config";
   import { rewriteFenWithLoadouts } from "$lib/engine/fen";
   import { SKILLS } from "$lib/engine/skills";
   import { t } from "$lib/state/i18n";
-  import { match, resetMatchState } from "$lib/state/match-store.svelte";
+  import {
+    match,
+    modeFromSeats,
+    resetMatchState,
+  } from "$lib/state/match-store.svelte";
   import {
     presetLoadout,
     mergeLoadouts,
@@ -17,7 +21,7 @@
     type PresetName,
   } from "$lib/state/draft";
 
-  const mode = $derived($page.url.searchParams.get("mode") ?? "hvh");
+  const mode = $derived(modeFromSeats(match.side));
 
   // King is index 0 in STACK_M_LOADOUT_SQUARES — labelled separately.
   const P1_SQUARES = STACK_M_LOADOUT_SQUARES.p1;
@@ -50,9 +54,27 @@
 
   onMount(async () => {
     try {
+      // Inspector handoff: if a snapshot is already staged we bypass the
+      // makeshift draft entirely and forward straight to the match route.
+      // The user picked seats/AI settings in /setup/, which buildEngineConfigJson
+      // already baked in — but the snapshot's `config` was stamped earlier, so
+      // we rebuild the snapshot to take the new config.
+      if (match.pendingSnapshotJson) {
+        const eng = await getEngine();
+        const newCfg = JSON.parse(buildEngineConfigJson(match.side));
+        const parsed = JSON.parse(match.pendingSnapshotJson);
+        parsed.config = newCfg;
+        const newSnap = JSON.stringify(parsed);
+        await eng.restoreFromSnapshot(newSnap);
+        match.pendingSnapshotJson = newSnap;
+        match.mode = modeFromSeats(match.side);
+        await goto("../match/");
+        return;
+      }
       resetMatchState();
       const eng = await getEngine();
-      await eng.createEngine();
+      const configJson = buildEngineConfigJson(match.side);
+      await eng.createEngine(configJson);
       baseFen = await eng.positionFen();
       baseSnapshotJson = await eng.snapshotJson();
     } catch (e) {
@@ -106,8 +128,8 @@
       await eng.restoreFromSnapshot(newSnap);
 
       match.pendingSnapshotJson = newSnap;
-      match.mode = mode as typeof match.mode;
-      await goto(`../match/?mode=${encodeURIComponent(mode)}`);
+      match.mode = modeFromSeats(match.side);
+      await goto(`../match/`);
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
       starting = false;
