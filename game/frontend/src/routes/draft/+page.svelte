@@ -4,7 +4,8 @@
   import { getEngine, encodeDraftTurn } from "$lib/engine";
   import { buildEngineConfigJson } from "$lib/engine/config";
   import { decodeMailbox } from "$lib/engine/mailbox";
-  import { SKILLS, SKILL_COUNT } from "$lib/engine/skills";
+  import { SKILLS, SKILL_COUNT, CATEGORY_COLOR, skillColor } from "$lib/engine/skills";
+  import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
   import { t } from "$lib/state/i18n";
   import {
     match,
@@ -30,7 +31,6 @@
   let busy = $state(false);
   let starting = $state(false);
 
-  // Live engine snapshots, refreshed after every applied DraftTurn.
   let position = $state<PositionView | null>(null);
   let draftState = $state<DraftStateView | null>(null);
 
@@ -38,17 +38,14 @@
   const P2_SQUARES = STACK_M_LOADOUT_SQUARES.p2;
   const allSkillIds = Array.from({ length: SKILL_COUNT }, (_, i) => i + 1);
 
-  // Which side is currently drafting (0 = P1, 1 = P2).
   const sideToMove = $derived(draftState?.sideToMove ?? 0);
   const isP1Turn = $derived(sideToMove === 0);
   const sideSquares = $derived(isP1Turn ? P1_SQUARES : P2_SQUARES);
   const currentSeat = $derived(isP1Turn ? match.side.p1 : match.side.p2);
   const currentSeatIsAi = $derived(currentSeat === "ai");
 
-  // In multiplayer, Phase E falls back to "host drafts both sides, ships
-  // finished snapshot to joiner" — same protocol as today's makeshift draft.
-  // The host therefore drafts every turn locally. Phase F replaces this with
-  // peer-to-peer DraftTurn streaming and makes joiner-side picks possible.
+  // Phase E multiplayer fallback: host drafts both sides and ships the
+  // finished snapshot. Phase F replaces this with peer-streamed DraftTurns.
   const localCanDraft = $derived.by(() => {
     if (currentSeatIsAi) return false;
     if (!isMultiplayer) return true;
@@ -61,128 +58,204 @@
 
   // === Picker state ==========================================================
   //
-  // A draft "turn" is two picks. The player drives the staging UI freely:
-  // - Click a skill on the catalogue → fills the first empty staging slot.
-  // - Click a piece+slot in the panel → assigns that piece+slot to the next
-  //   staging pick that has a skill but no target (or, if both already have
-  //   targets, replaces the most recently assigned target).
-  // - "Commit" submits the DraftTurn to the engine.
-  //
-  // Staging state is wiped after every commit / on side flip / on AI turn.
+  // The two picks of the in-progress turn live on the board itself as
+  // "tentative" slots — there is no separate staging area. A pick is
+  // (skillId, sq, slot); empty pick = skillId === 0.
 
-  interface StagedPick {
-    skillId: number;       // 1..15, or 0 = empty
-    sq: number;            // 0..63, or -1 = unassigned
-    slot: number;          // 0 (slot1) or 1 (slot2), or -1 = unassigned
-  }
-  function emptyPick(): StagedPick { return { skillId: 0, sq: -1, slot: -1 }; }
+  interface PendingPick { skillId: number; sq: number; slot: number; }
+  function emptyPick(): PendingPick { return { skillId: 0, sq: -1, slot: -1 }; }
 
-  let pick1 = $state<StagedPick>(emptyPick());
-  let pick2 = $state<StagedPick>(emptyPick());
+  let pick1 = $state<PendingPick>(emptyPick());
+  let pick2 = $state<PendingPick>(emptyPick());
 
   function clearPicks(): void {
     pick1 = emptyPick();
     pick2 = emptyPick();
   }
 
-  /** True iff (sq, slot) on this side is empty in the engine state AND
-   *  isn't already claimed by a staged pick. */
-  function isStageableTarget(sq: number, slot: number): boolean {
+  function tentativeAt(sq: number, slot: number): PendingPick | null {
+    if (pick1.sq === sq && pick1.slot === slot) return pick1;
+    if (pick2.sq === sq && pick2.slot === slot) return pick2;
+    return null;
+  }
+
+  /** Empty in the engine AND not already held by a tentative pick. */
+  function slotIsOpen(sq: number, slot: number): boolean {
     if (!position) return false;
-    // Own-side ownership check — we only let the active player stage onto
-    // their own pieces. Engine would reject otherwise, but the UI shouldn't
-    // tempt the user.
-    if (!sideSquares.includes(sq)) return false;
     const entry = decodeMailbox(position.mailbox[sq]);
-    if (slot === 0 && entry.skill1 !== 0) return false;
-    if (slot === 1 && entry.skill2 !== 0) return false;
-    if (pick1.sq === sq && pick1.slot === slot) return false;
-    if (pick2.sq === sq && pick2.slot === slot) return false;
+    const committed = slot === 0 ? entry.skill1 : entry.skill2;
+    if (committed !== 0) return false;
+    if (tentativeAt(sq, slot)) return false;
     return true;
   }
 
-  /** True iff both staged picks have a skill AND a target AND would be
-   *  accepted by `legal_draft_turns` (no same-piece-same-skill). */
+  /** Catalogue chip → slot drop legality. Same-piece-same-skill is blocked
+   *  against committed skills AND against the other tentative pick. */
+  function canDropSkillOn(skillId: number, sq: number, slot: number): boolean {
+    if (!localCanDraft) return false;
+    if (!position) return false;
+    if (!sideSquares.includes(sq)) return false;
+    if (!slotIsOpen(sq, slot)) return false;
+    const entry = decodeMailbox(position.mailbox[sq]);
+    const otherCommitted = slot === 0 ? entry.skill2 : entry.skill1;
+    if (otherCommitted === skillId) return false;
+    // Other tentative pick must not occupy the SAME slot or place the
+    // same skill on the same piece.
+    const other = (pick1.sq === sq && pick1.slot === slot) ? pick2
+                : (pick2.sq === sq && pick2.slot === slot) ? pick1
+                : (pick1.skillId === 0 ? pick2 : pick1);
+    if (other.skillId !== 0 && other.sq === sq && other.skillId === skillId) return false;
+    return true;
+  }
+
+  /** Place a skill onto a slot. If both picks are filled, replace the older
+   *  one (pick1). Returns true on success. */
+  function placePick(skillId: number, sq: number, slot: number): boolean {
+    if (!canDropSkillOn(skillId, sq, slot)) return false;
+    if (pick1.skillId === 0) {
+      pick1 = { skillId, sq, slot };
+      return true;
+    }
+    if (pick2.skillId === 0) {
+      pick2 = { skillId, sq, slot };
+      return true;
+    }
+    // Replace the older (pick1).
+    pick1 = pick2;
+    pick2 = { skillId, sq, slot };
+    return true;
+  }
+
+  /** Move a tentative pick from one slot to another. */
+  function movePick(fromSq: number, fromSlot: number, toSq: number, toSlot: number): boolean {
+    const which = (pick1.sq === fromSq && pick1.slot === fromSlot) ? 1
+                : (pick2.sq === fromSq && pick2.slot === fromSlot) ? 2
+                : 0;
+    if (which === 0) return false;
+    const p = which === 1 ? pick1 : pick2;
+    // Temporarily clear so the destination passes the open check.
+    if (which === 1) pick1 = emptyPick();
+    else pick2 = emptyPick();
+    if (!canDropSkillOn(p.skillId, toSq, toSlot)) {
+      // restore
+      if (which === 1) pick1 = p; else pick2 = p;
+      return false;
+    }
+    const moved = { skillId: p.skillId, sq: toSq, slot: toSlot };
+    if (which === 1) pick1 = moved; else pick2 = moved;
+    return true;
+  }
+
+  function clearPickAt(sq: number, slot: number): void {
+    if (pick1.sq === sq && pick1.slot === slot) pick1 = emptyPick();
+    else if (pick2.sq === sq && pick2.slot === slot) pick2 = emptyPick();
+  }
+
   const commitReady = $derived.by(() => {
     if (!localCanDraft) return false;
     if (pick1.skillId === 0 || pick2.skillId === 0) return false;
-    if (pick1.sq < 0 || pick1.slot < 0) return false;
-    if (pick2.sq < 0 || pick2.slot < 0) return false;
     if (pick1.sq === pick2.sq && pick1.slot === pick2.slot) return false;
-    // Same piece, same skill in different slots → illegal.
     if (pick1.sq === pick2.sq && pick1.skillId === pick2.skillId) return false;
-    if (!position) return false;
-    // Same-skill-on-same-piece check also reads the *other* slot the engine
-    // already has filled. If pick1 hits piece P slot 0 with skill X, and
-    // pick2's piece P already has skill X in slot 1 (from a prior turn),
-    // that's illegal — and vice versa. The engine catches this too, but
-    // the user shouldn't be allowed to stage it.
-    for (const p of [pick1, pick2] as const) {
-      const entry = decodeMailbox(position.mailbox[p.sq]);
-      const otherSlotSkill = p.slot === 0 ? entry.skill2 : entry.skill1;
-      if (otherSlotSkill === p.skillId) return false;
-    }
     return true;
   });
 
-  // === Skill / target click handlers ========================================
+  // === Drag and drop ========================================================
+  //
+  // dragPayload is the source of truth (HTML5 dataTransfer is opaque during
+  // dragover so we can't gate hover styling off it). Two payload kinds:
+  //   - { kind: "skill", id }                  — from the catalogue
+  //   - { kind: "pick",  sq, slot }            — from an existing tentative slot
+  // Stored as a module-level `$state` so individual slot components can ask
+  // "would this current drag be legal on me?" for hover feedback.
 
-  function handleSkillClick(skillId: number): void {
+  type DragPayload =
+    | { kind: "skill"; id: number }
+    | { kind: "pick"; sq: number; slot: number };
+
+  let dragPayload = $state<DragPayload | null>(null);
+
+  function dragStartSkill(ev: DragEvent, id: number): void {
+    if (!localCanDraft) { ev.preventDefault(); return; }
+    dragPayload = { kind: "skill", id };
+    ev.dataTransfer?.setData("text/plain", `skill:${id}`);
+    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "copy";
+  }
+
+  function dragStartPick(ev: DragEvent, sq: number, slot: number): void {
+    if (!localCanDraft) { ev.preventDefault(); return; }
+    dragPayload = { kind: "pick", sq, slot };
+    ev.dataTransfer?.setData("text/plain", `pick:${sq}:${slot}`);
+    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+  }
+
+  function dragEnd(): void { dragPayload = null; }
+
+  function dropOnSlot(ev: DragEvent, sq: number, slot: number): void {
+    ev.preventDefault();
+    const p = dragPayload;
+    dragPayload = null;
+    if (!p) return;
+    if (p.kind === "skill") placePick(p.id, sq, slot);
+    else movePick(p.sq, p.slot, sq, slot);
+  }
+
+  function dropOnTrash(ev: DragEvent): void {
+    ev.preventDefault();
+    const p = dragPayload;
+    dragPayload = null;
+    if (!p || p.kind !== "pick") return;
+    clearPickAt(p.sq, p.slot);
+  }
+
+  function dragOverIfLegal(ev: DragEvent, sq: number, slot: number): void {
+    const p = dragPayload;
+    if (!p) return;
+    if (p.kind === "skill") {
+      if (canDropSkillOn(p.id, sq, slot)) {
+        ev.preventDefault();
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+      }
+    } else if (p.kind === "pick") {
+      if (p.sq === sq && p.slot === slot) return; // same slot — no-op
+      if (canDropSkillOn(skillIdOfPick(p), sq, slot)) {
+        ev.preventDefault();
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+      }
+    }
+  }
+
+  function skillIdOfPick(p: { sq: number; slot: number }): number {
+    if (pick1.sq === p.sq && pick1.slot === p.slot) return pick1.skillId;
+    if (pick2.sq === p.sq && pick2.slot === p.slot) return pick2.skillId;
+    return 0;
+  }
+
+  /** For hover styling: would the in-flight drag land on this slot? */
+  function isDragHoverTarget(sq: number, slot: number): boolean {
+    const p = dragPayload;
+    if (!p) return false;
+    if (p.kind === "skill") return canDropSkillOn(p.id, sq, slot);
+    if (p.kind === "pick") {
+      if (p.sq === sq && p.slot === slot) return false;
+      return canDropSkillOn(skillIdOfPick(p), sq, slot);
+    }
+    return false;
+  }
+
+  // === Click fallback (and explicit removal) =================================
+
+  function clickSlot(sq: number, slot: number): void {
     if (!localCanDraft) return;
-    // Toggle: clicking an already-staged skill that has no target yet
-    // removes it. Otherwise fill the next empty staging slot.
-    if (pick1.skillId === skillId && pick1.sq < 0) {
-      pick1 = emptyPick();
+    if (!position) return;
+    // If the slot has a tentative pick, clicking clears it.
+    if (tentativeAt(sq, slot)) {
+      clearPickAt(sq, slot);
       return;
     }
-    if (pick2.skillId === skillId && pick2.sq < 0) {
-      pick2 = emptyPick();
-      return;
-    }
-    if (pick1.skillId === 0) {
-      pick1 = { ...pick1, skillId };
-      return;
-    }
-    if (pick2.skillId === 0) {
-      pick2 = { ...pick2, skillId };
-      return;
-    }
-    // Both staging slots have skills — replace the one without a target, or
-    // pick1 if both have targets.
-    if (pick1.sq < 0) { pick1 = { ...pick1, skillId }; return; }
-    if (pick2.sq < 0) { pick2 = { ...pick2, skillId }; return; }
-    pick1 = { skillId, sq: -1, slot: -1 };
+    // Otherwise: ignored — placement requires drag-and-drop.
   }
 
-  function handleTargetClick(sq: number, slot: number): void {
-    if (!localCanDraft) return;
-    if (!isStageableTarget(sq, slot)) return;
-    // Route into the first staged pick that has a skill but no target.
-    if (pick1.skillId !== 0 && pick1.sq < 0) {
-      pick1 = { ...pick1, sq, slot };
-      return;
-    }
-    if (pick2.skillId !== 0 && pick2.sq < 0) {
-      pick2 = { ...pick2, sq, slot };
-      return;
-    }
-    // Both picks have targets (or neither has a skill yet). Re-assign the
-    // most recently-targeted pick — gives the user a way to course-correct.
-    if (pick2.skillId !== 0) {
-      pick2 = { ...pick2, sq, slot };
-      return;
-    }
-    if (pick1.skillId !== 0) {
-      pick1 = { ...pick1, sq, slot };
-    }
-  }
-
-  function clearPick(which: 1 | 2): void {
-    if (which === 1) pick1 = emptyPick();
-    else pick2 = emptyPick();
-  }
-
-  // === Commit ===============================================================
+  // === Commit ================================================================
 
   async function commitTurn(): Promise<void> {
     if (!eng || !commitReady || busy) return;
@@ -204,11 +277,6 @@
   }
 
   // === AI scheduling ========================================================
-  //
-  // Every refresh, if the side-to-draft is AI and the draft isn't complete,
-  // queue a `stepAi` call. The engine's AI draft heuristic is the
-  // fixed-preset path (see Phase C) — it picks a deterministic loadout per
-  // piece. We honour the user's AIvAI step delay so the player can watch.
 
   let aiScheduled = false;
   $effect(() => {
@@ -235,7 +303,7 @@
     try {
       clearPicks();
       const r = await eng.stepAi();
-      if (r.appliedAction === 0) return; // AI failed to find a move
+      if (r.appliedAction === 0) return;
       await refresh();
       if ((draftState?.turnNo ?? 0) >= 12) await finishAndForward();
     } catch (e) {
@@ -256,7 +324,6 @@
   onMount(async () => {
     try {
       const wasMultiplayer = match.mode === "multiplayer";
-      // Inspector handoff: a pre-built snapshot is staged → forward to /match/.
       if (match.pendingSnapshotJson) {
         const e = await getEngine();
         const newCfg = JSON.parse(buildEngineConfigJson(match.side));
@@ -281,7 +348,7 @@
     }
   });
 
-  // === Finish ==============================================================
+  // === Finish ================================================================
 
   async function finishAndForward(): Promise<void> {
     if (!eng) return;
@@ -292,10 +359,6 @@
       match.mode = match.mode === "multiplayer"
         ? "multiplayer"
         : modeFromSeats(match.side);
-      // In multiplayer, ship the fully-drafted snapshot to the joiner — same
-      // protocol as the makeshift draft. Phase F replaces this with per-turn
-      // streaming, but for Phase E the host drafts alone and the joiner
-      // receives the finished snapshot.
       if (match.mode === "multiplayer") {
         sendData({ kind: "snapshot", snapshotJson: snap });
       }
@@ -306,7 +369,7 @@
     }
   }
 
-  // === Display helpers =====================================================
+  // === Display helpers =======================================================
 
   function skillName(id: number): string {
     if (id === 0) return "—";
@@ -319,32 +382,27 @@
     return info ? t(`skills.${info.key}.desc`) : "";
   }
 
-  function pieceLabel(sq: number, isKing: boolean, championIdx: number): string {
+  function categoryLabel(id: number): string {
+    const c = SKILLS[id]?.category;
+    if (!c) return "";
+    if (c === "strike") return t("wheel.categoryStrike");
+    if (c === "shield") return t("wheel.categoryShield");
+    if (c === "move")   return t("wheel.categoryMove");
+    return t("wheel.categoryMystic");
+  }
+
+  function pieceLabel(_sq: number, isKing: boolean, championIdx: number): string {
     return isKing ? t("draft.king") : t("draft.champion", { n: championIdx });
   }
 
-  function slotSkillId(sq: number, slot: number): number {
+  function slotCommittedSkill(sq: number, slot: number): number {
     if (!position) return 0;
     const entry = decodeMailbox(position.mailbox[sq]);
     return slot === 0 ? entry.skill1 : entry.skill2;
   }
-
-  /** True iff (sq, slot) carries a pick we just staged this turn — render
-   *  with a "staged" tint so the user can see what they're about to commit. */
-  function isStagedTarget(sq: number, slot: number): "p1" | "p2" | null {
-    if (pick1.sq === sq && pick1.slot === slot) return "p1";
-    if (pick2.sq === sq && pick2.slot === slot) return "p2";
-    return null;
-  }
-
-  /** For displaying the staged pick on a target slot when the engine slot is
-   *  still empty — we want to show the *future* skill there. */
-  function stagedSkillAt(sq: number, slot: number): number {
-    if (pick1.sq === sq && pick1.slot === slot) return pick1.skillId;
-    if (pick2.sq === sq && pick2.slot === slot) return pick2.skillId;
-    return 0;
-  }
 </script>
+
+<SkillGlyphDefs />
 
 <main>
   <header>
@@ -377,6 +435,14 @@
           {currentSeatIsAi ? t("setup.ai") : t("setup.human")}
         </span>
       </div>
+      <div class="status-cell commit-cell">
+        <button
+          type="button"
+          class="primary"
+          disabled={!commitReady || busy}
+          onclick={commitTurn}
+        >{t("draft.commitTurn")}</button>
+      </div>
     </section>
 
     {#if !localCanDraft}
@@ -392,62 +458,49 @@
     {/if}
 
     <div class="layout">
-      <!-- Left: skill catalogue + staged picks -->
+      <!-- Skill catalogue: draggable source tiles -->
       <section class="picker">
         <h2>{t("draft.catalogue")}</h2>
         <ul class="skills" class:disabled={!localCanDraft}>
           {#each allSkillIds as id (id)}
-            {@const staged1 = pick1.skillId === id && pick1.sq < 0}
-            {@const staged2 = pick2.skillId === id && pick2.sq < 0}
+            {@const color = skillColor(id)}
             <li>
               <button
                 type="button"
-                class:staged={staged1 || staged2}
+                class="skill-chip"
+                style:--cat={color}
+                draggable={localCanDraft}
                 disabled={!localCanDraft}
-                onclick={() => handleSkillClick(id)}
-                title={skillDesc(id)}
+                ondragstart={(ev) => dragStartSkill(ev, id)}
+                ondragend={dragEnd}
+                title={`${skillName(id)} — ${categoryLabel(id)}\n${skillDesc(id)}`}
               >
-                <span class="skillName">{skillName(id)}</span>
+                <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+                  <use href="#skill-glyph-{id}" />
+                </svg>
+                <span class="chip-name">{skillName(id)}</span>
+                <span class="chip-cat">{categoryLabel(id)}</span>
               </button>
             </li>
           {/each}
         </ul>
 
-        <h2>{t("draft.staging")}</h2>
-        <ul class="staging">
-          {#each [pick1, pick2] as p, i}
-            <li class="stage">
-              <span class="stageLabel">{t("draft.pickN", { n: i + 1 })}</span>
-              <span class="stageSkill">{p.skillId === 0 ? "—" : skillName(p.skillId)}</span>
-              <span class="stageArrow">→</span>
-              <span class="stageTarget">
-                {#if p.sq < 0}
-                  <em>{t("draft.unassigned")}</em>
-                {:else}
-                  {squareName(p.sq)} · slot {p.slot + 1}
-                {/if}
-              </span>
-              <button
-                type="button"
-                class="ghost"
-                disabled={!localCanDraft || (p.skillId === 0 && p.sq < 0)}
-                onclick={() => clearPick((i + 1) as 1 | 2)}
-              >{t("draft.clearPick")}</button>
-            </li>
-          {/each}
-        </ul>
-
-        <div class="commit">
-          <button
-            type="button"
-            class="primary"
-            disabled={!commitReady || busy}
-            onclick={commitTurn}
-          >{t("draft.commitTurn")}</button>
-        </div>
+        {#if localCanDraft}
+          <div
+            class="trash"
+            class:armed={dragPayload?.kind === "pick"}
+            ondragover={(ev) => { if (dragPayload?.kind === "pick") ev.preventDefault(); }}
+            ondrop={dropOnTrash}
+            role="region"
+            aria-label="drop here to remove tentative pick"
+          >
+            {t("draft.removeHint")}
+          </div>
+        {/if}
       </section>
 
-      <!-- Right: pieces (P1 above P2, current side highlighted) -->
+      <!-- Pieces (P1 above P2, active side highlighted). Slots are drop
+           targets and visually communicate empty / tentative / committed. -->
       <section class="pieces-col">
         {#each [["p1", P1_SQUARES] as const, ["p2", P2_SQUARES] as const] as [side, squares]}
           {@const isActive = (side === "p1") === isP1Turn}
@@ -457,32 +510,46 @@
               {#each squares as sq, i (sq)}
                 {@const isKing = i === 0}
                 <li class:king={isKing}>
-                  <span class="pname">{pieceLabel(sq, isKing, i)}</span>
-                  <span class="psq">{squareName(sq)}</span>
-                  {#each [0, 1] as slot}
-                    {@const filled = slotSkillId(sq, slot)}
-                    {@const stagedSide = isStagedTarget(sq, slot)}
-                    {@const stagedFor = stagedSkillAt(sq, slot)}
-                    {@const clickable = isActive && localCanDraft && filled === 0}
-                    <button
-                      type="button"
-                      class="slot"
-                      class:filled={filled !== 0}
-                      class:staged-p1={stagedSide === "p1"}
-                      class:staged-p2={stagedSide === "p2"}
-                      class:empty-target={clickable}
-                      disabled={!clickable}
-                      onclick={() => handleTargetClick(sq, slot)}
-                    >
-                      {#if filled !== 0}
-                        {skillName(filled)}
-                      {:else if stagedFor !== 0}
-                        <em>{skillName(stagedFor)}</em>
-                      {:else}
-                        —
-                      {/if}
-                    </button>
-                  {/each}
+                  <div class="piece-id">
+                    <span class="pname">{pieceLabel(sq, isKing, i)}</span>
+                    <span class="psq">{squareName(sq)}</span>
+                  </div>
+                  <div class="slots">
+                    {#each [0, 1] as slot}
+                      {@const committed = slotCommittedSkill(sq, slot)}
+                      {@const tent = tentativeAt(sq, slot)}
+                      {@const showId = committed !== 0 ? committed : (tent?.skillId ?? 0)}
+                      {@const color = showId === 0 ? "transparent" : skillColor(showId)}
+                      {@const hover = isDragHoverTarget(sq, slot)}
+                      <button
+                        type="button"
+                        class="slot"
+                        class:committed={committed !== 0}
+                        class:tentative={tent !== null}
+                        class:empty={showId === 0}
+                        class:hover-ok={hover}
+                        class:active-side={isActive}
+                        style:--cat={color}
+                        draggable={tent !== null && localCanDraft}
+                        ondragstart={tent !== null ? (ev) => dragStartPick(ev, sq, slot) : undefined}
+                        ondragend={dragEnd}
+                        ondragover={(ev) => dragOverIfLegal(ev, sq, slot)}
+                        ondrop={(ev) => dropOnSlot(ev, sq, slot)}
+                        onclick={() => clickSlot(sq, slot)}
+                        aria-label={`${pieceLabel(sq, isKing, i)} slot ${slot + 1}`}
+                        title={showId === 0 ? "" : `${skillName(showId)} — ${categoryLabel(showId)}`}
+                      >
+                        {#if showId === 0}
+                          <span class="slot-empty">slot {slot + 1}</span>
+                        {:else}
+                          <svg class="slot-glyph" viewBox="0 0 24 24" aria-hidden="true">
+                            <use href="#skill-glyph-{showId}" />
+                          </svg>
+                          <span class="slot-name">{skillName(showId)}</span>
+                        {/if}
+                      </button>
+                    {/each}
+                  </div>
                 </li>
               {/each}
             </ul>
@@ -495,7 +562,7 @@
 
 <style>
   main {
-    max-width: 1100px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 0.6rem 1rem 2rem;
   }
@@ -517,17 +584,15 @@
   .status {
     display: flex;
     gap: 1.5rem;
+    align-items: center;
     margin: 0.5rem 0 0.8rem;
     padding: 0.5em 0.9em;
     border: 1.5px solid var(--paper-line-strong);
     border-radius: 6px;
     background: var(--paper-bg);
   }
-  .status-cell {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1em;
-  }
+  .status-cell { display: flex; flex-direction: column; gap: 0.1em; }
+  .commit-cell { margin-left: auto; }
   .status-label {
     font-size: 0.72rem;
     color: var(--paper-ink-soft);
@@ -548,7 +613,7 @@
   }
   .layout {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(280px, 360px) 1fr;
     gap: 1.2rem;
     align-items: start;
   }
@@ -563,82 +628,177 @@
   }
   .picker h2, .side h2 {
     margin: 0 0 0.5em;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
   }
-  .picker h2:not(:first-child) { margin-top: 0.9em; }
+
+  /* Catalogue chips */
   .skills {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 0.35em;
+    gap: 0.4em;
     list-style: none;
     padding: 0;
     margin: 0;
   }
-  .skills li { margin: 0; }
-  .skills button {
+  .skill-chip {
+    --cat: #888;
+    display: grid;
+    grid-template-rows: auto auto auto;
+    align-items: center;
+    justify-items: center;
+    gap: 0.1em;
     width: 100%;
+    padding: 0.45em 0.35em 0.35em;
     font: inherit;
-    padding: 0.35em 0.5em;
-    border: 1.5px solid var(--paper-line);
-    border-radius: 5px;
     background: var(--paper-bg);
-    cursor: pointer;
+    border: 1.5px solid var(--cat);
+    border-radius: 6px;
+    cursor: grab;
+    transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease;
   }
-  .skills button:hover:not(:disabled) {
-    background: var(--paper-square-light, #ece2c8);
+  .skill-chip:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--cat) 12%, var(--paper-bg));
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
   }
-  .skills button.staged {
-    border-color: var(--accent, #c79b3a);
-    background: rgba(199, 155, 58, 0.18);
+  .skill-chip:active:not(:disabled) { cursor: grabbing; }
+  .skill-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+  .skill-chip .glyph {
+    width: 32px;
+    height: 32px;
+    color: var(--cat);
+    stroke-width: 2.4;
+  }
+  .skill-chip .glyph :global(use) { stroke-width: 2.4; }
+  .skill-chip .chip-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--paper-ink);
+  }
+  .skill-chip .chip-cat {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cat);
+  }
+  .skills.disabled .skill-chip { opacity: 0.35; cursor: not-allowed; }
+
+  .trash {
+    margin-top: 0.8em;
+    padding: 0.6em 0.8em;
+    border: 1.5px dashed var(--paper-line);
+    border-radius: 6px;
+    text-align: center;
+    color: var(--paper-ink-soft);
+    font-size: 0.85rem;
+    font-style: italic;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  }
+  .trash.armed {
+    border-color: #a94b3b;
+    border-style: solid;
+    color: #a94b3b;
+    background: rgba(169, 75, 59, 0.06);
+    font-style: normal;
     font-weight: 600;
   }
-  .skills.disabled button {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .staging {
+
+  /* Sides */
+  .pieces-col { display: grid; gap: 1rem; }
+  .side.p1 { border-top: 4px solid var(--p1, #2b4a8a); }
+  .side.p2 { border-top: 4px solid var(--p2, #a13a2a); }
+  .side:not(.active) { opacity: 0.55; }
+  .pieces {
     list-style: none;
     padding: 0;
     margin: 0;
     display: grid;
-    gap: 0.3em;
-  }
-  .stage {
-    display: grid;
-    grid-template-columns: 4em 6em 1em 1fr auto;
-    align-items: center;
     gap: 0.4em;
-    padding: 0.3em 0.5em;
-    border: 1px dashed var(--paper-line);
-    border-radius: 5px;
   }
-  .stageLabel {
+  .pieces li {
+    display: grid;
+    grid-template-columns: 9em 1fr;
+    gap: 0.6em;
+    align-items: center;
+    padding: 0.25em 0.3em;
+    border-bottom: 1px dashed var(--paper-line);
+  }
+  .pieces li.king { font-weight: 600; }
+  .piece-id { display: flex; flex-direction: column; gap: 0.05em; }
+  .pname { font-size: 0.92rem; }
+  .psq { color: var(--paper-ink-soft); font-size: 0.78rem; }
+  .slots {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4em;
+  }
+
+  /* Slot states.
+     - empty:    paper background, dashed light outline, only highlights when
+                 the active side is drafting.
+     - tentative: dashed accent border in the category color, light tint,
+                 grabbable; clicking removes it.
+     - committed: solid category background, white glyph, no border accent.
+     - hover-ok:  pulsing accent ring when a legal drop is in flight. */
+  .slot {
+    --cat: transparent;
+    position: relative;
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    gap: 0.45em;
+    font: inherit;
+    padding: 0.32em 0.5em;
+    border: 1.5px dashed var(--paper-line);
+    border-radius: 6px;
+    background: var(--paper-bg);
+    text-align: left;
+    cursor: default;
+    min-height: 38px;
+    transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  }
+  .slot.empty .slot-empty {
     font-size: 0.78rem;
     color: var(--paper-ink-soft);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
+    grid-column: 1 / -1;
+    text-align: center;
   }
-  .stageSkill { font-weight: 600; }
-  .stageArrow { color: var(--paper-ink-soft); text-align: center; }
-  .stageTarget em {
-    font-style: italic;
-    color: var(--paper-ink-soft);
+  .slot.empty.active-side {
+    border-color: var(--paper-line-strong);
   }
-  .stage .ghost {
-    font: inherit;
-    padding: 0.15em 0.5em;
-    border: 1px solid var(--paper-line);
-    border-radius: 4px;
-    background: transparent;
-    cursor: pointer;
-    font-size: 0.85em;
+  .slot.tentative {
+    border: 2px dashed var(--cat);
+    background: color-mix(in srgb, var(--cat) 10%, var(--paper-bg));
+    cursor: grab;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--cat) 25%, transparent);
   }
-  .stage .ghost:disabled { opacity: 0.3; cursor: not-allowed; }
-  .commit {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 0.8em;
+  .slot.tentative:active { cursor: grabbing; }
+  .slot.committed {
+    border: 1.5px solid var(--cat);
+    background: var(--cat);
+    color: #fefcf3;
+    cursor: default;
   }
+  .slot.committed .slot-name { color: #fefcf3; }
+  .slot.committed .slot-glyph { color: #fefcf3; }
+  .slot.hover-ok {
+    border-color: var(--paper-ink, #1c1a17);
+    box-shadow: 0 0 0 3px rgba(199, 155, 58, 0.4);
+  }
+  .slot-glyph {
+    width: 24px;
+    height: 24px;
+    stroke-width: 2.4;
+  }
+  .slot.tentative .slot-glyph { color: var(--cat); }
+  .slot-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .slot.tentative .slot-name { color: var(--cat); }
+
   .primary {
     padding: 0.55em 1.2em;
     border: 1.5px solid var(--paper-line-strong);
@@ -656,55 +816,6 @@
   .primary:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-  }
-  .pieces-col {
-    display: grid;
-    gap: 1rem;
-  }
-  .side.p1 { border-top: 4px solid var(--p1, #2b4a8a); }
-  .side.p2 { border-top: 4px solid var(--p2, #a13a2a); }
-  .side:not(.active) { opacity: 0.55; }
-  .pieces {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: grid;
-    gap: 0.35em;
-  }
-  .pieces li {
-    display: grid;
-    grid-template-columns: 7em 3em 1fr 1fr;
-    gap: 0.4em;
-    align-items: center;
-    padding: 0.2em 0.3em;
-    border-bottom: 1px dashed var(--paper-line);
-  }
-  .pieces li.king { font-weight: 600; }
-  .pname { font-size: 0.9rem; }
-  .psq { color: var(--paper-ink-soft); font-size: 0.85rem; }
-  .slot {
-    font: inherit;
-    padding: 0.25em 0.45em;
-    border: 1.5px solid var(--paper-line);
-    border-radius: 4px;
-    background: var(--paper-bg);
-    text-align: center;
-    cursor: pointer;
-  }
-  .slot:disabled { cursor: default; }
-  .slot.filled {
-    background: var(--paper-square-light, #ece2c8);
-    cursor: default;
-  }
-  .slot.empty-target:hover {
-    background: rgba(199, 155, 58, 0.15);
-    border-color: var(--accent, #c79b3a);
-  }
-  .slot.staged-p1, .slot.staged-p2 {
-    border-color: var(--accent, #c79b3a);
-    border-style: dashed;
-    background: rgba(199, 155, 58, 0.10);
-    font-style: italic;
   }
   .err {
     color: #a94b3b;

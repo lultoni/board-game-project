@@ -19,6 +19,7 @@
     "pickN": "Pick {n}",
     "unassigned": "click a piece slot",
     "clearPick": "clear",
+    "removeHint": "Drag a tentative pick here to remove it",
     "commitTurn": "Commit turn",
     "aiDrafting": "AI is drafting…",
     "waitingForPlayer": "Waiting for Player {n}…",

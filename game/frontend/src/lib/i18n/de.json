@@ -28,6 +28,7 @@
     "pickN": "Pick {n}",
     "unassigned": "Klicke einen Figurenslot",
     "clearPick": "leeren",
+    "removeHint": "Vorläufigen Pick hierher ziehen, um ihn zu entfernen",
     "commitTurn": "Zug bestätigen",
     "aiDrafting": "KI draftet…",
     "waitingForPlayer": "Warte auf Spieler {n}…",
