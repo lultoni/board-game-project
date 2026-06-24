@@ -56,7 +56,7 @@ use crate::game_logic::{generator, make_unmake};
 use crate::search::alpha_beta::{find_best, SearchResult};
 use crate::search::transposition::TranspositionTable;
 use crate::state::Position;
-use crate::state::position::{GameResult, Player};
+use crate::state::position::{GameResult, Phase, Player};
 use crate::telemetry::{
     MatchLog, MatchResult, PlyRecord, SearchMeta, ActionDecoded,
     snapshot_pre, snapshot_post,
@@ -431,6 +431,13 @@ impl Match {
     pub fn request_ai_move(&mut self) -> Result<SearchResult, AiError> {
         if self.position.game_result.is_some() { return Err(AiError::GameOver); }
         if self.to_move_kind() != SeatKind::Ai { return Err(AiError::NotAiTurn); }
+        // Draft phase short-circuits search — see `oq-83` for the real-AI-
+        // draft follow-up. The preset emits a deterministic `DraftTurn` and
+        // we wrap it in a `SearchResult` so callers don't have to special-
+        // case the draft path.
+        if self.position.current_phase == Phase::Draft {
+            return Ok(self.draft_preset_search_result());
+        }
         let budget = match self.position.to_move {
             Player::P1 => self.config.p1_ai,
             Player::P2 => self.config.p2_ai,
@@ -439,12 +446,32 @@ impl Match {
                      budget.time_limit_ms, budget.max_depth))
     }
 
+    /// Wrap the preset-driven draft turn (if any) in a `SearchResult`. Score
+    /// is 0 (the position evaluator isn't meaningful mid-draft) and depth is
+    /// 0 (no search ran). Returns an empty `SearchResult` if the preset has
+    /// nothing more to do — caller will surface that as a no-op step, which
+    /// in practice can only happen when the draft is already complete or
+    /// the position is malformed (engine bug).
+    fn draft_preset_search_result(&self) -> SearchResult {
+        use crate::game_logic::draft::{next_preset_draft_turn, DEFAULT_AI_LOADOUT};
+        let best = next_preset_draft_turn(&self.position, &DEFAULT_AI_LOADOUT);
+        SearchResult {
+            best,
+            score: 0,
+            depth: 0,
+            nodes: 0,
+        }
+    }
+
     /// Inspector / debugger variant: run the search for whoever is to move,
     /// regardless of whether they're a human seat. Falls back to a default
     /// AiBudget when the side has no AI configured (i.e. HvH matches). Does
     /// NOT apply the result. Returns `GameOver` if the position is decided.
     pub fn request_ai_move_forced(&mut self) -> Result<SearchResult, AiError> {
         if self.position.game_result.is_some() { return Err(AiError::GameOver); }
+        if self.position.current_phase == Phase::Draft {
+            return Ok(self.draft_preset_search_result());
+        }
         let budget = match self.position.to_move {
             Player::P1 => self.config.p1_ai,
             Player::P2 => self.config.p2_ai,
@@ -464,6 +491,9 @@ impl Match {
     /// transposition table makes repeated calls progressively cheaper.
     pub fn request_ai_move_at_depth(&mut self, max_depth: u8) -> Result<SearchResult, AiError> {
         if self.position.game_result.is_some() { return Err(AiError::GameOver); }
+        if self.position.current_phase == Phase::Draft {
+            return Ok(self.draft_preset_search_result());
+        }
         Ok(find_best(&mut self.position, &mut self.tt, 0, max_depth.max(1)))
     }
 
@@ -761,5 +791,91 @@ mod tests {
         let legals = m.legal_actions();
         let move_count = legals.iter().filter(|a| a.kind() == ActionKind::Move).count();
         assert!(move_count > 0, "Stack M start should emit Move actions");
+    }
+
+    // === L8 Phase C — AI driven by preset during Phase::Draft ===============
+
+    #[test]
+    fn new_with_draft_starts_in_draft_phase() {
+        let m = Match::new_with_draft(Config::local_aivai(), 0);
+        assert_eq!(m.position().current_phase, Phase::Draft);
+    }
+
+    #[test]
+    fn step_ai_in_draft_phase_applies_preset_turn() {
+        let mut m = Match::new_with_draft(Config::local_aivai(), 0);
+        let r = m.step_ai().expect("AI should produce a DraftTurn in Phase::Draft");
+        let a = r.best.expect("step_ai must return an action");
+        assert!(a.is_draft_turn(), "AI's first action in draft must be a DraftTurn");
+        // After one DraftTurn the phase is still Draft, side flipped to P2.
+        assert_eq!(m.position().current_phase, Phase::Draft);
+        assert_eq!(m.position().to_move, Player::P2);
+    }
+
+    #[test]
+    fn aivai_draft_runs_to_completion_and_starts_move_phase() {
+        let mut m = Match::new_with_draft(Config::local_aivai(), 0);
+        // Drive both AI sides through the full 12-turn draft.
+        let mut plies = 0;
+        while m.position().current_phase == Phase::Draft {
+            m.step_ai().expect("AI step in draft");
+            plies += 1;
+            assert!(plies <= 12, "draft must complete within 12 plies");
+        }
+        assert_eq!(plies, 12, "exactly 12 DraftTurns to drain the draft");
+        assert_eq!(m.position().current_phase, Phase::Move);
+        assert_eq!(m.position().actions_remaining, 2);
+        // Every skill-bearing piece on both sides is now fully equipped.
+        let pos = m.position();
+        for sq in 0..64u8 {
+            if pos.kings.contains(sq) || pos.champions.contains(sq) {
+                let e = pos.mailbox[sq as usize];
+                assert!(e.skill1() != 0 && e.skill2() != 0,
+                    "sq {} still has empty slots after AI-driven draft", sq);
+            }
+        }
+    }
+
+    #[test]
+    fn new_with_loadouts_bypasses_draft() {
+        use crate::game_logic::draft::DEFAULT_AI_LOADOUT;
+        let m = Match::new_with_loadouts(
+            Config::local_aivai(),
+            &DEFAULT_AI_LOADOUT,
+            &DEFAULT_AI_LOADOUT,
+            0,
+        );
+        assert_eq!(m.position().current_phase, Phase::Move,
+            "Pre-made-loadout match opens directly in Move phase");
+        assert_eq!(m.position().actions_remaining, 2);
+    }
+
+    #[test]
+    fn request_ai_move_forced_handles_draft_for_hvh() {
+        // HvH (no AI seats) — inspector must still produce a draft pick when
+        // Phase::Draft via request_ai_move_forced.
+        let mut m = Match::new_with_draft(Config::local_hvh(), 0);
+        let r = m.request_ai_move_forced().expect("forced must work in draft");
+        let a = r.best.expect("forced inspector must return an action");
+        assert!(a.is_draft_turn());
+    }
+
+    #[test]
+    fn aivai_draft_logs_draftturn_plies_when_auto_log() {
+        let mut cfg = Config::local_aivai();
+        cfg.auto_log = true;
+        let mut m = Match::new_with_draft(cfg, 1);
+        while m.position().current_phase == Phase::Draft {
+            m.step_ai().unwrap();
+        }
+        let log = m.match_log().expect("auto_log enabled");
+        // First 12 plies should be DraftTurns; after that, the play phase
+        // begins (we don't drive past draft here).
+        assert!(log.plies.len() >= 12, "expected at least 12 draft plies, got {}", log.plies.len());
+        for (i, p) in log.plies.iter().take(12).enumerate() {
+            assert_eq!(p.action.kind, "DraftTurn",
+                "ply {} should be DraftTurn, got {}", i + 1, p.action.kind);
+            assert!(p.action.picks.is_some(), "draft ply {} must carry picks", i + 1);
+        }
     }
 }

@@ -87,6 +87,42 @@ impl Engine {
         Ok(Engine { m, legal_buf: Vec::with_capacity(256) })
     }
 
+    /// Construct an Engine that opens in `Phase::Draft`. Frontend drives 12
+    /// `DraftTurn` plies via `tryApply` / `stepAi` (AI side uses the
+    /// fixed-preset path); the engine transitions to `Phase::Move`
+    /// automatically after ply 12.
+    #[wasm_bindgen(js_name = newWithDraft)]
+    pub fn new_with_draft(config_json: &str, now_unix_ms: f64) -> Result<Engine, JsValue> {
+        console_error_panic_hook::set_once();
+        let cfg: core_engine::Config = core_engine::from_json(config_json)
+            .map_err(|e| JsValue::from_str(&format!("config parse error: {e}")))?;
+        let m = api::new_match_with_draft(cfg, now_unix_ms as u64);
+        Ok(Engine { m, legal_buf: Vec::with_capacity(256) })
+    }
+
+    /// Construct an Engine that bypasses draft, with both sides' loadouts
+    /// applied to the mailbox up front. Loadouts arrive as JSON 6-tuples:
+    /// `[[s1,s2], ..., [s1,s2]]`. Validation errors and parse errors are
+    /// reported as JS strings.
+    #[wasm_bindgen(js_name = newWithLoadouts)]
+    pub fn new_with_loadouts(
+        config_json: &str,
+        p1_loadout_json: &str,
+        p2_loadout_json: &str,
+        now_unix_ms: f64,
+    ) -> Result<Engine, JsValue> {
+        console_error_panic_hook::set_once();
+        let cfg: core_engine::Config = core_engine::from_json(config_json)
+            .map_err(|e| JsValue::from_str(&format!("config parse error: {e}")))?;
+        let p1 = api::parse_side_loadout_json(p1_loadout_json)
+            .map_err(|e| JsValue::from_str(&format!("p1 loadout parse error: {e}")))?;
+        let p2 = api::parse_side_loadout_json(p2_loadout_json)
+            .map_err(|e| JsValue::from_str(&format!("p2 loadout parse error: {e}")))?;
+        let m = api::new_match_with_loadouts(cfg, &p1, &p2, now_unix_ms as u64)
+            .map_err(|e| JsValue::from_str(&format!("loadout validation failed: {e:?}")))?;
+        Ok(Engine { m, legal_buf: Vec::with_capacity(256) })
+    }
+
     // --- Position reads (hot path, zero-copy views) ------------------------
 
     /// `[p1, p2, kings, champions, guards]` as a `BigUint64Array` view.
@@ -220,6 +256,29 @@ impl Engine {
     pub fn snapshot_json(&self) -> String {
         api::snapshot_json(&self.m)
     }
+
+    /// L8 draft snapshot. Returns `null` cleanly when not in Phase::Draft —
+    /// the consumer reads `turnNo == 12` as "draft finished, position is in
+    /// Phase::Move". `usedSlots` is serialised as a flat `Uint8Array` of 24
+    /// bytes (0/1) laid out as `[piece0_slot0, piece0_slot1, piece1_slot0,
+    /// ..., piece11_slot1]`; the JS side reshapes into [12][2].
+    #[wasm_bindgen(js_name = draftState)]
+    pub fn draft_state(&self) -> DraftStateJs {
+        let s = api::current_draft_state(&self.m);
+        let mut flat = [0u8; 24];
+        for (i, row) in s.used_slots.iter().enumerate() {
+            flat[i * 2]     = row[0] as u8;
+            flat[i * 2 + 1] = row[1] as u8;
+        }
+        DraftStateJs {
+            turn_no:      s.turn_no,
+            side_to_move: match s.side_to_move {
+                core_engine::state::position::Player::P1 => 0,
+                core_engine::state::position::Player::P2 => 1,
+            },
+            used_slots_flat: flat,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -310,4 +369,33 @@ impl PhaseStateJs {
 #[wasm_bindgen(js_name = engineVersion)]
 pub fn engine_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+// ---------------------------------------------------------------------------
+// L8 — draft state. The frontend reads `turnNo`, `sideToMove` (0=P1, 1=P2),
+// and a 24-byte `usedSlotsFlat` view that it reshapes into [12][2] booleans.
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen]
+#[derive(Clone, Copy)]
+pub struct DraftStateJs {
+    turn_no:         u8,
+    side_to_move:    u8,
+    used_slots_flat: [u8; 24],
+}
+
+#[wasm_bindgen]
+impl DraftStateJs {
+    #[wasm_bindgen(getter, js_name = turnNo)]
+    pub fn turn_no(&self) -> u8 { self.turn_no }
+    #[wasm_bindgen(getter, js_name = sideToMove)]
+    pub fn side_to_move(&self) -> u8 { self.side_to_move }
+    /// `Uint8Array` view of 24 bytes (0/1). Caller reshapes into `[piece][slot]`
+    /// where piece ∈ 0..12 and slot ∈ 0..2. View aliases wasm memory; copy if
+    /// held past the next call into Engine.
+    #[wasm_bindgen(getter, js_name = usedSlotsFlat)]
+    pub fn used_slots_flat(&self) -> js_sys::Uint8Array {
+        // SAFETY: caller is contracted to copy before re-entering Engine.
+        unsafe { js_sys::Uint8Array::view(&self.used_slots_flat) }
+    }
 }

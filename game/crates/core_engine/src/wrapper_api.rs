@@ -14,9 +14,11 @@
 //!   it receives.
 
 use crate::game_logic::action::Action;
+use crate::game_logic::draft::{draft_state, DraftState};
 use crate::game_logic::generator;
+use crate::game_logic::skills::{validate_loadout, DraftError, SideLoadout};
 use crate::search::alpha_beta::SearchResult;
-use crate::session::{ApplyError, AiError, Match, Snapshot, SnapshotError};
+use crate::session::{ApplyError, AiError, Config, Match, Snapshot, SnapshotError};
 use crate::state::position::{GameResult, Phase, Player};
 use crate::telemetry::{MatchResult, SearchMeta};
 
@@ -292,6 +294,50 @@ pub fn from_snapshot_json(s: &str, now_unix_ms: u64) -> Result<Match, SnapshotEr
 pub enum SnapshotErrorOrParse {
     Parse(serde_json::Error),
     Snapshot(SnapshotError),
+}
+
+// --- Draft constructors / state (L8) --------------------------------------
+
+/// Build a fresh `Match` in `Phase::Draft`. The wrapper owns the wall-clock.
+#[inline]
+pub fn new_match_with_draft(config: Config, now_unix_ms: u64) -> Match {
+    Match::new_with_draft(config, now_unix_ms)
+}
+
+/// Build a fresh `Match` that bypasses draft, with loadouts already applied.
+/// Both loadouts are validated; returns the first `DraftError` encountered.
+pub fn new_match_with_loadouts(
+    config: Config,
+    p1: &SideLoadout,
+    p2: &SideLoadout,
+    now_unix_ms: u64,
+) -> Result<Match, DraftError> {
+    validate_loadout(p1)?;
+    validate_loadout(p2)?;
+    Ok(Match::new_with_loadouts(config, p1, p2, now_unix_ms))
+}
+
+/// Parse a JSON-encoded `SideLoadout` (a 6-tuple array of `[skill1, skill2]`
+/// pairs) into the engine's typed representation. Wrappers expose this so
+/// the frontend can send `[[6,7],[1,9],...]` over the bridge.
+pub fn parse_side_loadout_json(s: &str) -> Result<SideLoadout, serde_json::Error> {
+    let arr: [[u8; 2]; 6] = crate::telemetry::from_json(s)?;
+    Ok([
+        (arr[0][0], arr[0][1]),
+        (arr[1][0], arr[1][1]),
+        (arr[2][0], arr[2][1]),
+        (arr[3][0], arr[3][1]),
+        (arr[4][0], arr[4][1]),
+        (arr[5][0], arr[5][1]),
+    ])
+}
+
+/// Snapshot of the draft (turn number, side-to-pick, used-slots bitmap).
+/// Returned as a flat, owned struct so wrappers can copy it across the
+/// boundary directly.
+#[inline]
+pub fn current_draft_state(m: &Match) -> DraftState {
+    draft_state(m.position())
 }
 
 impl core::fmt::Display for SnapshotErrorOrParse {

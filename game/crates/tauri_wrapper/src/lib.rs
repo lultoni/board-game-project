@@ -139,6 +139,19 @@ impl From<api::StepResult> for StepResultDto {
     }
 }
 
+/// L8 draft snapshot. `usedSlots[piece][slot]` mirrors
+/// `core_engine::game_logic::draft::DraftState`. Indexed:
+///   - piece 0..6  → P1's bearers (King at 0, Champions 1..5 by sq asc)
+///   - piece 6..12 → P2's bearers (same internal order)
+///   - slot 0..2   → mailbox slot1 / slot2.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftStateDto {
+    pub turn_no:      u8,
+    pub side_to_move: u8,
+    pub used_slots:   [[bool; 2]; 12],
+}
+
 // ---------------------------------------------------------------------------
 // Wall-clock helper. core_engine::time::now_ms() is monotonic-since-process-
 // start on native, NOT wall-clock. For `applied_at_unix_ms` we use the real
@@ -185,6 +198,64 @@ fn create_engine_from_snapshot(
     let m = api::from_snapshot_json(&snapshot_json, unix_ms_now())
         .map_err(|e| e.to_string())?;
     Ok(registry.insert(m))
+}
+
+/// Open a fresh match in `Phase::Draft`. Frontend then drives 12 DraftTurn
+/// plies via `try_apply` / `step_ai`; engine transitions to `Phase::Move`
+/// automatically after ply 12.
+#[tauri::command]
+fn create_engine_with_draft(
+    config_json: Option<String>,
+    registry:    State<'_, EngineRegistry>,
+) -> Result<u64, String> {
+    let cfg = match config_json {
+        Some(s) => core_engine::from_json(&s)
+            .map_err(|e| format!("config parse error: {e}"))?,
+        None    => core_engine::Config::local_aivai(),
+    };
+    let m = api::new_match_with_draft(cfg, unix_ms_now());
+    Ok(registry.insert(m))
+}
+
+/// Open a fresh match with both sides' loadouts already applied (no draft).
+/// Loadouts arrive as JSON `[[s1,s2],[s1,s2],...]` 6-tuples; the engine
+/// validates them and rejects invalid pairs (e.g. same skill in both slots).
+#[tauri::command]
+fn create_engine_with_loadouts(
+    config_json:    Option<String>,
+    p1_loadout_json: String,
+    p2_loadout_json: String,
+    registry:       State<'_, EngineRegistry>,
+) -> Result<u64, String> {
+    let cfg = match config_json {
+        Some(s) => core_engine::from_json(&s)
+            .map_err(|e| format!("config parse error: {e}"))?,
+        None    => core_engine::Config::local_aivai(),
+    };
+    let p1 = api::parse_side_loadout_json(&p1_loadout_json)
+        .map_err(|e| format!("p1 loadout parse error: {e}"))?;
+    let p2 = api::parse_side_loadout_json(&p2_loadout_json)
+        .map_err(|e| format!("p2 loadout parse error: {e}"))?;
+    let m = api::new_match_with_loadouts(cfg, &p1, &p2, unix_ms_now())
+        .map_err(|e| format!("loadout validation failed: {e:?}"))?;
+    Ok(registry.insert(m))
+}
+
+/// Compact draft-state snapshot for UI legality hints (who picks, which
+/// mailbox slots are filled). Cheap to call on every UI refresh.
+#[tauri::command]
+fn draft_state(handle: u64, registry: State<'_, EngineRegistry>) -> Result<DraftStateDto, String> {
+    registry.with(handle, |e| {
+        let s = api::current_draft_state(&e.m);
+        DraftStateDto {
+            turn_no:      s.turn_no,
+            side_to_move: match s.side_to_move {
+                core_engine::state::position::Player::P1 => 0,
+                core_engine::state::position::Player::P2 => 1,
+            },
+            used_slots: s.used_slots,
+        }
+    })
 }
 
 #[tauri::command]
@@ -369,6 +440,9 @@ pub fn run() {
             engine_version,
             create_engine,
             create_engine_from_snapshot,
+            create_engine_with_draft,
+            create_engine_with_loadouts,
+            draft_state,
             drop_engine,
             position_view,
             phase_state,
@@ -464,5 +538,66 @@ mod tests {
                 .unwrap()
         }).unwrap();
         assert_ne!(dto.applied_action, 0, "AI must produce a move on fresh board");
+    }
+
+    #[test]
+    fn draft_engine_advances_through_preset_to_move_phase() {
+        // End-to-end: open a Phase::Draft engine, drive 12 AI plies (each
+        // applies one preset DraftTurn), assert we land in Phase::Move with
+        // the preset loadout mirrored on both sides.
+        let r = EngineRegistry::default();
+        let m = api::new_match_with_draft(core_engine::Config::local_aivai(), 0);
+        let h = r.insert(m);
+
+        // Draft state at start: 0 turns committed, all slots empty, P1 to pick.
+        let s_start = r.with(h, |e| {
+            let s = api::current_draft_state(&e.m);
+            DraftStateDto {
+                turn_no:      s.turn_no,
+                side_to_move: match s.side_to_move {
+                    core_engine::state::position::Player::P1 => 0,
+                    core_engine::state::position::Player::P2 => 1,
+                },
+                used_slots: s.used_slots,
+            }
+        }).unwrap();
+        assert_eq!(s_start.turn_no, 0);
+        assert_eq!(s_start.side_to_move, 0);
+        assert!(s_start.used_slots.iter().flatten().all(|&b| !b));
+
+        // Drive the draft to completion via step_ai (which dispatches into
+        // the preset path when Phase == Draft).
+        for _ in 0..12 {
+            r.with(h, |e| {
+                api::step_ai(&mut e.m, 0).expect("preset draft must always produce a turn");
+            }).unwrap();
+        }
+
+        // Verify post-draft state: Phase::Move, all slots filled.
+        let v = r.with(h, |e| api::position_view(&e.m)).unwrap();
+        assert_eq!(v.current_phase, 0, "phase must transition to Move (encoded as 0)");
+        let s_end = r.with(h, |e| api::current_draft_state(&e.m)).unwrap();
+        assert_eq!(s_end.turn_no, 12, "draft_state must report sentinel 12 once finished");
+    }
+
+    #[test]
+    fn create_engine_with_loadouts_validates_input() {
+        // Same skill in both slots of a single piece is rejected by validate_loadout.
+        let r = EngineRegistry::default();
+        let bad_p1 = "[[6,6],[1,9],[2,8],[3,14],[5,15],[12,11]]";
+        let good   = "[[6,7],[1,9],[2,8],[3,14],[5,15],[12,11]]";
+        let p1 = api::parse_side_loadout_json(bad_p1).unwrap();
+        let p2 = api::parse_side_loadout_json(good).unwrap();
+        let err = api::new_match_with_loadouts(core_engine::Config::local_aivai(), &p1, &p2, 0);
+        assert!(err.is_err(), "duplicate skill on same piece must fail validation");
+
+        // Good loadouts produce a Phase::Move engine.
+        let p1g = api::parse_side_loadout_json(good).unwrap();
+        let p2g = api::parse_side_loadout_json(good).unwrap();
+        let m = api::new_match_with_loadouts(core_engine::Config::local_aivai(), &p1g, &p2g, 0)
+            .expect("valid loadouts must construct");
+        let h = r.insert(m);
+        let v = r.with(h, |e| api::position_view(&e.m)).unwrap();
+        assert_eq!(v.current_phase, 0, "loadout path must skip draft → Phase::Move");
     }
 }
