@@ -43,41 +43,58 @@ export function squareName(sq: number): string {
 // piece order (King at index 0, Champions 1..5 by ascending starting sq).
 // Both sides play the same loadout — pre-made mode is a mirror match.
 //
-// **PLACEHOLDER DATA.** The values below are all-zero stand-ins that will
-// be rejected by the engine's `validate_loadout` (skill 0 = empty slot is
-// only legal during Phase::Draft). The designer fills these in with curated
-// "First / Second / Third game" loadouts at the end of L8 (see DB OQ-65 /
-// task #32). Once filled, the values must satisfy the engine validator:
-//   - 1 <= skill_id <= 15
-//   - skill1 !== skill2 within a single piece
+// Designed Session 33+ as **escalating teaching decks** (OQ-65). Framed as
+// "First / Second / Third game" rather than playstyle archetypes, so a new
+// player builds a mental model over three games:
 //
-// Until the designer fills these in, /setup/ disables the relevant radio
-// + the Continue button via `isPreMadeLoadoutReady()`.
+//  - Game 1 introduces Strike (Lance), self-defense (Shield), and basic
+//    movement (Dash + Blast). 4 distinct skills. No Heal precondition, no
+//    mystic timing, no combos.
+//  - Game 2 adds range-2 strikes (Hook), ally support (Plate), and the
+//    Mystic concept (Focus = +1 Range buff). King gains a Strike (Hook)
+//    so the player learns the King can defend itself. 6 distinct skills.
+//  - Game 3 explicitly teaches the Multi-Champion Combo Bonus via Tempest
+//    (Strike + AOE push — ticks the counter on the target and the whole
+//    surrounding ring). Includes Heal (medic loop) and one each of Focus
+//    and Charge so the player sees both mystics. 9 distinct skills.
+//
+// Steal is intentionally excluded from all three (money-warfare adds a
+// resource axis on top of the mechanical lessons — saved for custom draft).
+//
+// Skill IDs (per core_engine/src/game_logic/skills.rs):
+//   1 Lance · 2 Hook · 3 Break · 4 Steal · 5 Tempest · 6 Shield · 7 Heal
+//   8 Plate · 9 Dash · 10 Blast · 11 Shove · 12 Swap · 13 Retreat
+//   14 Focus · 15 Charge
 
 export const PRE_MADE_LOADOUTS: Record<PreMadeLoadoutId, SideLoadout> = {
+  // Game 1 — "Pieces with personalities". Lance / Shield / Dash / Blast.
   firstGame: [
-    [0, 0], // TODO(OQ-65): King
-    [0, 0], // TODO(OQ-65): Champion 1
-    [0, 0], // TODO(OQ-65): Champion 2
-    [0, 0], // TODO(OQ-65): Champion 3
-    [0, 0], // TODO(OQ-65): Champion 4
-    [0, 0], // TODO(OQ-65): Champion 5
+    [6, 9],   // King:        Shield + Dash    (mobile defender)
+    [1, 6],   // Champion 1:  Lance + Shield   (tank-striker)
+    [1, 10],  // Champion 2:  Lance + Blast    (skirmisher)
+    [1, 9],   // Champion 3:  Lance + Dash     (mobile striker)
+    [6, 10],  // Champion 4:  Shield + Blast   (pure disruptor)
+    [1, 9],   // Champion 5:  Lance + Dash     (mobile striker)
   ] as const,
+
+  // Game 2 — "Reach, support, the King fights back". Adds Hook, Plate, Focus.
   secondGame: [
-    [0, 0],
-    [0, 0],
-    [0, 0],
-    [0, 0],
-    [0, 0],
-    [0, 0],
+    [2, 6],   // King:        Hook + Shield    (range-2 self-defender)
+    [1, 8],   // Champion 1:  Lance + Plate    (frontline support)
+    [2, 9],   // Champion 2:  Hook + Dash      (reach-fighter)
+    [1, 14],  // Champion 3:  Lance + Focus    (buff caster)
+    [2, 6],   // Champion 4:  Hook + Shield    (reach-tank)
+    [1, 8],   // Champion 5:  Lance + Plate    (frontline support)
   ] as const,
+
+  // Game 3 — "Combos via Tempest". Adds Tempest, Blast, Heal, Charge.
   thirdGame: [
-    [0, 0],
-    [0, 0],
-    [0, 0],
-    [0, 0],
-    [0, 0],
-    [0, 0],
+    [5, 6],   // King:        Tempest + Shield (combo-opener / self-defender)
+    [2, 15],  // Champion 1:  Hook + Charge    (setup → big Strike finisher)
+    [1, 10],  // Champion 2:  Lance + Blast    (cheap ticker + finisher)
+    [5, 9],   // Champion 3:  Tempest + Dash   (mobile AOE)
+    [2, 7],   // Champion 4:  Hook + Heal      (reach + medic)
+    [1, 14],  // Champion 5:  Lance + Focus    (backline buff caster)
   ] as const,
 };
 
