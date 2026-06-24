@@ -201,6 +201,14 @@ impl Engine {
         api::match_log_json(&self.m)
     }
 
+    /// Latest `PlyRecord` JSON (the newest entry in the match log). `null`
+    /// when `auto_log` is off or no plies recorded yet. Used by the
+    /// frontend telemetry persistence to write per-ply incrementally.
+    #[wasm_bindgen(js_name = latestPlyJson)]
+    pub fn latest_ply_json(&self) -> Option<String> {
+        api::latest_ply_json(&self.m)
+    }
+
     /// `result_byte`: 0=P1Win, 1=P2Win, 2=Draw, 3=Aborted.
     #[wasm_bindgen(js_name = finaliseLog)]
     pub fn finalise_log(&mut self, now_unix_ms: f64, result_byte: u8) {

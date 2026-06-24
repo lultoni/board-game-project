@@ -49,6 +49,11 @@ export interface EngineClient {
   snapshotJson(): Promise<string>;
   restoreFromSnapshot(json: string): Promise<void>;
   matchLogJson(): Promise<string | null>;
+  /** Latest `PlyRecord` JSON (the newest entry in the match log). `null` when
+   *  `auto_log` is off or no plies recorded yet. Used by the telemetry
+   *  persistence layer to write per-ply incrementally without re-serialising
+   *  the entire log. */
+  latestPlyJson(): Promise<string | null>;
   finaliseLog(result: FinalResultByte): Promise<void>;
   /** Free engine resources (Tauri only; no-op on WASM). */
   dispose(): Promise<void>;

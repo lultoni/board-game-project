@@ -87,6 +87,9 @@ export class WasmClient implements EngineClient {
   matchLogJson(): Promise<string | null> {
     return this.#call<string | null>({ kind: "matchLogJson" });
   }
+  latestPlyJson(): Promise<string | null> {
+    return this.#call<string | null>({ kind: "latestPlyJson" });
+  }
   finaliseLog(result: FinalResultByte): Promise<void> {
     return this.#call<void>({ kind: "finaliseLog", result });
   }

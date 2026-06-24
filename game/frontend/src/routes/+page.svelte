@@ -37,6 +37,7 @@
       <li><a href="./setup/">{t("menu.localPlay")}</a></li>
       <li><a href="./inspector/">{t("menu.openInspector")}</a></li>
       <li><a href="./replay/">{t("menu.openReplay")}</a></li>
+      <li><a href="./library/">{t("menu.openLibrary")}</a></li>
     </ul>
   </section>
 </main>

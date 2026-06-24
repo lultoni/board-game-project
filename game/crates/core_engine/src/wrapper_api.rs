@@ -245,6 +245,17 @@ pub fn match_log_json(m: &Match) -> Option<String> {
     m.match_log().map(crate::telemetry::to_json)
 }
 
+/// JSON of the most recently recorded `PlyRecord`. `None` when `auto_log` is
+/// off or no plies have been recorded yet. Used by the frontend telemetry
+/// persistence layer to write per-ply records incrementally without
+/// re-serialising the entire match log on every move (avoids O(n²) work).
+#[inline]
+pub fn latest_ply_json(m: &Match) -> Option<String> {
+    m.match_log()
+        .and_then(|log| log.plies.last())
+        .map(crate::telemetry::to_json)
+}
+
 /// Stamp the final result + close out the log. `result_byte`:
 /// 0 = P1Win, 1 = P2Win, 2 = Draw, 3 = Aborted. No-op if `auto_log` is off.
 pub fn finalise_log(m: &mut Match, now_unix_ms: u64, result_byte: u8) {
@@ -437,5 +448,34 @@ mod tests {
         step_ai(&mut m, 1_700_000_000_000).unwrap();
         let log = match_log_json(&m).expect("auto_log on → log present");
         assert!(log.contains("plies"));
+    }
+
+    #[test]
+    fn latest_ply_json_none_when_logging_off() {
+        let m = fresh_match();
+        assert!(latest_ply_json(&m).is_none());
+    }
+
+    #[test]
+    fn latest_ply_json_none_before_first_ply() {
+        let mut cfg = Config::local_aivai();
+        cfg.auto_log = true;
+        let m = Match::new(cfg);
+        assert!(latest_ply_json(&m).is_none());
+    }
+
+    #[test]
+    fn latest_ply_json_returns_last_ply_only() {
+        let mut cfg = Config::local_aivai();
+        cfg.auto_log = true;
+        let mut m = Match::new(cfg);
+        step_ai(&mut m, 1_700_000_000_000).unwrap();
+        step_ai(&mut m, 1_700_000_000_500).unwrap();
+        let first = latest_ply_json(&m).expect("two plies recorded");
+        // Confirm it's a single PlyRecord (not the whole log) by parsing back.
+        let parsed: crate::telemetry::PlyRecord =
+            crate::telemetry::from_json(&first).expect("single PlyRecord");
+        assert_eq!(parsed.ply_no, m.match_log().unwrap().plies.last().unwrap().ply_no);
+        assert_eq!(parsed.ply_no, 2);
     }
 }

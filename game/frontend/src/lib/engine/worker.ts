@@ -29,6 +29,7 @@ type Req =
   | (ReqBase & { kind: "snapshotJson" })
   | (ReqBase & { kind: "restore"; json: string })
   | (ReqBase & { kind: "matchLogJson" })
+  | (ReqBase & { kind: "latestPlyJson" })
   | (ReqBase & { kind: "finaliseLog"; result: FinalResultByte });
 
 let engine: Engine | null = null;
@@ -155,6 +156,11 @@ self.onmessage = async (ev: MessageEvent<Req>) => {
       }
       case "matchLogJson": {
         const v = requireEngine().matchLogJson();
+        self.postMessage({ id: msg.id, ok: true, value: v ?? null });
+        break;
+      }
+      case "latestPlyJson": {
+        const v = requireEngine().latestPlyJson();
         self.postMessage({ id: msg.id, ok: true, value: v ?? null });
         break;
       }

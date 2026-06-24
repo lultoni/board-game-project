@@ -3,9 +3,12 @@
 // selection/legal/effects.
 
 import type { PositionView } from "../engine/types";
+import type { EngineClient } from "../engine/types";
+import type { EndReason } from "../storage";
+import * as telemetry from "./telemetry-session";
 
 export type SeatKind = "human" | "ai";
-export type MatchMode = "idle" | "hvh" | "hvai" | "aivai" | "replay" | "sandbox";
+export type MatchMode = "idle" | "hvh" | "hvai" | "aivai" | "replay" | "sandbox" | "multiplayer";
 
 export interface MatchState {
   mode: MatchMode;
@@ -30,6 +33,9 @@ export interface MatchState {
   trueSnapshotJson: string | null;
   /** Count of player/AI applications since sandbox-mode was entered. */
   sandboxMovesApplied: number;
+  /** Active telemetry session ID (ULID) — null when not logging (sandbox,
+   *  inspector, or before startTelemetrySession is called). */
+  telemetryMatchId: string | null;
 }
 
 export const match = $state<MatchState>({
@@ -42,6 +48,7 @@ export const match = $state<MatchState>({
   pendingSnapshotJson: null,
   trueSnapshotJson: null,
   sandboxMovesApplied: 0,
+  telemetryMatchId: null,
 });
 
 export function resetMatchState(): void {
@@ -55,6 +62,7 @@ export function resetMatchState(): void {
   match.pendingSnapshotJson = null;
   match.trueSnapshotJson = null;
   match.sandboxMovesApplied = 0;
+  match.telemetryMatchId = null;
 }
 
 /** Derive the user-facing mode label from the two seat assignments. */
@@ -62,4 +70,31 @@ export function modeFromSeats(side: { p1: SeatKind; p2: SeatKind }): MatchMode {
   if (side.p1 === "human" && side.p2 === "human") return "hvh";
   if (side.p1 === "ai"    && side.p2 === "ai")    return "aivai";
   return "hvai";
+}
+
+// === Telemetry session lifecycle (bound to `match`) ========================
+// Routes call these without passing the carrier. The pure helpers live in
+// telemetry-session.ts and are tested there.
+
+export function startTelemetrySession(
+  mode: MatchMode,
+  opts: { multiplayerCode?: string | null; multiplayerRole?: "host" | "joiner" | null } = {},
+): Promise<string | null> {
+  return telemetry.startTelemetrySession(match, mode, opts);
+}
+
+export function recordPly(eng: EngineClient): Promise<void> {
+  return telemetry.recordPly(match, eng);
+}
+
+export function finalizeTelemetrySession(
+  eng: EngineClient,
+  endReason: EndReason,
+  resultByte: 0 | 1 | 2 | 3,
+): Promise<void> {
+  return telemetry.finalizeTelemetrySession(match, eng, endReason, resultByte);
+}
+
+export function abandonTelemetrySession(eng?: EngineClient): Promise<void> {
+  return telemetry.abandonTelemetrySession(match, eng);
 }

@@ -138,6 +138,10 @@ export class TauriClient implements EngineClient {
     return await invoke<string | null>("match_log_json", { handle: this.#handle });
   }
 
+  async latestPlyJson(): Promise<string | null> {
+    return await invoke<string | null>("latest_ply_json", { handle: this.#handle });
+  }
+
   async finaliseLog(result: FinalResultByte): Promise<void> {
     await invoke<void>("finalise_log", { handle: this.#handle, resultByte: result });
   }

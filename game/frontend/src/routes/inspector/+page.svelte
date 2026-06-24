@@ -36,6 +36,7 @@
   } from "$lib/state/inspector-store.svelte";
   import MoveListItem from "$lib/inspector/MoveListItem.svelte";
   import AiHintBanner from "$lib/inspector/AiHintBanner.svelte";
+  import { consumePendingMatchLog } from "$lib/storage/library-handoff";
 
   // ---------------------------------------------------------------------------
   // Local UI state.
@@ -265,6 +266,11 @@
       const snap = match.pendingSnapshotJson;
       match.pendingSnapshotJson = null;
       await entryFromSnapshotJson(snap);
+      return;
+    }
+    const pendingLog = consumePendingMatchLog();
+    if (pendingLog) {
+      await entryFromMatchLog(pendingLog);
     }
   });
 

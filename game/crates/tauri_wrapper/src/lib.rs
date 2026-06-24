@@ -338,6 +338,11 @@ fn match_log_json(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Op
 }
 
 #[tauri::command]
+fn latest_ply_json(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Option<String>, String> {
+    registry.with(handle, |e| api::latest_ply_json(&e.m))
+}
+
+#[tauri::command]
 fn finalise_log(
     handle:      u64,
     result_byte: u8,
@@ -375,6 +380,7 @@ pub fn run() {
             request_ai_move_forced,
             request_ai_move_at_depth,
             match_log_json,
+            latest_ply_json,
             finalise_log,
             snapshot_json,
         ])

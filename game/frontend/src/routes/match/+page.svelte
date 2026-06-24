@@ -1,9 +1,17 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { getEngine, ActionKind, decodeAction } from "$lib/engine";
   import { decodeMailbox } from "$lib/engine/mailbox";
   import { t } from "$lib/state/i18n";
-  import { match, modeFromSeats, resetMatchState } from "$lib/state/match-store.svelte";
+  import {
+    match,
+    modeFromSeats,
+    resetMatchState,
+    startTelemetrySession,
+    recordPly,
+    finalizeTelemetrySession,
+    abandonTelemetrySession,
+  } from "$lib/state/match-store.svelte";
   import { settings } from "$lib/state/settings.svelte";
   import {
     moveTargetsFor,
@@ -411,6 +419,10 @@
       lastPhaseKey = phaseKey();
       match.mode = modeFromSeats(match.side);
       await refreshMatchLogAvailable();
+      // Start the telemetry session for non-analysis modes. No-op for
+      // sandbox; sandbox enters via /match/ but flips mode immediately,
+      // so we'd never reach this with mode === "sandbox" on boot.
+      await startTelemetrySession(match.mode);
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
@@ -777,6 +789,7 @@
       const { preFull, preTarget, preBodyguard } = snapshotPreState(raw);
       await eng.tryApply(raw);
       if (match.mode === "sandbox") match.sandboxMovesApplied += 1;
+      else await recordPly(eng);
       await renderApplied(raw, preFull, preTarget, preBodyguard);
       match.selection = null;
       pendingApproach = null;
@@ -811,6 +824,8 @@
         await refresh();
         return;
       }
+      // Persist AI ply telemetry. Sandbox is gated above (early return).
+      await recordPly(eng);
       const decoded = decodeAction(raw);
       const preTarget = decodeMailbox(preFull[decoded.target]);
       const preBodyguard: BodyguardSnapshot = [];
@@ -1240,6 +1255,11 @@
       // mode-flip.
       const snap = await eng.snapshotJson();
       clearAllPickers();
+      // Pause telemetry while in sandbox. The session is "abandoned" from
+      // storage's perspective, but the per-ply records up to this point
+      // remain on disk. Exiting sandbox does NOT resume the old session —
+      // the user would have already seen analysis-mode entry as a fork.
+      await abandonTelemetrySession(eng);
       match.trueSnapshotJson = snap;
       match.sandboxMovesApplied = 0;
       match.mode = "sandbox";
@@ -1269,6 +1289,38 @@
       busy = false;
     }
   }
+
+  // Watch for natural game-end and finalise the telemetry session exactly
+  // once. We compare to a tracked flag so re-renders don't re-trigger.
+  let telemetryFinalised = false;
+  $effect(() => {
+    const gr = match.position?.gameResult ?? 0;
+    if (gr === 0) return;
+    if (telemetryFinalised) return;
+    if (!match.telemetryMatchId) return;
+    if (match.mode === "sandbox") return;
+    telemetryFinalised = true;
+    const resultByte: 0 | 1 | 2 | 3 = gr === 1 ? 0 : gr === 2 ? 1 : 2;
+    const localEng = eng;
+    if (!localEng) return;
+    (async () => {
+      try {
+        await localEng.finaliseLog(resultByte);
+      } catch (e) {
+        // Already logged inside the helper; do not block.
+        console.warn("[telemetry] eng.finaliseLog failed:", e);
+      }
+      await finalizeTelemetrySession(localEng, "checkmate", resultByte);
+    })();
+  });
+
+  onDestroy(() => {
+    // If the user leaves /match/ before a natural end, mark the session
+    // abandoned. Per-ply records on disk remain — replay still works.
+    if (match.telemetryMatchId && !telemetryFinalised) {
+      abandonTelemetrySession(eng ?? undefined);
+    }
+  });
 </script>
 
 <svelte:window onkeydown={handleKeyDown} />
