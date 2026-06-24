@@ -9,16 +9,21 @@
   },
   "draft": {
     "title": "draft",
-    "note": "Makeshift draft — assign two skills to each King and Champion. The real Stack M draft (alternating picks, possible simultaneous-reveal per OQ-62, pre-made loadouts per OQ-65) lands later as its own slice.",
-    "start": "Start match",
-    "clear": "Clear",
-    "mirror": "Mirror P1 → P2",
-    "preset": {
-      "aggro": "Aggro",
-      "defense": "Defense",
-      "combo": "Combo",
-      "random": "Random"
-    }
+    "turn": "Turn",
+    "toPick": "To pick",
+    "seat": "Seat",
+    "king": "King",
+    "champion": "Champion {n}",
+    "catalogue": "Skill catalogue",
+    "staging": "Your two picks",
+    "pickN": "Pick {n}",
+    "unassigned": "click a piece slot",
+    "clearPick": "clear",
+    "commitTurn": "Commit turn",
+    "aiDrafting": "AI is drafting…",
+    "waitingForPlayer": "Waiting for Player {n}…",
+    "waitingForPeer": "Waiting for Player {n} (peer)…",
+    "starting": "Starting match…"
   },
   "menu": {
     "newMatch": "New match",

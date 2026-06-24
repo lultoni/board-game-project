@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import { getEngine, ActionKind, decodeAction } from "$lib/engine";
   import { decodeMailbox } from "$lib/engine/mailbox";
+  import { buildEngineConfigJson } from "$lib/engine/config";
+  import { PRE_MADE_LOADOUTS } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
   import {
     match,
@@ -438,13 +440,26 @@
       const wasMultiplayer = match.mode === "multiplayer";
       const mpRole = match.multiplayerRole;
       const mpCode = match.multiplayerCode;
+      // L8 — pre-made loadout path. Snapshot BEFORE resetMatchState() so
+      // we don't lose the field when it clears non-preserved fields. (The
+      // reset preserves `preMadeLoadoutId` by design, but capturing here
+      // keeps the local branch decision independent of that detail.)
+      const preMadeId = match.preMadeLoadoutId;
       resetMatchState();
       match.side = sideAtBoot;
       if (wasMultiplayer) {
         match.multiplayerRole = mpRole;
         match.multiplayerCode = mpCode;
       }
-      if (pending) {
+      if (preMadeId) {
+        // Both sides play the same curated loadout — mirror match.
+        const loadout = PRE_MADE_LOADOUTS[preMadeId];
+        const configJson = buildEngineConfigJson(sideAtBoot);
+        await eng.createEngineWithLoadouts(configJson, loadout, loadout);
+        // Consume — re-entering /match/ later (e.g. a snapshot restore from
+        // the inspector) should NOT re-create from loadouts.
+        match.preMadeLoadoutId = null;
+      } else if (pending) {
         await eng.restoreFromSnapshot(pending);
       } else {
         await eng.createEngine();

@@ -4,8 +4,8 @@
 import type { EngineClient } from "./types";
 
 export type { EngineClient, PositionView, StepResult, FinalResultByte } from "./types";
-export { ActionKind, decodeAction, actionKindName } from "./action";
-export type { ActionDecoded, ActionKindValue } from "./action";
+export { ActionKind, decodeAction, actionKindName, encodeDraftTurn, decodeDraftTurn, isDraftTurn, DRAFT_TURN_TAG } from "./action";
+export type { ActionDecoded, ActionKindValue, DraftTurnDecoded } from "./action";
 export { decodeMailbox, readPieces, squareToFileRank, bitsOf, bitboardHas } from "./mailbox";
 export type { MailboxEntry, BoardPiece, PieceKind, Owner } from "./mailbox";
 export * from "./skills";

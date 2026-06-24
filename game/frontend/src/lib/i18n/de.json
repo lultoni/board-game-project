@@ -16,6 +16,24 @@
     "resumeBannerOne": "Du hast 1 Mehrspieler-Sitzung zum Fortsetzen.",
     "resumeBannerMany": "Du hast {n} Mehrspieler-Sitzungen zum Fortsetzen."
   },
+  "draft": {
+    "title": "Draft",
+    "turn": "Zug",
+    "toPick": "Am Zug",
+    "seat": "Sitz",
+    "king": "König",
+    "champion": "Champion {n}",
+    "catalogue": "Skill-Katalog",
+    "staging": "Deine zwei Picks",
+    "pickN": "Pick {n}",
+    "unassigned": "Klicke einen Figurenslot",
+    "clearPick": "leeren",
+    "commitTurn": "Zug bestätigen",
+    "aiDrafting": "KI draftet…",
+    "waitingForPlayer": "Warte auf Spieler {n}…",
+    "waitingForPeer": "Warte auf Spieler {n} (Gegner)…",
+    "starting": "Partie startet…"
+  },
   "library": {
     "title": "Bibliothek",
     "back": "← zurück",

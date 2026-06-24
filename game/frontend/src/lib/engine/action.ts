@@ -8,7 +8,9 @@
 //   bit  22      focus_mode       (1 bit)
 //   bits 23..29  aux_sq / approach_sq (6 bits, dual use)
 //   bit  29      has_aux / has_approach (1 bit)
-//   bits 30..32  reserved
+//   bit  30      DRAFT_TURN_TAG (1 bit) — when set, the other bits use a
+//                completely different layout: see encodeDraftTurn.
+//   bit  31      reserved
 //
 // Numbers are u32; we always operate via `>>>` so JS's signed-shift semantics
 // don't bite us.
@@ -60,4 +62,67 @@ export function actionKindName(k: ActionKindValue): string {
     case ActionKind.EndTurn:
       return "EndTurn";
   }
+}
+
+// === L8 — DraftTurn encoding ===============================================
+//
+// A DraftTurn is a u32 with bit 30 set (the `DRAFT_TURN_TAG`). When that bit
+// is set, the remaining bits encode two (skill_id, sq, slot) picks the
+// side-to-move is committing in one draft ply:
+//
+//   bits  0..4   skill1   (4 bits, 1..15)
+//   bits  4..10  sq1      (6 bits)
+//   bit  10      slot1    (1 bit, 0 = slot1, 1 = slot2)
+//   bits 11..15  skill2
+//   bits 15..21  sq2
+//   bit  21      slot2
+//   bit  30      DRAFT_TURN_TAG = 1
+//
+// Mirrors `Action::encode_draft_turn` in the Rust engine. The engine validates
+// every cross-pick rule (target ownership, slot already filled, same-skill-on-
+// same-piece) inside `legal_draft_turns`; the UI just encodes the player's
+// two picks and submits via `tryApply`.
+
+export const DRAFT_TURN_TAG = 1 << 30; // 0x4000_0000
+
+export function isDraftTurn(u32: number): boolean {
+  return ((u32 >>> 0) & DRAFT_TURN_TAG) !== 0;
+}
+
+export function encodeDraftTurn(
+  skill1: number, sq1: number, slot1: number,
+  skill2: number, sq2: number, slot2: number,
+): number {
+  const bits =
+      (skill1 & 0xf)
+    | ((sq1   & 0x3f) << 4)
+    | ((slot1 & 0x1)  << 10)
+    | ((skill2 & 0xf) << 11)
+    | ((sq2   & 0x3f) << 15)
+    | ((slot2 & 0x1)  << 21)
+    | DRAFT_TURN_TAG;
+  return bits >>> 0;
+}
+
+export interface DraftTurnDecoded {
+  raw: number;
+  pick1: { skillId: number; sq: number; slot: number };
+  pick2: { skillId: number; sq: number; slot: number };
+}
+
+export function decodeDraftTurn(u32: number): DraftTurnDecoded {
+  const v = u32 >>> 0;
+  return {
+    raw: v,
+    pick1: {
+      skillId: v & 0xf,
+      sq: (v >>> 4) & 0x3f,
+      slot: (v >>> 10) & 0x1,
+    },
+    pick2: {
+      skillId: (v >>> 11) & 0xf,
+      sq: (v >>> 15) & 0x3f,
+      slot: (v >>> 21) & 0x1,
+    },
+  };
 }
