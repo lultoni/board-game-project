@@ -3,9 +3,11 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  DraftStateView,
   EngineClient,
   FinalResultByte,
   PositionView,
+  SideLoadout,
   StepResult,
 } from "./types";
 
@@ -30,6 +32,12 @@ interface StepResultDto {
   nodes: number | string;
   thoughtMs: number;
   gameResult: number;
+}
+
+interface DraftStateDto {
+  turnNo: number;
+  sideToMove: number;
+  usedSlots: boolean[][];
 }
 
 function toBigInt(v: number | string | bigint): bigint {
@@ -79,6 +87,33 @@ export class TauriClient implements EngineClient {
 
   async createEngine(configJson?: string): Promise<void> {
     this.#handle = await invoke<number>("create_engine", { configJson: configJson ?? null });
+  }
+
+  async createEngineWithDraft(configJson?: string): Promise<void> {
+    this.#handle = await invoke<number>("create_engine_with_draft", {
+      configJson: configJson ?? null,
+    });
+  }
+
+  async createEngineWithLoadouts(
+    configJson: string | undefined,
+    p1Loadout: SideLoadout,
+    p2Loadout: SideLoadout,
+  ): Promise<void> {
+    this.#handle = await invoke<number>("create_engine_with_loadouts", {
+      configJson:     configJson ?? null,
+      p1LoadoutJson:  JSON.stringify(p1Loadout),
+      p2LoadoutJson:  JSON.stringify(p2Loadout),
+    });
+  }
+
+  async draftState(): Promise<DraftStateView> {
+    const dto = await invoke<DraftStateDto>("draft_state", { handle: this.#handle });
+    return {
+      turnNo:     dto.turnNo,
+      sideToMove: dto.sideToMove,
+      usedSlots:  dto.usedSlots,
+    };
   }
 
   async positionView(): Promise<PositionView> {

@@ -79,7 +79,22 @@
     "maxDepth": "Max search depth",
     "aivaiDelay": "AIvAI delay between plies (ms)",
     "continue": "Continue →",
-    "summary": "{p1Label} vs {p2Label}"
+    "summary": "{p1Label} vs {p2Label}",
+    "draftMode": {
+      "header": "Draft mode",
+      "custom": "Custom draft",
+      "customHint": "Pick two skills per turn, six turns per side.",
+      "preMade": "Pre-made loadout",
+      "preMadeHint": "Both sides play the same curated loadout — skip the draft."
+    },
+    "preMadeLoadouts": {
+      "header": "Loadout",
+      "firstGame": "First game",
+      "secondGame": "Second game",
+      "thirdGame": "Third game",
+      "placeholder": "placeholder",
+      "notReadyWarning": "This loadout hasn't been filled in by the designer yet. Pick another option or use Custom draft."
+    }
   },
   "hud": {
     "phaseMove": "Move",

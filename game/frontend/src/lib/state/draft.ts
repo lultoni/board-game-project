@@ -5,9 +5,17 @@
 // pre-made loadouts per OQ-65) lives in `next_steps #10`. The shape here is a
 // simultaneous full-loadout picker so combos can be tested in the digital
 // build before that work lands.
+//
+// L8 status: this file still hosts the makeshift flow (rewritten in Phase E)
+// but also exports the new pre-made loadout catalogue (`PRE_MADE_LOADOUTS`)
+// that the /setup/ mode picker references. The catalogue entries are
+// placeholder all-zero stand-ins — designer fills them in at the end of L8
+// (see DB OQ-65 and task #32).
 
 import { SKILLS, SKILL_COUNT } from "$lib/engine/skills";
 import type { Owner } from "$lib/engine/mailbox";
+import type { SideLoadout } from "$lib/engine/types";
+import type { PreMadeLoadoutId } from "$lib/state/match-store.svelte";
 
 /** Two skill IDs (1..15). 0 = empty slot. */
 export type Loadout = [number, number];
@@ -138,4 +146,61 @@ export function squareName(sq: number): string {
   const file = "abcdefgh"[sq & 7];
   const rank = ((sq >> 3) & 7) + 1;
   return `${file}${rank}`;
+}
+
+// === L8 — pre-made loadouts (OQ-65) ========================================
+//
+// Each entry is a `SideLoadout`: 6 `[skill1, skill2]` pairs in canonical
+// piece order (King at index 0, Champions 1..5 by ascending starting sq).
+// Both sides play the same loadout — pre-made mode is a mirror match.
+//
+// **PLACEHOLDER DATA.** The values below are all-zero stand-ins that will
+// be rejected by the engine's `validate_loadout` (skill 0 = empty slot is
+// only legal during Phase::Draft). The designer fills these in with curated
+// "First / Second / Third game" loadouts at the end of L8 (see DB OQ-65 /
+// task #32). Once filled, the values must satisfy the engine validator:
+//   - 1 <= skill_id <= 15
+//   - skill1 !== skill2 within a single piece
+//
+// Until the designer fills these in, /match/ should refuse to open a
+// pre-made match (or fall back to the custom draft route).
+
+export const PRE_MADE_LOADOUTS: Record<PreMadeLoadoutId, SideLoadout> = {
+  firstGame: [
+    [0, 0], // TODO(OQ-65): King
+    [0, 0], // TODO(OQ-65): Champion 1
+    [0, 0], // TODO(OQ-65): Champion 2
+    [0, 0], // TODO(OQ-65): Champion 3
+    [0, 0], // TODO(OQ-65): Champion 4
+    [0, 0], // TODO(OQ-65): Champion 5
+  ] as const,
+  secondGame: [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ] as const,
+  thirdGame: [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ] as const,
+};
+
+/** Returns true iff the loadout entry has been filled in by the designer —
+ *  i.e. every slot is a valid skill id (1..15). UI should disable the
+ *  matching radio button when this is false. */
+export function isPreMadeLoadoutReady(id: PreMadeLoadoutId): boolean {
+  const lo = PRE_MADE_LOADOUTS[id];
+  for (const [s1, s2] of lo) {
+    if (s1 < 1 || s1 > SKILL_COUNT) return false;
+    if (s2 < 1 || s2 > SKILL_COUNT) return false;
+    if (s1 === s2) return false;
+  }
+  return true;
 }

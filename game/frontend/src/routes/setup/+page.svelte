@@ -1,16 +1,31 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { t } from "$lib/state/i18n";
-  import { match, type SeatKind } from "$lib/state/match-store.svelte";
+  import { match, type SeatKind, type DraftMode, type PreMadeLoadoutId } from "$lib/state/match-store.svelte";
   import { settings } from "$lib/state/settings.svelte";
+  import { isPreMadeLoadoutReady } from "$lib/state/draft";
 
   const isMultiplayer = $derived(match.mode === "multiplayer");
 
   let p1: SeatKind = $state(match.side.p1);
   let p2: SeatKind = $state(match.side.p2);
 
+  // L8 — draft mode + pre-made loadout selection. Custom is the default;
+  // pre-made picks one of the three curated loadouts (all play as mirror
+  // matches — both sides use the same loadout).
+  let draftMode: DraftMode = $state(match.draftMode);
+  let preMadeId: PreMadeLoadoutId = $state(match.preMadeLoadoutId ?? "firstGame");
+
   const hasAi = $derived(p1 === "ai" || p2 === "ai");
   const isAivAi = $derived(p1 === "ai" && p2 === "ai");
+
+  const preMadeReady = $derived(isPreMadeLoadoutReady(preMadeId));
+
+  const PRE_MADE_OPTIONS: { id: PreMadeLoadoutId; labelKey: string }[] = [
+    { id: "firstGame",  labelKey: "setup.preMadeLoadouts.firstGame" },
+    { id: "secondGame", labelKey: "setup.preMadeLoadouts.secondGame" },
+    { id: "thirdGame",  labelKey: "setup.preMadeLoadouts.thirdGame" },
+  ];
 
   async function start(): Promise<void> {
     if (isMultiplayer) {
@@ -19,7 +34,15 @@
     } else {
       match.side = { p1, p2 };
     }
-    await goto("../draft/");
+    match.draftMode = draftMode;
+    match.preMadeLoadoutId = draftMode === "preMade" ? preMadeId : null;
+    if (draftMode === "preMade") {
+      // Skip the /draft/ route entirely — /match/ reads preMadeLoadoutId and
+      // builds the engine with both sides preloaded.
+      await goto("../match/");
+    } else {
+      await goto("../draft/");
+    }
   }
 </script>
 
@@ -130,8 +153,68 @@
     </section>
   {/if}
 
+  {#if !isMultiplayer}
+    <section class="draftMode">
+      <h2>{t("setup.draftMode.header")}</h2>
+      <div class="modes">
+        <label>
+          <input
+            type="radio"
+            name="draftMode"
+            value="custom"
+            checked={draftMode === "custom"}
+            onchange={() => (draftMode = "custom")}
+          />
+          <span class="modeLabel">{t("setup.draftMode.custom")}</span>
+          <span class="modeHint">{t("setup.draftMode.customHint")}</span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="draftMode"
+            value="preMade"
+            checked={draftMode === "preMade"}
+            onchange={() => (draftMode = "preMade")}
+          />
+          <span class="modeLabel">{t("setup.draftMode.preMade")}</span>
+          <span class="modeHint">{t("setup.draftMode.preMadeHint")}</span>
+        </label>
+      </div>
+
+      {#if draftMode === "preMade"}
+        <fieldset class="preMadePicker">
+          <legend>{t("setup.preMadeLoadouts.header")}</legend>
+          {#each PRE_MADE_OPTIONS as opt}
+            {@const ready = isPreMadeLoadoutReady(opt.id)}
+            <label class:disabled={!ready}>
+              <input
+                type="radio"
+                name="preMadeId"
+                value={opt.id}
+                checked={preMadeId === opt.id}
+                disabled={!ready}
+                onchange={() => (preMadeId = opt.id)}
+              />
+              <span>{t(opt.labelKey)}</span>
+              {#if !ready}
+                <span class="placeholderTag">{t("setup.preMadeLoadouts.placeholder")}</span>
+              {/if}
+            </label>
+          {/each}
+          {#if !preMadeReady}
+            <p class="warn">{t("setup.preMadeLoadouts.notReadyWarning")}</p>
+          {/if}
+        </fieldset>
+      {/if}
+    </section>
+  {/if}
+
   <div class="actions">
-    <button class="primary" onclick={start}>{t("setup.continue")}</button>
+    <button
+      class="primary"
+      onclick={start}
+      disabled={draftMode === "preMade" && !preMadeReady && !isMultiplayer}
+    >{t("setup.continue")}</button>
   </div>
 </main>
 
@@ -228,8 +311,76 @@
     font: inherit;
     cursor: pointer;
   }
-  button.primary:hover {
+  button.primary:hover:not(:disabled) {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     transform: translateY(-1px);
+  }
+  button.primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .draftMode {
+    margin-top: 1rem;
+    border: 1.5px solid var(--paper-line-strong);
+    border-radius: 6px;
+    padding: 0.7em 0.9em;
+    background: var(--paper-bg);
+  }
+  .draftMode h2 {
+    font-size: 1.1rem;
+    margin: 0 0 0.5em;
+  }
+  .modes {
+    display: grid;
+    gap: 0.4em;
+  }
+  .modes > label {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: baseline;
+    gap: 0.5em;
+    padding: 0.3em 0.2em;
+    cursor: pointer;
+  }
+  .modeLabel {
+    font-weight: 600;
+  }
+  .modeHint {
+    color: var(--paper-ink-soft);
+    font-size: 0.92em;
+  }
+  .preMadePicker {
+    margin-top: 0.7em;
+    border: 1.5px dashed var(--paper-line-strong);
+    border-radius: 6px;
+    padding: 0.5em 0.8em;
+    background: var(--paper-bg);
+  }
+  .preMadePicker legend {
+    padding: 0 0.3em;
+    font-weight: 600;
+  }
+  .preMadePicker label {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.2em 0;
+    cursor: pointer;
+  }
+  .preMadePicker label.disabled {
+    color: var(--paper-ink-soft);
+    cursor: not-allowed;
+  }
+  .placeholderTag {
+    font-size: 0.85em;
+    border: 1px solid var(--paper-line);
+    border-radius: 3px;
+    padding: 0 0.4em;
+    color: var(--paper-ink-soft);
+  }
+  .warn {
+    margin: 0.4em 0 0;
+    font-size: 0.9em;
+    color: var(--p2, #a13a2a);
   }
 </style>

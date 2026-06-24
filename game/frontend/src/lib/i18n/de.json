@@ -61,7 +61,22 @@
     "maxDepth": "Max. Suchtiefe",
     "aivaiDelay": "KI-gegen-KI Pause zwischen Zügen (ms)",
     "continue": "Weiter →",
-    "summary": "{p1Label} gegen {p2Label}"
+    "summary": "{p1Label} gegen {p2Label}",
+    "draftMode": {
+      "header": "Draft-Modus",
+      "custom": "Eigener Draft",
+      "customHint": "Zwei Skills pro Zug auswählen, sechs Züge pro Seite.",
+      "preMade": "Vorgefertigtes Loadout",
+      "preMadeHint": "Beide Seiten spielen dasselbe vorgefertigte Loadout — kein Draft."
+    },
+    "preMadeLoadouts": {
+      "header": "Loadout",
+      "firstGame": "Erstes Spiel",
+      "secondGame": "Zweites Spiel",
+      "thirdGame": "Drittes Spiel",
+      "placeholder": "Platzhalter",
+      "notReadyWarning": "Dieses Loadout wurde noch nicht vom Designer ausgefüllt. Wähle eine andere Option oder den eigenen Draft."
+    }
   },
   "skills": {
     "lance":   { "name": "Lanze",   "desc": "Trifft angrenzenden Gegner für 1 Schaden." },

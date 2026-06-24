@@ -2,9 +2,11 @@
 // promise-based proxy. See engine/worker.ts for the worker side.
 
 import type {
+  DraftStateView,
   EngineClient,
   FinalResultByte,
   PositionView,
+  SideLoadout,
   StepResult,
 } from "./types";
 
@@ -53,6 +55,24 @@ export class WasmClient implements EngineClient {
   }
   createEngine(configJson?: string): Promise<void> {
     return this.#call<void>({ kind: "create", configJson });
+  }
+  createEngineWithDraft(configJson?: string): Promise<void> {
+    return this.#call<void>({ kind: "createWithDraft", configJson });
+  }
+  createEngineWithLoadouts(
+    configJson: string | undefined,
+    p1Loadout: SideLoadout,
+    p2Loadout: SideLoadout,
+  ): Promise<void> {
+    return this.#call<void>({
+      kind: "createWithLoadouts",
+      configJson,
+      p1Loadout: JSON.stringify(p1Loadout),
+      p2Loadout: JSON.stringify(p2Loadout),
+    });
+  }
+  draftState(): Promise<DraftStateView> {
+    return this.#call<DraftStateView>({ kind: "draftState" });
   }
   positionView(): Promise<PositionView> {
     return this.#call<PositionView>({ kind: "positionView" });

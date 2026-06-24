@@ -18,6 +18,14 @@ interface ReqBase {
 type Req =
   | (ReqBase & { kind: "version" })
   | (ReqBase & { kind: "create"; configJson?: string })
+  | (ReqBase & { kind: "createWithDraft"; configJson?: string })
+  | (ReqBase & {
+      kind: "createWithLoadouts";
+      configJson?: string;
+      p1Loadout: string;
+      p2Loadout: string;
+    })
+  | (ReqBase & { kind: "draftState" })
   | (ReqBase & { kind: "positionView" })
   | (ReqBase & { kind: "legalActions" })
   | (ReqBase & { kind: "tryApply"; action: number })
@@ -104,6 +112,36 @@ self.onmessage = async (ev: MessageEvent<Req>) => {
           ? Engine.newWithConfigJson(msg.configJson, nowMs())
           : new Engine(nowMs());
         self.postMessage({ id: msg.id, ok: true, value: null });
+        break;
+      }
+      case "createWithDraft": {
+        if (!msg.configJson) throw new Error("createWithDraft requires a configJson");
+        engine = Engine.newWithDraft(msg.configJson, nowMs());
+        self.postMessage({ id: msg.id, ok: true, value: null });
+        break;
+      }
+      case "createWithLoadouts": {
+        if (!msg.configJson) throw new Error("createWithLoadouts requires a configJson");
+        engine = Engine.newWithLoadouts(msg.configJson, msg.p1Loadout, msg.p2Loadout, nowMs());
+        self.postMessage({ id: msg.id, ok: true, value: null });
+        break;
+      }
+      case "draftState": {
+        const e = requireEngine();
+        const s = e.draftState();
+        // `usedSlotsFlat` aliases wasm memory — copy into JS-owned arrays
+        // before posting back (postMessage structured-clones anyway, but we
+        // also reshape into [12][2] booleans for the consumer).
+        const flat = new Uint8Array(s.usedSlotsFlat);
+        const usedSlots: boolean[][] = [];
+        for (let p = 0; p < 12; p++) {
+          usedSlots.push([flat[p * 2] !== 0, flat[p * 2 + 1] !== 0]);
+        }
+        self.postMessage({
+          id: msg.id,
+          ok: true,
+          value: { turnNo: s.turnNo, sideToMove: s.sideToMove, usedSlots },
+        });
         break;
       }
       case "positionView": {

@@ -9,10 +9,23 @@ import * as telemetry from "./telemetry-session";
 
 export type SeatKind = "human" | "ai";
 export type MatchMode = "idle" | "hvh" | "hvai" | "aivai" | "replay" | "sandbox" | "multiplayer";
+/** L8 — which draft flow the user picked at /setup/. `custom` runs the
+ *  full /draft/ route (12 alternating picks). `preMade` skips the draft and
+ *  /match/ opens with both sides preloaded from a curated `SideLoadout`. */
+export type DraftMode = "custom" | "preMade";
+/** L8 — identifier for the chosen pre-made loadout. The catalogue lives in
+ *  `state/draft.ts` (`PRE_MADE_LOADOUTS`). Designer picks one of these on
+ *  the setup screen; both sides play the same loadout (mirror match). */
+export type PreMadeLoadoutId = "firstGame" | "secondGame" | "thirdGame";
 
 export interface MatchState {
   mode: MatchMode;
   side: { p1: SeatKind; p2: SeatKind };
+  /** L8 — which draft flow to enter on `/draft/`. Set by `/setup/`. */
+  draftMode: DraftMode;
+  /** L8 — only consulted when `draftMode === "preMade"`. `/match/` reads
+   *  this to call `createEngineWithLoadouts`, then clears it. */
+  preMadeLoadoutId: PreMadeLoadoutId | null;
   position: PositionView | null;
   legal: Uint32Array;
   /** Square (0..63) currently selected by the human, if any. */
@@ -53,6 +66,8 @@ export interface MatchState {
 export const match = $state<MatchState>({
   mode: "idle",
   side: { p1: "human", p2: "human" },
+  draftMode: "custom",
+  preMadeLoadoutId: null,
   position: null,
   legal: new Uint32Array(),
   selection: null,
@@ -68,8 +83,9 @@ export const match = $state<MatchState>({
 
 export function resetMatchState(): void {
   match.mode = "idle";
-  // Preserve `side` across resets — it's set by the setup screen before
-  // entering draft, and we don't want draft's reset to wipe it.
+  // Preserve `side`, `draftMode`, and `preMadeLoadoutId` across resets —
+  // they're set by the setup screen before entering draft, and downstream
+  // routes (draft, match) consume them.
   match.position = null;
   match.legal = new Uint32Array();
   match.selection = null;

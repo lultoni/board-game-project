@@ -26,11 +26,52 @@ export interface StepResult {
   gameResult: number;
 }
 
+/** L8 — snapshot of the in-progress draft. Returned by `draftState()` and
+ *  used by the /draft/ route to drive picker UI legality hints. */
+export interface DraftStateView {
+  /** Number of `DraftTurn` plies committed so far (0..12). Reads 12 once
+   *  the engine has transitioned to Phase::Move. */
+  turnNo: number;
+  /** 0 = P1, 1 = P2. Undefined once `turnNo === 12`. */
+  sideToMove: number;
+  /** `usedSlots[piece][slot]` — true iff that mailbox slot is filled.
+   *  Layout: pieces 0..6 = P1 (King at 0, Champions 1..5 by ascending sq),
+   *  pieces 6..12 = P2 (same internal order), slot ∈ {0,1}. */
+  usedSlots: boolean[][];
+}
+
+/** L8 — a single side's loadout: 6 [skill1, skill2] pairs.
+ *  Piece order: King at index 0, Champions 1..5 by ascending starting square.
+ *  Slot value 0 = empty (only valid during Phase::Draft). */
+export type SideLoadout = readonly [
+  readonly [number, number],
+  readonly [number, number],
+  readonly [number, number],
+  readonly [number, number],
+  readonly [number, number],
+  readonly [number, number],
+];
+
 export type FinalResultByte = 0 | 1 | 2 | 3; // P1Win | P2Win | Draw | Aborted
 
 export interface EngineClient {
   version(): Promise<string>;
   createEngine(configJson?: string): Promise<void>;
+  /** L8 — open a fresh match in `Phase::Draft`. Caller drives 12 DraftTurn
+   *  plies via `tryApply` / `stepAi`; engine transitions to Phase::Move
+   *  automatically. */
+  createEngineWithDraft(configJson?: string): Promise<void>;
+  /** L8 — open a fresh match that bypasses draft, with both sides' loadouts
+   *  already applied. Engine validates loadouts and rejects same-skill-on-
+   *  same-piece pairs. */
+  createEngineWithLoadouts(
+    configJson: string | undefined,
+    p1Loadout: SideLoadout,
+    p2Loadout: SideLoadout,
+  ): Promise<void>;
+  /** L8 — snapshot of the in-progress draft. Cheap; safe to call per UI
+   *  refresh. Returns `turnNo === 12` once the draft has completed. */
+  draftState(): Promise<DraftStateView>;
   positionView(): Promise<PositionView>;
   legalActions(): Promise<Uint32Array>;
   tryApply(action: number): Promise<StepResult>;
