@@ -79,7 +79,11 @@ pub fn position_view(m: &Match) -> PositionView {
             p.guards.0,
         ],
         to_move:           match p.to_move { Player::P1 => 0, Player::P2 => 1 },
-        current_phase:     match p.current_phase { Phase::Move => 0, Phase::Skill => 1 },
+        current_phase:     match p.current_phase {
+            Phase::Move  => 0,
+            Phase::Skill => 1,
+            Phase::Draft => 2,
+        },
         actions_remaining: p.actions_remaining,
         round_number:      p.round_number,
         p1_money:          p.p1_money,

@@ -60,7 +60,14 @@ struct Tables {
     skill2:    [[u64; 16]; 64],
     occ:       [[[u64; 3]; 2]; 64], // [sq][player][kind]; kind: 0=King, 1=Champion, 2=Guard
     side_to_move: u64,
-    phase:     u64,                 // XOR'd Move↔Skill
+    /// Two independent keys encode the 3-phase state:
+    ///   Move  → 0
+    ///   Skill → phase_skill
+    ///   Draft → phase_draft
+    /// Each `set_phase` XORs out the old phase's key (if any) and XORs in
+    /// the new phase's key (if any). Move is the canonical "no key" baseline.
+    phase_skill: u64,
+    phase_draft: u64,
     actions:   [u64; 64],           // actions_remaining ∈ 0..=63 (bucketed if larger)
     pending:   [u64; 8],            // one per bit in pending_modifiers (u8)
     round:     [u64; 256],          // round_number mod 256
@@ -80,7 +87,8 @@ const fn make_tables() -> Tables {
         skill2:       [[0; 16]; 64],
         occ:          [[[0; 3]; 2]; 64],
         side_to_move: 0,
-        phase:        0,
+        phase_skill:  0,
+        phase_draft:  0,
         actions:      [0; 64],
         pending:      [0; 8],
         round:        [0; 256],
@@ -116,7 +124,8 @@ const fn make_tables() -> Tables {
     }
 
     t.side_to_move = splitmix64(&mut s);
-    t.phase        = splitmix64(&mut s);
+    t.phase_skill  = splitmix64(&mut s);
+    t.phase_draft  = splitmix64(&mut s);
 
     // actions[0] = 0 keeps full_recompute simple (a position with 0 actions
     // contributes nothing from this axis); other slots are random.
@@ -168,7 +177,17 @@ pub fn mailbox_xor(sq: u8, prev: MailboxEntry, new: MailboxEntry) -> u64 {
 }
 
 #[inline] pub fn side_key()  -> u64 { T.side_to_move }
-#[inline] pub fn phase_key() -> u64 { T.phase }
+/// Per-phase key contribution. Move contributes 0 (canonical baseline);
+/// Skill and Draft each carry their own independent random key. `set_phase`
+/// XORs out the prev key and in the new key — the helper handles that.
+#[inline]
+pub fn phase_key_for(phase: Phase) -> u64 {
+    match phase {
+        Phase::Move  => 0,
+        Phase::Skill => T.phase_skill,
+        Phase::Draft => T.phase_draft,
+    }
+}
 
 #[inline]
 pub fn actions_key(n: u8) -> u64 {
@@ -273,10 +292,8 @@ pub fn full_recompute(pos: &Position) -> u64 {
         h ^= side_key();
     }
 
-    // Phase: XOR phase key iff phase == Skill (canonical: Move = 0).
-    if matches!(pos.current_phase, Phase::Skill) {
-        h ^= phase_key();
-    }
+    // Phase: Move contributes 0 (canonical baseline); other phases XOR their key.
+    h ^= phase_key_for(pos.current_phase);
 
     h ^= actions_key(pos.actions_remaining);
     h ^= pending_mod_state(pos.pending_modifiers);
@@ -296,8 +313,10 @@ mod tests {
     fn keys_are_nonzero_and_distinct() {
         // Sanity: the seeded PRNG didn't produce a wall of zeros or duplicates.
         assert_ne!(T.side_to_move, 0);
-        assert_ne!(T.phase, 0);
-        assert_ne!(T.side_to_move, T.phase);
+        assert_ne!(T.phase_skill,  0);
+        assert_ne!(T.phase_draft,  0);
+        assert_ne!(T.phase_skill,  T.phase_draft);
+        assert_ne!(T.side_to_move, T.phase_skill);
         assert_ne!(T.hp[0][1], T.hp[0][2]);
         assert_ne!(T.hp[0][1], T.hp[1][1]); // different squares ⇒ different keys
     }

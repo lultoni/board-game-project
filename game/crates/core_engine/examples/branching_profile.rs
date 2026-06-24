@@ -152,7 +152,9 @@ fn print_modifier_table(samples: &[Sample]) {
     println!();
 }
 
-fn phase_str(p: Phase) -> &'static str { match p { Phase::Move => "Move", Phase::Skill => "Skill" } }
+fn phase_str(p: Phase) -> &'static str {
+    match p { Phase::Move => "Move", Phase::Skill => "Skill", Phase::Draft => "Draft" }
+}
 fn yn(b: bool) -> &'static str { if b { "yes" } else { "no" } }
 
 fn write_csv(path: &str, samples: &[Sample]) -> std::io::Result<()> {

@@ -68,6 +68,7 @@ pub fn generate(pos: &Position) -> Vec<Action> {
     match pos.current_phase {
         Phase::Move  => generate_move_phase(pos),
         Phase::Skill => generate_skill_phase(pos),
+        Phase::Draft => generate_draft_phase(pos),
     }
 }
 
@@ -154,6 +155,20 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
 /// Focus (`pending_modifiers & FOCUS`): +1 activation Range for ALL non-Mystic
 /// skills. Per oq-70 + session-31, Focus on Self-only-or-movement skills also
 /// surfaces retarget / effect-range interpretations as ADDITIONAL legal
+// === Draft Phase ============================================================
+//
+// L8 Phase A: stub. The full DraftTurn enumeration arrives in Phase B
+// (legal_draft_turns + DraftTurn action encoding). For now the engine simply
+// reports no legal actions in Draft phase, which is correct as a placeholder
+// because nothing else in the engine yet emits DraftTurn actions. Frontend
+// code paths that drive draft will be wired up once Phase B lands.
+
+fn generate_draft_phase(_pos: &Position) -> Vec<Action> {
+    Vec::new()
+}
+
+// === Skill Phase ============================================================
+
 /// branches. The caster paying the Focus tax does NOT consume Focus by
 /// casting a Mystic skill (that's the new rule: Focus = "next non-Mystic").
 /// Focus / Charge stacking constraints:

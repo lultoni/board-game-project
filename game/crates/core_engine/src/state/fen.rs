@@ -14,7 +14,7 @@
 //!                   | 'k' | 'c' | 'g'                ; lowercase = P2
 //! <digit>         ::= '1'..='8'                      ; run-length empties
 //! <to_move>       ::= 'P1' | 'P2'
-//! <phase>         ::= 'M' | 'S'                      ; Move | Skill
+//! <phase>         ::= 'M' | 'S' | 'D'                ; Move | Skill | Draft
 //! <actions_remaining> ::= 0..=255 decimal
 //! <p1_money>, <p2_money> ::= 0..=65535 decimal
 //! <pending_modifiers> ::= 0..=255 decimal (bit 0 = FOCUS, bit 1 = CHARGE)
@@ -137,7 +137,11 @@ pub fn to_fen(pos: &Position) -> String {
     }
 
     let to_move = match pos.to_move { Player::P1 => "P1", Player::P2 => "P2" };
-    let phase   = match pos.current_phase { Phase::Move => "M", Phase::Skill => "S" };
+    let phase   = match pos.current_phase {
+        Phase::Move  => "M",
+        Phase::Skill => "S",
+        Phase::Draft => "D",
+    };
 
     write!(
         &mut out,
@@ -216,6 +220,7 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
     pos.current_phase = match phase_s {
         "M" => Phase::Move,
         "S" => Phase::Skill,
+        "D" => Phase::Draft,
         _   => return Err(FenError::BadPhase),
     };
     pos.actions_remaining = actions_s
@@ -254,7 +259,7 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
     if (pos.moved_this_phase.0 & !stm_bb.0) != 0 {
         return Err(FenError::BadDecimal { field: "moved_this_phase" });
     }
-    if matches!(pos.current_phase, Phase::Skill) && pos.moved_this_phase.0 != 0 {
+    if !matches!(pos.current_phase, Phase::Move) && pos.moved_this_phase.0 != 0 {
         return Err(FenError::BadDecimal { field: "moved_this_phase" });
     }
 

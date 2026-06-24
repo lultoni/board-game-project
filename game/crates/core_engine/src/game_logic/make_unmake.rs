@@ -969,6 +969,9 @@ fn apply_end_phase(pos: &mut Position, undo: &mut Undo) {
         Phase::Skill => {
             super::turn_manager::end_turn(pos, undo);
         }
+        Phase::Draft => {
+            debug_assert!(false, "EndPhase invoked during Phase::Draft — draft uses DraftTurn actions to advance, not EndPhase");
+        }
     }
 }
 
@@ -1067,14 +1070,13 @@ pub(super) fn dec_actions(pos: &mut Position, undo: &mut Undo) {
 
 #[inline]
 pub(super) fn set_phase(pos: &mut Position, undo: &mut Undo, new: Phase) {
-    if matches!(pos.current_phase, _) && phase_eq(pos.current_phase, new) { return; }
-    z_apply(pos, undo, zobrist::phase_key()); // Move↔Skill is a single key flip.
+    if pos.current_phase == new { return; }
+    // 3-phase zobrist: each phase carries its own independent key (Move = 0).
+    // XOR out the prev key and in the new key.
+    let delta = zobrist::phase_key_for(pos.current_phase)
+              ^ zobrist::phase_key_for(new);
+    z_apply(pos, undo, delta);
     pos.current_phase = new;
-}
-
-#[inline]
-fn phase_eq(a: Phase, b: Phase) -> bool {
-    matches!((a, b), (Phase::Move, Phase::Move) | (Phase::Skill, Phase::Skill))
 }
 
 #[inline]
@@ -1155,10 +1157,10 @@ pub(super) fn moved_clear_all(pos: &mut Position, undo: &mut Undo) {
 }
 
 fn phase_to_byte(p: Phase) -> u8 {
-    match p { Phase::Move => 0, Phase::Skill => 1 }
+    match p { Phase::Move => 0, Phase::Skill => 1, Phase::Draft => 2 }
 }
 fn phase_from_byte(b: u8) -> Phase {
-    match b { 0 => Phase::Move, _ => Phase::Skill }
+    match b { 0 => Phase::Move, 2 => Phase::Draft, _ => Phase::Skill }
 }
 
 fn player_to_byte(p: Player) -> u8 {

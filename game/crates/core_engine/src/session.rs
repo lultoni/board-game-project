@@ -242,6 +242,57 @@ impl Match {
         }
     }
 
+    /// Fresh match that opens in `Phase::Draft`. Both sides have empty skill
+    /// slots; play begins after the 12 `DraftTurn` plies complete (Phase B
+    /// adds the DraftTurn action; until then `legal_actions()` returns an
+    /// empty list while the position is in Draft phase).
+    pub fn new_with_draft(config: Config, now_unix_ms: u64) -> Self {
+        let position = Position::setup_stack_m_for_draft();
+        let start_fen = position.to_fen();
+        let log = if config.auto_log {
+            Some(MatchLog::new(now_unix_ms, config, &position))
+        } else {
+            None
+        };
+        Match {
+            position,
+            history:  Vec::new(),
+            config,
+            tt:       TranspositionTable::with_capacity_mb(16),
+            start_fen,
+            log,
+            started_at_unix_ms: now_unix_ms,
+        }
+    }
+
+    /// Fresh match that bypasses the draft, opening directly in `Phase::Move`
+    /// with the supplied per-side skill loadouts already written into the
+    /// mailbox. Used by the pre-made-loadout mode picker. Caller must
+    /// validate the loadouts with `validate_loadout` before calling.
+    pub fn new_with_loadouts(
+        config: Config,
+        p1: &crate::game_logic::skills::SideLoadout,
+        p2: &crate::game_logic::skills::SideLoadout,
+        now_unix_ms: u64,
+    ) -> Self {
+        let position = Position::setup_stack_m_with_loadouts(p1, p2);
+        let start_fen = position.to_fen();
+        let log = if config.auto_log {
+            Some(MatchLog::new(now_unix_ms, config, &position))
+        } else {
+            None
+        };
+        Match {
+            position,
+            history:  Vec::new(),
+            config,
+            tt:       TranspositionTable::with_capacity_mb(16),
+            start_fen,
+            log,
+            started_at_unix_ms: now_unix_ms,
+        }
+    }
+
     /// Reconstruct a match by replaying its action history through the
     /// generator. Rejects any action that doesn't appear in the legal list
     /// at its replay-time position — i.e. a tampered snapshot is rejected

@@ -164,6 +164,41 @@ pub fn skill_target_owner(s: Skill) -> TargetOwner {
     }
 }
 
+// === Draft loadouts (L8) ====================================================
+//
+// A `SideLoadout` is one side's skill assignment: 6 entries of (skill1, skill2)
+// covering the side's 6 skill-bearing pieces (1 King + 5 Champions). 0 is the
+// "empty slot" sentinel (matches the mailbox encoding); a fully-equipped side
+// has no zeros. Index 0 is the King; indices 1..6 are Champions ordered by
+// starting square ascending — matches the iteration order of `setup_stack_m`'s
+// `place_back_row` (files b→g, with the King's file replaced by the King). The
+// `setup_stack_m_with_loadouts` constructor walks the same iteration so callers
+// don't need to materialise square indices themselves.
+
+pub type SideLoadout = [(u8, u8); 6];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DraftError {
+    /// Both skill slots on the same piece carry the same non-zero skill id.
+    DuplicateOnPiece { piece_index: u8, skill_id: u8 },
+    /// A skill id is out of range (must be 0..=15).
+    BadSkillId { piece_index: u8, slot: u8, skill_id: u8 },
+}
+
+/// Validate a single side's loadout. Allows 0 ("empty") in either slot — useful
+/// for partial states during `Phase::Draft`. Rejects same-skill-on-same-piece
+/// duplicates (e.g. one Champion with Lance in both slots) and out-of-range ids.
+pub fn validate_loadout(l: &SideLoadout) -> Result<(), DraftError> {
+    for (i, &(s1, s2)) in l.iter().enumerate() {
+        if s1 > 15 { return Err(DraftError::BadSkillId { piece_index: i as u8, slot: 1, skill_id: s1 }); }
+        if s2 > 15 { return Err(DraftError::BadSkillId { piece_index: i as u8, slot: 2, skill_id: s2 }); }
+        if s1 != 0 && s1 == s2 {
+            return Err(DraftError::DuplicateOnPiece { piece_index: i as u8, skill_id: s1 });
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

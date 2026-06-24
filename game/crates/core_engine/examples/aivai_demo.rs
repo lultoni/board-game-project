@@ -226,7 +226,11 @@ fn render_state_bar(pos: &Position, color: bool) -> String {
         Player::P1 => paint("P1", RED,  color),
         Player::P2 => paint("P2", BLUE, color),
     };
-    let phase = match pos.current_phase { Phase::Move => "Move", Phase::Skill => "Skill" };
+    let phase = match pos.current_phase {
+        Phase::Move  => "Move",
+        Phase::Skill => "Skill",
+        Phase::Draft => "Draft",
+    };
     let focus  = pos.pending_modifiers & modifier_bits::FOCUS  != 0;
     let charge = pos.pending_modifiers & modifier_bits::CHARGE != 0;
     let mods = match (focus, charge) {
