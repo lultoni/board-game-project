@@ -60,7 +60,30 @@
 //!                                                  Plain moves leave this 0
 //!                                                  and the mover's destination
 //!                                                  is `target`.
-//!   bits 30..32  reserved
+//!   bits 30..32  reserved (bit 30 used for DRAFT_TURN_TAG — see below)
+//! ```
+//!
+//! ## DraftTurn (L8 — pre-game skill assignment)
+//!
+//! When **bit 30** is set, the action is a `DraftTurn` and the rest of the
+//! u32 is reinterpreted entirely. The `kind` / `src` / `target` accessors are
+//! meaningless on a DraftTurn-tagged action; callers must check
+//! `is_draft_turn()` first and use the `draft_pick1` / `draft_pick2`
+//! accessors instead. DraftTurn actions are only emitted by the generator
+//! while `pos.current_phase == Phase::Draft`; the regular Move/Skill phase
+//! generator never sets bit 30.
+//!
+//! Layout when bit 30 = 1:
+//! ```text
+//!   bits  0..4    pick1.skill_id   (4 bits, 1..=15; 0 is illegal in a pick)
+//!   bits  4..10   pick1.sq         (6 bits, 0..=63)
+//!   bit  10       pick1.slot       (0 = slot1, 1 = slot2)
+//!   bits 11..15   pick2.skill_id   (4 bits, 1..=15)
+//!   bits 15..21   pick2.sq         (6 bits, 0..=63)
+//!   bit  21       pick2.slot       (0 = slot1, 1 = slot2)
+//!   bits 22..30   reserved (must be 0)
+//!   bit  30       DRAFT_TURN_TAG = 1
+//!   bit  31       reserved (must be 0)
 //! ```
 //!
 //! ## Move-phase actions (kind=Move)
@@ -219,6 +242,70 @@ impl Action {
     #[inline] pub fn has_approach(self) -> bool {
         matches!(self.kind(), ActionKind::Move) && (self.0 >> 29) & 1 != 0
     }
+
+    // ---- DraftTurn (bit 30 = 1) ----
+
+    /// Bit mask for the DraftTurn tag (bit 30). When set, the action's other
+    /// bits are reinterpreted entirely — see the module doc-comment for layout.
+    pub const DRAFT_TURN_TAG: u32 = 1 << 30;
+
+    /// Encode a draft turn — two (skill_id, sq, slot) picks the side-to-move
+    /// is committing in one DraftTurn ply. Each `skill_id` must be 1..=15
+    /// (0 is illegal in a pick), each `sq` must be 0..=63, each `slot` is
+    /// 0 (slot1) or 1 (slot2). Caller is responsible for cross-validation
+    /// (target piece belongs to stm, slot currently empty, same-piece-same-
+    /// skill check across both picks). Those checks live in
+    /// `legal_draft_turns` and `apply_draft_turn`.
+    #[inline]
+    pub fn encode_draft_turn(
+        skill1: u8, sq1: u8, slot1: u8,
+        skill2: u8, sq2: u8, slot2: u8,
+    ) -> Self {
+        debug_assert!(skill1 >= 1 && skill1 < 16);
+        debug_assert!(skill2 >= 1 && skill2 < 16);
+        debug_assert!(sq1    < 64);
+        debug_assert!(sq2    < 64);
+        debug_assert!(slot1  < 2);
+        debug_assert!(slot2  < 2);
+        let bits =  (skill1 as u32)
+                 | ((sq1    as u32) << 4)
+                 | ((slot1  as u32) << 10)
+                 | ((skill2 as u32) << 11)
+                 | ((sq2    as u32) << 15)
+                 | ((slot2  as u32) << 21)
+                 | Self::DRAFT_TURN_TAG;
+        Action(bits)
+    }
+
+    /// True iff bit 30 is set — this action is a DraftTurn and its other
+    /// bits use the draft layout (see module doc-comment). When this is
+    /// true, `kind()` / `src()` / `target()` / etc. are meaningless and
+    /// must not be consulted.
+    #[inline]
+    pub fn is_draft_turn(self) -> bool {
+        self.0 & Self::DRAFT_TURN_TAG != 0
+    }
+
+    /// First pick of a DraftTurn: `(skill_id, sq, slot)`. Caller must check
+    /// `is_draft_turn()` first; reading this from a non-DraftTurn action
+    /// yields garbage (sliced from the regular-action bit layout).
+    #[inline]
+    pub fn draft_pick1(self) -> (u8, u8, u8) {
+        let skill = (self.0        & 0b1111)   as u8;
+        let sq    = ((self.0 >>  4) & 0b111111) as u8;
+        let slot  = ((self.0 >> 10) & 0b1)      as u8;
+        (skill, sq, slot)
+    }
+
+    /// Second pick of a DraftTurn: `(skill_id, sq, slot)`. Same caveat as
+    /// `draft_pick1`.
+    #[inline]
+    pub fn draft_pick2(self) -> (u8, u8, u8) {
+        let skill = ((self.0 >> 11) & 0b1111)   as u8;
+        let sq    = ((self.0 >> 15) & 0b111111) as u8;
+        let slot  = ((self.0 >> 21) & 0b1)      as u8;
+        (skill, sq, slot)
+    }
 }
 
 /// Undo Record — written by `make()`, consumed by `unmake()` to perfectly
@@ -338,5 +425,34 @@ mod tests {
         let a = Action::encode(0, 0, ActionKind::Skill, 1, 0);
         assert!(!a.has_aux());
         assert_eq!(a.aux_sq(), 0);
+    }
+
+    #[test]
+    fn draft_turn_encode_decode_roundtrip() {
+        let a = Action::encode_draft_turn(
+            /*skill1*/ 7, /*sq1*/ 3,  /*slot1*/ 0,
+            /*skill2*/ 12,/*sq2*/ 60, /*slot2*/ 1,
+        );
+        assert!(a.is_draft_turn());
+        assert_eq!(a.draft_pick1(), (7, 3, 0));
+        assert_eq!(a.draft_pick2(), (12, 60, 1));
+    }
+
+    #[test]
+    fn draft_turn_tag_distinguishes_from_regular_action() {
+        let regular = Action::encode(63, 63, ActionKind::Skill, 15, 15);
+        let draft   = Action::encode_draft_turn(15, 63, 1, 15, 63, 1);
+        assert!(!regular.is_draft_turn());
+        assert!( draft.is_draft_turn());
+    }
+
+    #[test]
+    fn draft_turn_extremal_values_roundtrip() {
+        let a = Action::encode_draft_turn(
+            /*skill1*/ 1,  /*sq1*/ 0,  /*slot1*/ 0,
+            /*skill2*/ 15, /*sq2*/ 63, /*slot2*/ 1,
+        );
+        assert_eq!(a.draft_pick1(), (1, 0, 0));
+        assert_eq!(a.draft_pick2(), (15, 63, 1));
     }
 }

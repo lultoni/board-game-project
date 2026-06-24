@@ -56,6 +56,7 @@ pub fn make(pos: &mut Position, action: Action) -> Undo {
     };
 
     match action.kind() {
+        _ if action.is_draft_turn() => apply_draft_turn(pos, action, &mut undo),
         ActionKind::Move      => apply_move(pos, action, &mut undo),
         ActionKind::Skill     => apply_skill(pos, action, &mut undo),
         ActionKind::EndPhase  => apply_end_phase(pos, &mut undo),
@@ -985,6 +986,163 @@ fn apply_end_phase(pos: &mut Position, undo: &mut Undo) {
 pub(crate) fn skill_phase_budget(round_number: u16) -> u8 {
     let tier = round_number.saturating_sub(1) / 10;
     (2u16 + tier).min(u8::MAX as u16) as u8
+}
+
+// === Draft phase (L8) ======================================================
+//
+// In Phase::Draft, the only legal action is a `DraftTurn` (bit-30-tagged
+// Action). Each DraftTurn carries two (skill_id, sq, slot) picks the side-to-
+// move is committing in one ply. After 12 DraftTurns (6 per side, alternating,
+// P1 first), every skill-bearing piece has both slots filled and the position
+// transitions to Phase::Move with `actions_remaining = 2`.
+//
+// Picks ARE plies: `MatchLog.plies[]` records each DraftTurn as a separate
+// ply. Side-to-move flips after every DraftTurn (no concept of "actions per
+// turn" during draft).
+
+/// Apply a DraftTurn action. Writes skill1/skill2 fields on the two target
+/// mailbox entries, flips side-to-move, and — once both sides are fully
+/// equipped — transitions to Phase::Move with the standard Move-Phase budget.
+///
+/// Invariants checked in debug (caller is responsible — the generator filters
+/// these out):
+///   - `pos.current_phase == Phase::Draft`
+///   - both picks target stm-owned skill-bearing pieces (King or Champion)
+///   - both target slots are currently 0 (empty)
+///   - the two picks don't conflict (same skill assigned to both slots of
+///     the same piece is rejected)
+///   - each skill_id is in 1..=15
+fn apply_draft_turn(pos: &mut Position, action: Action, undo: &mut Undo) {
+    debug_assert!(action.is_draft_turn());
+    debug_assert_eq!(pos.current_phase, Phase::Draft,
+        "DraftTurn issued outside Phase::Draft");
+
+    let (s1, sq1, slot1) = action.draft_pick1();
+    let (s2, sq2, slot2) = action.draft_pick2();
+
+    debug_assert!(s1 >= 1 && s1 < 16, "pick1 skill_id out of range");
+    debug_assert!(s2 >= 1 && s2 < 16, "pick2 skill_id out of range");
+    debug_assert!(sq1 < 64 && sq2 < 64);
+    debug_assert!(slot1 < 2 && slot2 < 2);
+    debug_assert!(!(sq1 == sq2 && s1 == s2),
+        "DraftTurn places same skill twice on the same piece");
+
+    // Both picks must target stm-owned skill-bearing pieces (King/Champion).
+    debug_assert!(is_stm_skill_bearer(pos, sq1), "pick1 target sq {} not a stm skill-bearer", sq1);
+    debug_assert!(is_stm_skill_bearer(pos, sq2), "pick2 target sq {} not a stm skill-bearer", sq2);
+
+    write_pick(pos, undo, sq1, slot1, s1);
+    write_pick(pos, undo, sq2, slot2, s2);
+
+    flip_to_move(pos, undo);
+
+    // If every skill-bearing piece on both sides now has both slots filled,
+    // transition to Phase::Move with the canonical Move-Phase budget.
+    if draft_complete(pos) {
+        set_phase(pos, undo, Phase::Move);
+        set_actions(pos, undo, 2);
+    }
+}
+
+/// Write a single draft pick into the mailbox: set `slot` (0 or 1) of `sq`
+/// to `skill_id`, leaving the other slot untouched. Debug-asserts the slot
+/// was empty (the generator filters illegal picks; this is engine-bug
+/// territory if it fires).
+fn write_pick(pos: &mut Position, undo: &mut Undo, sq: u8, slot: u8, skill_id: u8) {
+    let prev = pos.mailbox[sq as usize];
+    let new = if slot == 0 {
+        debug_assert!(prev.skill1() == 0, "draft pick targets non-empty slot1 at sq {}", sq);
+        debug_assert!(prev.skill2() != skill_id,
+            "draft pick duplicates skill_id {} already in slot2 at sq {}", skill_id, sq);
+        prev.with_skill1(skill_id)
+    } else {
+        debug_assert!(prev.skill2() == 0, "draft pick targets non-empty slot2 at sq {}", sq);
+        debug_assert!(prev.skill1() != skill_id,
+            "draft pick duplicates skill_id {} already in slot1 at sq {}", skill_id, sq);
+        prev.with_skill2(skill_id)
+    };
+    write_mailbox(pos, undo, sq, new);
+}
+
+/// True iff `sq` carries a skill-bearing piece (King or Champion) owned by
+/// the side-to-move. Guards have no skill slots and are never valid targets.
+#[inline]
+fn is_stm_skill_bearer(pos: &Position, sq: u8) -> bool {
+    let owner_match = match pos.to_move {
+        Player::P1 => pos.p1_pieces.contains(sq),
+        Player::P2 => pos.p2_pieces.contains(sq),
+    };
+    owner_match && (pos.kings.contains(sq) || pos.champions.contains(sq))
+}
+
+/// True iff every King and Champion on the board has both skill slots filled
+/// (non-zero). Used to detect end-of-draft.
+fn draft_complete(pos: &Position) -> bool {
+    let skill_bearers = pos.kings | pos.champions;
+    let mut bits = skill_bearers.0;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let e = pos.mailbox[sq as usize];
+        if e.skill1() == 0 || e.skill2() == 0 { return false; }
+    }
+    true
+}
+
+/// Enumerate every legal DraftTurn the side-to-move can play from this
+/// position. Each DraftTurn is two picks — every ordered pair of legal
+/// individual picks is emitted (modulo the same-piece-same-skill filter).
+///
+/// Cost note: with 15 skills × ~12 empty slots per side at draft start, the
+/// raw cross-product is ~32 400 actions. After per-piece duplicate filtering
+/// and same-piece-conflict filtering the number is smaller but still large.
+/// This is acceptable for L8 — the AI uses a random heuristic, not a search.
+/// A future slice can replace this with a smaller move list (pick-set + slot
+/// assignment) if draft-tree search becomes desirable.
+pub fn legal_draft_turns(pos: &Position) -> Vec<Action> {
+    if pos.current_phase != Phase::Draft { return Vec::new(); }
+
+    // Enumerate individual legal picks: (skill_id, sq, slot) tuples where
+    // sq is a stm-owned skill-bearer, slot is empty, and assigning skill_id
+    // to slot wouldn't duplicate the *other* slot's existing skill.
+    let mut picks: Vec<(u8, u8, u8)> = Vec::with_capacity(64);
+    let stm = pos.to_move;
+    let stm_pieces = match stm {
+        Player::P1 => pos.p1_pieces,
+        Player::P2 => pos.p2_pieces,
+    };
+    let bearers = (pos.kings | pos.champions) & stm_pieces;
+    let mut bits = bearers.0;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let e = pos.mailbox[sq as usize];
+        let s1 = e.skill1();
+        let s2 = e.skill2();
+        for sk in 1u8..=15u8 {
+            if s1 == 0 && sk != s2 { picks.push((sk, sq, 0)); }
+            if s2 == 0 && sk != s1 { picks.push((sk, sq, 1)); }
+        }
+    }
+
+    // Cross-product, ordered: pick1 then pick2. Skip identical pairs and
+    // same-piece-same-skill conflicts inside the turn.
+    let mut out: Vec<Action> = Vec::with_capacity(picks.len() * picks.len() / 2);
+    for i in 0..picks.len() {
+        let (sa, qa, la) = picks[i];
+        for j in 0..picks.len() {
+            if i == j { continue; }
+            let (sb, qb, lb) = picks[j];
+            // Same piece + same skill in either slot of the pair is illegal:
+            // a piece's two slots must hold distinct skills.
+            if qa == qb && sa == sb { continue; }
+            // Same piece + same slot is impossible by construction (picks[]
+            // only listed empty slots), but guard anyway.
+            if qa == qb && la == lb { continue; }
+            out.push(Action::encode_draft_turn(sa, qa, la, sb, qb, lb));
+        }
+    }
+    out
 }
 
 // === Tiny helpers ===========================================================
@@ -3550,5 +3708,137 @@ mod tests {
             "different move orderings reaching the same end-of-turn state must hash equal");
         // And the broader position state must agree too (sanity check).
         assert!(pos_eq(&a, &b), "transposition diff: {:?}", pos_diff(&a, &b));
+    }
+
+    // === DraftTurn (L8 Phase B) =============================================
+
+    /// Drive a draft to completion by greedily picking the first legal turn
+    /// at every ply. Returns the final position and the action stream applied.
+    fn run_random_draft(pos: &mut Position) -> Vec<Action> {
+        let mut applied = Vec::new();
+        while pos.current_phase == Phase::Draft {
+            let legal = legal_draft_turns(pos);
+            assert!(!legal.is_empty(), "Draft phase yielded zero legal turns");
+            let pick = legal[0];
+            applied.push(pick);
+            let _ = make(pos, pick);
+        }
+        applied
+    }
+
+    #[test]
+    fn draft_transitions_to_move_after_twelve_turns() {
+        let mut pos = Position::setup_stack_m_for_draft();
+        assert_eq!(pos.current_phase, Phase::Draft);
+
+        let applied = run_random_draft(&mut pos);
+        assert_eq!(applied.len(), 12, "draft should take exactly 12 DraftTurn plies");
+        assert_eq!(pos.current_phase, Phase::Move,
+            "after 12 DraftTurns the phase should be Move");
+        assert_eq!(pos.actions_remaining, 2,
+            "Move phase begins with 2 actions");
+
+        // Every skill-bearing piece on both sides has both slots filled.
+        for sq in 0..64u8 {
+            if pos.kings.contains(sq) || pos.champions.contains(sq) {
+                let e = pos.mailbox[sq as usize];
+                assert!(e.skill1() != 0, "sq {} has empty skill1 after draft", sq);
+                assert!(e.skill2() != 0, "sq {} has empty skill2 after draft", sq);
+            }
+        }
+    }
+
+    #[test]
+    fn draft_alternates_side_to_move() {
+        let mut pos = Position::setup_stack_m_for_draft();
+        assert_eq!(pos.to_move, Player::P1, "P1 drafts first");
+        let pick = legal_draft_turns(&pos)[0];
+        let _ = make(&mut pos, pick);
+        assert_eq!(pos.to_move, Player::P2);
+        let pick = legal_draft_turns(&pos)[0];
+        let _ = make(&mut pos, pick);
+        assert_eq!(pos.to_move, Player::P1);
+    }
+
+    #[test]
+    fn draft_generator_filters_same_piece_same_skill() {
+        let pos = Position::setup_stack_m_for_draft();
+        let legal = legal_draft_turns(&pos);
+        // A naïve cross-product would include (skill=K, sq=S, slot=0) +
+        // (skill=K, sq=S, slot=1). Verify the filter caught those.
+        for a in &legal {
+            let (s1, q1, l1) = a.draft_pick1();
+            let (s2, q2, l2) = a.draft_pick2();
+            assert!(!(q1 == q2 && s1 == s2),
+                "DraftTurn placed same skill twice on same piece: ({}/{}/{}, {}/{}/{})",
+                s1, q1, l1, s2, q2, l2);
+        }
+    }
+
+    #[test]
+    fn draft_generator_only_targets_stm_pieces() {
+        let pos = Position::setup_stack_m_for_draft();
+        let stm_pieces = pos.p1_pieces; // P1 to move at start of draft
+        let bearers = (pos.kings | pos.champions) & stm_pieces;
+        for a in legal_draft_turns(&pos) {
+            let (_, q1, _) = a.draft_pick1();
+            let (_, q2, _) = a.draft_pick2();
+            assert!(bearers.contains(q1), "pick1 sq {} is not stm skill-bearer", q1);
+            assert!(bearers.contains(q2), "pick2 sq {} is not stm skill-bearer", q2);
+        }
+    }
+
+    #[test]
+    fn draft_unmake_restores_position() {
+        let mut pos = Position::setup_stack_m_for_draft();
+        let before_zobrist = pos.zobrist;
+        let before_phase = pos.current_phase;
+        let before_to_move = pos.to_move;
+        let before_actions = pos.actions_remaining;
+
+        let pick = legal_draft_turns(&pos)[0];
+        let undo = make(&mut pos, pick);
+        assert_ne!(pos.zobrist, before_zobrist);
+
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.zobrist, before_zobrist, "DraftTurn unmake must restore zobrist exactly");
+        assert_eq!(pos.current_phase, before_phase);
+        assert_eq!(pos.to_move, before_to_move);
+        assert_eq!(pos.actions_remaining, before_actions);
+        // Every skill slot is back to 0.
+        for sq in 0..64u8 {
+            if pos.kings.contains(sq) || pos.champions.contains(sq) {
+                let e = pos.mailbox[sq as usize];
+                assert_eq!(e.skill1(), 0, "sq {} skill1 not restored", sq);
+                assert_eq!(e.skill2(), 0, "sq {} skill2 not restored", sq);
+            }
+        }
+    }
+
+    #[test]
+    fn full_draft_unmake_round_trips_to_initial_state() {
+        let mut pos = Position::setup_stack_m_for_draft();
+        let snapshot = pos.clone();
+
+        let mut undos = Vec::new();
+        while pos.current_phase == Phase::Draft {
+            let pick = legal_draft_turns(&pos)[0];
+            undos.push(make(&mut pos, pick));
+        }
+        assert_eq!(pos.current_phase, Phase::Move);
+
+        // Pop undos in reverse and verify we land back on the snapshot.
+        while let Some(u) = undos.pop() {
+            unmake(&mut pos, &u);
+        }
+        assert_eq!(pos.zobrist, snapshot.zobrist, "12-DraftTurn unmake must restore zobrist");
+        assert!(pos_eq(&pos, &snapshot), "12-DraftTurn unmake diff: {:?}", pos_diff(&pos, &snapshot));
+    }
+
+    #[test]
+    fn draft_phase_generator_returns_empty_for_non_draft() {
+        let pos = Position::setup_stack_m(); // Move phase
+        assert_eq!(legal_draft_turns(&pos).len(), 0,
+            "legal_draft_turns must be empty outside Phase::Draft");
     }
 }

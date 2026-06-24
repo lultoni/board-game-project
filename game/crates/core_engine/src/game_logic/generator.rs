@@ -157,14 +157,13 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
 /// surfaces retarget / effect-range interpretations as ADDITIONAL legal
 // === Draft Phase ============================================================
 //
-// L8 Phase A: stub. The full DraftTurn enumeration arrives in Phase B
-// (legal_draft_turns + DraftTurn action encoding). For now the engine simply
-// reports no legal actions in Draft phase, which is correct as a placeholder
-// because nothing else in the engine yet emits DraftTurn actions. Frontend
-// code paths that drive draft will be wired up once Phase B lands.
+// L8 Phase B: enumerate every legal DraftTurn for the side-to-move. The full
+// implementation lives in `make_unmake::legal_draft_turns` so it can share
+// the same predicates used by `apply_draft_turn` (skill-bearer ownership,
+// empty-slot check, same-piece duplicate filter).
 
-fn generate_draft_phase(_pos: &Position) -> Vec<Action> {
-    Vec::new()
+fn generate_draft_phase(pos: &Position) -> Vec<Action> {
+    super::make_unmake::legal_draft_turns(pos)
 }
 
 // === Skill Phase ============================================================

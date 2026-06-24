@@ -67,15 +67,54 @@ impl SearchMeta {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionDecoded {
     pub raw:        u32,
-    pub kind:       String,         // "Move" | "Skill" | "EndPhase" | "EndTurn"
+    pub kind:       String,         // "Move" | "Skill" | "EndPhase" | "EndTurn" | "DraftTurn"
     pub src:        u8,
     pub target:     u8,
     pub skill_id:   u8,
     pub skill_name: Option<String>, // only when kind == "Skill" and id is known
+    /// Two DraftTurn picks, only populated when `kind == "DraftTurn"`. Each
+    /// entry is `{skill_id, sq, slot}` matching the engine's draft layout.
+    /// `#[serde(default)]` keeps legacy match-log rows (no `picks` field)
+    /// loadable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picks:      Option<[DraftPick; 2]>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftPick {
+    pub skill_id: u8,
+    pub sq:       u8,
+    pub slot:     u8,
+    /// Resolved skill name for downstream display. `None` if id was somehow
+    /// unrecognised (which shouldn't happen — ids are 1..=15 by contract).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_name: Option<String>,
 }
 
 impl ActionDecoded {
     pub fn from_action(a: Action) -> Self {
+        if a.is_draft_turn() {
+            let (s1, q1, l1) = a.draft_pick1();
+            let (s2, q2, l2) = a.draft_pick2();
+            return ActionDecoded {
+                raw:        a.0,
+                kind:       "DraftTurn".to_string(),
+                src:        0,
+                target:     0,
+                skill_id:   0,
+                skill_name: None,
+                picks: Some([
+                    DraftPick {
+                        skill_id: s1, sq: q1, slot: l1,
+                        skill_name: skill_from_id(s1).map(|s| format!("{:?}", s)),
+                    },
+                    DraftPick {
+                        skill_id: s2, sq: q2, slot: l2,
+                        skill_name: skill_from_id(s2).map(|s| format!("{:?}", s)),
+                    },
+                ]),
+            };
+        }
         let kind_str = match a.kind() {
             ActionKind::Move     => "Move",
             ActionKind::Skill    => "Skill",
@@ -94,6 +133,7 @@ impl ActionDecoded {
             target:     a.target(),
             skill_id:   a.skill_id(),
             skill_name,
+            picks:      None,
         }
     }
 }
@@ -312,6 +352,16 @@ pub mod notation {
             }
             "EndPhase" => "EndPhase".to_string(),
             "EndTurn"  => "EndTurn".to_string(),
+            "DraftTurn" => {
+                let fmt_pick = |p: &DraftPick| -> String {
+                    let n = p.skill_name.clone().unwrap_or_else(|| format!("Skill#{}", p.skill_id));
+                    format!("{}@{}:s{}", n, sq_name(p.sq), p.slot + 1)
+                };
+                match &d.picks {
+                    Some([a, b]) => format!("Draft {} + {}", fmt_pick(a), fmt_pick(b)),
+                    None         => "Draft".to_string(),
+                }
+            }
             other      => other.to_string(),
         }
     }
@@ -625,5 +675,60 @@ mod tests {
             let prev = Position::from_fen(&p.prev_fen).unwrap();
             assert_eq!(p.prev_static_eval, evaluate(&prev));
         }
+    }
+
+    // === DraftTurn telemetry (L8 Phase B) =================================
+
+    #[test]
+    fn action_decoded_draft_turn_carries_picks() {
+        let a = Action::encode_draft_turn(7, 3, 0, 12, 60, 1);
+        let d = ActionDecoded::from_action(a);
+        assert_eq!(d.kind, "DraftTurn");
+        assert_eq!(d.raw, a.0);
+        let picks = d.picks.expect("DraftTurn ActionDecoded must carry picks");
+        assert_eq!(picks[0].skill_id, 7);
+        assert_eq!(picks[0].sq,       3);
+        assert_eq!(picks[0].slot,     0);
+        assert_eq!(picks[1].skill_id, 12);
+        assert_eq!(picks[1].sq,       60);
+        assert_eq!(picks[1].slot,     1);
+    }
+
+    #[test]
+    fn action_decoded_non_draft_has_no_picks() {
+        let a = Action::encode(0, 0, ActionKind::EndPhase, 0, 0);
+        let d = ActionDecoded::from_action(a);
+        assert_eq!(d.kind, "EndPhase");
+        assert!(d.picks.is_none());
+    }
+
+    #[test]
+    fn legacy_action_decoded_without_picks_field_deserialises() {
+        // Pre-L8 ActionDecoded rows didn't have a `picks` field. The
+        // `#[serde(default)]` annotation must keep them loadable.
+        let legacy_json = r#"{
+            "raw": 0,
+            "kind": "EndPhase",
+            "src": 0,
+            "target": 0,
+            "skill_id": 0,
+            "skill_name": null
+        }"#;
+        let d: ActionDecoded = from_json(legacy_json).unwrap();
+        assert_eq!(d.kind, "EndPhase");
+        assert!(d.picks.is_none());
+    }
+
+    #[test]
+    fn action_decoded_draft_turn_json_roundtrip() {
+        let a = Action::encode_draft_turn(15, 0, 0, 1, 63, 1);
+        let d = ActionDecoded::from_action(a);
+        let s = to_json(&d);
+        let back: ActionDecoded = from_json(&s).unwrap();
+        assert_eq!(back, d);
+        // And the skill names survived the round trip too.
+        let picks = back.picks.unwrap();
+        assert!(picks[0].skill_name.is_some());
+        assert!(picks[1].skill_name.is_some());
     }
 }
