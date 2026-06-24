@@ -33,7 +33,18 @@
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
   import ConnectivityPill from "$lib/multiplayer/ConnectivityPill.svelte";
-  import { sendData as mpSendData, onData as mpOnData } from "$lib/multiplayer.svelte";
+  import GraceBanner from "$lib/multiplayer/GraceBanner.svelte";
+  import {
+    sendData as mpSendData,
+    onData as mpOnData,
+    disconnect as mpDisconnect,
+    mpState,
+  } from "$lib/multiplayer.svelte";
+  import {
+    extractPostZobristForPly,
+    extractStartZobrist,
+  } from "$lib/multiplayer-resume";
+  import { goto } from "$app/navigation";
   import type { Effect } from "$lib/viz/effects";
   import { sfx } from "$lib/audio/sfx";
 
@@ -284,7 +295,7 @@
   // Canvas effects queue; bound into EffectsLayer.
   let effectQueue: Effect[] = $state([]);
 
-  let eng: Awaited<ReturnType<typeof getEngine>> | null = null;
+  let eng = $state<Awaited<ReturnType<typeof getEngine>> | null>(null);
 
   const moveTargets = $derived(moveTargetsFor(match.legal, match.selection));
   // `selectable` gates piece-pickup interactivity (draggable, click-to-select,
@@ -452,9 +463,26 @@
       });
       // In multiplayer, subscribe to action messages from the peer and
       // apply them locally (with fromWire: true so we don't echo back).
+      // Also handle the resume handshake: hosts validate incoming requests
+      // against their MatchLog; joiners restore from the host's snapshot.
       if (wasMultiplayer) {
         mpUnsub = mpOnData((msg) => {
-          if (msg.kind === "action") void applyRaw(msg.raw, { fromWire: true });
+          if (msg.kind === "action") {
+            void applyRaw(msg.raw, { fromWire: true });
+            return;
+          }
+          if (msg.kind === "resume-request" && match.multiplayerRole === "host") {
+            void handleResumeRequest(msg);
+            return;
+          }
+          if (msg.kind === "resume-accept" && match.multiplayerRole === "joiner") {
+            void handleResumeAccept(msg);
+            return;
+          }
+          if (msg.kind === "resume-reject" && match.multiplayerRole === "joiner") {
+            handleResumeReject(msg);
+            return;
+          }
         });
       }
       ready = true;
@@ -465,6 +493,84 @@
 
   /** Disposer for the multiplayer onData subscription. */
   let mpUnsub: (() => void) | null = null;
+
+  // === Resume handshake ====================================================
+  //
+  // Host side: incoming `resume-request` carries the joiner's claimed plyCount
+  // + zobrist. We walk our own MatchLog to find the post-zobrist at that ply
+  // (or start_zobrist for plyCount=0). If they match, we send a fresh
+  // snapshot to bring the joiner up to our current state; otherwise we
+  // reject and the joiner abandons.
+  //
+  // Joiner side: `resume-accept` carries a snapshot to restore from;
+  // `resume-reject` carries a reason that we surface in the lobby.
+  //
+  // Zobrists are u64 in the engine, which JSON.parse cannot represent without
+  // loss. Both wire and validation extract the decimal digits as a string and
+  // compare lexically — never via Number(). See $lib/multiplayer-resume for
+  // the regex helpers and their pinning tests.
+
+  async function handleResumeRequest(
+    msg: Extract<import("$lib/multiplayer.svelte").WireMessage, { kind: "resume-request" }>,
+  ): Promise<void> {
+    if (!eng || match.mode !== "multiplayer") {
+      mpSendData({ kind: "resume-reject", reason: "host-not-in-match" });
+      return;
+    }
+    if (msg.code !== match.multiplayerCode) {
+      mpSendData({ kind: "resume-reject", reason: "no-such-session" });
+      return;
+    }
+    try {
+      const logJson = await eng.matchLogJson();
+      if (!logJson) {
+        mpSendData({ kind: "resume-reject", reason: "host-not-in-match" });
+        return;
+      }
+      const expected = msg.plyCount === 0
+        ? extractStartZobrist(logJson)
+        : extractPostZobristForPly(logJson, msg.plyCount);
+      if (expected !== msg.zobrist) {
+        mpSendData({ kind: "resume-reject", reason: "zobrist-mismatch" });
+        return;
+      }
+      const snapshotJson = await eng.snapshotJson();
+      mpSendData({ kind: "resume-accept", snapshotJson });
+    } catch {
+      mpSendData({ kind: "resume-reject", reason: "host-not-in-match" });
+    }
+  }
+
+  async function handleResumeAccept(
+    msg: Extract<import("$lib/multiplayer.svelte").WireMessage, { kind: "resume-accept" }>,
+  ): Promise<void> {
+    mpState.pendingResume = null;
+    if (!eng) return;
+    try {
+      await eng.restoreFromSnapshot(msg.snapshotJson);
+      await refresh();
+      reconcilePieceIds();
+      lastPhaseKey = phaseKey();
+      // Acknowledge so the host knows the snapshot was applied.
+      mpSendData({ kind: "ready" });
+    } catch (e) {
+      bootError = (e as Error)?.message ?? String(e);
+    }
+  }
+
+  function handleResumeReject(
+    msg: Extract<import("$lib/multiplayer.svelte").WireMessage, { kind: "resume-reject" }>,
+  ): void {
+    mpState.resumeFailed = msg.reason;
+    mpState.pendingResume = null;
+    // Abandon: tear down the connection, finalise telemetry as abandoned, and
+    // bounce the joiner back to the lobby where the failure message renders.
+    mpDisconnect();
+    if (match.telemetryMatchId) {
+      void abandonTelemetrySession(eng ?? undefined);
+    }
+    void goto("../multiplayer/");
+  }
 
   function phaseKey(): string {
     return `${match.position?.toMove ?? -1}:${match.position?.currentPhase ?? -1}`;
@@ -1335,15 +1441,15 @@
   }
 
   // Watch for natural game-end and finalise the telemetry session exactly
-  // once. We compare to a tracked flag so re-renders don't re-trigger.
-  let telemetryFinalised = false;
+  // once. The idempotency flag lives on the match carrier so re-renders,
+  // HMR, and claim-win double-clicks all converge on a single finalise.
   $effect(() => {
     const gr = match.position?.gameResult ?? 0;
     if (gr === 0) return;
-    if (telemetryFinalised) return;
+    if (match.telemetryFinalised) return;
     if (!match.telemetryMatchId) return;
     if (match.mode === "sandbox") return;
-    telemetryFinalised = true;
+    match.telemetryFinalised = true;
     const resultByte: 0 | 1 | 2 | 3 = gr === 1 ? 0 : gr === 2 ? 1 : 2;
     const localEng = eng;
     if (!localEng) return;
@@ -1365,7 +1471,7 @@
   // and let the guard read the current `match` state at fire time.
   function beforeUnloadGuard(e: BeforeUnloadEvent): string | undefined {
     if (match.mode !== "multiplayer") return undefined;
-    if (telemetryFinalised) return undefined;
+    if (match.telemetryFinalised) return undefined;
     const msg = t("multiplayer.beforeUnloadPrompt");
     e.preventDefault();
     // Some browsers still read the returnValue assignment.
@@ -1387,7 +1493,7 @@
     // abandoned. Per-ply records on disk remain — replay still works.
     // In multiplayer mode the row is marked `mid-match-network-lost` so the
     // lobby's recent-sessions card list can pick it up for resume.
-    if (match.telemetryMatchId && !telemetryFinalised) {
+    if (match.telemetryMatchId && !match.telemetryFinalised) {
       if (match.mode === "multiplayer") {
         networkLostTelemetrySession(eng ?? undefined);
       } else {
@@ -1411,6 +1517,10 @@
       <ConnectivityPill />
     {/if}
   </header>
+
+  {#if match.mode === "multiplayer"}
+    <GraceBanner {eng} />
+  {/if}
 
   {#if bootError}
     <p class="err">boot error: {bootError}</p>

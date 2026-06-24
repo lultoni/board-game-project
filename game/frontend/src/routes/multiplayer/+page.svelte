@@ -10,8 +10,10 @@
     mpState,
     onData,
     sendData,
+    probeHost,
   } from "$lib/multiplayer.svelte";
   import { isValidCode } from "$lib/multiplayer-protocol";
+  import { extractResumeStateFromLog } from "$lib/multiplayer-resume";
   import { match, resetMatchState } from "$lib/state/match-store.svelte";
   import { getTelemetryStore, type MatchMeta } from "$lib/storage";
 
@@ -31,6 +33,8 @@
   const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
   let recentLostSessions = $state<MatchMeta[]>([]);
   let recentError = $state<string | null>(null);
+  // Per-card liveness from a one-shot PeerJS probe. Keyed by matchId.
+  let recentLiveness = $state<Record<string, "probing" | "live" | "dead">>({});
 
   async function loadRecentLost(): Promise<void> {
     try {
@@ -153,12 +157,34 @@
         match.multiplayerCode = code;
         // $effect below picks up "connected" and forwards to /setup/.
       } else {
+        // Stage a resume request so the joiner sends it the moment its
+        // DataConnection opens, instead of waiting for a fresh snapshot.
+        // The host validates the (plyCount, zobrist) pair against its
+        // MatchLog and replies accept or reject.
+        const store = getTelemetryStore();
+        let plyCount = 0;
+        let zobrist = "0";
+        try {
+          const persisted = await store.getMatch(meta.matchId);
+          if (persisted?.matchLogJson) {
+            const r = extractResumeStateFromLog(persisted.matchLogJson);
+            plyCount = r.plyCount;
+            zobrist = r.zobrist;
+          }
+        } catch { /* fall through with 0/"0" sentinels */ }
+        mpState.pendingResume = { code, plyCount, zobrist };
         codeInput = code;
         view = "joining";
         await mpJoin(code);
         match.multiplayerRole = "joiner";
         match.multiplayerCode = code;
-        view = "joined";
+        // We stay on "joining" — the host's resume-accept will deliver a
+        // snapshot. We route the joiner forward to /match/ here so the
+        // existing onData subscription there can pick up the snapshot;
+        // until accept arrives the joiner sees the in-match boot screen.
+        match.mode = "multiplayer";
+        match.side = { p1: "human", p2: "human" };
+        void goto("../match/");
       }
     } catch (e) {
       const msg = (e as Error)?.message ?? String(e);
@@ -179,6 +205,13 @@
     try {
       const store = getTelemetryStore();
       await store.dismissNetworkLost(meta.matchId);
+      // Drop any liveness entry tied to the dismissed match so the
+      // recentLiveness map doesn't grow unboundedly across lobby mounts.
+      if (meta.matchId in recentLiveness) {
+        const next = { ...recentLiveness };
+        delete next[meta.matchId];
+        recentLiveness = next;
+      }
       await loadRecentLost();
     } catch (e) {
       recentError = (e as Error)?.message ?? String(e);
@@ -233,10 +266,37 @@
   }
 
   onMount(async () => {
+    // If we got bounced back from /match/ with a resume failure, surface it
+    // as a code error and clear the sticky flag.
+    if (mpState.resumeFailed) {
+      codeError = mpState.resumeFailed === "zobrist-mismatch"
+        ? t("multiplayer.resumeFailedZobrist")
+        : mpState.resumeFailed === "host-not-in-match"
+        ? t("multiplayer.resumeFailedHost")
+        : t("multiplayer.resumeFailedNoSession");
+      mpState.resumeFailed = null;
+    }
+
     // Load recent network-lost rows so we can offer Rejoin. This is best-
     // effort: if IDB isn't available (private browsing in some Safari
     // modes) the lobby still works without recent-sessions UI.
     await loadRecentLost();
+
+    // Liveness probes — one fire-and-forget PeerJS dial per card to see if
+    // the host PeerJS ID is still listening. Visual hint only; the Rejoin
+    // button works either way (and a stale dead probe could be wrong if
+    // the host reconnects between probe and click).
+    // Capped at the 5 most-recent cards so a long history doesn't burn
+    // ~40 broker sockets every lobby mount.
+    const PROBE_LIMIT = 5;
+    for (const meta of recentLostSessions.slice(0, PROBE_LIMIT)) {
+      if (!meta.multiplayerCode) continue;
+      const id = meta.matchId;
+      recentLiveness[id] = "probing";
+      probeHost(meta.multiplayerCode).then((alive) => {
+        recentLiveness[id] = alive ? "live" : "dead";
+      });
+    }
 
     // Auto-attempt connect from `?join=XXXXXX` query param.
     const params = typeof window !== "undefined"
@@ -275,8 +335,12 @@
         <ul class="recent-list">
           {#each recentLostSessions as meta (meta.matchId)}
             {@const playerNo = meta.multiplayerRole === "host" ? 1 : 2}
+            {@const liveness = recentLiveness[meta.matchId] ?? "probing"}
             <li class="recent-card">
               <div class="recent-meta">
+                <span class="liveness" data-state={liveness} aria-hidden="true">
+                  {liveness === "live" ? "🟢" : liveness === "dead" ? "⚫" : "·"}
+                </span>
                 <span class="recent-time">
                   {t("multiplayer.startedAt", { time: formatStartedAt(meta.startedAtUnixMs) })}
                 </span>
@@ -449,6 +513,14 @@
   }
   .recent-time { color: var(--paper-ink-soft); font-size: 0.88rem; }
   .recent-role { font-size: 0.9rem; }
+  .liveness {
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+  .liveness[data-state="probing"] {
+    color: var(--paper-ink-soft);
+    opacity: 0.5;
+  }
   .recent-code {
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.1em;

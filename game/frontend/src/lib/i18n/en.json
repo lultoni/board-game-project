@@ -184,6 +184,14 @@
     "youWerePlayer": "you were Player {n}",
     "rejoinFailedCodeTaken": "That code is no longer available — someone else may have claimed it.",
     "beforeUnloadPrompt": "Leaving will end the multiplayer session. Are you sure?",
-    "startedAt": "started {time}"
+    "startedAt": "started {time}",
+    "graceBannerHost": "Opponent disconnected. If they don't return, you can claim the win.",
+    "graceBannerJoiner": "Host disconnected. If they don't return, you can claim the win.",
+    "claimWinNow": "Claim win now",
+    "claimWinIn": "claim available in {time}",
+    "wonByForfeit": "Win by opponent forfeit",
+    "resumeFailedZobrist": "Resume failed — local state didn't match the host's record. The session has been abandoned.",
+    "resumeFailedHost": "Resume failed — the other player is no longer in this match.",
+    "resumeFailedNoSession": "Resume failed — no matching session at that code."
   }
 }

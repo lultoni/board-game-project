@@ -4,13 +4,25 @@
 // The wire is a JSON-encoded discriminated union over a single PeerJS
 // DataConnection. See multiplayer.svelte.ts for the side-effecting layer.
 
+export type ResumeRejectReason =
+  | "zobrist-mismatch"
+  | "no-such-session"
+  | "host-not-in-match";
+
 export type WireMessage =
   | { kind: "ping"; t: number }
   | { kind: "pong"; t: number }
   | { kind: "snapshot"; snapshotJson: string }
   | { kind: "ready" }
   | { kind: "action"; raw: number }
-  | { kind: "error"; reason: string };
+  | { kind: "error"; reason: string }
+  // Resume handshake. `zobrist` is a decimal string because the engine's
+  // PositionView.zobrist is a bigint that JSON cannot natively encode.
+  // plyCount: 0 + zobrist: "0" means "I have no engine yet — send me a fresh
+  // snapshot if your code matches".
+  | { kind: "resume-request"; code: string; plyCount: number; zobrist: string }
+  | { kind: "resume-accept"; snapshotJson: string }
+  | { kind: "resume-reject"; reason: ResumeRejectReason };
 
 /** 6-digit code in [100000, 999999]. Used as the PeerJS host ID so the
  *  joiner can dial it without a discovery service. */
@@ -55,6 +67,37 @@ export function decodeMessage(s: string): WireMessage | null {
       return typeof (m as { reason?: unknown }).reason === "string"
         ? (m as WireMessage)
         : null;
+    case "resume-request": {
+      const r = m as {
+        code?: unknown;
+        plyCount?: unknown;
+        zobrist?: unknown;
+      };
+      if (
+        typeof r.code === "string"
+        && Number.isInteger(r.plyCount)
+        && (r.plyCount as number) >= 0
+        && typeof r.zobrist === "string"
+      ) {
+        return m as WireMessage;
+      }
+      return null;
+    }
+    case "resume-accept":
+      return typeof (m as { snapshotJson?: unknown }).snapshotJson === "string"
+        ? (m as WireMessage)
+        : null;
+    case "resume-reject": {
+      const r = (m as { reason?: unknown }).reason;
+      if (
+        r === "zobrist-mismatch"
+        || r === "no-such-session"
+        || r === "host-not-in-match"
+      ) {
+        return m as WireMessage;
+      }
+      return null;
+    }
     default:
       return null;
   }
@@ -87,6 +130,11 @@ export type PillState = "live" | "unstable" | "disconnected" | "forfeit";
 const PILL_UNSTABLE_MS = 2_000;
 const PILL_DISCONNECTED_MS = 10_000;
 const PILL_FORFEIT_MS = 5 * 60_000;
+
+/** How long the player has to wait before they can claim a win by opponent
+ *  forfeit after the pill goes 🔴. Mirrors PILL_FORFEIT_MS so the grace-
+ *  banner countdown and the pill's forfeit transition land together. */
+export const GRACE_MS = 5 * 60_000;
 
 export function derivePillState(
   status: MpStatus,

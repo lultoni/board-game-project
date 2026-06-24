@@ -23,6 +23,7 @@ import {
   generateCode,
   type MpStatus,
   type PillState,
+  type ResumeRejectReason,
   type WireMessage,
 } from "./multiplayer-protocol";
 
@@ -37,6 +38,19 @@ interface MpState {
   lastError: string | null;
   /** Set to true on the host once the joiner confirms snapshot received. */
   opponentReady: boolean;
+  /** When set, the joiner sends a `resume-request` immediately after its
+   *  DataConnection opens instead of waiting passively for a snapshot. The
+   *  lobby's Rejoin flow populates this before calling `join(code)`. */
+  pendingResume: { code: string; plyCount: number; zobrist: string } | null;
+  /** Sticky reason set when the host's last `resume-reject` came in. The
+   *  lobby reads this on mount and surfaces it as a user-facing error. */
+  resumeFailed: ResumeRejectReason | null;
+  /** Set to `Date.now()` when status flips to `"disconnected"`; cleared back
+   *  to `null` when status returns to `"connected"`. GraceBanner anchors its
+   *  5-minute countdown on this so the timer starts when the user actually
+   *  loses the peer, not on the last successful pong. Survives `disconnect()`
+   *  so a hard tear-down doesn't yank the countdown out from under the UI. */
+  disconnectedSince: number | null;
 }
 
 // Namespace the PeerJS ID so two random apps don't clash on the same broker.
@@ -49,12 +63,27 @@ export const mpState = $state<MpState>({
   lastPongAt: null,
   lastError: null,
   opponentReady: false,
+  pendingResume: null,
+  resumeFailed: null,
+  disconnectedSince: null,
 });
 
 let peer: Peer | null = null;
 let conn: DataConnection | null = null;
 let pingTimer: ReturnType<typeof setInterval> | null = null;
+// Per-session flag: true once a single joiner auto-redial has been attempted.
+// Reset on every successful `open` and on `disconnect()`. Guards against
+// hammering the broker if the redial itself also fails.
+let autoRedialDone = false;
 const dataHandlers = new Set<(msg: WireMessage) => void>();
+/** Single-slot-per-kind buffer for messages that arrive while no subscriber
+ *  is registered. The joiner navigates from /multiplayer/ → /match/ between
+ *  dispatching `resume-request` and mounting the /match/ `mpOnData` listener;
+ *  a `resume-accept` arriving in that ~50ms window would otherwise be dropped
+ *  and the joiner would hang on the boot screen forever. Latest-wins per
+ *  kind is fine — resume-accept/reject are terminal, and pong/snapshot/ply
+ *  callers are happy to skip stale buffered copies. */
+const inbox = new Map<WireMessage["kind"], WireMessage>();
 let nowTick = $state(Date.now());
 
 // Drive a coarse "now" tick so $derived pillState recomputes every 500ms
@@ -76,9 +105,16 @@ export function pillState(): PillState {
 }
 
 /** Subscribe to incoming wire messages. Returns a disposer. Ping/pong is
- *  handled internally and never reaches subscribers. */
+ *  handled internally and never reaches subscribers. Any messages buffered
+ *  in the inbox while no subscriber was registered are drained synchronously
+ *  into the new subscriber (in insertion order) before this returns. */
 export function onData(cb: (msg: WireMessage) => void): () => void {
   dataHandlers.add(cb);
+  if (inbox.size > 0) {
+    const drained = Array.from(inbox.values());
+    inbox.clear();
+    for (const msg of drained) cb(msg);
+  }
   return () => dataHandlers.delete(cb);
 }
 
@@ -110,6 +146,12 @@ export function disconnect(): void {
   mpState.role = null;
   mpState.lastPongAt = null;
   mpState.opponentReady = false;
+  mpState.pendingResume = null;
+  inbox.clear();
+  autoRedialDone = false;
+  // Note: resumeFailed is intentionally NOT cleared here — the lobby needs
+  // to read it AFTER the failed connection has been torn down. The lobby
+  // clears it when entering "choose" view.
   stopNowTimer();
 }
 
@@ -126,7 +168,23 @@ function bindConnection(c: DataConnection): void {
   conn = c;
   c.on("open", () => {
     mpState.status = "connected";
+    // Clear any prior disconnect anchor — peer is back.
+    mpState.disconnectedSince = null;
+    // Reset the per-session auto-redial budget — a healthy open earns one
+    // free retry the next time we drop.
+    autoRedialDone = false;
     startHeartbeat();
+    // If the joiner staged a resume request before dialling, fire it now so
+    // the host can validate state before sending a fresh snapshot.
+    if (mpState.role === "joiner" && mpState.pendingResume) {
+      const r = mpState.pendingResume;
+      sendData({
+        kind: "resume-request",
+        code: r.code,
+        plyCount: r.plyCount,
+        zobrist: r.zobrist,
+      });
+    }
   });
   c.on("data", (raw: unknown) => {
     if (typeof raw !== "string") return;
@@ -145,21 +203,57 @@ function bindConnection(c: DataConnection): void {
     if (msg.kind === "ready") {
       mpState.opponentReady = true;
     }
+    if (dataHandlers.size === 0) {
+      // Nobody listening yet — buffer the latest message of this kind so
+      // it survives the /multiplayer/→/match/ navigation gap.
+      inbox.set(msg.kind, msg);
+      return;
+    }
     for (const h of dataHandlers) h(msg);
   });
   c.on("close", () => {
+    if (mpState.disconnectedSince === null) {
+      mpState.disconnectedSince = Date.now();
+    }
     mpState.status = "disconnected";
+    maybeAutoRedialJoiner();
   });
   c.on("error", (e) => {
     mpState.lastError = e?.message ?? String(e);
+    if (mpState.disconnectedSince === null) {
+      mpState.disconnectedSince = Date.now();
+    }
     mpState.status = "disconnected";
+    maybeAutoRedialJoiner();
   });
+}
+
+/** Single best-effort retry after a joiner-side drop. Fires 1.5s after a
+ *  close/error so PeerJS has time to settle, and only once per session — if
+ *  the retry itself also drops, the user falls back to lobby Rejoin. Skipped
+ *  when we're mid-resume-handshake (the resume flow has its own semantics)
+ *  or when the host is the one whose side dropped (host stays put and waits
+ *  for the joiner to dial back). */
+function maybeAutoRedialJoiner(): void {
+  if (autoRedialDone) return;
+  if (mpState.role !== "joiner") return;
+  if (mpState.pendingResume !== null) return;
+  if (mpState.code === null) return;
+  const code = mpState.code;
+  autoRedialDone = true;
+  setTimeout(() => {
+    // Bail if the user manually navigated away / disconnected in the meantime.
+    if (mpState.role !== "joiner") return;
+    if (mpState.status === "connected" || mpState.status === "connecting") return;
+    join(code).catch(() => { /* fall back to manual lobby Rejoin */ });
+  }, 1500);
 }
 
 /** Host a session. Picks a random 6-digit code and registers with the
  *  PeerJS broker; retries on collision. Resolves with the chosen code. */
 export function host(): Promise<string> {
   disconnect();
+  mpState.disconnectedSince = null;
   mpState.role = "host";
   mpState.status = "hosting";
   return new Promise((resolve, reject) => {
@@ -212,6 +306,7 @@ export function host(): Promise<string> {
  *  to the user. */
 export function hostWithCode(code: string): Promise<string> {
   disconnect();
+  mpState.disconnectedSince = null;
   mpState.role = "host";
   mpState.status = "hosting";
   return new Promise((resolve, reject) => {
@@ -248,6 +343,7 @@ export function hostWithCode(code: string): Promise<string> {
 /** Join a session by 6-digit code. Resolves when the data channel opens. */
 export function join(code: string): Promise<void> {
   disconnect();
+  mpState.disconnectedSince = null;
   mpState.role = "joiner";
   mpState.status = "joining";
   mpState.code = code;
@@ -282,4 +378,71 @@ export function join(code: string): Promise<void> {
  *  snapshots / actions to the peer. */
 export function isActive(): boolean {
   return peer !== null && mpState.role !== null;
+}
+
+/** Liveness probe: open a throwaway Peer + DataConnection to `code` and
+ *  resolve `true` if the channel opens AND the host doesn't kick us with a
+ *  `session-full` error within a 500ms confirmation window. Else `false`.
+ *  Used by the lobby to show 🟢/⚫ dots on recent-sessions cards.
+ *
+ *  Why the confirmation window: a host that's already paired with another
+ *  joiner will accept the open() (PeerJS auto-opens the data channel) and
+ *  THEN send `{ kind: "error", reason: "session-full" }` before closing.
+ *  Resolving `true` on open alone gives false positives for hosts that
+ *  wouldn't accept this user. 500ms covers typical broker latency; longer
+ *  delays will register as a false 🟢 but the worst outcome is a hint —
+ *  Rejoin still works either way.
+ *
+ *  Does NOT touch the singleton `peer`/`conn` used by host()/join(). Always
+ *  tears down its own Peer in the finally path so probe traffic never lingers
+ *  on the broker.
+ */
+export function probeHost(code: string, timeoutMs = 2_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const myId = ID_PREFIX + "probe-" + Math.random().toString(36).slice(2, 10);
+    let p: Peer | null = null;
+    let c: DataConnection | null = null;
+    let settled = false;
+    let confirmTimer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (result: boolean): void => {
+      if (settled) return;
+      settled = true;
+      if (confirmTimer) clearTimeout(confirmTimer);
+      if (c) { try { c.close(); } catch { /* noop */ } }
+      if (p) { try { p.destroy(); } catch { /* noop */ } }
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    try {
+      p = new Peer(myId);
+      p.on("open", () => {
+        if (!p) return;
+        c = p.connect(ID_PREFIX + code, { reliable: true });
+        c.on("open", () => {
+          clearTimeout(timer);
+          // Watch for a session-full kick from the paired host before
+          // declaring victory.
+          c?.on("data", (raw: unknown) => {
+            if (typeof raw !== "string") return;
+            const msg = decodeMessage(raw);
+            if (msg && msg.kind === "error" && msg.reason === "session-full") {
+              finish(false);
+            }
+          });
+          confirmTimer = setTimeout(() => finish(true), 500);
+        });
+        c.on("error", () => {
+          clearTimeout(timer);
+          finish(false);
+        });
+      });
+      p.on("error", () => {
+        clearTimeout(timer);
+        finish(false);
+      });
+    } catch {
+      clearTimeout(timer);
+      finish(false);
+    }
+  });
 }

@@ -43,6 +43,11 @@ export interface MatchState {
   /** The 6-digit session code for the active multiplayer session, kept on
    *  the carrier so /match/ can pass it to telemetry's startMatch opts. */
   multiplayerCode: string | null;
+  /** Idempotency flag for telemetry finalisation. Set once a natural game-end
+   *  or a claim-win has persisted the telemetry row; consulted to avoid
+   *  double-finalise across reactive re-runs, claim-win double-clicks, and
+   *  the beforeunload guard. Reset whenever a new match begins. */
+  telemetryFinalised: boolean;
 }
 
 export const match = $state<MatchState>({
@@ -58,6 +63,7 @@ export const match = $state<MatchState>({
   telemetryMatchId: null,
   multiplayerRole: null,
   multiplayerCode: null,
+  telemetryFinalised: false,
 });
 
 export function resetMatchState(): void {
@@ -72,6 +78,7 @@ export function resetMatchState(): void {
   match.trueSnapshotJson = null;
   match.sandboxMovesApplied = 0;
   match.telemetryMatchId = null;
+  match.telemetryFinalised = false;
   // multiplayerRole and multiplayerCode are owned by the lobby; routes
   // downstream (setup/draft/match) only read them. The lobby is responsible
   // for clearing them on session teardown.
@@ -113,4 +120,30 @@ export function abandonTelemetrySession(eng?: EngineClient): Promise<void> {
 
 export function networkLostTelemetrySession(eng?: EngineClient): Promise<void> {
   return telemetry.networkLostTelemetrySession(match, eng);
+}
+
+/** Multiplayer claim-win: the present player declares victory after the grace
+ *  window expires (peer never came back). Finalises the engine log and the
+ *  telemetry row with endReason "opponent_forfeit" and the result favouring
+ *  the present player.
+ *
+ *  Host (P1) claims → resultByte 0 (P1 win). Joiner (P2) claims → resultByte 1
+ *  (P2 win). No-op outside multiplayer.
+ */
+export async function claimWinByOpponentForfeit(eng: EngineClient): Promise<void> {
+  if (match.mode !== "multiplayer" || !match.multiplayerRole) return;
+  if (match.telemetryFinalised) return;
+  const resultByte: 0 | 1 = match.multiplayerRole === "host" ? 0 : 1;
+  try {
+    await eng.finaliseLog(resultByte);
+  } catch {
+    // If the engine refuses (already finalised) we still want to persist the
+    // telemetry verdict — fall through.
+  }
+  await telemetry.finalizeTelemetrySession(match, eng, "opponent_forfeit", resultByte);
+  match.telemetryFinalised = true;
+  // Refresh the live position so the game-end UI fires.
+  try {
+    match.position = await eng.positionView();
+  } catch { /* noop */ }
 }

@@ -41,9 +41,15 @@ describe("encode/decode round-trip", () => {
     { kind: "ready" },
     { kind: "action", raw: 0xdeadbe },
     { kind: "error", reason: "session-full" },
+    { kind: "resume-request", code: "281947", plyCount: 14, zobrist: "9876543210123456789" },
+    { kind: "resume-request", code: "100000", plyCount: 0, zobrist: "0" },
+    { kind: "resume-accept", snapshotJson: '{"start_fen":"…","actions":[1,2,3]}' },
+    { kind: "resume-reject", reason: "zobrist-mismatch" },
+    { kind: "resume-reject", reason: "no-such-session" },
+    { kind: "resume-reject", reason: "host-not-in-match" },
   ];
   for (const m of cases) {
-    it(`round-trips ${m.kind}`, () => {
+    it(`round-trips ${m.kind}${"reason" in m ? `:${m.reason}` : ""}`, () => {
       const s = encodeMessage(m);
       const back = decodeMessage(s);
       expect(back).toEqual(m);
@@ -58,6 +64,10 @@ describe("encode/decode round-trip", () => {
     expect(decodeMessage('{"kind":"action","raw":"oops"}')).toBeNull();
     expect(decodeMessage('{"kind":"ping"}')).toBeNull(); // missing t
     expect(decodeMessage('{"kind":"snapshot"}')).toBeNull();
+    expect(decodeMessage('{"kind":"resume-request","code":"123456","plyCount":-1,"zobrist":"0"}')).toBeNull();
+    expect(decodeMessage('{"kind":"resume-request","code":"123456","plyCount":0}')).toBeNull(); // missing zobrist
+    expect(decodeMessage('{"kind":"resume-reject","reason":"made-up"}')).toBeNull();
+    expect(decodeMessage('{"kind":"resume-accept"}')).toBeNull();
   });
 });
 
