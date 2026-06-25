@@ -67,7 +67,7 @@ impl SearchMeta {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionDecoded {
     pub raw:        u32,
-    pub kind:       String,         // "Move" | "Skill" | "EndPhase" | "EndTurn" | "DraftTurn"
+    pub kind:       String,         // "Move" | "Skill" | "EndPhase" | "EndTurn" | "DraftTurn" | "BodyguardChoice"
     pub src:        u8,
     pub target:     u8,
     pub skill_id:   u8,
@@ -113,6 +113,22 @@ impl ActionDecoded {
                         skill_name: skill_from_id(s2).map(|s| format!("{:?}", s)),
                     },
                 ]),
+            };
+        }
+        if a.is_bodyguard_choice() {
+            // BodyguardChoice carries only `idx` (in bits 0..4). The
+            // attacker / target / approach squares are recovered from
+            // `pos.pending_bodyguard` at apply-time, so we have nothing else
+            // to surface here. Stash the idx in `skill_id` (small int field)
+            // so downstream tools can render it without a schema bump.
+            return ActionDecoded {
+                raw:        a.0,
+                kind:       "BodyguardChoice".to_string(),
+                src:        0,
+                target:     0,
+                skill_id:   a.bg_guard_idx(),
+                skill_name: None,
+                picks:      None,
             };
         }
         let kind_str = match a.kind() {
@@ -399,6 +415,16 @@ pub mod notation {
                 match &d.picks {
                     Some([a, b]) => format!("Draft {} + {}", fmt_pick(a), fmt_pick(b)),
                     None         => "Draft".to_string(),
+                }
+            }
+            "BodyguardChoice" => {
+                // `skill_id` is reused as `idx` for BG actions (0 = decline,
+                // 1..=N = redirect to eligible[idx-1]). The attacker / target
+                // / approach squares are in pos.pending_bodyguard.
+                if d.skill_id == 0 {
+                    "BG decline".to_string()
+                } else {
+                    format!("BG redirect→eligible[{}]", d.skill_id - 1)
                 }
             }
             other      => other.to_string(),
