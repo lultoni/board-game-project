@@ -37,16 +37,12 @@
   import ConnectivityPill from "$lib/multiplayer/ConnectivityPill.svelte";
   import GraceBanner from "$lib/multiplayer/GraceBanner.svelte";
   import {
-    sendData as mpSendData,
-    onData as mpOnData,
-    disconnect as mpDisconnect,
     mpState,
+    onRawData as mpOnRawData,
+    sendRaw as mpSendRaw,
   } from "$lib/multiplayer.svelte";
-  import {
-    extractPostZobristForPly,
-    extractStartZobrist,
-  } from "$lib/multiplayer-resume";
-  import { goto } from "$app/navigation";
+  import { decodeMessageV2, encodeMessageV2, type WireMessageV2 } from "$lib/multiplayer-protocol-v2";
+  import { createMpEngine, type MpEngineHandle, type Role, type SubmitResult } from "$lib/multiplayer-engine";
   import type { Effect } from "$lib/viz/effects";
   import { sfx } from "$lib/audio/sfx";
   import { getTelemetryStore } from "$lib/storage";
@@ -487,34 +483,92 @@
       // apply them locally (with fromWire: true so we don't echo back).
       // Also handle the resume handshake: hosts validate incoming requests
       // against their MatchLog; joiners restore from the host's snapshot.
-      if (wasMultiplayer) {
-        mpUnsub = mpOnData((msg) => {
-          if (msg.kind === "action") {
-            void applyRaw(msg.raw, { fromWire: true });
-            return;
-          }
-          if (msg.kind === "resume-request" && match.multiplayerRole === "host") {
-            void handleResumeRequest(msg);
-            return;
-          }
-          if (msg.kind === "resume-accept" && match.multiplayerRole === "joiner") {
-            void handleResumeAccept(msg);
-            return;
-          }
-          if (msg.kind === "resume-reject" && match.multiplayerRole === "joiner") {
-            handleResumeReject(msg);
-            return;
-          }
+      const role: Role =
+        wasMultiplayer && mpRole === "host"
+          ? "host"
+          : wasMultiplayer && mpRole === "joiner"
+            ? "joiner"
+            : "solo";
+      mpEngine = createMpEngine(
+        {
+          role,
+          phase: "play",
+          matchId: match.telemetryMatchId,
+          code: mpCode,
+        },
+        {
+          eng,
+          send: (m: WireMessageV2) => mpSendRaw(encodeMessageV2(m)),
+          subscribe: (cb) => mpOnRawData((raw) => {
+            const decoded = decodeMessageV2(raw);
+            if (decoded) cb(decoded);
+          }),
+          onApplied: async (raw, _phase) => {
+            // Skip when this raw was just applied via the local submit path —
+            // applyRaw already snapshotted pre-state and rendered effects;
+            // re-rendering here would double-flash and double-bump telemetry.
+            if (raw === pendingLocalRaw) return;
+            // Remote-driven apply: pre-state was the engine's state BEFORE
+            // the wrapper called tryApply. We don't have that snapshot any
+            // more (engine already moved), so we render against the current
+            // mailbox — visual fidelity for remote ply is best-effort. The
+            // important thing is that match.position / match.legal refresh.
+            await refresh();
+            reconcilePieceIds();
+            lastAppliedPair = null;
+            match.lastApplied = raw;
+            const k = phaseKey();
+            if (k !== lastPhaseKey) {
+              usedThisPhase = new Set();
+              lastPhaseKey = k;
+            }
+            // Host records the ply for telemetry. Joiner writes nothing
+            // per the authoritative-host model.
+            if (role === "host" || role === "solo") {
+              await recordPly(eng!);
+            }
+          },
+          onSnapshotApplied: async () => {
+            await refresh();
+            reconcilePieceIds();
+            lastPhaseKey = phaseKey();
+          },
+          onPhaseChange: async () => { /* no-op in /match/ */ },
+          onCheatDetected: () => {
+            bootError = "anti-cheat: opponent's engine disagreed";
+          },
+          onPausedChange: (p) => {
+            mpPaused = p;
+          },
+          onHostCommitted: async () => { /* recordPly fires via onApplied */ },
+        },
+      );
+      // Re-announce session on every PeerJS open while we're mounted.
+      mpConnectedUnsub = $effect.root(() => {
+        $effect(() => {
+          if (mpState.status === "connected") mpEngine?.notifyConnectionOpen();
+          else if (mpState.status === "disconnected") mpEngine?.notifyConnectionLost();
         });
-      }
+      });
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     }
   });
 
-  /** Disposer for the multiplayer onData subscription. */
-  let mpUnsub: (() => void) | null = null;
+  /** Role-aware engine wrapper. One funnel for both solo and multiplayer
+   *  apply traffic. Owns intent/commit/snapshot/audit logic; the route just
+   *  calls submitAction and reads match.position/match.legal as before. */
+  let mpEngine = $state<MpEngineHandle | null>(null);
+  /** True while the host has paused commits because the joiner dropped. The
+   *  HUD surfaces this so the player isn't confused by a refused end-phase. */
+  let mpPaused = $state(false);
+  /** Disposer for the $effect.root that bridges mpState → wrapper lifecycle. */
+  let mpConnectedUnsub: (() => void) | null = null;
+  /** The raw u32 currently being applied via the local submit path. Used to
+   *  short-circuit the wrapper's onApplied callback so we don't double-render
+   *  on host-side (host's submitAction applies AND fires onApplied). */
+  let pendingLocalRaw: number | null = null;
 
   // === Host-side peer-drop detection ========================================
   //
@@ -563,93 +617,10 @@
 
   // === Resume handshake ====================================================
   //
-  // Host side: incoming `resume-request` carries the joiner's claimed plyCount
-  // + zobrist. We walk our own MatchLog to find the post-zobrist at that ply
-  // (or start_zobrist for plyCount=0). If they match, we send a fresh
-  // snapshot to bring the joiner up to our current state; otherwise we
-  // reject and the joiner abandons.
-  //
-  // Joiner side: `resume-accept` carries a snapshot to restore from;
-  // `resume-reject` carries a reason that we surface in the lobby.
-  //
-  // Zobrists are u64 in the engine, which JSON.parse cannot represent without
-  // loss. Both wire and validation extract the decimal digits as a string and
-  // compare lexically — never via Number(). See $lib/multiplayer-resume for
-  // the regex helpers and their pinning tests.
-
-  async function handleResumeRequest(
-    msg: Extract<import("$lib/multiplayer.svelte").WireMessage, { kind: "resume-request" }>,
-  ): Promise<void> {
-    if (!eng || match.mode !== "multiplayer") {
-      mpSendData({ kind: "resume-reject", reason: "host-not-in-match" });
-      return;
-    }
-    if (msg.code !== match.multiplayerCode) {
-      mpSendData({ kind: "resume-reject", reason: "no-such-session" });
-      return;
-    }
-    // Sentinel: joiner has no local engine yet (cleared IDB, different device,
-    // or simply chose to drop their state). It explicitly asks the host to
-    // overwrite — skip zobrist validation and send the current snapshot.
-    if (msg.plyCount === 0 && msg.zobrist === "0") {
-      try {
-        const snapshotJson = await eng.snapshotJson();
-        mpSendData({ kind: "resume-accept", snapshotJson });
-      } catch {
-        mpSendData({ kind: "resume-reject", reason: "host-not-in-match" });
-      }
-      return;
-    }
-    try {
-      const logJson = await eng.matchLogJson();
-      if (!logJson) {
-        mpSendData({ kind: "resume-reject", reason: "host-not-in-match" });
-        return;
-      }
-      const expected = msg.plyCount === 0
-        ? extractStartZobrist(logJson)
-        : extractPostZobristForPly(logJson, msg.plyCount);
-      if (expected !== msg.zobrist) {
-        mpSendData({ kind: "resume-reject", reason: "zobrist-mismatch" });
-        return;
-      }
-      const snapshotJson = await eng.snapshotJson();
-      mpSendData({ kind: "resume-accept", snapshotJson });
-    } catch {
-      mpSendData({ kind: "resume-reject", reason: "host-not-in-match" });
-    }
-  }
-
-  async function handleResumeAccept(
-    msg: Extract<import("$lib/multiplayer.svelte").WireMessage, { kind: "resume-accept" }>,
-  ): Promise<void> {
-    mpState.pendingResume = null;
-    if (!eng) return;
-    try {
-      await eng.restoreFromSnapshot(msg.snapshotJson);
-      await refresh();
-      reconcilePieceIds();
-      lastPhaseKey = phaseKey();
-      // Acknowledge so the host knows the snapshot was applied.
-      mpSendData({ kind: "ready" });
-    } catch (e) {
-      bootError = (e as Error)?.message ?? String(e);
-    }
-  }
-
-  function handleResumeReject(
-    msg: Extract<import("$lib/multiplayer.svelte").WireMessage, { kind: "resume-reject" }>,
-  ): void {
-    mpState.resumeFailed = msg.reason;
-    mpState.pendingResume = null;
-    // Abandon: tear down the connection, finalise telemetry as abandoned, and
-    // bounce the joiner back to the lobby where the failure message renders.
-    mpDisconnect();
-    if (match.telemetryMatchId) {
-      void abandonTelemetrySession(eng ?? undefined);
-    }
-    void goto("../multiplayer/");
-  }
+  // L7c authoritative-host model: the legacy resume-request/resume-accept/
+  // resume-reject mini-protocol is gone. Snapshot push (host → joiner) is
+  // the single mechanism for getting a mirror in sync, driven by the wrapper
+  // via session-hello + request-snapshot + snapshot envelopes.
 
   function phaseKey(): string {
     return `${match.position?.toMove ?? -1}:${match.position?.currentPhase ?? -1}`;
@@ -1004,20 +975,49 @@
     }
   }
 
-  async function applyRaw(raw: number, opts: { fromWire?: boolean } = {}) {
+  async function applyRaw(raw: number) {
     if (!eng || busy) return;
     busy = true;
     try {
-      const { preFull, preTarget, preBodyguard } = snapshotPreState(raw);
-      await eng.tryApply(raw);
-      // Mirror to the peer BEFORE rendering — this keeps the two sides as
-      // close to lockstep as possible. Suppressed when the action arrived
-      // from the wire (`fromWire`), and outside multiplayer mode.
-      if (match.mode === "multiplayer" && !opts.fromWire) {
-        mpSendData({ kind: "action", raw });
+      // Sandbox bypasses the wrapper — the user is exploring locally and
+      // sandbox moves must NOT echo to a peer or get logged as match plies.
+      if (match.mode === "sandbox") {
+        const { preFull, preTarget, preBodyguard } = snapshotPreState(raw);
+        await eng.tryApply(raw);
+        match.sandboxMovesApplied += 1;
+        await renderApplied(raw, preFull, preTarget, preBodyguard);
+        match.selection = null;
+        pendingApproach = null;
+        pendingDirection = null;
+        focusModePref = "activation";
+        return;
       }
-      if (match.mode === "sandbox") match.sandboxMovesApplied += 1;
-      else await recordPly(eng);
+
+      // Snapshot pre-state for effect rendering BEFORE handing off to the
+      // wrapper. On host/solo, submitAction will mutate the engine
+      // synchronously; on joiner, the engine doesn't move until the host's
+      // committed envelope lands, but we still want pre-state captured from
+      // the moment of click.
+      const { preFull, preTarget, preBodyguard } = snapshotPreState(raw);
+      pendingLocalRaw = raw;
+      const result: SubmitResult = mpEngine
+        ? await mpEngine.submitAction(raw)
+        : { accepted: true };
+      if (!result.accepted) {
+        // Refused (illegal, paused, peer-lost, …). Keep the UI selection so
+        // the user can try a different move; surface the reason via bootError
+        // for now (a dedicated toast lives in L7c step 5's lobby polish).
+        if (result.reason && result.reason !== "illegal") {
+          bootError = `move refused: ${result.reason}`;
+        }
+        pendingLocalRaw = null;
+        return;
+      }
+      // For solo + host: engine has already moved; render and record.
+      // For joiner: engine moved when the host's committed landed via the
+      // wrapper's onApplied. Render here either way — the engine state is
+      // authoritative regardless of who originated the action.
+      await recordPly(eng);
       await renderApplied(raw, preFull, preTarget, preBodyguard);
       match.selection = null;
       pendingApproach = null;
@@ -1026,6 +1026,7 @@
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
+      pendingLocalRaw = null;
       busy = false;
     }
   }
@@ -1599,9 +1600,13 @@
         void abandonTelemetrySession(eng ?? undefined);
       }
     }
-    if (mpUnsub) {
-      mpUnsub();
-      mpUnsub = null;
+    if (mpEngine) {
+      mpEngine.dispose();
+      mpEngine = null;
+    }
+    if (mpConnectedUnsub) {
+      mpConnectedUnsub();
+      mpConnectedUnsub = null;
     }
   });
 </script>

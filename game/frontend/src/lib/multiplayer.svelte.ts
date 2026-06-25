@@ -86,6 +86,12 @@ let pingTimer: ReturnType<typeof setInterval> | null = null;
 let redialAttempts = 0;
 const REDIAL_DELAYS = [1_500, 3_000, 6_000, 12_000, 30_000];
 const dataHandlers = new Set<(msg: WireMessage) => void>();
+/** Raw-string subscribers. The role-aware wrapper (createMpEngine) reads
+ *  these so it can decode v2 messages (committed, intent, snapshot, …) that
+ *  the legacy WireMessage type in multiplayer-protocol.ts doesn't model.
+ *  Both raw and decoded paths fire for the same inbound payload — keeping
+ *  legacy `onData` subscribers unaffected during the v1→v2 cutover. */
+const rawDataHandlers = new Set<(raw: string) => void>();
 /** Single-slot-per-kind buffer for messages that arrive while no subscriber
  *  is registered. The joiner navigates from /multiplayer/ → /match/ between
  *  dispatching `resume-request` and mounting the /match/ `mpOnData` listener;
@@ -150,6 +156,26 @@ export function sendData(msg: WireMessage): void {
   if (!conn || !conn.open) return;
   try {
     conn.send(encodeMessage(msg));
+  } catch (e) {
+    mpState.lastError = (e as Error)?.message ?? String(e);
+  }
+}
+
+/** Subscribe to raw inbound strings before they're decoded into WireMessage.
+ *  Used by createMpEngine to handle v2 envelopes that the legacy decoder
+ *  doesn't know about. Disposer follows the same shape as onData. */
+export function onRawData(cb: (raw: string) => void): () => void {
+  rawDataHandlers.add(cb);
+  return () => rawDataHandlers.delete(cb);
+}
+
+/** Send a pre-encoded JSON string. Skips encodeMessage so the wrapper can
+ *  emit v2 envelopes (committed/intent/snapshot/…) without widening the
+ *  legacy WireMessage union. No-op when no peer is connected. */
+export function sendRaw(raw: string): void {
+  if (!conn || !conn.open) return;
+  try {
+    conn.send(raw);
   } catch (e) {
     mpState.lastError = (e as Error)?.message ?? String(e);
   }
@@ -222,6 +248,12 @@ function bindConnection(c: DataConnection): void {
     // "we never had a peer" (host's pre-join rehost) from "we lost the peer
     // we had". Survives close/error — unlike lastPongAt, which is reset.
     mpState.peerEverPaired = true;
+    // Fan out the raw string to any wrapper subscribers BEFORE decoding.
+    // createMpEngine consumes v2 envelopes this way without taking a dep on
+    // the legacy WireMessage union.
+    if (rawDataHandlers.size > 0) {
+      for (const h of rawDataHandlers) h(raw);
+    }
     const msg = decodeMessage(raw);
     if (!msg) return;
     if (msg.kind === "ping") {
