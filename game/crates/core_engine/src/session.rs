@@ -92,6 +92,8 @@ pub struct Config {
     pub allow_undo: bool,
     /// When true, `Match` allocates a `MatchLog` and records a `PlyRecord`
     /// for every applied action. Default false to keep tight test loops fast.
+    /// `#[serde(default)]` so older snapshots (pre-auto-log) still load.
+    #[serde(default)]
     pub auto_log: bool,
 }
 
@@ -298,9 +300,12 @@ impl Match {
     /// at its replay-time position — i.e. a tampered snapshot is rejected
     /// without trusting the actions.
     ///
-    /// Replayed plies are NOT logged (we don't have their original timing or
-    /// AI metadata). If `s.config.auto_log` is set, the resulting `Match` has
-    /// a fresh empty `MatchLog`; subsequent applies populate it normally.
+    /// When `s.config.auto_log` is set, the replay also rebuilds a
+    /// `MatchLog`: each replayed action becomes a synthesized `PlyRecord`
+    /// with zeroed timing/AI metadata (we no longer have the originals).
+    /// This keeps the Inspector/Library consistent with what the match
+    /// produced during live play — without it, a reload via snapshot would
+    /// surface a stripped log anchored at the pre-history FEN.
     pub fn from_snapshot(s: Snapshot) -> Result<Self, SnapshotError> {
         Self::from_snapshot_with_clock(s, 0)
     }
@@ -309,6 +314,11 @@ impl Match {
         let mut position = Position::from_fen(&s.start_fen)
             .map_err(|e| SnapshotError::BadFen(format!("{:?}", e)))?;
         let start_pos_for_log = position.clone();
+        let mut log = if s.config.auto_log {
+            Some(MatchLog::new(now_unix_ms, s.config, &start_pos_for_log))
+        } else {
+            None
+        };
         let mut history: Vec<(Action, Undo)> = Vec::with_capacity(s.actions.len());
         for (i, &raw) in s.actions.iter().enumerate() {
             let action = Action(raw);
@@ -316,14 +326,50 @@ impl Match {
             if !legal.contains(&action) {
                 return Err(SnapshotError::IllegalActionInHistory { index: i, action: raw });
             }
+
+            // Capture pre-action telemetry BEFORE make() — same shape as
+            // `try_apply_timed`. Skipped when not logging to save the eval cost.
+            let pre = if log.is_some() {
+                let seat_player = position.to_move;
+                let seat_kind = match seat_player {
+                    Player::P1 => s.config.p1,
+                    Player::P2 => s.config.p2,
+                };
+                let legal_count = legal.len() as u32;
+                let (prev_zobrist, prev_fen, prev_eval, prev_breakdown) = snapshot_pre(&position);
+                Some((seat_player, seat_kind, legal_count, prev_zobrist, prev_fen, prev_eval, prev_breakdown))
+            } else {
+                None
+            };
+
             let undo = make_unmake::make(&mut position, action);
             history.push((action, undo));
+
+            if let (Some((seat_player, seat_kind, legal_count, prev_zobrist, prev_fen, prev_eval, prev_breakdown)),
+                    Some(l)) = (pre, log.as_mut()) {
+                let (post_zobrist, post_fen, post_eval, post_breakdown,
+                     post_game_result, post_phase, post_actions_remaining, post_round,
+                     post_focus_pending, post_charge_pending, post_moved_this_phase,
+                     post_p1_money, post_p2_money,
+                     post_tracked_enemies, post_tracked_casters) = snapshot_post(&position);
+                let ply_no = (l.plies.len() as u32).saturating_add(1);
+                l.record(PlyRecord {
+                    ply_no, seat_player, seat_kind,
+                    // Original timing/AI metadata isn't in the snapshot — zero it.
+                    thought_ms: 0,
+                    applied_at_unix_ms: now_unix_ms,
+                    action: ActionDecoded::from_action(action),
+                    legal_count,
+                    prev_zobrist, prev_fen, prev_static_eval: prev_eval, prev_breakdown,
+                    post_zobrist, post_fen, post_static_eval: post_eval, post_breakdown,
+                    post_game_result, post_phase, post_actions_remaining, post_round,
+                    post_focus_pending, post_charge_pending, post_moved_this_phase,
+                    post_p1_money, post_p2_money,
+                    post_tracked_enemies, post_tracked_casters,
+                    ai: None,
+                });
+            }
         }
-        let log = if s.config.auto_log {
-            Some(MatchLog::new(now_unix_ms, s.config, &start_pos_for_log))
-        } else {
-            None
-        };
         Ok(Match {
             position,
             history,
@@ -744,6 +790,37 @@ mod tests {
             Err(other) => panic!("expected IllegalActionInHistory, got {:?}", other),
             Ok(_) => panic!("expected error, snapshot accepted"),
         }
+    }
+
+    #[test]
+    fn snapshot_restore_with_auto_log_relogs_plies() {
+        // The regression this guards against: Inspector opens a previously-
+        // saved match via snapshot restore. Pre-fix, the restored MatchLog
+        // was empty even though the replay rebuilt full Position state, so
+        // Library/Inspector showed "0 plies" and the move list rendered the
+        // pre-history legal set.
+        let mut cfg = Config::local_hvh();
+        cfg.auto_log = true;
+        let mut m = Match::new_with_clock(cfg, 1);
+        for _ in 0..5 {
+            let a = first_legal(&m);
+            m.try_apply(a).unwrap();
+        }
+        let original_plies = m.match_log().unwrap().plies.len();
+        assert_eq!(original_plies, 5);
+
+        let snap = m.to_snapshot();
+        let m2 = Match::from_snapshot_with_clock(snap, 1).expect("snapshot reload");
+        let restored_log = m2.match_log().expect("auto_log restored");
+        assert_eq!(restored_log.plies.len(), original_plies,
+            "restored MatchLog must carry the replayed plies");
+        // ply_no monotonic and starts at 1.
+        for (i, p) in restored_log.plies.iter().enumerate() {
+            assert_eq!(p.ply_no, (i + 1) as u32);
+        }
+        // Final zobrist matches the live position after replay.
+        let final_post = restored_log.plies.last().unwrap().post_zobrist;
+        assert_eq!(final_post, m2.position().zobrist);
     }
 
     // --- Terminal handling -------------------------------------------------

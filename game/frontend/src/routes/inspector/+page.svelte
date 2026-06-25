@@ -155,9 +155,34 @@
     busy = true;
     bootError = null;
     try {
-      const log = JSON.parse(json);
-      if (!log || typeof log.start_fen !== "string") {
-        throw new Error("not a MatchLog — missing start_fen field");
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json);
+      } catch (e) {
+        throw new Error(`malformed JSON: ${(e as Error)?.message ?? String(e)}`);
+      }
+      // Unwrap a bundle envelope if present. `bundleMatches` and the Library's
+      // "Export" buttons both produce `{schema:"boardgame-bundle-v1", logs:[...]}`,
+      // so the inspector accepts that shape interchangeably with a bare MatchLog.
+      let log: any = parsed;
+      if (
+        log && typeof log === "object" &&
+        typeof log.schema === "string" && log.schema.startsWith("boardgame-bundle") &&
+        Array.isArray(log.logs)
+      ) {
+        if (log.logs.length === 0) {
+          throw new Error("bundle contained no matches");
+        }
+        if (log.logs.length > 1) {
+          // No picker UI yet — load the first one but tell the user what's
+          // happening so they don't think the others vanished. A real picker
+          // can land later; this at least keeps the flow unblocked.
+          bootError = `bundle contains ${log.logs.length} matches — loading the first; export individually to inspect others.`;
+        }
+        log = log.logs[0];
+      }
+      if (!log || typeof log !== "object" || typeof log.start_fen !== "string") {
+        throw new Error("not a MatchLog — expected start_fen at root (or a bundle envelope with logs[].start_fen)");
       }
       const startFen: string = log.start_fen;
       // log.config may be missing/null on partial logs — fall back to user's setup config.

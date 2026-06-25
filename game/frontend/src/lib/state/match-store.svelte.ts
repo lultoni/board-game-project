@@ -83,9 +83,12 @@ export const match = $state<MatchState>({
 
 export function resetMatchState(): void {
   match.mode = "idle";
-  // Preserve `side`, `draftMode`, and `preMadeLoadoutId` across resets —
-  // they're set by the setup screen before entering draft, and downstream
-  // routes (draft, match) consume them.
+  // Preserve `side` across resets — set by setup, consumed by draft & match.
+  // `draftMode` and `preMadeLoadoutId` reset to their defaults so that direct
+  // navigation to /match/ without going through /setup/ doesn't inherit stale
+  // mode picks from a previous match. `/setup/` re-writes both on commit.
+  match.draftMode = "custom";
+  match.preMadeLoadoutId = null;
   match.position = null;
   match.legal = new Uint32Array();
   match.selection = null;

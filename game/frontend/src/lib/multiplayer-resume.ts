@@ -9,6 +9,8 @@
 // nesting, base64 zobrist encoding — update these regexes AND the pinning
 // tests in `multiplayer-resume.test.ts`.
 
+import { getEngine } from "./engine";
+
 // MatchLog ply_no is 1-indexed (core_engine/src/session.rs:360); plyCount=0 → start_zobrist.
 export function extractPostZobristForPly(
   matchLogJson: string,
@@ -43,4 +45,64 @@ export function extractResumeStateFromLog(
   }
   const pz = extractPostZobristForPly(logJson, plyCount);
   return { plyCount, zobrist: pz ?? "0" };
+}
+
+/** Rebuild an engine Snapshot JSON ({ start_fen, actions, config }) from a
+ *  persisted MatchLog. Used by the host's Rejoin flow to re-enter /match/
+ *  at the state it had when it left — the engine doesn't expose a replay-from-
+ *  log API, but `restoreFromSnapshot` accepts the same shape we build here,
+ *  and replays every action through `try_apply` on load.
+ *
+ *  Returns null if the log can't be parsed or required fields are missing.
+ *  Walks the plies array via JSON.parse — the Zobrists in the log overflow
+ *  Number precision but `action.raw` is u32 and survives the round-trip. */
+export function snapshotJsonFromMatchLog(matchLogJson: string): string | null {
+  try {
+    const log = JSON.parse(matchLogJson) as {
+      start_fen?: string;
+      config?: unknown;
+      plies?: Array<{ action?: { raw?: number } }>;
+    };
+    if (typeof log.start_fen !== "string") return null;
+    if (log.config === undefined) return null;
+    const actions: number[] = [];
+    for (const ply of log.plies ?? []) {
+      const raw = ply.action?.raw;
+      if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
+        return null;
+      }
+      actions.push(raw);
+    }
+    return JSON.stringify({
+      start_fen: log.start_fen,
+      actions,
+      config: log.config,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Restore an engine from the given MatchLog and ask whether the resulting
+ *  position is still in `Phase::Draft`. Used by the lobby's rejoin flow to
+ *  decide whether to route resume traffic to /draft/ (mid-draft) or /match/
+ *  (post-draft / play-phase). Returns false if the log can't be parsed —
+ *  the caller treats that as "route to /match/" which is the safe fallback.
+ *
+ *  Cost: one WASM engine boot + a snapshot replay. ~50ms when WASM is
+ *  cached (typical for a user who just left a match). The lobby fires
+ *  this lazily, only when the user clicks Rejoin, so it doesn't add to
+ *  page-load time. */
+export async function logIsMidDraft(matchLogJson: string): Promise<boolean> {
+  const snap = snapshotJsonFromMatchLog(matchLogJson);
+  if (!snap) return false;
+  try {
+    const e = await getEngine();
+    await e.restoreFromSnapshot(snap);
+    const view = await e.positionView();
+    // Phase::Draft = 2 (see core_engine/src/wrapper_api.rs:84 mapping).
+    return view.currentPhase === 2;
+  } catch {
+    return false;
+  }
 }

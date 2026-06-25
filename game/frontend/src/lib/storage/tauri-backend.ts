@@ -14,6 +14,7 @@
 import type {
   EndReason,
   FinalisedMatch,
+  JoinedCodeEntry,
   MatchFilter,
   MatchMeta,
   PlyEntry,
@@ -36,6 +37,9 @@ export class TauriTelemetryStore implements TelemetryStore {
   async markNetworkLost(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");
   }
+  async checkpointMatchLog(): Promise<void> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
   async dismissNetworkLost(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");
   }
@@ -54,7 +58,16 @@ export class TauriTelemetryStore implements TelemetryStore {
   async deleteMatch(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");
   }
-  async bundleMatches(): Promise<string> {
+  async bundleMatches(): Promise<{ bundle: string; skipped: string[] }> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async recordJoinedCode(): Promise<void> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async listJoinedCodes(): Promise<JoinedCodeEntry[]> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async forgetJoinedCode(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");
   }
   // Silence unused warnings on the placeholder fields.

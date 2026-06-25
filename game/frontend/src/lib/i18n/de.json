@@ -1,6 +1,11 @@
 {
   "app": {
-    "title": "(spielname)"
+    "title": "(spielname)",
+    "engineVersion": "Engine v{version}",
+    "loading": "lädt…"
+  },
+  "match": {
+    "title": "Partie · {mode}"
   },
   "menu": {
     "newMatch": "Neue Partie",
@@ -194,5 +199,20 @@
     "resumeFailedZobrist": "Fortsetzen fehlgeschlagen — lokaler Stand stimmte nicht mit der Aufzeichnung des Hosts überein. Die Sitzung wurde abgebrochen.",
     "resumeFailedHost": "Fortsetzen fehlgeschlagen — der andere Spieler ist nicht mehr in dieser Partie.",
     "resumeFailedNoSession": "Fortsetzen fehlgeschlagen — keine passende Sitzung unter diesem Code."
+  },
+  "hud": {
+    "phaseMove": "Zug",
+    "phaseSkill": "Fähigkeit",
+    "actionsRemaining": "{n} Aktionen übrig",
+    "money": "Gold: {amount}",
+    "round": "Runde {n}",
+    "toMoveP1": "P1 am Zug",
+    "toMoveP2": "P2 am Zug"
+  },
+  "result": {
+    "p1Wins": "Spieler 1 gewinnt",
+    "p2Wins": "Spieler 2 gewinnt",
+    "draw": "Unentschieden",
+    "aborted": "Partie abgebrochen"
   }
 }

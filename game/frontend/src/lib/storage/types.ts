@@ -75,6 +75,20 @@ export interface MatchFilter {
   startedBeforeUnixMs?: number;
 }
 
+/** A multiplayer code the user has joined as the non-host peer. Stored
+ *  separately from `MatchMeta` because joiners do NOT own a `matches` row in
+ *  the v2 authoritative-host model — host writes the single record. The
+ *  joiner-side resume-card list reads from this store instead. */
+export interface JoinedCodeEntry {
+  code: string;
+  lastJoinedAtUnixMs: number;
+  /** PeerJS ID the joiner used to dial in. Kept for debugging only. */
+  hostPeerId?: string | null;
+  /** Most recent committed seq the joiner observed for this code. Lets the
+   *  lobby decide whether to show "you were mid-game" vs. a stale code. */
+  lastSeenSeq?: number;
+}
+
 /** Storage backend contract. Same surface for IDB (web) and Tauri FS
  *  (desktop). Picked at boot like the engine client. */
 export interface TelemetryStore {
@@ -98,6 +112,17 @@ export interface TelemetryStore {
    *  Used by L7b's reconnect flow. `partialLogJson` semantics match
    *  markAbandoned. */
   markNetworkLost(matchId: string, partialLogJson?: string): Promise<void>;
+  /** Refreshes the stored MatchLog without changing status. Called from the
+   *  draft + match routes after every applied ply so the resume snapshot
+   *  always reflects the engine's latest state. Distinct from
+   *  `markNetworkLost` (which is a one-shot status transition that ignores
+   *  writes after the first flip): this is idempotent and runs on every
+   *  ply, regardless of current `status` — except `ended`, which is
+   *  terminal and must not be overwritten. No-op if the row is missing. */
+  checkpointMatchLog(
+    matchId: string,
+    matchLogJson: string,
+  ): Promise<void>;
   /** Transitions a `mid-match-network-lost` row to `abandoned` (carrying any
    *  partial MatchLog through). No-op if the row is in any other state. Used
    *  by the lobby's "Dismiss" button so the row stops appearing in the
@@ -112,8 +137,22 @@ export interface TelemetryStore {
   /** List match metas matching the filter, sorted by startedAt descending. */
   listMatches(filter?: MatchFilter): Promise<MatchMeta[]>;
   deleteMatch(matchId: string): Promise<void>;
-  /** Returns a JSON bundle of the given matches for "Send to Designer" export. */
-  bundleMatches(matchIds: string[]): Promise<string>;
+  /** Returns a JSON bundle of the given matches for "Send to Designer" export.
+   *  Returns the JSON string and a list of match IDs that were skipped because
+   *  their stored matchLogJson was missing or unparseable. Callers surface the
+   *  skip list to the user (e.g. a toast) so silent data loss is visible. */
+  bundleMatches(matchIds: string[]): Promise<{ bundle: string; skipped: string[] }>;
+
+  // --- joiner-side multiplayer code memory (v2 redesign) -------------------
+  /** Record (or refresh `lastJoinedAtUnixMs` on) a code the user joined as
+   *  the non-host peer. Idempotent on `code` — re-recording updates the
+   *  timestamp and any newer fields. */
+  recordJoinedCode(entry: { code: string; hostPeerId?: string | null; lastSeenSeq?: number }): Promise<void>;
+  /** All codes the user has joined, most-recent first. */
+  listJoinedCodes(): Promise<JoinedCodeEntry[]>;
+  /** Remove a code from the joiner's resume-card list. Used by the "Dismiss"
+   *  affordance on a recent-codes card. No-op if the code isn't recorded. */
+  forgetJoinedCode(code: string): Promise<void>;
 }
 
 // --- ULID generation -------------------------------------------------------

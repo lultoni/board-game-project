@@ -145,34 +145,59 @@ pub struct PlyRecord {
     pub ply_no:                u32,
     pub seat_player:           Player,
     pub seat_kind:             SeatKind,
+    #[serde(default)]
     pub thought_ms:            u32,
+    #[serde(default)]
     pub applied_at_unix_ms:    u64,
     pub action:                ActionDecoded,
+    #[serde(default)]
     pub legal_count:           u32,
     // pre-action position fingerprint
+    #[serde(default)]
     pub prev_zobrist:          u64,
+    #[serde(default)]
     pub prev_fen:              String,
+    #[serde(default)]
     pub prev_static_eval:      i32,
+    #[serde(default)]
     pub prev_breakdown:        EvalBreakdown,
     // post-action position fingerprint
+    #[serde(default)]
     pub post_zobrist:          u64,
+    #[serde(default)]
     pub post_fen:              String,
+    #[serde(default)]
     pub post_static_eval:      i32,
+    #[serde(default)]
     pub post_breakdown:        EvalBreakdown,
+    #[serde(default)]
     pub post_game_result:      Option<GameResult>,
+    #[serde(default = "default_phase")]
     pub post_phase:            Phase,
+    #[serde(default)]
     pub post_actions_remaining:u8,
+    #[serde(default)]
     pub post_round:            u16,
+    #[serde(default)]
     pub post_focus_pending:    bool,
+    #[serde(default)]
     pub post_charge_pending:   bool,
+    #[serde(default)]
     pub post_moved_this_phase: u64,
+    #[serde(default)]
     pub post_p1_money:         u16,
+    #[serde(default)]
     pub post_p2_money:         u16,
+    #[serde(default)]
     pub post_tracked_enemies:  Vec<u8>,
+    #[serde(default)]
     pub post_tracked_casters:  Vec<u8>,
     // AI metadata; None when human played
+    #[serde(default)]
     pub ai:                    Option<SearchMeta>,
 }
+
+fn default_phase() -> Phase { Phase::Move }
 
 /// Snapshot a `Position` into the "post" half of a PlyRecord. Public so
 /// `session::Match::try_apply_timed` can build records without leaking
@@ -217,21 +242,35 @@ impl MatchResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MatchLog {
+    #[serde(default = "default_engine_version")]
     pub engine_version:  String,
+    #[serde(default)]
     pub started_at_unix: u64,
     pub config:          Config,
+    #[serde(default)]
     pub config_hash:     u64,
     pub start_fen:       String,
+    #[serde(default)]
     pub start_zobrist:   u64,
+    #[serde(default)]
     pub plies:           Vec<PlyRecord>,
+    #[serde(default)]
     pub final_result:    Option<MatchResult>,
+    #[serde(default)]
     pub final_fen:       Option<String>,
+    #[serde(default)]
     pub final_zobrist:   Option<u64>,
+    #[serde(default)]
     pub total_plies:     u32,
+    #[serde(default)]
     pub total_wall_ms:   u64,
+    #[serde(default)]
     pub total_ai_nodes:  u64,
+    #[serde(default)]
     pub notes:           Option<String>,
 }
+
+fn default_engine_version() -> String { env!("CARGO_PKG_VERSION").to_string() }
 
 impl MatchLog {
     pub fn new(now_unix: u64, config: Config, start: &Position) -> Self {
@@ -464,6 +503,36 @@ mod tests {
         assert_eq!(log.plies[0].action.raw, first.0);
         assert_eq!(log.plies[0].post_zobrist, m.position().zobrist);
         assert!(log.plies[0].ai.is_none()); // human-applied
+    }
+
+    #[test]
+    fn legacy_match_log_with_missing_fields_loads() {
+        // Regression: pre-L8 saved logs lacked fields added later
+        // (auto_log on Config, picks on ActionDecoded, post_focus_pending,
+        // post_charge_pending, post_tracked_*, etc.). `#[serde(default)]` on
+        // every non-load-bearing field should let them load. A minimal
+        // hand-rolled JSON exercises that.
+        let minimal = r#"{
+          "config": {
+            "p1": "Human",
+            "p2": "Human",
+            "p1_ai": { "time_limit_ms": 1000, "max_depth": 6 },
+            "p2_ai": { "time_limit_ms": 1000, "max_depth": 6 },
+            "aivai_step_delay": { "secs": 0, "nanos": 0 },
+            "allow_undo": true
+          },
+          "start_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1"
+        }"#;
+        // start_fen above is a chess FEN placeholder — we only test serde
+        // deserialisation; we don't run the engine against it.
+        let log: Result<MatchLog, _> = serde_json::from_str(minimal);
+        assert!(log.is_ok(), "legacy minimal MatchLog should deserialise: {:?}", log.err());
+        let log = log.unwrap();
+        assert_eq!(log.plies.len(), 0);
+        assert_eq!(log.total_plies, 0);
+        assert!(log.final_result.is_none());
+        // auto_log defaulted to false (the field is missing in the JSON).
+        assert!(!log.config.auto_log);
     }
 
     #[test]

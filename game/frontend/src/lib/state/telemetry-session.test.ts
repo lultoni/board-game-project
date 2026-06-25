@@ -21,7 +21,7 @@ import { IdbTelemetryStore } from "../storage/idb-backend";
 
 function resetIdb(): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const req = indexedDB.deleteDatabase("boardgame-matches");
+    const req = indexedDB.deleteDatabase("boardgame-matches-v2");
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
     req.onblocked = () => resolve();
@@ -83,6 +83,16 @@ describe("telemetry-session helpers", () => {
     expect(await startTelemetrySession(carrier, "sandbox")).toBeNull();
     expect(await startTelemetrySession(carrier, "replay")).toBeNull();
     expect(await startTelemetrySession(carrier, "idle")).toBeNull();
+    expect(carrier.telemetryMatchId).toBeNull();
+  });
+
+  it("startTelemetrySession skips multiplayer joiner role (authoritative-host model)", async () => {
+    const carrier = newCarrier();
+    const id = await startTelemetrySession(carrier, "multiplayer", {
+      multiplayerCode: "281947",
+      multiplayerRole: "joiner",
+    });
+    expect(id).toBeNull();
     expect(carrier.telemetryMatchId).toBeNull();
   });
 

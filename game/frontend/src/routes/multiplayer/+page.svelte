@@ -13,7 +13,7 @@
     probeHost,
   } from "$lib/multiplayer.svelte";
   import { isValidCode } from "$lib/multiplayer-protocol";
-  import { extractResumeStateFromLog } from "$lib/multiplayer-resume";
+  import { extractResumeStateFromLog, snapshotJsonFromMatchLog, logIsMidDraft } from "$lib/multiplayer-resume";
   import { match, resetMatchState } from "$lib/state/match-store.svelte";
   import { getTelemetryStore, type MatchMeta } from "$lib/storage";
 
@@ -25,6 +25,15 @@
   let busy = $state(false);
 
   let unsub: (() => void) | null = null;
+  // True while the host's `rejoinSession` is awaiting the joiner — flips the
+  // "connected" $effect from "advance host to /setup/ for a fresh game" to
+  // "advance host straight to /match/ for an in-progress resume". Set
+  // before `mpHostWithCode`, read by the $effect, cleared after navigation.
+  let resumingHost = $state(false);
+  // Resume target for the host: "../draft/" if the saved log is mid-draft,
+  // "../match/" otherwise. Set alongside `resumingHost` in rejoinSession;
+  // read by the host $effect when advancing.
+  let resumingHostTarget = $state<"../draft/" | "../match/">("../match/");
 
   // Network-lost multiplayer sessions from the last 24h, surfaced as cards
   // above the Host/Join panel so the user can reclaim a session after a
@@ -35,6 +44,40 @@
   let recentError = $state<string | null>(null);
   // Per-card liveness from a one-shot PeerJS probe. Keyed by matchId.
   let recentLiveness = $state<Record<string, "probing" | "live" | "dead">>({});
+  // Interval handle for periodic liveness re-probes while the lobby is
+  // mounted. PeerJS broker state can flip (host rehosts, ID slot expires)
+  // after the initial one-shot probe — without refresh the dot can stay
+  // stale until the user dismisses + re-enters the lobby. Cleared in
+  // onDestroy.
+  let livenessRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  // Cap how many cards we re-probe per cycle to avoid burning broker
+  // sockets on long histories.
+  const PROBE_LIMIT = 5;
+  const LIVENESS_REFRESH_MS = 5_000;
+
+  function refreshLiveness(): void {
+    // Re-probe each recent-sessions card. Idempotent — if a probe is still
+    // in flight we just kick off another one and the latter resolution
+    // wins (last write to recentLiveness[id]). Acceptable: probes finish
+    // in <= 2s and the refresh interval is 5s.
+    //
+    // Host-role cards are skipped: the saved `multiplayerCode` is the
+    // host's OWN PeerJS ID, so probing it from the same machine that
+    // wasn't actively hosting just returns "unavailable" — the dot would
+    // always show black and mean nothing. We hide the dot in the template
+    // and skip the probe so we don't burn broker sockets on it.
+    for (const meta of recentLostSessions.slice(0, PROBE_LIMIT)) {
+      if (!meta.multiplayerCode) continue;
+      if (meta.multiplayerRole === "host") continue;
+      const id = meta.matchId;
+      // Only show "probing" on the very first probe — subsequent refreshes
+      // keep the last-known state visible so the dot doesn't flicker.
+      if (!(id in recentLiveness)) recentLiveness[id] = "probing";
+      probeHost(meta.multiplayerCode).then((alive) => {
+        recentLiveness[id] = alive ? "live" : "dead";
+      });
+    }
+  }
 
   async function loadRecentLost(): Promise<void> {
     try {
@@ -143,48 +186,88 @@
   // surface "code taken". For the joiner we dial the host like any normal
   // join — if the host hasn't come back yet, the dial fails with
   // peer-unavailable, which the existing UI maps to "no such session".
+  //
+  // Phase-aware: when the saved MatchLog ends mid-draft (Phase::Draft after
+  // replay), we route to /draft/ instead of /match/. The /draft/ route knows
+  // how to restore an engine from a snapshot without forwarding to /match/.
   async function rejoinSession(meta: MatchMeta): Promise<void> {
     const code = meta.multiplayerCode!;
     const role = meta.multiplayerRole!;
     busy = true;
     codeError = null;
     try {
+      // Load the saved MatchLog once for both branches — used for the
+      // snapshot reconstruction and the phase probe.
+      const store = getTelemetryStore();
+      let matchLogJson: string | null = null;
+      try {
+        const persisted = await store.getMatch(meta.matchId);
+        matchLogJson = persisted?.matchLogJson ?? null;
+      } catch { /* fall through with null */ }
+      const midDraft = matchLogJson ? await logIsMidDraft(matchLogJson) : false;
+      const targetRoute = midDraft ? "../draft/" : "../match/";
+
       resetMatchState();
+      // Carry the existing telemetry id forward so /draft/ and /match/ skip
+      // their startTelemetrySession calls. Without this we'd create a new
+      // IDB row on resume — the original row would stay in `mid-match-
+      // network-lost` and the new one in `in-progress`, producing duplicate
+      // recent-sessions cards next time the user drops.
+      match.telemetryMatchId = meta.matchId;
+
       if (role === "host") {
+        // Rebuild the host's saved engine state from its own MatchLog. The
+        // engine doesn't expose a log-replay API, but Snapshot ({ start_fen,
+        // actions, config }) is replayable via `restoreFromSnapshot` and we
+        // can construct one from the persisted log. Stuff it into
+        // `pendingSnapshotJson` so /match/ or /draft/ restores from it.
+        if (matchLogJson) {
+          const snap = snapshotJsonFromMatchLog(matchLogJson);
+          if (snap) match.pendingSnapshotJson = snap;
+        }
+        resumingHost = true;
+        resumingHostTarget = targetRoute;
         view = "hosting";
         await mpHostWithCode(code);
         match.multiplayerRole = "host";
         match.multiplayerCode = code;
-        // $effect below picks up "connected" and forwards to /setup/.
+        match.mode = "multiplayer";
+        match.side = { p1: "human", p2: "human" };
+        // $effect below sees `resumingHost` and routes immediately to
+        // `resumingHostTarget` once `mpState.code` is set — without waiting
+        // for the joiner. We need to be on the play route with mpUnsub
+        // registered before the joiner's resume-request arrives.
       } else {
         // Stage a resume request so the joiner sends it the moment its
         // DataConnection opens, instead of waiting for a fresh snapshot.
         // The host validates the (plyCount, zobrist) pair against its
         // MatchLog and replies accept or reject.
-        const store = getTelemetryStore();
         let plyCount = 0;
         let zobrist = "0";
-        try {
-          const persisted = await store.getMatch(meta.matchId);
-          if (persisted?.matchLogJson) {
-            const r = extractResumeStateFromLog(persisted.matchLogJson);
-            plyCount = r.plyCount;
-            zobrist = r.zobrist;
-          }
-        } catch { /* fall through with 0/"0" sentinels */ }
+        if (matchLogJson) {
+          const r = extractResumeStateFromLog(matchLogJson);
+          plyCount = r.plyCount;
+          zobrist = r.zobrist;
+        }
         mpState.pendingResume = { code, plyCount, zobrist };
+        // For mid-draft resume, also stage the joiner's own snapshot so
+        // /draft/ can restore the engine before the host's snapshot arrives.
+        // This avoids a flicker where /draft/ would otherwise call
+        // createEngineWithDraft and show an empty board until the host
+        // responds. (For play-phase resume, /match/ waits for the host's
+        // resume-accept and ignores any local snapshot in the meantime.)
+        if (midDraft && matchLogJson) {
+          const snap = snapshotJsonFromMatchLog(matchLogJson);
+          if (snap) match.pendingSnapshotJson = snap;
+        }
         codeInput = code;
         view = "joining";
         await mpJoin(code);
         match.multiplayerRole = "joiner";
         match.multiplayerCode = code;
-        // We stay on "joining" — the host's resume-accept will deliver a
-        // snapshot. We route the joiner forward to /match/ here so the
-        // existing onData subscription there can pick up the snapshot;
-        // until accept arrives the joiner sees the in-match boot screen.
         match.mode = "multiplayer";
         match.side = { p1: "human", p2: "human" };
-        void goto("../match/");
+        void goto(targetRoute);
       }
     } catch (e) {
       const msg = (e as Error)?.message ?? String(e);
@@ -231,11 +314,27 @@
   // We only navigate the HOST from the lobby when the joiner connects, so
   // they can pick seats. But seats are forced human in multiplayer — so we
   // just send them to /setup/ once `connected` is true.
+  //
+  // Exception: host resume. `rejoinSession` for the host stages a snapshot
+  // and sets `resumingHost = true` + `resumingHostTarget`. In that case we
+  // advance as soon as the broker accepts our PeerJS ID (`mpState.code` is
+  // set), WITHOUT waiting for the joiner. The host needs to be on the play
+  // route with mpUnsub registered before the joiner's resume-request lands;
+  // otherwise the request sits in the lobby inbox forever.
   $effect(() => {
     if (view !== "hosting") return;
-    if (mpState.status !== "connected") return;
     if (busy) return;
-    // Joiner connected. Lock seats + advance the host to /setup/.
+    if (resumingHost && mpState.code) {
+      const target = resumingHostTarget;
+      resumingHost = false;
+      busy = true;
+      match.side = { p1: "human", p2: "human" };
+      match.mode = "multiplayer";
+      match.multiplayerRole = "host";
+      void goto(target);
+      return;
+    }
+    if (mpState.status !== "connected") return;
     match.side = { p1: "human", p2: "human" };
     match.mode = "multiplayer";
     match.multiplayerRole = "host";
@@ -243,17 +342,47 @@
     void goto("../setup/");
   });
 
-  // Joiner: wait for the host's snapshot, then forward to /match/ directly.
+  // Joiner: wait for the host's signal, then forward to /draft/ (custom) or
+  // /match/ (preMade / resume snapshot). The order of message kinds matters:
+  //   - `draft-mode` arrives first at fresh-game start (post-/setup/);
+  //   - `snapshot` only fires for resume flows or the legacy preMade fallback.
   function handleJoinerMessages(): void {
     if (unsub) unsub();
     unsub = onData((msg) => {
-      if (msg.kind === "snapshot") {
+      if (msg.kind === "draft-mode") {
+        if (msg.mode === "preMade" && !msg.loadoutId) {
+          // Defence-in-depth: the wire decoder rejects this shape, but a peer
+          // could still ship a malformed envelope. Reject loudly rather than
+          // routing the joiner to /match/ with a null loadoutId (which would
+          // crash the boot path).
+          codeError = t("multiplayer.connectionError", { msg: "invalid draft-mode" });
+          mpDisconnect();
+          match.multiplayerRole = null;
+          match.multiplayerCode = null;
+          view = "choose";
+          return;
+        }
+        match.side = { p1: "human", p2: "human" };
+        match.mode = "multiplayer";
+        match.multiplayerRole = "joiner";
+        match.draftMode = msg.mode;
+        match.preMadeLoadoutId = msg.mode === "preMade" ? msg.loadoutId! : null;
+        if (msg.mode === "preMade") {
+          // /match/ reads preMadeLoadoutId and builds both sides locally.
+          // No snapshot exchange needed — engine setup is deterministic.
+          void goto("../match/");
+        } else {
+          // /draft/ co-drafts via the draft-turn wire protocol.
+          void goto("../draft/");
+        }
+      } else if (msg.kind === "snapshot") {
+        // Legacy / fallback path: host shipped a pre-built snapshot (used for
+        // resume handshakes and pre-Phase-F builds). Drop straight into /match/.
         match.side = { p1: "human", p2: "human" };
         match.pendingSnapshotJson = msg.snapshotJson;
         match.mode = "multiplayer";
         match.multiplayerRole = "joiner";
         sendData({ kind: "ready" });
-        // The match route consumes pendingSnapshotJson on mount.
         void goto("../match/");
       } else if (msg.kind === "error" && msg.reason === "session-full") {
         codeError = t("multiplayer.sessionFull");
@@ -287,16 +416,11 @@
     // button works either way (and a stale dead probe could be wrong if
     // the host reconnects between probe and click).
     // Capped at the 5 most-recent cards so a long history doesn't burn
-    // ~40 broker sockets every lobby mount.
-    const PROBE_LIMIT = 5;
-    for (const meta of recentLostSessions.slice(0, PROBE_LIMIT)) {
-      if (!meta.multiplayerCode) continue;
-      const id = meta.matchId;
-      recentLiveness[id] = "probing";
-      probeHost(meta.multiplayerCode).then((alive) => {
-        recentLiveness[id] = alive ? "live" : "dead";
-      });
-    }
+    // ~40 broker sockets every lobby mount. Re-probed every
+    // LIVENESS_REFRESH_MS so a rehosted/expired ID slot gets noticed
+    // without forcing the user to dismiss + return.
+    refreshLiveness();
+    livenessRefreshTimer = setInterval(refreshLiveness, LIVENESS_REFRESH_MS);
 
     // Auto-attempt connect from `?join=XXXXXX` query param.
     const params = typeof window !== "undefined"
@@ -317,6 +441,10 @@
       unsub();
       unsub = null;
     }
+    if (livenessRefreshTimer) {
+      clearInterval(livenessRefreshTimer);
+      livenessRefreshTimer = null;
+    }
     // Don't disconnect on unmount — the host/joiner navigates onward and the
     // connection must persist for the match.
   });
@@ -336,11 +464,14 @@
           {#each recentLostSessions as meta (meta.matchId)}
             {@const playerNo = meta.multiplayerRole === "host" ? 1 : 2}
             {@const liveness = recentLiveness[meta.matchId] ?? "probing"}
+            {@const showDot = meta.multiplayerRole === "joiner"}
             <li class="recent-card">
               <div class="recent-meta">
-                <span class="liveness" data-state={liveness} aria-hidden="true">
-                  {liveness === "live" ? "🟢" : liveness === "dead" ? "⚫" : "·"}
-                </span>
+                {#if showDot}
+                  <span class="liveness" data-state={liveness} aria-hidden="true">
+                    {liveness === "live" ? "🟢" : liveness === "dead" ? "⚫" : "·"}
+                  </span>
+                {/if}
                 <span class="recent-time">
                   {t("multiplayer.startedAt", { time: formatStartedAt(meta.startedAtUnixMs) })}
                 </span>

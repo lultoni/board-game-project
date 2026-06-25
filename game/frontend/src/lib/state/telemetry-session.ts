@@ -31,6 +31,13 @@ export async function startTelemetrySession(
   opts: { multiplayerCode?: string | null; multiplayerRole?: "host" | "joiner" | null } = {},
 ): Promise<string | null> {
   if (mode === "sandbox" || mode === "replay" || mode === "idle") return null;
+  // L7c authoritative-host model: only the host owns an IDB row per match.
+  // Joiner uses the `joined_codes` store instead (in lobby) — no `matches`
+  // row, so the duplicate-recent-sessions-card bug can't recur.
+  if (opts.multiplayerRole === "joiner") {
+    carrier.telemetryMatchId = null;
+    return null;
+  }
   telemetryDisabledForSession = false;
   try {
     const store = getTelemetryStore();
@@ -51,16 +58,40 @@ export async function startTelemetrySession(
 
 /** Reads the engine's latest PlyRecord and appends it to the active
  *  telemetry session. Safe to call after every apply; cheap no-op if no
- *  session is active. */
+ *  session is active. Also checkpoints the engine's consolidated MatchLog
+ *  to the match row so a tab close immediately after this ply produces a
+ *  resume snapshot reflecting every applied move, not just the snapshot
+ *  taken at the previous disconnect. */
 export async function recordPly(carrier: TelemetryCarrier, eng: EngineClient): Promise<void> {
   if (!carrier.telemetryMatchId || telemetryDisabledForSession) return;
   try {
     const plyJson = await eng.latestPlyJson();
     if (!plyJson) return;
     const plyNo = extractPlyNo(plyJson);
-    if (plyNo === null) return;
+    if (plyNo === null) {
+      // Engine returned a record without a parseable ply_no — surface loudly
+      // rather than silently dropping. The library row will be incomplete but
+      // a console.warn lets us notice serialiser drift in dev.
+      console.warn(
+        "[telemetry] recordPly: latestPlyJson missing ply_no; dropping entry.",
+        plyJson.slice(0, 200),
+      );
+      return;
+    }
     const store = getTelemetryStore();
     await store.appendPly(carrier.telemetryMatchId, plyJson, plyNo);
+    // Refresh the consolidated MatchLog on the matches row too. Without
+    // this, `markNetworkLost` is the only writer of `matchLogJson` — and it
+    // is a one-shot transition that no-ops after the first flip, so any
+    // plies applied AFTER the row turned `mid-match-network-lost` would be
+    // dropped from the resume snapshot.
+    try {
+      const logJson = await eng.matchLogJson();
+      if (logJson) await store.checkpointMatchLog(carrier.telemetryMatchId, logJson);
+    } catch {
+      // Engine without auto_log on, or a transient failure — appendPly
+      // already succeeded, so the per-ply log is preserved. Skip silently.
+    }
   } catch (e) {
     logFail("recordPly", e);
   }
@@ -95,12 +126,28 @@ export async function finalizeTelemetrySession(
   try {
     const logJson = await eng.matchLogJson();
     if (!logJson) return;
-    const parsed = JSON.parse(logJson) as {
-      total_plies?: number;
-      total_wall_ms?: number;
-    };
-    const totalPlies = parsed.total_plies ?? 0;
-    const totalWallMs = parsed.total_wall_ms ?? 0;
+    let totalPlies = 0;
+    let totalWallMs = 0;
+    try {
+      const parsed = JSON.parse(logJson) as {
+        total_plies?: number;
+        total_wall_ms?: number;
+        plies?: unknown[];
+      };
+      // Prefer engine-reported totals; if `total_plies` is absent, fall back
+      // to the length of the `plies` array (still better than 0). `total_wall_ms`
+      // has no safe fallback — leave at 0 if absent.
+      totalPlies = parsed.total_plies ?? (Array.isArray(parsed.plies) ? parsed.plies.length : 0);
+      totalWallMs = parsed.total_wall_ms ?? 0;
+    } catch (parseErr) {
+      // The library reads the consolidated log directly; finalising with an
+      // unparseable string would corrupt the row. Surface and bail so the
+      // session stays in-progress and the user can export the raw blob via
+      // the inspector instead.
+      logFail("finalizeTelemetrySession.parseLog", parseErr);
+      carrier.telemetryMatchId = id; // restore so a retry path is possible
+      return;
+    }
     const store = getTelemetryStore();
     await store.finalizeMatch(id, logJson, endReason, resultByte, totalPlies, totalWallMs);
   } catch (e) {

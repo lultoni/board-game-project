@@ -28,7 +28,16 @@
   onDestroy(() => clearInterval(timer));
 
   const pill = $derived(pillState());
-  const visible = $derived(pill === "disconnected" || pill === "forfeit");
+  // Only show the banner once a peer has actually been present at some point
+  // this session (peerEverPaired latches on first inbound traffic and is
+  // cleared only by disconnect()). This suppresses the spurious banner shown
+  // during the host's resume-rehost window, where `mpState.status ===
+  // "hosting"` makes the pill report "disconnected" before the joiner has
+  // ever dialled — while still showing the banner on every real drop,
+  // including drops where lastPongAt has been reset to null.
+  const visible = $derived(
+    (pill === "disconnected" || pill === "forfeit") && mpState.peerEverPaired
+  );
 
   const deadline = $derived(
     mpState.disconnectedSince !== null

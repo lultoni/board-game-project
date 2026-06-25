@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import { getEngine, encodeDraftTurn } from "$lib/engine";
   import { buildEngineConfigJson } from "$lib/engine/config";
@@ -11,8 +11,14 @@
     match,
     modeFromSeats,
     resetMatchState,
+    startTelemetrySession,
+    abandonTelemetrySession,
+    networkLostTelemetrySession,
   } from "$lib/state/match-store.svelte";
-  import { sendData } from "$lib/multiplayer.svelte";
+  import { onData, sendData, mpState, disconnect as mpDisconnect } from "$lib/multiplayer.svelte";
+  import ConnectivityPill from "$lib/multiplayer/ConnectivityPill.svelte";
+  import GraceBanner from "$lib/multiplayer/GraceBanner.svelte";
+  import { getTelemetryStore } from "$lib/storage";
   import {
     squareName,
     STACK_M_LOADOUT_SQUARES,
@@ -44,13 +50,19 @@
   const currentSeat = $derived(isP1Turn ? match.side.p1 : match.side.p2);
   const currentSeatIsAi = $derived(currentSeat === "ai");
 
-  // Phase E multiplayer fallback: host drafts both sides and ships the
-  // finished snapshot. Phase F replaces this with peer-streamed DraftTurns.
+  // Phase F multiplayer: each peer drafts its own seat. `peerReady` flips true
+  // when the opposite peer has signalled `draft-ready` — we hold the first
+  // commit until both engines are mounted to avoid race-shipping a DraftTurn
+  // the peer can't yet apply. AI is disallowed entirely in multiplayer (the
+  // setup screen forces both seats to "human").
+  let peerReady = $state(false);
   const localCanDraft = $derived.by(() => {
     if (currentSeatIsAi) return false;
     if (!isMultiplayer) return true;
-    if (match.multiplayerRole === "host") return true;
-    if (match.multiplayerRole === "joiner") return false;
+    if (!peerReady) return false;
+    // Host = P1 (seat index 0), joiner = P2 (seat index 1).
+    if (match.multiplayerRole === "host"   && isP1Turn) return true;
+    if (match.multiplayerRole === "joiner" && !isP1Turn) return true;
     return false;
   });
 
@@ -266,6 +278,18 @@
         pick2.skillId, pick2.sq, pick2.slot,
       );
       await eng.tryApply(raw);
+      // In multiplayer, broadcast the packed u32 to the peer so its engine
+      // applies the same DraftTurn. Engines are deterministic so both arrive
+      // at identical positions; no snapshot reconciliation needed.
+      if (isMultiplayer) {
+        sendData({ kind: "draft-turn", raw });
+      }
+      // Checkpoint the engine's MatchLog to IDB so a tab close or peer drop
+      // immediately after this pick still produces a fresh resume snapshot.
+      // markNetworkLost is a one-shot status flip and stops writing once the
+      // row is `mid-match-network-lost`; checkpointMatchLog ignores status
+      // and stays idempotent across the lifetime of the draft.
+      await persistMatchLogCheckpoint();
       clearPicks();
       await refresh();
       if ((draftState?.turnNo ?? 0) >= 12) await finishAndForward();
@@ -273,6 +297,43 @@
       bootError = (e as Error)?.message ?? String(e);
     } finally {
       busy = false;
+    }
+  }
+
+  /** Apply a DraftTurn received from the peer. Mirrors `commitTurn`'s post-
+   *  apply flow (clear tentative picks, refresh, forward on completion) but
+   *  skips the local commit-readiness check and the wire echo. */
+  async function applyRemoteDraftTurn(raw: number): Promise<void> {
+    if (!eng || busy) return;
+    busy = true;
+    try {
+      await eng.tryApply(raw);
+      // Same checkpoint as commitTurn — both sides must keep IDB current so
+      // either tab can resume independently after a drop.
+      await persistMatchLogCheckpoint();
+      clearPicks();
+      await refresh();
+      if ((draftState?.turnNo ?? 0) >= 12) await finishAndForward();
+    } catch (e) {
+      bootError = (e as Error)?.message ?? String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** Snapshot the engine's MatchLog to IDB. Swallows failures so telemetry
+   *  never blocks gameplay; the worst-case fallout is a stale resume snapshot
+   *  next time, which is the bug we already fixed. */
+  async function persistMatchLogCheckpoint(): Promise<void> {
+    if (!eng) return;
+    if (!match.telemetryMatchId) return;
+    try {
+      const logJson = await eng.matchLogJson();
+      if (!logJson) return;
+      const store = getTelemetryStore();
+      await store.checkpointMatchLog(match.telemetryMatchId, logJson);
+    } catch {
+      // Telemetry must never block gameplay.
     }
   }
 
@@ -321,9 +382,87 @@
     draftState = await eng.draftState();
   }
 
+  let mpUnsub: (() => void) | null = null;
+
+  // True while navigating forward into /match/. Used by the teardown paths to
+  // decide whether to tear down the PeerJS connection (back-button → home)
+  // or keep it alive (draft → match handoff). The peer must persist across
+  // the route change so the post-draft snapshot exchange / resume-request
+  // handshake can land on /match/.
+  let navigatingForward = false;
+
+  // Mirror /match/'s host-side peer-drop detection so the host (or AI seat)
+  // gets a `mid-match-network-lost` row written if the joiner closes their
+  // tab during the draft phase. Without this, a draft-time disconnect leaves
+  // no recent-sessions card for either side. See /match/+page.svelte for the
+  // identical pattern. Idempotent via `hasMarkedNetworkLost`.
+  let hasMarkedNetworkLost = false;
+  // Track connected-edge so we can re-emit draft-ready every time the channel
+  // (re-)opens during the draft. The initial onMount sendData runs before the
+  // host's resume-rehost connection is open (and on the joiner side, the
+  // single send happens at boot but a mid-draft drop loses the peer's earlier
+  // ready). Without re-sending, the side that wasn't connected at the moment
+  // of the original send stays at peerReady=false → locked out of picking.
+  let wasConnected = false;
+  $effect(() => {
+    if (match.mode !== "multiplayer") return;
+    const nowConnected = mpState.status === "connected";
+    if (nowConnected && !wasConnected) {
+      wasConnected = true;
+      // Idempotent on the receiving side (peerReady stays true once set).
+      sendData({ kind: "draft-ready" });
+    } else if (!nowConnected && wasConnected) {
+      wasConnected = false;
+    }
+  });
+  $effect(() => {
+    if (match.mode !== "multiplayer") return;
+    if (!match.telemetryMatchId) return;
+    if (mpState.status === "connected") {
+      hasMarkedNetworkLost = false;
+      return;
+    }
+    if (mpState.status !== "disconnected") return;
+    if (hasMarkedNetworkLost) return;
+    const id = match.telemetryMatchId;
+    hasMarkedNetworkLost = true;
+    void (async () => {
+      try {
+        let partial: string | undefined;
+        if (eng) {
+          try { partial = (await eng.matchLogJson()) ?? undefined; } catch { /* noop */ }
+        }
+        const store = getTelemetryStore();
+        await store.markNetworkLost(id, partial);
+      } catch {
+        // Swallow — telemetry must never block gameplay.
+      }
+    })();
+  });
+
+  function pageHideHandler(): void {
+    if (match.telemetryMatchId && !match.telemetryFinalised) {
+      if (match.mode === "multiplayer") {
+        void networkLostTelemetrySession(eng ?? undefined);
+      } else {
+        void abandonTelemetrySession(eng ?? undefined);
+      }
+    }
+  }
+
   onMount(async () => {
     try {
-      const wasMultiplayer = match.mode === "multiplayer";
+      // Use multiplayerRole (not match.mode) as the multiplayer indicator —
+      // resetMatchState() doesn't clear multiplayerRole, but it does flip mode
+      // to "idle". Reading mode here means a reset between routes silently
+      // turns off the multiplayer branch below.
+      const wasMultiplayer = match.multiplayerRole !== null;
+      const mpRole = match.multiplayerRole;
+      const mpCode = match.multiplayerCode;
+      // Capture an in-flight telemetry id before resetMatchState clears it.
+      // Rejoin from the lobby sets this; we want the same row to keep
+      // accumulating plies, not a fresh one.
+      const carriedTelemetryId = match.telemetryMatchId;
       if (match.pendingSnapshotJson) {
         const e = await getEngine();
         const newCfg = JSON.parse(buildEngineConfigJson(match.side));
@@ -331,20 +470,145 @@
         parsed.config = newCfg;
         const newSnap = JSON.stringify(parsed);
         await e.restoreFromSnapshot(newSnap);
-        match.pendingSnapshotJson = newSnap;
-        match.mode = wasMultiplayer ? "multiplayer" : modeFromSeats(match.side);
-        await goto("../match/");
+        // Probe phase: if the snapshot reflects a still-mid-draft state,
+        // KEEP the engine and fall through to the normal draft mount path
+        // (skipping createEngineWithDraft). This is the resume path from
+        // the multiplayer lobby's Rejoin flow. Otherwise the snapshot
+        // represents a finished draft (Phase F's symmetric handoff) — push
+        // it forward to /match/.
+        const probeView = await e.positionView();
+        // Phase::Draft = 2 (see wrapper_api.rs:84).
+        if (probeView.currentPhase !== 2) {
+          match.pendingSnapshotJson = newSnap;
+          match.mode = wasMultiplayer ? "multiplayer" : modeFromSeats(match.side);
+          await goto("../match/");
+          return;
+        }
+        // Mid-draft resume. Wire up the multiplayer message handler before
+        // we consume the staged snapshot so a peer message that lands during
+        // setup is captured by the inbox.
+        if (wasMultiplayer) {
+          mpUnsub = onData((msg) => {
+            if (msg.kind === "draft-ready") {
+              peerReady = true;
+              return;
+            }
+            if (msg.kind === "draft-turn") {
+              void applyRemoteDraftTurn(msg.raw);
+              return;
+            }
+          });
+        }
+        resetMatchState();
+        if (carriedTelemetryId) match.telemetryMatchId = carriedTelemetryId;
+        if (wasMultiplayer) match.mode = "multiplayer";
+        eng = e;
+        await refresh();
+        booted = true;
+        // Telemetry: skip startTelemetrySession when a carrier id is present;
+        // the existing row in IDB continues to accumulate plies. Start a
+        // fresh session only if we don't have one (defensive — shouldn't
+        // happen for the rejoin flow which sets it).
+        if (!match.telemetryMatchId) {
+          await startTelemetrySession(match.mode, {
+            multiplayerCode: mpCode,
+            multiplayerRole: mpRole,
+          });
+        }
+        if (wasMultiplayer) {
+          sendData({ kind: "draft-ready" });
+        }
+        if (typeof window !== "undefined") {
+          window.addEventListener("pagehide", pageHideHandler);
+        }
         return;
       }
+      // Stale-entry guard: a page reload mid-draft drops the in-memory engine
+      // handle AND the match carrier ($state lives in memory). The user lands
+      // back at `mode === "idle"` with no pending snapshot — the previous
+      // draft is irretrievably gone. Rather than silently restarting in a
+      // default HvH setup, bounce back to /setup/ so the user explicitly
+      // re-picks seats and draft mode. Multiplayer is exempt: re-entry mid-
+      // draft is the host's job to recover via the snapshot handshake.
+      if (!wasMultiplayer && match.mode === "idle") {
+        bootError = "Draft session lost (page was reloaded). Redirecting to setup…";
+        await goto("../setup/");
+        return;
+      }
+      // Phase F multiplayer: subscribe BEFORE creating the engine so we don't
+      // miss a `draft-ready` that lands during the createEngineWithDraft
+      // await. The protocol layer's inbox holds the latest message of each
+      // kind, so a `draft-ready` that arrives before this subscription was
+      // registered will be drained synchronously by `onData`.
+      if (wasMultiplayer) {
+        mpUnsub = onData((msg) => {
+          if (msg.kind === "draft-ready") {
+            peerReady = true;
+            return;
+          }
+          if (msg.kind === "draft-turn") {
+            void applyRemoteDraftTurn(msg.raw);
+            return;
+          }
+        });
+      }
       resetMatchState();
+      if (carriedTelemetryId) match.telemetryMatchId = carriedTelemetryId;
       if (wasMultiplayer) match.mode = "multiplayer";
+      // multiplayerRole/Code survive resetMatchState (owned by the lobby).
       eng = await getEngine();
       const configJson = buildEngineConfigJson(match.side);
       await eng.createEngineWithDraft(configJson);
       await refresh();
       booted = true;
+      // Start a telemetry session so draft plies are recorded into the same
+      // MatchLog the resume / replay paths consume. Mirrors /match/'s pattern;
+      // a no-op for sandbox/replay (the draft route doesn't reach those modes).
+      // Skip if a carrier id is already set (rejoin flow).
+      if (!match.telemetryMatchId) {
+        await startTelemetrySession(match.mode, {
+          multiplayerCode: mpCode,
+          multiplayerRole: mpRole,
+        });
+      }
+      // Announce readiness to the peer. The peer holds `localCanDraft = false`
+      // until this lands so neither side commits before the other's engine
+      // is up. In hotseat / vs-AI modes peerReady stays at its initial value
+      // (true via `!isMultiplayer` short-circuit) so nothing to send.
+      if (wasMultiplayer) {
+        sendData({ kind: "draft-ready" });
+      }
+      if (typeof window !== "undefined") {
+        window.addEventListener("pagehide", pageHideHandler);
+      }
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
+    }
+  });
+
+  onDestroy(() => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("pagehide", pageHideHandler);
+    }
+    if (mpUnsub) {
+      mpUnsub();
+      mpUnsub = null;
+    }
+    // Forward-nav into /match/ keeps the engine/peer alive. Any other exit
+    // (back-button to /, route change, hot reload) finalises telemetry and,
+    // for back-nav, tears down the PeerJS connection so the peer's pill
+    // flips immediately rather than waiting for the heartbeat to time out.
+    if (!navigatingForward) {
+      if (match.telemetryMatchId && !match.telemetryFinalised) {
+        if (match.mode === "multiplayer") {
+          void networkLostTelemetrySession(eng ?? undefined);
+        } else {
+          void abandonTelemetrySession(eng ?? undefined);
+        }
+      }
+      if (match.mode === "multiplayer") {
+        mpDisconnect();
+      }
     }
   });
 
@@ -359,13 +623,16 @@
       match.mode = match.mode === "multiplayer"
         ? "multiplayer"
         : modeFromSeats(match.side);
-      if (match.mode === "multiplayer") {
-        sendData({ kind: "snapshot", snapshotJson: snap });
-      }
+      // Phase F: both peers ran the same DraftTurn sequence and reach
+      // byte-identical end states. Each forwards its own snapshot into
+      // /match/ without a final exchange — keeps the handoff symmetric and
+      // avoids the host-snapshot bottleneck of Phase E.
+      navigatingForward = true;
       await goto("../match/");
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
       starting = false;
+      navigatingForward = false;
     }
   }
 
@@ -409,7 +676,14 @@
     <p class="back"><a href="../">← back</a></p>
     <h1>{t("draft.title")}</h1>
     <small class="mode-tag">{mode}</small>
+    {#if isMultiplayer}
+      <ConnectivityPill />
+    {/if}
   </header>
+
+  {#if isMultiplayer}
+    <GraceBanner {eng} />
+  {/if}
 
   {#if bootError}
     <p class="err">boot error: {bootError}</p>

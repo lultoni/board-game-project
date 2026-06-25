@@ -49,6 +49,7 @@
   import { goto } from "$app/navigation";
   import type { Effect } from "$lib/viz/effects";
   import { sfx } from "$lib/audio/sfx";
+  import { getTelemetryStore } from "$lib/storage";
 
   const mode = $derived(match.mode === "multiplayer" ? "multiplayer" : modeFromSeats(match.side));
 
@@ -440,10 +441,10 @@
       const wasMultiplayer = match.mode === "multiplayer";
       const mpRole = match.multiplayerRole;
       const mpCode = match.multiplayerCode;
-      // L8 — pre-made loadout path. Snapshot BEFORE resetMatchState() so
-      // we don't lose the field when it clears non-preserved fields. (The
-      // reset preserves `preMadeLoadoutId` by design, but capturing here
-      // keeps the local branch decision independent of that detail.)
+      // L8 — pre-made loadout path. Snapshot BEFORE resetMatchState() because
+      // the reset clears `preMadeLoadoutId` (so stale ids from a prior match
+      // can't leak in via direct navigation). `/setup/` writes the field on
+      // commit; we read it here once and consume.
       const preMadeId = match.preMadeLoadoutId;
       resetMatchState();
       match.side = sideAtBoot;
@@ -472,10 +473,16 @@
       // Start the telemetry session for non-analysis modes. No-op for
       // sandbox; sandbox enters via /match/ but flips mode immediately,
       // so we'd never reach this with mode === "sandbox" on boot.
-      await startTelemetrySession(match.mode, {
-        multiplayerCode: mpCode,
-        multiplayerRole: mpRole,
-      });
+      // Skip if a session is already active — the carrier survives the
+      // /draft/ → /match/ goto, so the draft route's row continues into
+      // play. Without this guard, the handoff produces two IDB rows for
+      // one game and resume cards show duplicates.
+      if (!match.telemetryMatchId) {
+        await startTelemetrySession(match.mode, {
+          multiplayerCode: mpCode,
+          multiplayerRole: mpRole,
+        });
+      }
       // In multiplayer, subscribe to action messages from the peer and
       // apply them locally (with fromWire: true so we don't echo back).
       // Also handle the resume handshake: hosts validate incoming requests
@@ -509,6 +516,51 @@
   /** Disposer for the multiplayer onData subscription. */
   let mpUnsub: (() => void) | null = null;
 
+  // === Host-side peer-drop detection ========================================
+  //
+  // The unload/route-change paths in this file write `mid-match-network-lost`
+  // rows for the side that's leaving. But when the *other* peer leaves and we
+  // stay mounted (e.g. the joiner closed their tab and we're still here as
+  // host), we need to write our own row so the lobby's recent-sessions card
+  // list picks us up too. Otherwise the host returns to /multiplayer/ later
+  // and sees nothing.
+  //
+  // Unlike the unload paths, this writes the row directly via the store so
+  // `match.telemetryMatchId` stays set — the match might recover, in which
+  // case `recordPly`/`finalizeMatch` continue working. `markNetworkLost`
+  // itself only flips the row if status is "in-progress", so the natural
+  // finalize path will still overwrite it to "ended" if the match completes.
+  //
+  // Idempotent via `hasMarkedNetworkLost` — repeat disconnections during the
+  // same mount don't double-write. Cleared on successful reconnect so a
+  // flaky-then-recovered peer can re-trigger a new row if it drops again.
+  let hasMarkedNetworkLost = false;
+  $effect(() => {
+    if (match.mode !== "multiplayer") return;
+    if (!match.telemetryMatchId) return;
+    if (match.telemetryFinalised) return;
+    if (mpState.status === "connected") {
+      hasMarkedNetworkLost = false;
+      return;
+    }
+    if (mpState.status !== "disconnected") return;
+    if (hasMarkedNetworkLost) return;
+    const id = match.telemetryMatchId;
+    hasMarkedNetworkLost = true;
+    void (async () => {
+      try {
+        let partial: string | undefined;
+        if (eng) {
+          try { partial = (await eng.matchLogJson()) ?? undefined; } catch { /* engine bad state */ }
+        }
+        const store = getTelemetryStore();
+        await store.markNetworkLost(id, partial);
+      } catch {
+        // Swallow — telemetry must never block gameplay.
+      }
+    })();
+  });
+
   // === Resume handshake ====================================================
   //
   // Host side: incoming `resume-request` carries the joiner's claimed plyCount
@@ -534,6 +586,18 @@
     }
     if (msg.code !== match.multiplayerCode) {
       mpSendData({ kind: "resume-reject", reason: "no-such-session" });
+      return;
+    }
+    // Sentinel: joiner has no local engine yet (cleared IDB, different device,
+    // or simply chose to drop their state). It explicitly asks the host to
+    // overwrite — skip zobrist validation and send the current snapshot.
+    if (msg.plyCount === 0 && msg.zobrist === "0") {
+      try {
+        const snapshotJson = await eng.snapshotJson();
+        mpSendData({ kind: "resume-accept", snapshotJson });
+      } catch {
+        mpSendData({ kind: "resume-reject", reason: "host-not-in-match" });
+      }
       return;
     }
     try {
@@ -1494,25 +1558,45 @@
     return msg;
   }
 
+  // Page-hide handler: fires when the tab is hidden, navigated away, or closed.
+  // Unlike `beforeunload`, this is the last reliable hook for fire-and-forget
+  // work in modern browsers — but async tasks still get cut. We kick off the
+  // teardown writes here so they have the best chance of landing before the
+  // page is discarded. onDestroy keeps the same logic for client-side nav
+  // (where awaits resolve normally).
+  function pageHideHandler(): void {
+    if (match.telemetryMatchId && !match.telemetryFinalised) {
+      if (match.mode === "multiplayer") {
+        void networkLostTelemetrySession(eng ?? undefined);
+      } else {
+        void abandonTelemetrySession(eng ?? undefined);
+      }
+    }
+  }
+
   onMount(() => {
     if (typeof window !== "undefined") {
       window.addEventListener("beforeunload", beforeUnloadGuard);
+      window.addEventListener("pagehide", pageHideHandler);
     }
   });
 
   onDestroy(() => {
     if (typeof window !== "undefined") {
       window.removeEventListener("beforeunload", beforeUnloadGuard);
+      window.removeEventListener("pagehide", pageHideHandler);
     }
     // If the user leaves /match/ before a natural end, mark the session
     // abandoned. Per-ply records on disk remain — replay still works.
     // In multiplayer mode the row is marked `mid-match-network-lost` so the
     // lobby's recent-sessions card list can pick it up for resume.
+    // (On tab-close paths, pagehide already kicked these off — the helpers
+    // are idempotent via the `telemetryMatchId` null-out at entry.)
     if (match.telemetryMatchId && !match.telemetryFinalised) {
       if (match.mode === "multiplayer") {
-        networkLostTelemetrySession(eng ?? undefined);
+        void networkLostTelemetrySession(eng ?? undefined);
       } else {
-        abandonTelemetrySession(eng ?? undefined);
+        void abandonTelemetrySession(eng ?? undefined);
       }
     }
     if (mpUnsub) {

@@ -9,6 +9,12 @@ export type ResumeRejectReason =
   | "no-such-session"
   | "host-not-in-match";
 
+/** L8 Phase F — pre-game draft mode broadcast by the host so the joiner can
+ *  route to /draft/ (custom) or /match/ (preMade) without its own setup pass.
+ *  `loadoutId` is required when `mode === "preMade"` and ignored otherwise. */
+export type DraftModeWire = "custom" | "preMade";
+export type PreMadeLoadoutIdWire = "firstGame" | "secondGame" | "thirdGame";
+
 export type WireMessage =
   | { kind: "ping"; t: number }
   | { kind: "pong"; t: number }
@@ -16,6 +22,17 @@ export type WireMessage =
   | { kind: "ready" }
   | { kind: "action"; raw: number }
   | { kind: "error"; reason: string }
+  // L8 Phase F — multiplayer draft.
+  // - draft-mode: host → joiner at /setup/ commit; selects custom-vs-preMade.
+  // - draft-ready: peer → peer once /draft/ has booted its local engine.
+  //                Both sides exchange this before the first DraftTurn so
+  //                neither acts on a half-mounted opponent.
+  // - draft-turn: peer → peer on every commit. `raw` is the packed u32
+  //                produced by encodeDraftTurn — both engines apply it via
+  //                tryApply and the determinism guarantee keeps state aligned.
+  | { kind: "draft-mode"; mode: DraftModeWire; loadoutId?: PreMadeLoadoutIdWire }
+  | { kind: "draft-ready" }
+  | { kind: "draft-turn"; raw: number }
   // Resume handshake. `zobrist` is a decimal string because the engine's
   // PositionView.zobrist is a bigint that JSON cannot natively encode.
   // plyCount: 0 + zobrist: "0" means "I have no engine yet — send me a fresh
@@ -59,14 +76,53 @@ export function decodeMessage(s: string): WireMessage | null {
         : null;
     case "ready":
       return { kind: "ready" };
-    case "action":
-      return Number.isInteger((m as { raw?: unknown }).raw)
+    case "action": {
+      const raw = (m as { raw?: unknown }).raw;
+      // Engine actions are u32. Reject anything outside [0, 2^32 - 1] or
+      // non-integer values — otherwise a malformed peer message would call
+      // `tryApply` with garbage and trip an engine panic.
+      return (
+        typeof raw === "number"
+        && Number.isInteger(raw)
+        && raw >= 0
+        && raw <= 0xffffffff
+      )
         ? (m as WireMessage)
         : null;
+    }
     case "error":
       return typeof (m as { reason?: unknown }).reason === "string"
         ? (m as WireMessage)
         : null;
+    case "draft-mode": {
+      const r = m as { mode?: unknown; loadoutId?: unknown };
+      if (r.mode === "custom") {
+        return { kind: "draft-mode", mode: "custom" };
+      }
+      if (r.mode === "preMade") {
+        const id = r.loadoutId;
+        if (id === "firstGame" || id === "secondGame" || id === "thirdGame") {
+          return { kind: "draft-mode", mode: "preMade", loadoutId: id };
+        }
+        return null;
+      }
+      return null;
+    }
+    case "draft-ready":
+      return { kind: "draft-ready" };
+    case "draft-turn": {
+      const raw = (m as { raw?: unknown }).raw;
+      // Same u32 guard as `action` — reject negatives, non-integers, and
+      // anything beyond 2^32 - 1. Engine tryApply panics on out-of-range raw.
+      return (
+        typeof raw === "number"
+        && Number.isInteger(raw)
+        && raw >= 0
+        && raw <= 0xffffffff
+      )
+        ? (m as WireMessage)
+        : null;
+    }
     case "resume-request": {
       const r = m as {
         code?: unknown;

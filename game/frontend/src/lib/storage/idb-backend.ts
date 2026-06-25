@@ -12,6 +12,7 @@
 import type {
   EndReason,
   FinalisedMatch,
+  JoinedCodeEntry,
   MatchFilter,
   MatchMeta,
   MatchStatus,
@@ -21,10 +22,18 @@ import type {
 import { newMatchId } from "./types";
 import type { MatchMode } from "../state/match-store.svelte";
 
-const DB_NAME = "boardgame-matches";
+// Database name bumped from `boardgame-matches` (v1) to `boardgame-matches-v2`
+// for the L7c authoritative-host redesign. Old data is orphaned — pre-release
+// project, no migration needed. See `.claude/plans/twinkling-questing-quiche.md`.
+const DB_NAME = "boardgame-matches-v2";
 const DB_VERSION = 1;
 const STORE_MATCHES = "matches";
 const STORE_PLIES = "plies";
+// Joiner-side record of multiplayer codes the user has connected to. Joiners
+// do NOT write `matches` rows in the v2 model (host owns the single row), so
+// they need a separate place to remember "I joined code 281947 yesterday;
+// show me a Rejoin card for it". Keyed by `code`.
+const STORE_JOINED_CODES = "joined_codes";
 
 interface MatchRow extends MatchMeta {
   // finalise fields, present only once status==="ended"
@@ -49,6 +58,10 @@ function openDb(factory: IDBFactory): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_PLIES)) {
         db.createObjectStore(STORE_PLIES, { keyPath: ["matchId", "plyNo"] });
+      }
+      if (!db.objectStoreNames.contains(STORE_JOINED_CODES)) {
+        const s = db.createObjectStore(STORE_JOINED_CODES, { keyPath: "code" });
+        s.createIndex("lastJoinedAt", "lastJoinedAtUnixMs", { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -194,6 +207,33 @@ export class IdbTelemetryStore implements TelemetryStore {
     await this.#setStatusIfInProgress(matchId, "mid-match-network-lost", partialLogJson);
   }
 
+  async checkpointMatchLog(matchId: string, matchLogJson: string): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_MATCHES, "readwrite");
+    const store = tx.objectStore(STORE_MATCHES);
+    const existing = await awaitReq<MatchRow | undefined>(store.get(matchId));
+    if (!existing) return;
+    // `ended` is terminal — `finalizeMatch` owns that row from then on. Refuse
+    // writes; we should never be called post-finalise but defend against it.
+    if (existing.status === "ended") return;
+    const updated: MatchRow = { ...existing, matchLogJson };
+    // Parse defensively to keep the indexed totals fresh — the library view
+    // reads these without loading the full log.
+    try {
+      const parsed = JSON.parse(matchLogJson) as {
+        total_plies?: number;
+        total_wall_ms?: number;
+      };
+      if (typeof parsed.total_plies === "number") updated.totalPlies = parsed.total_plies;
+      if (typeof parsed.total_wall_ms === "number") updated.totalWallMs = parsed.total_wall_ms;
+    } catch {
+      // Corrupt JSON shouldn't block the checkpoint; the log itself was
+      // produced by the engine so this should never happen in practice.
+    }
+    store.put(updated);
+    await awaitTx(tx);
+  }
+
   async dismissNetworkLost(matchId: string): Promise<void> {
     const db = await this.#dbPromise;
     const tx = db.transaction(STORE_MATCHES, "readwrite");
@@ -313,19 +353,24 @@ export class IdbTelemetryStore implements TelemetryStore {
     await awaitTx(tx);
   }
 
-  async bundleMatches(matchIds: string[]): Promise<string> {
+  async bundleMatches(matchIds: string[]): Promise<{ bundle: string; skipped: string[] }> {
     // L5b will surface this as the "Send to Designer" download. Bundle
     // format matches ADR-005 L5: a JSON object containing an array of
-    // engine MatchLogs plus a thin envelope.
+    // engine MatchLogs plus a thin envelope. Logs that are missing or
+    // unparseable are reported back to the caller via `skipped` so the
+    // user sees a clear "N of M exported" message instead of a silent loss.
     const logs: unknown[] = [];
+    const skipped: string[] = [];
     for (const id of matchIds) {
       const m = await this.getMatch(id);
-      if (m) {
-        try {
-          logs.push(JSON.parse(m.matchLogJson));
-        } catch {
-          // Skip corrupted logs rather than aborting the whole bundle.
-        }
+      if (!m || !m.matchLogJson) {
+        skipped.push(id);
+        continue;
+      }
+      try {
+        logs.push(JSON.parse(m.matchLogJson));
+      } catch {
+        skipped.push(id);
       }
     }
     const envelope = {
@@ -333,6 +378,36 @@ export class IdbTelemetryStore implements TelemetryStore {
       schema: "boardgame-bundle-v1",
       logs,
     };
-    return JSON.stringify(envelope);
+    return { bundle: JSON.stringify(envelope), skipped };
+  }
+
+  async recordJoinedCode(entry: { code: string; hostPeerId?: string | null; lastSeenSeq?: number }): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_JOINED_CODES, "readwrite");
+    const store = tx.objectStore(STORE_JOINED_CODES);
+    const existing = await awaitReq<JoinedCodeEntry | undefined>(store.get(entry.code));
+    const row: JoinedCodeEntry = {
+      code: entry.code,
+      lastJoinedAtUnixMs: Date.now(),
+      hostPeerId: entry.hostPeerId ?? existing?.hostPeerId ?? null,
+      lastSeenSeq: entry.lastSeenSeq ?? existing?.lastSeenSeq ?? 0,
+    };
+    store.put(row);
+    await awaitTx(tx);
+  }
+
+  async listJoinedCodes(): Promise<JoinedCodeEntry[]> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_JOINED_CODES, "readonly");
+    const all = await awaitReq<JoinedCodeEntry[]>(tx.objectStore(STORE_JOINED_CODES).getAll());
+    await awaitTx(tx);
+    return all.sort((a, b) => b.lastJoinedAtUnixMs - a.lastJoinedAtUnixMs);
+  }
+
+  async forgetJoinedCode(code: string): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_JOINED_CODES, "readwrite");
+    tx.objectStore(STORE_JOINED_CODES).delete(code);
+    await awaitTx(tx);
   }
 }

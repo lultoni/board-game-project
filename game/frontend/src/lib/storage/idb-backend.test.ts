@@ -10,7 +10,7 @@ import { newMatchId } from "./types";
 // fresh store via beforeEach so state doesn't leak between cases.
 async function resetDb(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const req = indexedDB.deleteDatabase("boardgame-matches");
+    const req = indexedDB.deleteDatabase("boardgame-matches-v2");
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
     req.onblocked = () => resolve();
@@ -185,16 +185,20 @@ describe("IdbTelemetryStore", () => {
     const b = await store.startMatch({ mode: "hvai" });
     await store.finalizeMatch(a, '{"plies":[],"a":1}', "checkmate", 0, 0, 0);
     await store.finalizeMatch(b, "not-json-at-all", "checkmate", 1, 0, 0);
-    const bundle = JSON.parse(await store.bundleMatches([a, b]));
+    const { bundle: bundleJson, skipped } = await store.bundleMatches([a, b]);
+    const bundle = JSON.parse(bundleJson);
     expect(bundle.schema).toBe("boardgame-bundle-v1");
     expect(bundle.logs).toHaveLength(1);
     expect(bundle.logs[0]).toEqual({ plies: [], a: 1 });
+    expect(skipped).toEqual([b]);
   });
 
   it("bundleMatches with no finalised matches still returns a valid envelope", async () => {
     const id = await store.startMatch({ mode: "hvh" });
-    const bundle = JSON.parse(await store.bundleMatches([id]));
+    const { bundle: bundleJson, skipped } = await store.bundleMatches([id]);
+    const bundle = JSON.parse(bundleJson);
     expect(bundle.logs).toEqual([]);
+    expect(skipped).toEqual([id]);
   });
 
   it("listMatches projects end-of-match fields on ended rows only", async () => {
@@ -257,8 +261,46 @@ describe("IdbTelemetryStore", () => {
     const b = await store.startMatch({ mode: "hvh" });
     await store.markAbandoned(a, JSON.stringify({ plies: [], a: 1 }));
     await store.markAbandoned(b); // no log
-    const bundle = JSON.parse(await store.bundleMatches([a, b]));
+    const { bundle: bundleJson, skipped } = await store.bundleMatches([a, b]);
+    const bundle = JSON.parse(bundleJson);
     expect(bundle.logs).toHaveLength(1);
     expect(bundle.logs[0]).toEqual({ plies: [], a: 1 });
+    expect(skipped).toEqual([b]);
+  });
+
+  describe("joined_codes", () => {
+    it("recordJoinedCode → listJoinedCodes returns the entry, most-recent first", async () => {
+      await store.recordJoinedCode({ code: "281947", hostPeerId: "peer-a" });
+      await new Promise((r) => setTimeout(r, 5));
+      await store.recordJoinedCode({ code: "194723", hostPeerId: "peer-b", lastSeenSeq: 12 });
+      const all = await store.listJoinedCodes();
+      expect(all.map((e) => e.code)).toEqual(["194723", "281947"]);
+      expect(all[0].lastSeenSeq).toBe(12);
+      expect(all[0].hostPeerId).toBe("peer-b");
+    });
+
+    it("recordJoinedCode is idempotent and refreshes lastJoinedAt + optional fields", async () => {
+      await store.recordJoinedCode({ code: "100000", hostPeerId: "old", lastSeenSeq: 5 });
+      const before = (await store.listJoinedCodes())[0];
+      await new Promise((r) => setTimeout(r, 5));
+      await store.recordJoinedCode({ code: "100000", lastSeenSeq: 9 });
+      const after = (await store.listJoinedCodes())[0];
+      expect(after.code).toBe("100000");
+      expect(after.lastJoinedAtUnixMs).toBeGreaterThan(before.lastJoinedAtUnixMs);
+      // hostPeerId preserved when re-recording without supplying it.
+      expect(after.hostPeerId).toBe("old");
+      expect(after.lastSeenSeq).toBe(9);
+    });
+
+    it("forgetJoinedCode removes the entry; no-op when missing", async () => {
+      await store.recordJoinedCode({ code: "111111" });
+      await store.recordJoinedCode({ code: "222222" });
+      await store.forgetJoinedCode("111111");
+      const all = await store.listJoinedCodes();
+      expect(all.map((e) => e.code)).toEqual(["222222"]);
+      // No-op for absent code.
+      await store.forgetJoinedCode("does-not-exist");
+      expect((await store.listJoinedCodes()).map((e) => e.code)).toEqual(["222222"]);
+    });
   });
 });

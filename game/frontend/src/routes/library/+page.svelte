@@ -17,6 +17,9 @@
   let filterResult = $state<FilterResult>("all");
   let confirmDelete = $state<string | null>(null);
   let busy = $state(false);
+  /** Transient banner shown when an export skipped one or more matches due
+   *  to a missing/corrupt log. Cleared on the next export attempt. */
+  let exportSkipNotice = $state<string | null>(null);
 
   const filtered = $derived.by<MatchMeta[]>(() => {
     return rows.filter((m) => {
@@ -121,9 +124,13 @@
 
   async function exportSingle(matchId: string): Promise<void> {
     busy = true;
+    exportSkipNotice = null;
     try {
-      const json = await getTelemetryStore().bundleMatches([matchId]);
-      download(`boardgame-match-${matchId}.json`, json);
+      const { bundle, skipped } = await getTelemetryStore().bundleMatches([matchId]);
+      download(`boardgame-match-${matchId}.json`, bundle);
+      if (skipped.length > 0) {
+        exportSkipNotice = `Could not export this match — its stored log is missing or corrupt.`;
+      }
     } finally {
       busy = false;
     }
@@ -132,9 +139,14 @@
   async function sendBundle(): Promise<void> {
     if (selected.size === 0) return;
     busy = true;
+    exportSkipNotice = null;
     try {
-      const json = await getTelemetryStore().bundleMatches([...selected]);
-      download(bundleFilename(), json);
+      const ids = [...selected];
+      const { bundle, skipped } = await getTelemetryStore().bundleMatches(ids);
+      download(bundleFilename(), bundle);
+      if (skipped.length > 0) {
+        exportSkipNotice = `Exported ${ids.length - skipped.length} of ${ids.length} matches — ${skipped.length} skipped due to missing or corrupt logs.`;
+      }
       selected = new Set();
     } finally {
       busy = false;
@@ -164,6 +176,13 @@
     <h1>{t("library.title")}</h1>
     <small>{countLabel(filtered.length)}</small>
   </header>
+
+  {#if exportSkipNotice}
+    <p class="export-skip-notice" role="status">
+      {exportSkipNotice}
+      <button type="button" onclick={() => (exportSkipNotice = null)} aria-label="dismiss">×</button>
+    </p>
+  {/if}
 
   <section class="filters">
     <label>
@@ -265,6 +284,26 @@
     max-width: 960px;
     margin: 0 auto;
     padding: 1rem 1.5rem;
+  }
+  .export-skip-notice {
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--paper-warn-bg, #fff4d6);
+    border: 1px solid var(--paper-warn-border, #d8b65a);
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+  }
+  .export-skip-notice button {
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 0.25rem;
   }
   header {
     border-bottom: 1.5px solid var(--paper-line);

@@ -51,6 +51,13 @@ interface MpState {
    *  loses the peer, not on the last successful pong. Survives `disconnect()`
    *  so a hard tear-down doesn't yank the countdown out from under the UI. */
   disconnectedSince: number | null;
+  /** Latches `true` the first time we receive any traffic from the peer this
+   *  session (first pong, first non-ping data). Survives a close/error —
+   *  unlike `lastPongAt`, which is nulled on every drop. GraceBanner uses
+   *  this to gate visibility: if we never paired up (host's pre-join
+   *  rehost window), don't show the "opponent disconnected" banner.
+   *  Cleared only by `disconnect()`. */
+  peerEverPaired: boolean;
 }
 
 // Namespace the PeerJS ID so two random apps don't clash on the same broker.
@@ -66,15 +73,18 @@ export const mpState = $state<MpState>({
   pendingResume: null,
   resumeFailed: null,
   disconnectedSince: null,
+  peerEverPaired: false,
 });
 
 let peer: Peer | null = null;
 let conn: DataConnection | null = null;
 let pingTimer: ReturnType<typeof setInterval> | null = null;
-// Per-session flag: true once a single joiner auto-redial has been attempted.
-// Reset on every successful `open` and on `disconnect()`. Guards against
-// hammering the broker if the redial itself also fails.
-let autoRedialDone = false;
+// Per-session counter for joiner auto-redial attempts after a drop. Reset
+// on every successful `open` and on `disconnect()`. Bounded by REDIAL_DELAYS
+// to avoid hammering the broker forever — after the budget is exhausted the
+// user falls back to manual lobby Rejoin.
+let redialAttempts = 0;
+const REDIAL_DELAYS = [1_500, 3_000, 6_000, 12_000, 30_000];
 const dataHandlers = new Set<(msg: WireMessage) => void>();
 /** Single-slot-per-kind buffer for messages that arrive while no subscriber
  *  is registered. The joiner navigates from /multiplayer/ → /match/ between
@@ -101,7 +111,25 @@ function stopNowTimer(): void {
 }
 
 export function pillState(): PillState {
-  return derivePillState(mpState.status, mpState.lastPongAt, nowTick);
+  const p = derivePillState(mpState.status, mpState.lastPongAt, nowTick);
+  // Anchor disconnectedSince from the pill itself, not just from PeerJS
+  // close/error events. The DataConnection's close/error handlers don't
+  // fire reliably when the remote peer destroys its Peer object — pong
+  // age-out is often the only signal we get. Without this, the GraceBanner
+  // sees `disconnectedSince === null`, falls into its `deadline === null
+  // ? GRACE_MS` branch, and freezes at 5:00 indefinitely. We also want the
+  // anchor for `forfeit` so claim-win timing stays sensible even if we
+  // landed there without a close event.
+  if ((p === "disconnected" || p === "forfeit") && mpState.disconnectedSince === null) {
+    // Only anchor when an opponent was actually present at some point —
+    // otherwise the host's pre-join "hosting" state would mint a stale
+    // anchor. peerEverPaired latches on first inbound traffic and survives
+    // close/error, so it's reliable across reconnect cycles too.
+    if (mpState.peerEverPaired) {
+      mpState.disconnectedSince = nowTick;
+    }
+  }
+  return p;
 }
 
 /** Subscribe to incoming wire messages. Returns a disposer. Ping/pong is
@@ -147,8 +175,9 @@ export function disconnect(): void {
   mpState.lastPongAt = null;
   mpState.opponentReady = false;
   mpState.pendingResume = null;
+  mpState.peerEverPaired = false;
   inbox.clear();
-  autoRedialDone = false;
+  redialAttempts = 0;
   // Note: resumeFailed is intentionally NOT cleared here — the lobby needs
   // to read it AFTER the failed connection has been torn down. The lobby
   // clears it when entering "choose" view.
@@ -170,9 +199,9 @@ function bindConnection(c: DataConnection): void {
     mpState.status = "connected";
     // Clear any prior disconnect anchor — peer is back.
     mpState.disconnectedSince = null;
-    // Reset the per-session auto-redial budget — a healthy open earns one
-    // free retry the next time we drop.
-    autoRedialDone = false;
+    // Reset the per-session auto-redial budget — a healthy open earns a
+    // fresh set of retries the next time we drop.
+    redialAttempts = 0;
     startHeartbeat();
     // If the joiner staged a resume request before dialling, fire it now so
     // the host can validate state before sending a fresh snapshot.
@@ -188,6 +217,11 @@ function bindConnection(c: DataConnection): void {
   });
   c.on("data", (raw: unknown) => {
     if (typeof raw !== "string") return;
+    // Any inbound traffic proves a peer is on the other end this session.
+    // Latch this for GraceBanner's visibility gate, which must distinguish
+    // "we never had a peer" (host's pre-join rehost) from "we lost the peer
+    // we had". Survives close/error — unlike lastPongAt, which is reset.
+    mpState.peerEverPaired = true;
     const msg = decodeMessage(raw);
     if (!msg) return;
     if (msg.kind === "ping") {
@@ -216,6 +250,10 @@ function bindConnection(c: DataConnection): void {
       mpState.disconnectedSince = Date.now();
     }
     mpState.status = "disconnected";
+    // Pull lastPongAt back to null so the pill stops reporting "live" against
+    // a peer we've just lost. derivePillState falls through to its disconnected
+    // branch once status is disconnected AND lastPongAt is null.
+    mpState.lastPongAt = null;
     maybeAutoRedialJoiner();
   });
   c.on("error", (e) => {
@@ -224,29 +262,33 @@ function bindConnection(c: DataConnection): void {
       mpState.disconnectedSince = Date.now();
     }
     mpState.status = "disconnected";
+    mpState.lastPongAt = null;
     maybeAutoRedialJoiner();
   });
 }
 
-/** Single best-effort retry after a joiner-side drop. Fires 1.5s after a
- *  close/error so PeerJS has time to settle, and only once per session — if
- *  the retry itself also drops, the user falls back to lobby Rejoin. Skipped
- *  when we're mid-resume-handshake (the resume flow has its own semantics)
- *  or when the host is the one whose side dropped (host stays put and waits
- *  for the joiner to dial back). */
+/** Bounded retry after a joiner-side drop. Tries up to REDIAL_DELAYS.length
+ *  times with increasing backoff (1.5s, 3s, 6s, 12s, 30s — ~52s total) so the
+ *  host has wall-clock time to navigate back through home → multiplayer →
+ *  Rejoin and re-claim the same code. The counter resets on a successful
+ *  `open` and on `disconnect()`. Skipped when we're mid-resume-handshake
+ *  (the resume flow has its own semantics) or when the host is the one whose
+ *  side dropped (host stays put and waits for the joiner to dial back). If
+ *  the budget runs out, the user falls back to manual lobby Rejoin. */
 function maybeAutoRedialJoiner(): void {
-  if (autoRedialDone) return;
   if (mpState.role !== "joiner") return;
   if (mpState.pendingResume !== null) return;
   if (mpState.code === null) return;
+  if (redialAttempts >= REDIAL_DELAYS.length) return;
+  const delay = REDIAL_DELAYS[redialAttempts];
   const code = mpState.code;
-  autoRedialDone = true;
+  redialAttempts += 1;
   setTimeout(() => {
     // Bail if the user manually navigated away / disconnected in the meantime.
     if (mpState.role !== "joiner") return;
     if (mpState.status === "connected" || mpState.status === "connecting") return;
-    join(code).catch(() => { /* fall back to manual lobby Rejoin */ });
-  }, 1500);
+    join(code).catch(() => maybeAutoRedialJoiner());
+  }, delay);
 }
 
 /** Host a session. Picks a random 6-digit code and registers with the

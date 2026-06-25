@@ -6,6 +6,8 @@
 //! <fen>           ::= <board> ' ' <to_move> ' ' <phase> ' ' <actions_remaining>
 //!                     ' ' <p1_money> ' ' <p2_money> ' ' <pending_modifiers>
 //!                     ' ' <round_number> ' ' <moved_this_phase>
+//!                     [ ' ' <tracked_enemies> ' ' <tracked_casters>
+//!                       ' ' <champion_credit> ]
 //! <board>         ::= <rank> ('/' <rank>){7}        ; rank 8 first, rank 1 last
 //! <rank>          ::= ( <piece-token> | <digit> ){1..}    ; squares per rank sum to 8
 //! <piece-token>   ::= <piece-char> [ '[' <hp> '/' <armor> '/' <combo>
@@ -21,6 +23,10 @@
 //! <round_number>  ::= 1..=65535 decimal
 //! <moved_this_phase> ::= 0x<hex>            ; u64 bitboard, lower-case hex,
 //!                                              no padding (0x0 is canonical empty)
+//! <tracked_enemies> ::= <sq-list>           ; comma-sep square indices or "-"
+//! <tracked_casters> ::= <sq-list>
+//! <champion_credit> ::= 0..=u64::MAX decimal     ; multi-Champion combo
+//!                                                  cross-product bitmap
 //! ```
 //!
 //! Bracketed mailbox fields default to `2/0/0/0/0` (full HP, no armor, no combo,
@@ -34,15 +40,17 @@
 //! When parsing rank-8-first FEN, we walk top-to-bottom so the first rank
 //! token corresponds to bitboard rank 7.
 //!
-//! # Fields NOT serialised
+//! # Turn-scoped fields
 //!
-//! - `tracked_enemies`, `tracked_enemies_len`, `tracked_casters`,
-//!   `tracked_casters_len`, `champion_credit` — turn-scoped, cleared at end
-//!   of turn. `from_fen` zeroes them; `to_fen` only round-trips a Position
-//!   where they are already zero (FEN is between-turn state).
-//! - `zobrist` — derived. `from_fen` recomputes the incremental hash from
-//!   scratch via `zobrist::full_recompute` (Slice 7). Tests may still use
-//!   `position_eq_for_fen` for round-trip equality on legacy paths.
+//! `tracked_enemies`, `tracked_casters`, `champion_credit` are turn-scoped:
+//! cleared at end of turn. The encoder emits them only when at least one is
+//! non-zero (a between-turns FEN therefore looks identical to before this
+//! revision). The parser tolerates their absence and zeroes them — so legacy
+//! 9-field FEN strings still load. This is what lets mid-turn snapshots
+//! round-trip without losing combo state.
+//!
+//! `zobrist` is derived. `from_fen` recomputes the incremental hash from
+//! scratch via `zobrist::full_recompute` (Slice 7).
 //!
 //! See `crates/core_engine/SCENARIO_FORMAT.md` for the action-text and
 //! scenario-file grammars built on top of FEN.
@@ -156,7 +164,45 @@ pub fn to_fen(pos: &Position) -> String {
         pos.moved_this_phase.0,
     ).unwrap();
 
+    // Turn-scoped trailer: emit ONLY when at least one of the three is
+    // non-zero. A between-turns FEN therefore matches the legacy 9-field
+    // form byte-for-byte, keeping existing snapshots stable.
+    let te_len = pos.tracked_enemies_len as usize;
+    let tc_len = pos.tracked_casters_len as usize;
+    if te_len > 0 || tc_len > 0 || pos.champion_credit != 0 {
+        out.push(' ');
+        if te_len == 0 {
+            out.push('-');
+        } else {
+            for (i, sq) in pos.tracked_enemies[..te_len].iter().enumerate() {
+                if i > 0 { out.push(','); }
+                write!(&mut out, "{}", sq).unwrap();
+            }
+        }
+        out.push(' ');
+        if tc_len == 0 {
+            out.push('-');
+        } else {
+            for (i, sq) in pos.tracked_casters[..tc_len].iter().enumerate() {
+                if i > 0 { out.push(','); }
+                write!(&mut out, "{}", sq).unwrap();
+            }
+        }
+        write!(&mut out, " {}", pos.champion_credit).unwrap();
+    }
+
     out
+}
+
+fn parse_sq_list(s: &str, field: &'static str) -> Result<Vec<u8>, FenError> {
+    if s == "-" || s.is_empty() { return Ok(Vec::new()); }
+    let mut out = Vec::with_capacity(8);
+    for part in s.split(',') {
+        let v = part.parse::<u8>().map_err(|_| FenError::BadDecimal { field })?;
+        if v >= 64 { return Err(FenError::BadDecimal { field }); }
+        out.push(v);
+    }
+    Ok(out)
 }
 
 fn write_piece_token(out: &mut String, pos: &Position, sq: u8) {
@@ -194,7 +240,7 @@ fn write_piece_token(out: &mut String, pos: &Position, sq: u8) {
 
 pub fn from_fen(s: &str) -> Result<Position, FenError> {
     let fields: Vec<&str> = s.split_ascii_whitespace().collect();
-    if fields.len() != 9 {
+    if fields.len() != 9 && fields.len() != 12 {
         return Err(FenError::WrongFieldCount { got: fields.len() });
     }
 
@@ -207,6 +253,11 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
     let modifiers_s = fields[6];
     let round_s = fields[7];
     let moved_s = fields[8];
+    let (tracked_enemies_s, tracked_casters_s, credit_s) = if fields.len() == 12 {
+        (Some(fields[9]), Some(fields[10]), Some(fields[11]))
+    } else {
+        (None, None, None)
+    };
 
     let mut pos = Position::empty();
 
@@ -280,12 +331,30 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
         return Err(FenError::InternalOccupancyMismatch);
     }
 
-    // Turn-scoped / derived fields are left at their `empty()` defaults.
-    debug_assert_eq!(pos.tracked_enemies_len, 0);
-    debug_assert_eq!(pos.tracked_casters_len, 0);
-    debug_assert_eq!(pos.champion_credit, 0);
-    debug_assert_eq!(pos.tracked_enemies, [0u8; MAX_TRACKED_ENEMIES]);
-    debug_assert_eq!(pos.tracked_casters, [0u8; MAX_TRACKED_CASTERS]);
+    // Turn-scoped trackers (optional trailer). Default to empty when absent.
+    if let (Some(te_s), Some(tc_s), Some(cc_s)) = (tracked_enemies_s, tracked_casters_s, credit_s) {
+        let te = parse_sq_list(te_s, "tracked_enemies")?;
+        let tc = parse_sq_list(tc_s, "tracked_casters")?;
+        if te.len() > MAX_TRACKED_ENEMIES {
+            return Err(FenError::BadDecimal { field: "tracked_enemies" });
+        }
+        if tc.len() > MAX_TRACKED_CASTERS {
+            return Err(FenError::BadDecimal { field: "tracked_casters" });
+        }
+        let credit = cc_s.parse::<u64>().map_err(|_| FenError::BadDecimal { field: "champion_credit" })?;
+        for (i, &sq) in te.iter().enumerate() { pos.tracked_enemies[i] = sq; }
+        for (i, &sq) in tc.iter().enumerate() { pos.tracked_casters[i] = sq; }
+        pos.tracked_enemies_len = te.len() as u8;
+        pos.tracked_casters_len = tc.len() as u8;
+        pos.champion_credit = credit;
+    } else {
+        // Legacy 9-field FEN — trackers are implicitly empty.
+        debug_assert_eq!(pos.tracked_enemies_len, 0);
+        debug_assert_eq!(pos.tracked_casters_len, 0);
+        debug_assert_eq!(pos.champion_credit, 0);
+        debug_assert_eq!(pos.tracked_enemies, [0u8; MAX_TRACKED_ENEMIES]);
+        debug_assert_eq!(pos.tracked_casters, [0u8; MAX_TRACKED_CASTERS]);
+    }
     debug_assert_eq!(pos.zobrist, 0);
 
     // Derive game_result from the bitboards: a side without a King has lost.
@@ -531,6 +600,15 @@ pub(crate) fn position_eq_for_fen(a: &Position, b: &Position) -> bool {
     if a.current_phase != b.current_phase { return false; }
     if a.round_number != b.round_number { return false; }
     if a.moved_this_phase.0 != b.moved_this_phase.0 { return false; }
+    // Turn-scoped trackers — included so the new optional-trailer round-trip
+    // is meaningful in tests.
+    if a.tracked_enemies_len != b.tracked_enemies_len { return false; }
+    if a.tracked_casters_len != b.tracked_casters_len { return false; }
+    if a.champion_credit != b.champion_credit { return false; }
+    let te_len = a.tracked_enemies_len as usize;
+    let tc_len = a.tracked_casters_len as usize;
+    if a.tracked_enemies[..te_len] != b.tracked_enemies[..te_len] { return false; }
+    if a.tracked_casters[..tc_len] != b.tracked_casters[..tc_len] { return false; }
     // Mailbox: only the occupied squares matter.
     let occ = (a.p1_pieces | a.p2_pieces).0;
     for sq in 0..64u8 {
@@ -912,5 +990,71 @@ mod tests {
         // Same FEN as strict_rejects_wrong_champion_count — plain from_fen accepts it.
         let mid_game = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCG1 P1 M 2 6 6 0 1 0x0";
         from_fen(mid_game).expect("lax accepts mid-game piece counts");
+    }
+
+    // --- Turn-scoped trackers (optional FEN trailer) -----------------------
+
+    #[test]
+    fn legacy_9_field_fen_still_parses() {
+        // Same canonical setup FEN as before the trailer extension. Confirms
+        // we didn't break the legacy save format.
+        let legacy = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0";
+        let p = from_fen(legacy).expect("legacy parses");
+        assert_eq!(p.tracked_enemies_len, 0);
+        assert_eq!(p.tracked_casters_len, 0);
+        assert_eq!(p.champion_credit, 0);
+    }
+
+    #[test]
+    fn empty_trackers_omit_trailer() {
+        // Encoder must NOT emit the trailer when trackers are empty — keeps
+        // the canonical between-turns FEN byte-stable.
+        let p = Position::setup_stack_m();
+        let s = to_fen(&p);
+        assert_eq!(s.split_ascii_whitespace().count(), 9,
+            "between-turns FEN must stay at 9 fields, got: {}", s);
+    }
+
+    #[test]
+    fn non_empty_trackers_round_trip() {
+        // Take Stack M, write some tracker state to simulate a mid-Skill-Phase
+        // snapshot, then round-trip through FEN. Without the new trailer this
+        // would silently drop tracked state.
+        let mut p = Position::setup_stack_m();
+        p.current_phase = Phase::Skill;
+        p.tracked_enemies[0] = 17; // b3
+        p.tracked_enemies[1] = 22; // g3
+        p.tracked_enemies_len = 2;
+        p.tracked_casters[0] = 1;  // b1
+        p.tracked_casters_len = 1;
+        p.champion_credit = 3;
+        let s = to_fen(&p);
+        assert_eq!(s.split_ascii_whitespace().count(), 12,
+            "mid-turn FEN must carry the trailer, got: {}", s);
+        assert!(s.contains(" 17,22 1 3"), "trailer must encode trackers: {}", s);
+        let p2 = from_fen(&s).expect("round-trip parse");
+        assert!(position_eq_for_fen(&p, &p2), "tracker state lost on round-trip");
+    }
+
+    #[test]
+    fn tracker_trailer_dash_means_empty() {
+        // champion_credit non-zero, both lists empty: encoder uses "-".
+        let mut p = Position::setup_stack_m();
+        p.current_phase = Phase::Skill;
+        p.champion_credit = 5;
+        let s = to_fen(&p);
+        assert!(s.ends_with(" - - 5"), "got: {}", s);
+        let p2 = from_fen(&s).expect("parse");
+        assert_eq!(p2.champion_credit, 5);
+        assert_eq!(p2.tracked_enemies_len, 0);
+    }
+
+    #[test]
+    fn tracker_trailer_rejects_out_of_range_sq() {
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 S 2 6 6 0 1 0x0 64 - 0";
+        match from_fen(bad) {
+            Err(FenError::BadDecimal { field: "tracked_enemies" }) => {}
+            other => panic!("expected BadDecimal(tracked_enemies), got {:?}", other),
+        }
     }
 }
