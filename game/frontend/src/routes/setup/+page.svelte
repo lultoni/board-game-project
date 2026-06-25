@@ -1,11 +1,50 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { t } from "$lib/state/i18n";
-  import { match, type SeatKind, type DraftMode, type PreMadeLoadoutId } from "$lib/state/match-store.svelte";
+  import {
+    match,
+    modeFromSeats,
+    type SeatKind,
+    type DraftMode,
+    type PreMadeLoadoutId,
+  } from "$lib/state/match-store.svelte";
   import { settings } from "$lib/state/settings.svelte";
   import { isPreMadeLoadoutReady } from "$lib/state/draft";
+  import { disconnect as mpDisconnect, mpState } from "$lib/multiplayer.svelte";
 
-  const isMultiplayer = $derived(match.mode === "multiplayer");
+  // /setup/ is reached two ways:
+  //  1. Local-play entry from the main menu (no MP state should be live).
+  //  2. Host-side handoff from the lobby once a joiner connects (MP state IS
+  //     live — `mpState.status === "connected"` + multiplayerRole === "host").
+  //
+  // We can't key the multiplayer UI off `match.mode` because, post-L7c, the
+  // lobby Back link (a plain href, not the cancel button) leaves `match.mode`
+  // and `multiplayerRole` set without a live PeerJS connection — and the
+  // /draft/ route then boots in MP mode and reports "disconnected".
+  //
+  // Treat the live `mpState.status` as the source of truth: if there's no
+  // active host/join connection, scrub any residual MP state on mount so
+  // local play starts from a clean slate. The lobby's own teardown (cancel,
+  // disconnect-on-exit) still runs first when the user uses those paths;
+  // this onMount is the safety net for the Back-link case.
+  onMount(() => {
+    const status = mpState.status;
+    const liveMp =
+      status === "connected"
+      || status === "connecting"
+      || status === "hosting"
+      || status === "joining";
+    if (!liveMp && match.multiplayerRole !== null) {
+      mpDisconnect();
+      match.multiplayerRole = null;
+      match.multiplayerCode = null;
+      match.localSeat = null;
+      if (match.mode === "multiplayer") match.mode = "idle";
+    }
+  });
+
+  const isMultiplayer = $derived(match.multiplayerRole !== null);
 
   let p1: SeatKind = $state(match.side.p1);
   let p2: SeatKind = $state(match.side.p2);
@@ -33,6 +72,11 @@
       match.side = { p1: "human", p2: "human" };
     } else {
       match.side = { p1, p2 };
+      // Write the local mode so /draft/'s stale-entry guard (which bounces
+      // mode === "idle" back to /setup/ as a reloaded-mid-draft recovery)
+      // doesn't misfire on the normal fresh-entry path. /draft/ + /match/
+      // re-derive mode from seats on mount; this is just the handoff value.
+      match.mode = modeFromSeats({ p1, p2 });
     }
     match.draftMode = draftMode;
     match.preMadeLoadoutId = draftMode === "preMade" ? preMadeId : null;

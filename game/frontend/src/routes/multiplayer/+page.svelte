@@ -300,6 +300,21 @@
     view = "choose";
   }
 
+  /** Leave the lobby cleanly. Same teardown as cancel() (so MP state can't
+   *  bleed into a subsequent local-play session), then navigate home. Without
+   *  this, the lobby's Back link was a plain `<a href="../">` and left
+   *  `multiplayerRole` / `match.mode = "multiplayer"` set if the user had
+   *  hosted or joined — /setup/ then forced HvH and /draft/ booted in MP
+   *  mode and reported "disconnected". */
+  async function leaveLobby(ev: MouseEvent): Promise<void> {
+    ev.preventDefault();
+    cancel();
+    // Reset mode too — cancel() leaves match.mode alone because it's still
+    // owned by the lobby flow until the user actually leaves.
+    if (match.mode === "multiplayer") match.mode = "idle";
+    await goto("../");
+  }
+
   // Host: once a joiner connects, advance to /setup/ so the host can pick
   // draft mode (custom vs preMade). The wrapper in /setup/'s destination
   // route (/draft/ or /match/) will send `session-hello` and the joiner's
@@ -386,7 +401,7 @@
 
 <main>
   <header>
-    <p class="back"><a href="../">{t("multiplayer.back")}</a></p>
+    <p class="back"><a href="../" onclick={leaveLobby}>{t("multiplayer.back")}</a></p>
     <h1>{t("multiplayer.title")}</h1>
   </header>
 
