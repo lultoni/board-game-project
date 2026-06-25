@@ -11,15 +11,22 @@
 
   import { onDestroy } from "svelte";
   import { mpState, pillState } from "$lib/multiplayer.svelte";
-  import { GRACE_MS } from "$lib/multiplayer-protocol";
+  import { GRACE_MS, TAKEOVER_MS } from "$lib/multiplayer-protocol";
+  import { takeoverAsHost } from "$lib/multiplayer-handoff";
   import { t } from "$lib/state/i18n";
   import { match, claimWinByOpponentForfeit } from "$lib/state/match-store.svelte";
   import type { EngineClient } from "$lib/engine/types";
+  import type { MpEngineHandle } from "$lib/multiplayer-engine";
 
   // Engine handle passed from /match/ so we can finalise on claim. Kept
   // optional so the component still renders during boot before eng resolves
   // — the button stays disabled until eng is wired.
-  let { eng }: { eng: EngineClient | null } = $props();
+  // `mpEngine` is the role-aware wrapper; required for the joiner's "Take
+  // over as host" CTA. Null in solo or before mp boot.
+  let {
+    eng,
+    mpEngine = null,
+  }: { eng: EngineClient | null; mpEngine?: MpEngineHandle | null } = $props();
 
   // Coarse 500ms ticker so the countdown text updates without leaning on the
   // mpState now-timer (which is private to multiplayer.svelte.ts).
@@ -49,6 +56,27 @@
   );
   const canClaim = $derived(remainingMs === 0);
 
+  // Takeover countdown — runs in parallel to the claim-win countdown but
+  // unlocks earlier (30s vs 5min). Only the joiner sees the takeover CTA;
+  // host has the claim-win path instead.
+  const takeoverDeadline = $derived(
+    mpState.disconnectedSince !== null
+      ? mpState.disconnectedSince + TAKEOVER_MS
+      : null
+  );
+  const takeoverEligibleMs = $derived(
+    takeoverDeadline === null ? TAKEOVER_MS : Math.max(0, takeoverDeadline - nowTick)
+  );
+  const canTakeOver = $derived(
+    takeoverEligibleMs === 0 && match.multiplayerRole === "joiner"
+  );
+  const takeoverLabel = $derived.by(() => {
+    const total = Math.ceil(takeoverEligibleMs / 1000);
+    const mm = Math.floor(total / 60).toString().padStart(2, "0");
+    const ss = (total % 60).toString().padStart(2, "0");
+    return `${mm}:${ss}`;
+  });
+
   // mm:ss countdown for the not-yet-ready state.
   const remainingLabel = $derived.by(() => {
     const total = Math.ceil(remainingMs / 1000);
@@ -65,6 +93,26 @@
       await claimWinByOpponentForfeit(eng);
     } finally {
       busy = false;
+    }
+  }
+
+  let busyTakeover = $state(false);
+  let takeoverError = $state<string | null>(null);
+  async function onTakeOver(): Promise<void> {
+    if (!canTakeOver || !eng || !mpEngine || busyTakeover) return;
+    const code = match.multiplayerCode;
+    if (!code) return;
+    busyTakeover = true;
+    takeoverError = null;
+    try {
+      const r = await takeoverAsHost({ eng, mpEngine, code });
+      if (!r.ok) {
+        takeoverError = t("multiplayer.takeOverFailed");
+      }
+    } catch {
+      takeoverError = t("multiplayer.takeOverFailed");
+    } finally {
+      busyTakeover = false;
     }
   }
 </script>
@@ -84,7 +132,26 @@
       {:else}
         <span class="countdown">{t("multiplayer.claimWinIn", { time: remainingLabel })}</span>
       {/if}
+      {#if match.multiplayerRole === "joiner"}
+        {#if canTakeOver}
+          <button
+            class="secondary"
+            type="button"
+            disabled={!eng || !mpEngine || busyTakeover}
+            onclick={onTakeOver}
+          >
+            {busyTakeover
+              ? t("multiplayer.takeOverInProgress")
+              : t("multiplayer.takeOverNow")}
+          </button>
+        {:else}
+          <span class="countdown">{t("multiplayer.takeOverIn", { time: takeoverLabel })}</span>
+        {/if}
+      {/if}
     </div>
+    {#if takeoverError}
+      <p class="error" role="alert">{takeoverError}</p>
+    {/if}
   </div>
 {/if}
 
@@ -129,5 +196,24 @@
   .primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  .secondary {
+    padding: 0.4em 0.85em;
+    border: 1.5px solid var(--paper-ink-soft);
+    background: transparent;
+    color: var(--paper-ink);
+    border-radius: 5px;
+    cursor: pointer;
+    font: inherit;
+  }
+  .secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .error {
+    margin: 0.4rem 0 0;
+    color: #a94b3b;
+    font-size: 0.9em;
+    flex-basis: 100%;
   }
 </style>

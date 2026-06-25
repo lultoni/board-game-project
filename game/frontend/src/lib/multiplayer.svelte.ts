@@ -210,6 +210,37 @@ export function disconnect(): void {
   stopNowTimer();
 }
 
+/** Soft teardown used by the leader-handoff path. Drops the PeerJS object and
+ *  the open DataConnection synchronously (so the joiner's RTCDataChannel stops
+ *  delivering inbound frames from the dying host) but PRESERVES the carrier
+ *  fields the takeover flow needs to remain stable: `code` (so hostWithCode
+ *  can reclaim the same id), `role`/`peerEverPaired` (so GraceBanner stays
+ *  visible during the swap), `disconnectedSince` (so the countdown doesn't
+ *  reset and re-trigger the eligibility threshold). Status falls back to
+ *  "disconnected" — not "idle" — so the pill renders the same red dot
+ *  throughout the swap.
+ *
+ *  The inbox/rawInbox are preserved too: any frames buffered before the host
+ *  vanished are still valid telemetry for the wrapper to drain. Subsequent
+ *  reuse of this peer slot via hostWithCode() resets them through the normal
+ *  bindConnection path. */
+export function destroyPeerKeepState(): void {
+  if (pingTimer) {
+    clearInterval(pingTimer);
+    pingTimer = null;
+  }
+  if (conn) {
+    try { conn.close(); } catch { /* noop */ }
+    conn = null;
+  }
+  if (peer) {
+    try { peer.destroy(); } catch { /* noop */ }
+    peer = null;
+  }
+  mpState.status = "disconnected";
+  mpState.lastPongAt = null;
+}
+
 function startHeartbeat(): void {
   if (pingTimer) clearInterval(pingTimer);
   ensureNowTimer();
@@ -365,43 +396,55 @@ export function host(): Promise<string> {
 }
 
 /** Re-host a session under a specific code. Used by the lobby's Rejoin flow
- *  to reclaim the same PeerJS ID we held before the tab closed. Unlike
- *  `host()`, this does NOT retry on collision — if the code is already taken,
- *  someone else grabbed it while we were away, and the caller surfaces that
- *  to the user. */
+ *  to reclaim the same PeerJS ID we held before the tab closed, and by the
+ *  leader-handoff path where the broker may still hold the dying host's
+ *  registration for a few seconds. Retries up to 3 times on `unavailable-id`
+ *  / `taken` errors with progressive backoff (~1.5s/2s/2.5s) to ride out
+ *  broker eviction. Any other error type rejects immediately. */
 export function hostWithCode(code: string): Promise<string> {
   disconnect();
   mpState.disconnectedSince = null;
   mpState.role = "host";
   mpState.status = "hosting";
+  const RETRY_DELAYS = [1_500, 2_000, 2_500];
   return new Promise((resolve, reject) => {
-    const p = new Peer(ID_PREFIX + code);
-    p.on("open", () => {
-      peer = p;
-      mpState.code = code;
-      p.on("connection", (c) => {
-        if (conn && conn.open) {
-          c.on("open", () => {
-            try {
-              c.send(encodeMessage({ kind: "error", reason: "session-full" }));
-            } finally {
-              try { c.close(); } catch { /* noop */ }
-            }
-          });
+    const tryOne = (attemptIdx: number): void => {
+      const p = new Peer(ID_PREFIX + code);
+      p.on("open", () => {
+        peer = p;
+        mpState.code = code;
+        p.on("connection", (c) => {
+          if (conn && conn.open) {
+            c.on("open", () => {
+              try {
+                c.send(encodeMessage({ kind: "error", reason: "session-full" }));
+              } finally {
+                try { c.close(); } catch { /* noop */ }
+              }
+            });
+            return;
+          }
+          mpState.status = "connecting";
+          bindConnection(c);
+        });
+        resolve(code);
+      });
+      p.on("error", (e) => {
+        const msg = e?.message ?? String(e);
+        // The broker holds the previous registration for a few seconds after
+        // the old peer dies — retry through that window for the handoff path.
+        if (attemptIdx < RETRY_DELAYS.length && /taken|unavailable-id/i.test(msg)) {
+          try { p.destroy(); } catch { /* noop */ }
+          setTimeout(() => tryOne(attemptIdx + 1), RETRY_DELAYS[attemptIdx]);
           return;
         }
-        mpState.status = "connecting";
-        bindConnection(c);
+        mpState.lastError = msg;
+        mpState.status = "error";
+        try { p.destroy(); } catch { /* noop */ }
+        reject(e);
       });
-      resolve(code);
-    });
-    p.on("error", (e) => {
-      const msg = e?.message ?? String(e);
-      mpState.lastError = msg;
-      mpState.status = "error";
-      try { p.destroy(); } catch { /* noop */ }
-      reject(e);
-    });
+    };
+    tryOne(0);
   });
 }
 

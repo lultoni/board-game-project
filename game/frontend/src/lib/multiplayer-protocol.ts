@@ -83,6 +83,12 @@ const PILL_FORFEIT_MS = 5 * 60_000;
  *  banner countdown and the pill's forfeit transition land together. */
 export const GRACE_MS = 5 * 60_000;
 
+/** How long the joiner waits after the host vanishes before the "Take over
+ *  as host" CTA becomes clickable. Smaller than GRACE_MS so the joiner has a
+ *  productive alternative to a 5-minute claim-win wait. Anchored on the same
+ *  `disconnectedSince` timestamp as the forfeit countdown. */
+export const TAKEOVER_MS = 30_000;
+
 export function derivePillState(
   status: MpStatus,
   lastPongAt: number | null,

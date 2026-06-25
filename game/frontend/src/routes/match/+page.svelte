@@ -1623,7 +1623,7 @@
   </header>
 
   {#if match.mode === "multiplayer"}
-    <GraceBanner {eng} />
+    <GraceBanner {eng} {mpEngine} />
   {/if}
 
   {#if bootError}

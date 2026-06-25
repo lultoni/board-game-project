@@ -172,6 +172,13 @@
     }
   }
 
+  // NOTE: No "Take over as host" affordance lives in the lobby. The takeover
+  // CTA is intentionally only surfaced from inside an active match via
+  // <GraceBanner /> — the operation requires a live mpEngine handle and the
+  // engine state currently in memory, neither of which the lobby has. A user
+  // who has navigated back to the lobby has effectively abandoned the session
+  // and should Rejoin (which restores from IDB) rather than take over.
+
   // Host-side Rejoin. Reclaims the same 6-digit code, restores the engine
   // from the persisted MatchLog via a snapshot stuffed into
   // match.pendingSnapshotJson, and navigates immediately (without waiting

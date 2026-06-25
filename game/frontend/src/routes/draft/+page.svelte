@@ -720,7 +720,7 @@
   </header>
 
   {#if isMultiplayer}
-    <GraceBanner {eng} />
+    <GraceBanner {eng} {mpEngine} />
   {/if}
 
   {#if bootError}

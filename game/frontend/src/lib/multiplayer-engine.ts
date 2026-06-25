@@ -115,6 +115,16 @@ export interface MpEngineHandle {
    *  handoff). On host/solo, no-op. */
   setMatchId(id: string | null): void;
 
+  /** Flip role joiner → host in place. Preserves `seq`, the engine reference,
+   *  and the wrapper's subscription. Used by the leader-handoff path: the
+   *  lobby/banner reclaims the same PeerJS code, starts a fresh telemetry row,
+   *  then calls this. After `promoteToHost`, the next `notifyConnectionOpen`
+   *  will emit `session-hello` with the new matchId + code so the old host
+   *  (now joiner) can re-anchor via snapshot. Pending intents are rejected
+   *  with reason "promoted" since they targeted an authority that no longer
+   *  exists. No-op on host/solo. */
+  promoteToHost(opts: { matchId: string; code: string }): void;
+
   /** The latest committed seq we know about. */
   getSeq(): number;
 
@@ -127,6 +137,10 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
   let role: Role = opts.role;
   let phase: WirePhase = opts.phase;
   let matchId: string | null = opts.matchId;
+  // Mutable code carrier so promoteToHost can swap in the reclaimed code
+  // without recreating the wrapper. Initial value comes from opts; null until
+  // a code is known (joiner before session-hello).
+  let codeRef: string | null = opts.code ?? null;
   let seq = 0;
   let paused = false; // host-side: pause while joiner is gone
   let disposed = false;
@@ -143,6 +157,17 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     // eslint-disable-next-line no-console
     console.warn(`[mp-engine] ${stage}`, detail);
   });
+
+  /** Reject and clear every in-flight joiner intent with the given reason.
+   *  Used by dispose (reason: "disposed"), notifyConnectionLost (peer-lost),
+   *  and promoteToHost (promoted). Idempotent. */
+  function clearPendingIntents(reason: string): void {
+    for (const [n, p] of pendingIntents) {
+      if (p.timer) clearTimeout(p.timer);
+      p.resolve({ accepted: false, reason });
+      pendingIntents.delete(n);
+    }
+  }
 
   // --- wire handler ----------------------------------------------------------
   const unsubscribe = deps.subscribe((m) => {
@@ -428,7 +453,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         matchId: matchId ?? "",
         phase,
         seq,
-        code: opts.code ?? "",
+        code: codeRef ?? "",
       });
       // If seq > 0 the joiner will request a snapshot; we wait passively.
       // If seq === 0 (fresh match) the first `committed` is enough.
@@ -448,11 +473,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       deps.send({ kind: "paused" });
     } else if (role === "joiner") {
       // Reject in-flight intents so the UI doesn't hang.
-      for (const [n, p] of pendingIntents) {
-        if (p.timer) clearTimeout(p.timer);
-        p.resolve({ accepted: false, reason: "peer-lost" });
-        pendingIntents.delete(n);
-      }
+      clearPendingIntents("peer-lost");
     }
   }
 
@@ -490,6 +511,23 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     matchId = id;
   }
 
+  function promoteToHost(promoteOpts: { matchId: string; code: string }): void {
+    if (disposed) return;
+    if (role !== "joiner") return;
+    // Any joiner intent that hasn't received a `committed` yet was aimed at
+    // an authority that no longer exists. Reject so the route's awaiters can
+    // clean up their optimistic UI / retry against the new self-host.
+    clearPendingIntents("promoted");
+    role = "host";
+    matchId = promoteOpts.matchId;
+    codeRef = promoteOpts.code;
+    // Fresh host is by definition not paused — we just acquired the role.
+    paused = false;
+    // seq stays put; new host continues the sequence from the last committed
+    // action the mirror saw. The next `committed` we broadcast will be
+    // seq + 1, matching the natural flow.
+  }
+
   function getSeq(): number {
     return seq;
   }
@@ -498,11 +536,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     if (disposed) return;
     disposed = true;
     unsubscribe();
-    for (const [, p] of pendingIntents) {
-      if (p.timer) clearTimeout(p.timer);
-      p.resolve({ accepted: false, reason: "disposed" });
-    }
-    pendingIntents.clear();
+    clearPendingIntents("disposed");
   }
 
   return {
@@ -512,6 +546,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     hostTransitionToPlay,
     hostSendSnapshot,
     setMatchId,
+    promoteToHost,
     getSeq,
     dispose,
   };

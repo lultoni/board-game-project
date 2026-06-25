@@ -537,3 +537,108 @@ describe("dispose", () => {
     expect(handle.getSeq()).toBe(0);
   });
 });
+
+// =========================================================================
+// PROMOTE-TO-HOST (leader handoff)
+// =========================================================================
+
+describe("promoteToHost", () => {
+  it("is a no-op on a solo handle", async () => {
+    const { bus, handle } = build("solo");
+    handle.promoteToHost({ matchId: "new-mid", code: "999000" });
+    // No session-hello on connection-open (still solo).
+    handle.notifyConnectionOpen();
+    expect(bus.sent).toEqual([]);
+    // submitAction still uses solo path (no committed broadcast).
+    const r = await handle.submitAction(5);
+    expect(r.accepted).toBe(true);
+    expect(bus.sent).toEqual([]);
+  });
+
+  it("is a no-op on an existing host handle", async () => {
+    const { bus, handle } = build("host");
+    handle.notifyConnectionOpen();
+    bus.sent.length = 0;
+    handle.promoteToHost({ matchId: "other-mid", code: "111111" });
+    // matchId/code should NOT have been adopted from the new opts; the next
+    // session-hello carries the original handle's matchId+code.
+    handle.notifyConnectionOpen();
+    const hello = bus.sent.find((m) => m.kind === "session-hello");
+    expect(hello).toMatchObject({ matchId: "host-match-1", code: "281947" });
+  });
+
+  it("rejects an in-flight joiner intent with reason=promoted", async () => {
+    const { handle } = build("joiner");
+    const p = handle.submitAction(7);
+    handle.promoteToHost({ matchId: "new-mid", code: "999000" });
+    const r = await p;
+    expect(r.accepted).toBe(false);
+    expect(r.reason).toBe("promoted");
+  });
+
+  it("after promotion, submitAction follows the host path with seq = prev+1", async () => {
+    const { eng, bus, handle } = build("joiner", "play");
+    // Apply two committed actions on the mirror so seq advances to 2.
+    bus.push({ kind: "committed", seq: 1, phase: "play", raw: 10, postZobrist: "41", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    bus.push({ kind: "committed", seq: 2, phase: "play", raw: 20, postZobrist: "1291", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(handle.getSeq()).toBe(2);
+    expect(eng.applied).toEqual([10, 20]);
+
+    handle.promoteToHost({ matchId: "new-mid", code: "999000" });
+    bus.sent.length = 0;
+
+    const r = await handle.submitAction(30);
+    expect(r.accepted).toBe(true);
+    const committed = bus.sent.filter((m) => m.kind === "committed");
+    expect(committed).toHaveLength(1);
+    expect((committed[0] as { seq: number }).seq).toBe(3);
+  });
+
+  it("after promotion, incoming intent is honoured and produces committed", async () => {
+    const { bus, handle } = build("joiner", "play");
+    handle.promoteToHost({ matchId: "new-mid", code: "999000" });
+    bus.sent.length = 0;
+
+    bus.push({ kind: "intent", phase: "play", nonce: "j-abc", raw: 42 });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    const committed = bus.sent.find((m) => m.kind === "committed");
+    expect(committed).toMatchObject({ seq: 1, phase: "play", raw: 42, originNonce: "j-abc" });
+  });
+
+  it("notifyConnectionOpen after promotion emits session-hello with NEW matchId+code and preserved seq", async () => {
+    const { bus, handle } = build("joiner", "draft");
+    bus.push({ kind: "committed", seq: 1, phase: "draft", raw: 4, postZobrist: "35", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(handle.getSeq()).toBe(1);
+
+    handle.promoteToHost({ matchId: "handoff-mid", code: "424242" });
+    bus.sent.length = 0;
+
+    handle.notifyConnectionOpen();
+    const hello = bus.sent.find((m) => m.kind === "session-hello");
+    expect(hello).toMatchObject({
+      kind: "session-hello",
+      matchId: "handoff-mid",
+      phase: "draft",
+      seq: 1,
+      code: "424242",
+    });
+  });
+
+  it("getSeq returns the pre-promotion seq immediately after promotion (no reset)", async () => {
+    const { bus, handle } = build("joiner", "play");
+    bus.push({ kind: "committed", seq: 1, phase: "play", raw: 1, postZobrist: "32", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    bus.push({ kind: "committed", seq: 2, phase: "play", raw: 2, postZobrist: "994", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    bus.push({ kind: "committed", seq: 3, phase: "play", raw: 3, postZobrist: "30817", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(handle.getSeq()).toBe(3);
+
+    handle.promoteToHost({ matchId: "x", code: "555555" });
+    expect(handle.getSeq()).toBe(3);
+  });
+});
