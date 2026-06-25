@@ -101,11 +101,6 @@ export interface MpEngineHandle {
   notifyConnectionOpen(): void;
   notifyConnectionLost(): void;
 
-  /** Host-only: drive a draft→play phase transition. Sends the
-   *  `phase-change` envelope to the joiner with the current snapshot.
-   *  No-op on solo/joiner. */
-  hostTransitionToPlay(): Promise<void>;
-
   /** Host-only: send a fresh snapshot to the joiner. Called explicitly by
    *  the lobby after a reconnect, or implicitly when the joiner sends a
    *  `request-snapshot`. */
@@ -273,6 +268,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         } catch (e) {
           warn("onApplied-host-intent", e);
         }
+        await maybeEmitPhaseChange();
         return;
       }
 
@@ -381,6 +377,65 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
   }
 
   // --- public API ------------------------------------------------------------
+  /** Engine `currentPhase` values come from `wrapper_api.rs` — 2 means
+   *  Phase::Draft; anything else (Move=0, Skill=1, Ended=3) means play. The
+   *  only wire-relevant transition is draft→play, so any post-apply phase
+   *  that is NOT 2 while our wrapper's `phase` is still "draft" is the cue
+   *  to broadcast `phase-change` and fire `onPhaseChange("play")`. */
+  const PHASE_DRAFT = 2;
+
+  /** Host-side: detect a draft→play transition driven by the action that
+   *  just landed. Broadcasts the `phase-change` envelope and fires the local
+   *  `onPhaseChange("play")` so the route navigates regardless of whether
+   *  the trigger action came from the host or from an accepted joiner intent.
+   *
+   *  Pre-this-refactor, only the manual `hostTransitionToPlay()` API drove
+   *  this — and route code only called it when the host's OWN local commit
+   *  filled the last draft slot. If the joiner placed the last pick, the
+   *  host's engine moved to play but no broadcast fired and the host stayed
+   *  on /draft/ (the softlock).
+   *
+   *  Solo callers also reach this path; we fire `onPhaseChange` for them too
+   *  so solo /draft/ can navigate via the same callback rather than the
+   *  separate `finishAndForward → goto` flow. The `deps.send` call still
+   *  runs for solo but is a no-op (no peer subscribes).
+   *
+   *  Safe to call after every apply: gated on phase actually crossing. */
+  async function maybeEmitPhaseChange(): Promise<void> {
+    if (phase !== "draft") return;
+    let postPhase: number;
+    try {
+      const view = await deps.eng.positionView();
+      postPhase = view.currentPhase;
+    } catch (e) {
+      warn("phase-detect-failed", e);
+      return;
+    }
+    if (postPhase === PHASE_DRAFT) return;
+    phase = "play";
+    if (role === "host") {
+      try {
+        const snapshotJson = await deps.eng.snapshotJson();
+        deps.send({
+          kind: "phase-change",
+          from: "draft",
+          to: "play",
+          snapshotJson,
+          seq,
+        });
+      } catch (e) {
+        // Snapshot serialisation failure — joiner will resync via the next
+        // `request-snapshot`. Local navigation still proceeds.
+        warn("phase-change-snapshot-failed", e);
+      }
+    }
+    try {
+      await deps.onPhaseChange("play");
+    } catch (e) {
+      warn("onPhaseChange-local", e);
+    }
+  }
+
   async function submitAction(raw: number): Promise<SubmitResult> {
     if (disposed) return { accepted: false, reason: "disposed" };
     if (role === "solo") {
@@ -394,6 +449,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       } catch (e) {
         warn("onApplied-solo", e);
       }
+      await maybeEmitPhaseChange();
       return { accepted: true };
     }
     if (role === "host") {
@@ -424,6 +480,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       } catch (e) {
         warn("onApplied-host", e);
       }
+      await maybeEmitPhaseChange();
       return { accepted: true };
     }
     // joiner
@@ -475,20 +532,6 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       // Reject in-flight intents so the UI doesn't hang.
       clearPendingIntents("peer-lost");
     }
-  }
-
-  async function hostTransitionToPlay(): Promise<void> {
-    if (disposed || role !== "host") return;
-    if (phase === "play") return;
-    const snapshotJson = await deps.eng.snapshotJson();
-    phase = "play";
-    deps.send({
-      kind: "phase-change",
-      from: "draft",
-      to: "play",
-      snapshotJson,
-      seq,
-    });
   }
 
   async function hostSendSnapshot(_reason?: "explicit" | "reply"): Promise<void> {
@@ -543,7 +586,6 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     submitAction,
     notifyConnectionOpen,
     notifyConnectionLost,
-    hostTransitionToPlay,
     hostSendSnapshot,
     setMatchId,
     promoteToHost,

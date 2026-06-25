@@ -109,7 +109,18 @@ export type WireMessageV2 =
 
   // Reserved for the broker's third-peer kick path (kept compatible with v1
   // so the host can still send `session-full` to a fourth tab dialling in).
-  | { kind: "error"; reason: string };
+  | { kind: "error"; reason: string }
+
+  // Attacker → defender (relayed through the data channel; symmetric — the
+  // recipient is just "the other peer"). Stack M says the DEFENDER chooses
+  // which of the dual-adjacent Guards intercepts a Move-Attack. The attacker
+  // computes whether bodyguard variants exist locally, then defers to the
+  // defender by sending this prompt. Defender opens its own bodyguard chooser
+  // (recomputed locally from `src` + `target` + `approach` + the mirrored
+  // position), picks a variant, and submits the chosen raw via the normal
+  // `intent` path. The attacker freezes input until a `committed` for that
+  // move lands.
+  | { kind: "bodyguard-prompt"; src: number; target: number; approach: number };
 
 /** JSON-encode a wire message. */
 export function encodeMessageV2(m: WireMessageV2): string {
@@ -277,6 +288,27 @@ export function decodeMessageV2(s: string): WireMessageV2 | null {
       return typeof (m as { reason?: unknown }).reason === "string"
         ? (m as WireMessageV2)
         : null;
+
+    case "bodyguard-prompt": {
+      const r = m as { src?: unknown; target?: unknown; approach?: unknown };
+      if (
+        typeof r.src === "number"
+        && Number.isInteger(r.src)
+        && r.src >= 0
+        && r.src < 64
+        && typeof r.target === "number"
+        && Number.isInteger(r.target)
+        && r.target >= 0
+        && r.target < 64
+        && typeof r.approach === "number"
+        && Number.isInteger(r.approach)
+        && r.approach >= 0
+        && r.approach < 64
+      ) {
+        return m as WireMessageV2;
+      }
+      return null;
+    }
 
     default:
       return null;

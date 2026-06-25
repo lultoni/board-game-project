@@ -24,7 +24,7 @@
     approachChoicesFor,
   } from "$lib/state/move-targets";
   import { bodyguardGuardsFor } from "$lib/state/bodyguard";
-  import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, type SkillVariant } from "$lib/state/skill-targets";
+  import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, hasSelfAndRetargetChoice, variantIsSelfCast, allyMoverCandidates, allyMoverDestinations, rawForAllyMove, type SkillVariant } from "$lib/state/skill-targets";
   import {
     isSelfCast,
     SKILLS,
@@ -40,6 +40,7 @@
     mpState,
     onRawData as mpOnRawData,
     sendRaw as mpSendRaw,
+    disconnect as mpDisconnect,
   } from "$lib/multiplayer.svelte";
   import { decodeMessageV2, encodeMessageV2, type WireMessageV2 } from "$lib/multiplayer-protocol-v2";
   import { createMpEngine, type MpEngineHandle, type Role, type SubmitResult } from "$lib/multiplayer-engine";
@@ -78,9 +79,10 @@
     if (match.mode !== "multiplayer") return true;
     if (!match.position) return false;
     const toMove = match.position.toMove; // 0 = P1, 1 = P2
-    if (match.multiplayerRole === "host") return toMove === 0;
-    if (match.multiplayerRole === "joiner") return toMove === 1;
-    return false;
+    // Seat-by-localSeat, NOT by role: post-handoff the role flips but the
+    // peer's board seat stays the same. See match-store.svelte.ts/localSeat.
+    const seat = match.localSeat ?? (match.multiplayerRole === "host" ? 0 : 1);
+    return toMove === seat;
   });
 
   // Track which squares used their Move action this phase. Stored as the
@@ -118,6 +120,13 @@
     redirects: { guardSq: number; raw: number }[];
   } | null>(null);
 
+  /** Multiplayer: set on the ATTACKER's side after they commit a Move-Attack
+   *  whose target has Bodyguard variants. The attacker can't choose — Stack M
+   *  says the defender owns the choice — so we freeze attacker input and
+   *  notify the defender peer via `bodyguard-prompt`. Cleared when the
+   *  resulting `committed` lands (defender's intent went through). */
+  let pendingRemoteBodyguard = $state<{ target: number; approach: number } | null>(null);
+
   // Armed skill: when the player clicks a skill slice on the wheel, the
   // skill is "armed" and the next click on a valid target tile fires it.
   // Self-cast skills fire immediately on slice click and never enter armed
@@ -133,6 +142,20 @@
    *  "effect" = base range, but the effect itself is boosted (Blast pushes 2,
    *  Shove pushes 2). Player toggles via SkillInfoCard while armed. */
   let focusModePref = $state<"activation" | "effect">("activation");
+  /** Focus-retarget preference. Only consulted when Focus is staged on a
+   *  skill that has both a self-cast branch and an ally-retarget branch
+   *  (Shield, Dash, Retreat). "self" = caster channels the skill;
+   *  "ally" = adjacent ally is the recipient/mover. Player toggles via the
+   *  Self / Ally picker that mirrors the focus-mode (Range/Effect) toggle. */
+  let focusRetargetPref = $state<"self" | "ally">("self");
+  /** Two-stage Focus-retarget picker: in "ally" mode for movement skills
+   *  (Dash/Retreat — where the ally's destination differs from the ally
+   *  itself), the player first clicks WHICH adjacent ally moves, then clicks
+   *  the destination. Null = no ally picked yet (squares show the ally
+   *  candidates); set = ally chosen (squares show that ally's destinations).
+   *  Reset on arm change, mode switch back to self, or fire. Not used for
+   *  Shield retarget — there, target == aux_sq, so a single click suffices. */
+  let focusAllyChosen = $state<number | null>(null);
   /** Focus / Charge are derived from the engine's pendingModifiers bitfield.
    *  Casting Focus / Charge (skills 14 / 15) stages the modifier; the wheel
    *  reads these flags to render the slice as "active". */
@@ -308,7 +331,18 @@
   const movable = $derived(movableSources(match.legal));
   const endPhaseAction = $derived(findActionByKind(match.legal, ActionKind.EndPhase));
   const inMovePhase = $derived(match.position?.currentPhase === 0);
-  const interactive = $derived(ready && !busy && match.position?.gameResult === 0 && !currentSeatIsAi && currentSeatIsLocal);
+  // Standard interactivity: it's the local seat's turn and we're not busy.
+  // Bodyguard exception: when a remote attacker has handed us the bodyguard
+  // choice, the seat-to-move is NOT us, so the normal gate would refuse clicks.
+  // Override it for the duration of the prompt — the defender owns the call,
+  // and the chosen raw is still legal at the engine level on the host.
+  const interactive = $derived(
+    ready
+    && !busy
+    && match.position?.gameResult === 0
+    && !currentSeatIsAi
+    && (currentSeatIsLocal || pendingBodyguard !== null)
+  );
 
   // Wheel state. Open whenever a piece is selected in the Skill Phase
   // (and the player isn't mid-drag — we don't want the wheel popping up
@@ -369,18 +403,59 @@
     return hasFocusModeChoice(match.legal, armedSkill.square, armedSkill.skillId);
   });
 
+  // Whether the currently-armed skill has a Self vs Ally retarget choice.
+  // True when Focus is staged AND the engine emitted both a self-cast branch
+  // and at least one ally-retarget branch (Shield, Dash, Retreat).
+  const armedHasRetargetChoice = $derived.by(() => {
+    if (!armedSkill) return false;
+    return hasSelfAndRetargetChoice(match.legal, armedSkill.square, armedSkill.skillId);
+  });
+
+  // True when we're in Ally-retarget mode for a movement skill (Dash/Retreat)
+  // and need the player to pick WHICH ally moves before showing destinations.
+  // Shield retarget has target == ally, so a single click suffices — this is
+  // false there.
+  const armedNeedsAllyPick = $derived.by(() => {
+    if (!armedSkill) return false;
+    if (!armedHasRetargetChoice) return false;
+    if (focusRetargetPref !== "ally") return false;
+    return allyMoverCandidates(match.legal, armedSkill.square, armedSkill.skillId).length > 0;
+  });
+
+  // Candidate ally squares in Ally-pick stage 1.
+  const armedAllyCandidates = $derived.by(() => {
+    if (!armedNeedsAllyPick) return new Set<number>();
+    return new Set(allyMoverCandidates(match.legal, armedSkill!.square, armedSkill!.skillId));
+  });
+
   // Target set for the currently-armed skill. Filtered by focusModePref when
-  // both interpretations exist; otherwise unfiltered.
+  // both interpretations exist; further filtered by focusRetargetPref when a
+  // Self/Ally choice exists. For Dash/Retreat retarget in Ally mode the flow
+  // is two-stage: stage 1 surfaces ally candidates, stage 2 (after
+  // `focusAllyChosen` is set) surfaces that ally's destinations.
   const armedSkillTargets = $derived.by(() => {
     if (!armedSkill) return new Set<number>();
-    const ts = skillTargetsFor(match.legal, armedSkill.square, armedSkill.skillId);
-    if (!armedHasFocusModeChoice) return ts.squares;
-    // Filter by focus-mode preference. `focusMode=true` → effect-buff variant.
+    const src = armedSkill.square;
+    if (armedNeedsAllyPick) {
+      if (focusAllyChosen === null) return armedAllyCandidates;
+      const focusMode = armedHasFocusModeChoice
+        ? (focusModePref === "effect")
+        : null;
+      return allyMoverDestinations(match.legal, src, armedSkill.skillId, focusAllyChosen, focusMode);
+    }
+    const ts = skillTargetsFor(match.legal, src, armedSkill.skillId);
     const wantEffect = focusModePref === "effect";
+    const wantSelf = focusRetargetPref === "self";
     const filtered = new Set<number>();
     for (const [tgt, vs] of ts.variantsByTarget) {
-      if (vs.some((v) => v.focusMode === wantEffect)) filtered.add(tgt);
+      const matches = vs.some((v) => {
+        if (armedHasFocusModeChoice && v.focusMode !== wantEffect) return false;
+        if (armedHasRetargetChoice && variantIsSelfCast(v, src) !== wantSelf) return false;
+        return true;
+      });
+      if (matches) filtered.add(tgt);
     }
+    if (!armedHasFocusModeChoice && !armedHasRetargetChoice) return ts.squares;
     return filtered;
   });
 
@@ -508,20 +583,18 @@
             // applyRaw already snapshotted pre-state and rendered effects;
             // re-rendering here would double-flash and double-bump telemetry.
             if (raw === pendingLocalRaw) return;
-            // Remote-driven apply: pre-state was the engine's state BEFORE
-            // the wrapper called tryApply. We don't have that snapshot any
-            // more (engine already moved), so we render against the current
-            // mailbox — visual fidelity for remote ply is best-effort. The
-            // important thing is that match.position / match.legal refresh.
-            await refresh();
-            reconcilePieceIds();
-            lastAppliedPair = null;
-            match.lastApplied = raw;
-            const k = phaseKey();
-            if (k !== lastPhaseKey) {
-              usedThisPhase = new Set();
-              lastPhaseKey = k;
-            }
+            // Remote-driven apply clears any in-flight remote bodyguard prompt
+            // — the defender just decided, the move has committed.
+            pendingRemoteBodyguard = null;
+            // The wrapper has already called tryApply, so the engine itself
+            // is post-state. But `match.position` is the route's reactive
+            // mirror — refresh() hasn't been called yet for this raw, so
+            // match.position is still the PRE-apply snapshot. Capture from
+            // it before refreshing, then run the full effect pipeline so the
+            // non-acting peer plays sounds, spawns damage/death effects, and
+            // updates usedThisPhase (greying-out parity).
+            const { preFull, preTarget, preBodyguard } = snapshotPreState(raw);
+            await renderApplied(raw, preFull, preTarget, preBodyguard);
             // Host records the ply for telemetry. Joiner writes nothing
             // per the authoritative-host model.
             if (role === "host" || role === "solo") {
@@ -550,6 +623,17 @@
           else if (mpState.status === "disconnected") mpEngine?.notifyConnectionLost();
         });
       });
+      // Subscribe to route-layer wire side-channel messages — currently just
+      // `bodyguard-prompt`. The engine wrapper ignores these, so we tap the
+      // raw inbox directly. Compose with the existing handlers via separate
+      // subscription (mpOnRawData supports multiple subscribers).
+      mpRouteWireUnsub = mpOnRawData((raw) => {
+        const decoded = decodeMessageV2(raw);
+        if (!decoded) return;
+        if (decoded.kind === "bodyguard-prompt") {
+          onRemoteBodyguardPrompt(decoded.src, decoded.target, decoded.approach);
+        }
+      });
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
@@ -565,6 +649,9 @@
   let mpPaused = $state(false);
   /** Disposer for the $effect.root that bridges mpState → wrapper lifecycle. */
   let mpConnectedUnsub: (() => void) | null = null;
+  /** Disposer for the route-layer raw-data subscription (currently used for
+   *  the `bodyguard-prompt` side message, which the engine wrapper ignores). */
+  let mpRouteWireUnsub: (() => void) | null = null;
   /** The raw u32 currently being applied via the local submit path. Used to
    *  short-circuit the wrapper's onApplied callback so we don't double-render
    *  on host-side (host's submitAction applies AND fires onApplied). */
@@ -990,6 +1077,7 @@
         pendingApproach = null;
         pendingDirection = null;
         focusModePref = "activation";
+        focusAllyChosen = null;
         return;
       }
 
@@ -1023,6 +1111,7 @@
       pendingApproach = null;
       pendingDirection = null;
       focusModePref = "activation";
+      focusAllyChosen = null;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
@@ -1093,6 +1182,23 @@
       applyRaw(variants.defenderRaw);
       return;
     }
+    // Bodyguard variants exist. In multiplayer the DEFENDER picks (Stack M),
+    // so if the defender is the remote peer we hand off the choice over the
+    // wire. The attacker freezes input until a `committed` lands.
+    if (match.mode === "multiplayer") {
+      const toMove = match.position?.toMove ?? 0;
+      const defenderSeat = 1 - toMove;
+      const localSeat = match.localSeat ?? (match.multiplayerRole === "host" ? 0 : 1);
+      const src = match.selection;
+      if (defenderSeat !== localSeat && src !== null) {
+        pendingRemoteBodyguard = { target, approach };
+        const payload: WireMessageV2 = { kind: "bodyguard-prompt", src, target, approach };
+        mpSendRaw(encodeMessageV2(payload));
+        match.selection = null;
+        pendingApproach = null;
+        return;
+      }
+    }
     // Bodyguard variants exist. Recompute eligible Guard squares from the
     // current position so we know which square each redirect's choice_idx
     // points at. The k-th redirect (choiceIdx = k) maps to the k-th Guard
@@ -1108,6 +1214,45 @@
     }
     if (redirects.length === 0) {
       // No mappable redirects (shouldn't happen): apply defender variant.
+      applyRaw(variants.defenderRaw);
+      return;
+    }
+    pendingBodyguard = {
+      target,
+      defenderRaw: variants.defenderRaw,
+      redirects,
+    };
+  }
+
+  /** Defender-side handler for a `bodyguard-prompt` from the attacker.
+   *  Recomputes candidates from the local mirror engine's `match.legal` (which
+   *  is the attacker's side-to-move legal set the joiner mirrors) and opens
+   *  the local Bodyguard chooser so this peer's user picks. Subsequent click
+   *  routes through `applyRaw → submitAction` (intent to host) as normal —
+   *  the engine doesn't care that the chosen raw belongs to the attacker's
+   *  side, it just validates legality. */
+  function onRemoteBodyguardPrompt(src: number, target: number, approach: number) {
+    if (!match.position) return;
+    // Rebuild per-approach variants from the legal set scoped to `src`.
+    const ts = moveTargetsFor(match.legal, src);
+    const perTarget = ts.byTarget.get(target);
+    if (!perTarget) return;
+    const variants = perTarget.get(approach);
+    if (!variants) return;
+    if (variants.redirects.length === 0) {
+      // No bodyguard variants exist locally — defender just commits the
+      // defender-takes-hit variant on behalf of the attacker.
+      applyRaw(variants.defenderRaw);
+      return;
+    }
+    const guards = bodyguardGuardsFor(match.position, target, approach);
+    const redirects: { guardSq: number; raw: number }[] = [];
+    for (const r of variants.redirects) {
+      const idx = r.choiceIdx - 1;
+      if (idx < 0 || idx >= guards.length) continue;
+      redirects.push({ guardSq: guards[idx], raw: r.raw });
+    }
+    if (redirects.length === 0) {
       applyRaw(variants.defenderRaw);
       return;
     }
@@ -1176,6 +1321,18 @@
     // Armed skill: clicking a legal target fires it; clicking elsewhere
     // disarms but keeps the selection.
     if (armedSkill && armedSkill.square === match.selection) {
+      // Two-stage ally pick: stage 1 records the ally; stage 2 (handled by
+      // the standard target branch below) fires for that ally.
+      if (armedNeedsAllyPick && focusAllyChosen === null) {
+        if (armedAllyCandidates.has(sq)) {
+          focusAllyChosen = sq;
+          return;
+        }
+        // Click elsewhere: cancel ally pick + disarm.
+        armedSkill = null;
+        focusAllyChosen = null;
+        return;
+      }
       if (armedSkillTargets.has(sq)) {
         // Shove (11) needs a push-direction pick before firing. Open the
         // direction picker on the target tile and let the player choose.
@@ -1186,11 +1343,18 @@
         const raw = rawForArmedTarget(armedSkill.square, armedSkill.skillId, sq);
         if (raw !== null) {
           armedSkill = null;
+          focusAllyChosen = null;
           applyRaw(raw);
           return;
         }
       }
+      // Allow re-picking the ally mover when in ally-stage-2.
+      if (armedNeedsAllyPick && focusAllyChosen !== null && armedAllyCandidates.has(sq)) {
+        focusAllyChosen = sq;
+        return;
+      }
       armedSkill = null;
+      focusAllyChosen = null;
       return;
     }
 
@@ -1299,8 +1463,11 @@
       // Otherwise arm it (or disarm if already armed with the same skill).
       if (armedSkill && armedSkill.skillId === slice.skillId) {
         armedSkill = null;
+        focusAllyChosen = null;
       } else {
         armedSkill = { square: src, skillId: slice.skillId };
+        focusRetargetPref = "self";
+        focusAllyChosen = null;
       }
       return;
     }
@@ -1333,14 +1500,25 @@
   // (Shove) shouldn't go through this path — they hit the DirectionPicker
   // first — but we fall through to "any matching" for safety.
   function rawForArmedTarget(src: number, skillId: number, target: number): number | null {
+    // Two-stage ally pick: caller has already set focusAllyChosen, target is
+    // the destination for that ally.
+    if (armedNeedsAllyPick && focusAllyChosen !== null) {
+      const focusMode = armedHasFocusModeChoice ? (focusModePref === "effect") : null;
+      return rawForAllyMove(match.legal, src, skillId, focusAllyChosen, target, focusMode);
+    }
     const ts = skillTargetsFor(match.legal, src, skillId);
     const variants = ts.variantsByTarget.get(target);
     if (!variants || variants.length === 0) return null;
-    if (hasFocusModeChoice(match.legal, src, skillId)) {
-      const wantEffect = focusModePref === "effect";
-      const v = variants.find((x) => x.focusMode === wantEffect);
-      if (v) return v.raw;
-    }
+    const hasFocusChoice = hasFocusModeChoice(match.legal, src, skillId);
+    const hasRetargetChoice = hasSelfAndRetargetChoice(match.legal, src, skillId);
+    const wantEffect = focusModePref === "effect";
+    const wantSelf = focusRetargetPref === "self";
+    const v = variants.find((x) => {
+      if (hasFocusChoice && x.focusMode !== wantEffect) return false;
+      if (hasRetargetChoice && variantIsSelfCast(x, src) !== wantSelf) return false;
+      return true;
+    });
+    if (v) return v.raw;
     return variants[0].raw;
   }
 
@@ -1353,6 +1531,10 @@
     if (hasFocusModeChoice(match.legal, src, skillId)) {
       const wantEffect = focusModePref === "effect";
       variants = variants.filter((v) => v.focusMode === wantEffect);
+    }
+    if (hasSelfAndRetargetChoice(match.legal, src, skillId)) {
+      const wantSelf = focusRetargetPref === "self";
+      variants = variants.filter((v) => variantIsSelfCast(v, src) === wantSelf);
     }
     if (variants.length === 0) return;
     pendingDirection = { target, variants };
@@ -1458,7 +1640,9 @@
     match.selection = null;
     pendingApproach = null;
     pendingBodyguard = null;
+    pendingRemoteBodyguard = null;
     armedSkill = null;
+    focusAllyChosen = null;
     pendingDirection = null;
     focusModePref = "activation";
   }
@@ -1608,6 +1792,21 @@
       mpConnectedUnsub();
       mpConnectedUnsub = null;
     }
+    if (mpRouteWireUnsub) {
+      mpRouteWireUnsub();
+      mpRouteWireUnsub = null;
+    }
+    // Leaving /match/ before a natural end means we're going back to the
+    // lobby (or home). Tear down the PeerJS connection so the OTHER peer
+    // sees us drop immediately — otherwise the joiner-side `mpState` keeps
+    // pinging the host from a stale page, and the host's heartbeat never
+    // ages out (we observed the host pill staying "live" indefinitely while
+    // the joiner sat on the home screen). Skip when telemetry has finalised
+    // (natural game-end) — in that case both peers leave together and
+    // resume isn't needed. Mirror's /draft/'s onDestroy teardown.
+    if (match.mode === "multiplayer" && !match.telemetryFinalised) {
+      mpDisconnect();
+    }
   });
 </script>
 
@@ -1701,6 +1900,15 @@
       {#if pendingBodyguard}
         <p class="hint">bodyguard: defender may redirect the hit — click the red defender to take the hit, or a blue guard to intercept</p>
       {/if}
+      {#if pendingRemoteBodyguard}
+        <p class="hint">bodyguard: waiting for the defender to choose…</p>
+      {/if}
+      {#if armedNeedsAllyPick && focusAllyChosen === null}
+        <p class="hint">pick an adjacent ally to channel onto, then choose where they move</p>
+      {/if}
+      {#if armedNeedsAllyPick && focusAllyChosen !== null}
+        <p class="hint">choose the destination for the chosen ally — click another ally to switch</p>
+      {/if}
       {#if pendingDirection}
         <p class="hint">choose a push direction — click an arrow, or press Esc to cancel</p>
       {/if}
@@ -1722,6 +1930,27 @@
               class:active={focusModePref === "effect"}
               onclick={() => (focusModePref = "effect")}
             >Effect (push 2)</button>
+          </div>
+        </div>
+      {/if}
+      {#if armedHasRetargetChoice && !pendingDirection}
+        <div class="focus-mode">
+          <span class="focus-mode-label">Focus channels onto:</span>
+          <div class="focus-mode-toggle" role="radiogroup" aria-label="focus recipient">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={focusRetargetPref === "self"}
+              class:active={focusRetargetPref === "self"}
+              onclick={() => { focusRetargetPref = "self"; focusAllyChosen = null; }}
+            >Self</button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={focusRetargetPref === "ally"}
+              class:active={focusRetargetPref === "ally"}
+              onclick={() => { focusRetargetPref = "ally"; focusAllyChosen = null; }}
+            >Ally</button>
           </div>
         </div>
       {/if}

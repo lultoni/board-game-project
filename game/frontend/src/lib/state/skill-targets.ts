@@ -126,3 +126,109 @@ export function hasRetargetVariants(
   }
   return false;
 }
+
+/** Whether (src, skillId) has BOTH a self-cast branch (no aux) and at least
+ *  one retarget branch (aux to a different square). Distinct from
+ *  `hasRetargetVariants`, which is "any retarget exists". Used to decide
+ *  whether to show the Self/Ally picker for Focus-staged Shield/Dash/Retreat. */
+export function hasSelfAndRetargetChoice(
+  legal: Uint32Array,
+  src: number,
+  skillId: number,
+): boolean {
+  let sawSelf = false;
+  let sawRetarget = false;
+  for (let i = 0; i < legal.length; i++) {
+    const raw = legal[i];
+    const a = decodeAction(raw);
+    if (a.kind !== ActionKind.Skill) continue;
+    if (a.src !== src) continue;
+    if (a.skillId !== skillId) continue;
+    if (a.hasAux && a.auxSq !== src) sawRetarget = true;
+    else sawSelf = true;
+    if (sawSelf && sawRetarget) return true;
+  }
+  return false;
+}
+
+/** True iff this variant is a self-cast branch (no retarget aux). */
+export function variantIsSelfCast(v: SkillVariant, src: number): boolean {
+  return !(v.hasAux && v.auxSq !== src);
+}
+
+/** True iff this variant is a retarget branch where the recipient ally
+ *  differs from the destination — i.e. Dash/Retreat retarget. For Shield
+ *  retarget the recipient IS the target square, so `auxSq == target`. */
+export function variantIsAllyMover(v: SkillVariant, src: number): boolean {
+  if (!v.hasAux || v.auxSq === src) return false;
+  return v.auxSq !== v.target;
+}
+
+/** For a retarget skill in "ally" mode, list the adjacent allies that have
+ *  at least one legal destination. Returns ally squares in canonical
+ *  ascending order. */
+export function allyMoverCandidates(
+  legal: Uint32Array,
+  src: number,
+  skillId: number,
+): number[] {
+  const set = new Set<number>();
+  for (let i = 0; i < legal.length; i++) {
+    const raw = legal[i];
+    const a = decodeAction(raw);
+    if (a.kind !== ActionKind.Skill) continue;
+    if (a.src !== src) continue;
+    if (a.skillId !== skillId) continue;
+    if (!a.hasAux || a.auxSq === src) continue;
+    if (a.auxSq === a.target) continue; // Shield: ally IS the target, not a mover.
+    set.add(a.auxSq);
+  }
+  return [...set].sort((x, y) => x - y);
+}
+
+/** For a retarget skill in "ally" mode after the player has chosen an ally
+ *  mover, list the destination squares that ally can reach. */
+export function allyMoverDestinations(
+  legal: Uint32Array,
+  src: number,
+  skillId: number,
+  allySq: number,
+  focusMode: boolean | null,
+): Set<number> {
+  const out = new Set<number>();
+  for (let i = 0; i < legal.length; i++) {
+    const raw = legal[i];
+    const a = decodeAction(raw);
+    if (a.kind !== ActionKind.Skill) continue;
+    if (a.src !== src) continue;
+    if (a.skillId !== skillId) continue;
+    if (!a.hasAux || a.auxSq !== allySq) continue;
+    if (focusMode !== null && a.focusMode !== focusMode) continue;
+    out.add(a.target);
+  }
+  return out;
+}
+
+/** Look up the raw u32 for a Dash/Retreat retarget action with the given
+ *  ally + destination + optional focus mode. */
+export function rawForAllyMove(
+  legal: Uint32Array,
+  src: number,
+  skillId: number,
+  allySq: number,
+  destSq: number,
+  focusMode: boolean | null,
+): number | null {
+  for (let i = 0; i < legal.length; i++) {
+    const raw = legal[i];
+    const a = decodeAction(raw);
+    if (a.kind !== ActionKind.Skill) continue;
+    if (a.src !== src) continue;
+    if (a.skillId !== skillId) continue;
+    if (!a.hasAux || a.auxSq !== allySq) continue;
+    if (a.target !== destSq) continue;
+    if (focusMode !== null && a.focusMode !== focusMode) continue;
+    return raw;
+  }
+  return null;
+}

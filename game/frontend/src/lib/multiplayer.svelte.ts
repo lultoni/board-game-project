@@ -21,6 +21,7 @@ import {
   derivePillState,
   encodeMessage,
   generateCode,
+  PILL_DISCONNECTED_MS,
   type MpStatus,
   type PillState,
   type WireMessage,
@@ -101,10 +102,35 @@ let nowTick = $state(Date.now());
 
 // Drive a coarse "now" tick so $derived pillState recomputes every 500ms
 // even when no messages arrive. The tick is cheap (one Date.now + assign).
+//
+// Also doubles as the pong-age-out → status bridge: PeerJS's DataConnection
+// `close` event is unreliable when the remote peer dies without an explicit
+// `peer.destroy()` call (e.g. a tab crash, or any disconnect we didn't wire
+// teardown for). Without this bridge, `mpState.status` stays "connected"
+// forever, the wrapper's `notifyConnectionLost` never fires, and the
+// GraceBanner never appears. Mirrors the threshold the pill already uses
+// for unstable→disconnected; once we cross it, flip status so every downstream
+// listener (wrapper, GraceBanner via pill, /match/ network-lost effect) gets
+// the same signal a clean `conn.close` would have produced.
 let nowTimer: ReturnType<typeof setInterval> | null = null;
 function ensureNowTimer(): void {
   if (nowTimer) return;
-  nowTimer = setInterval(() => (nowTick = Date.now()), 500);
+  nowTimer = setInterval(() => {
+    nowTick = Date.now();
+    // Bridge: detect a silent peer drop while we still think we're connected.
+    if (
+      mpState.status === "connected"
+      && mpState.lastPongAt !== null
+      && nowTick - mpState.lastPongAt > PILL_DISCONNECTED_MS
+    ) {
+      // eslint-disable-next-line no-console
+      console.log("[mp] pong age-out → disconnected", { age: nowTick - mpState.lastPongAt });
+      if (mpState.disconnectedSince === null) {
+        mpState.disconnectedSince = nowTick;
+      }
+      mpState.status = "disconnected";
+    }
+  }, 500);
 }
 function stopNowTimer(): void {
   if (nowTimer) {
@@ -187,6 +213,8 @@ export function sendRaw(raw: string): void {
 
 /** Tear down the peer + connection. Safe to call repeatedly. */
 export function disconnect(): void {
+  // eslint-disable-next-line no-console
+  console.log("[mp] disconnect", { role: mpState.role, status: mpState.status, hadPeer: peer !== null, hadConn: conn !== null });
   if (pingTimer) {
     clearInterval(pingTimer);
     pingTimer = null;
@@ -252,7 +280,11 @@ function startHeartbeat(): void {
 
 function bindConnection(c: DataConnection): void {
   conn = c;
+  // eslint-disable-next-line no-console
+  console.log("[mp] bindConnection", { role: mpState.role, peerId: c.peer });
   c.on("open", () => {
+    // eslint-disable-next-line no-console
+    console.log("[mp] conn.open", { role: mpState.role, peerId: c.peer });
     mpState.status = "connected";
     // Clear any prior disconnect anchor — peer is back.
     mpState.disconnectedSince = null;
@@ -302,6 +334,8 @@ function bindConnection(c: DataConnection): void {
     for (const h of dataHandlers) h(msg);
   });
   c.on("close", () => {
+    // eslint-disable-next-line no-console
+    console.log("[mp] conn.close", { role: mpState.role, peerId: c.peer, status: mpState.status });
     if (mpState.disconnectedSince === null) {
       mpState.disconnectedSince = Date.now();
     }
@@ -313,6 +347,8 @@ function bindConnection(c: DataConnection): void {
     maybeAutoRedialJoiner();
   });
   c.on("error", (e) => {
+    // eslint-disable-next-line no-console
+    console.log("[mp] conn.error", { role: mpState.role, peerId: c.peer, error: e?.message ?? String(e) });
     mpState.lastError = e?.message ?? String(e);
     if (mpState.disconnectedSince === null) {
       mpState.disconnectedSince = Date.now();
@@ -351,6 +387,8 @@ function maybeAutoRedialJoiner(): void {
 /** Host a session. Picks a random 6-digit code and registers with the
  *  PeerJS broker; retries on collision. Resolves with the chosen code. */
 export function host(): Promise<string> {
+  // eslint-disable-next-line no-console
+  console.log("[mp] host() begin");
   disconnect();
   mpState.disconnectedSince = null;
   mpState.role = "host";
@@ -364,6 +402,8 @@ export function host(): Promise<string> {
         mpState.code = code;
         // Wait for an incoming DataConnection.
         p.on("connection", (c) => {
+          // eslint-disable-next-line no-console
+          console.log("[mp] host: incoming connection", { fromPeer: c.peer, hadActiveConn: conn !== null && conn.open });
           if (conn && conn.open) {
             // Reject any third peer.
             c.on("open", () => {
@@ -405,6 +445,8 @@ export function host(): Promise<string> {
  *  / `taken` errors with progressive backoff (~1.5s/2s/2.5s) to ride out
  *  broker eviction. Any other error type rejects immediately. */
 export function hostWithCode(code: string): Promise<string> {
+  // eslint-disable-next-line no-console
+  console.log("[mp] hostWithCode() begin", { code });
   disconnect();
   mpState.disconnectedSince = null;
   mpState.role = "host";
@@ -417,6 +459,8 @@ export function hostWithCode(code: string): Promise<string> {
         peer = p;
         mpState.code = code;
         p.on("connection", (c) => {
+          // eslint-disable-next-line no-console
+          console.log("[mp] hostWithCode: incoming connection", { fromPeer: c.peer, hadActiveConn: conn !== null && conn.open });
           if (conn && conn.open) {
             c.on("open", () => {
               try {
@@ -453,6 +497,8 @@ export function hostWithCode(code: string): Promise<string> {
 
 /** Join a session by 6-digit code. Resolves when the data channel opens. */
 export function join(code: string): Promise<void> {
+  // eslint-disable-next-line no-console
+  console.log("[mp] join() begin", { code });
   disconnect();
   mpState.disconnectedSince = null;
   mpState.role = "joiner";
@@ -546,6 +592,8 @@ export function probeHost(code: string, timeoutMs = 2_000): Promise<boolean> {
     const finish = (result: boolean): void => {
       if (settled) return;
       settled = true;
+      // eslint-disable-next-line no-console
+      console.log("[mp] probeHost result", { code, result });
       if (confirmTimer) clearTimeout(confirmTimer);
       if (c) { try { c.close(); } catch { /* noop */ } }
       if (p) { try { p.destroy(); } catch { /* noop */ } }

@@ -20,6 +20,9 @@ class FakeEngine implements EngineClient {
   zobristOverride: bigint | null = null;
   snapshotBlob = "{}";
   restoreSpy: string[] = [];
+  /** Phase reported by positionView. Tests flip this to simulate the
+   *  draft→play crossing the wrapper auto-detects. Default 2 (Draft). */
+  currentPhase = 2;
 
   async version(): Promise<string> { return "fake"; }
   async createEngine(): Promise<void> { /* noop */ }
@@ -33,7 +36,7 @@ class FakeEngine implements EngineClient {
       bitboards: new BigUint64Array(5),
       mailbox: new Uint16Array(64),
       toMove: 0,
-      currentPhase: 0,
+      currentPhase: this.currentPhase,
       actionsRemaining: 0,
       roundNumber: 0,
       p1Money: 0,
@@ -205,6 +208,18 @@ describe("solo", () => {
     expect(r.accepted).toBe(false);
     expect(r.reason).toBe("illegal");
   });
+
+  it("fires onPhaseChange('play') when the engine crosses out of draft", async () => {
+    const { eng, listeners, handle, bus } = build("solo", "draft");
+    eng.currentPhase = 2;
+    await handle.submitAction(1);
+    expect(listeners.phaseChanges).toEqual([]);
+    eng.currentPhase = 0;
+    await handle.submitAction(2);
+    expect(listeners.phaseChanges).toEqual(["play"]);
+    // Solo never broadcasts on the wire.
+    expect(bus.sent).toEqual([]);
+  });
 });
 
 // =========================================================================
@@ -296,16 +311,37 @@ describe("host", () => {
     expect(snap).toMatchObject({ phase: "draft", seq: 0, matchId: "host-match-1" });
   });
 
-  it("hostTransitionToPlay sends phase-change and updates phase", async () => {
-    const { bus, handle } = build("host", "draft");
-    await handle.submitAction(1); // seq=1
-    await handle.hostTransitionToPlay();
-    const pc = bus.sent.find((m) => m.kind === "phase-change");
-    expect(pc).toMatchObject({ from: "draft", to: "play", seq: 1 });
-    // After transition, next action is in play phase.
+  it("auto-broadcasts phase-change when host's own commit completes draft", async () => {
+    const { bus, handle, eng, listeners } = build("host", "draft");
+    // First draft action — engine still in Draft phase.
+    eng.currentPhase = 2;
+    await handle.submitAction(1);
+    expect(bus.sent.find((m) => m.kind === "phase-change")).toBeUndefined();
+    // Next action flips the engine into play phase.
+    eng.currentPhase = 0;
     await handle.submitAction(2);
+    const pc = bus.sent.find((m) => m.kind === "phase-change");
+    expect(pc).toMatchObject({ from: "draft", to: "play", seq: 2 });
+    expect(listeners.phaseChanges).toEqual(["play"]);
+    // Subsequent action is committed in "play" phase.
+    await handle.submitAction(3);
     const committed = bus.sent.filter((m) => m.kind === "committed") as Array<{ seq: number; phase: WirePhase }>;
-    expect(committed[1].phase).toBe("play");
+    expect(committed[2].phase).toBe("play");
+  });
+
+  it("auto-broadcasts phase-change when an accepted joiner intent completes draft", async () => {
+    const { bus, eng, listeners } = build("host", "draft");
+    // Simulate the joiner's intent landing on the host's wire and being
+    // applied. After apply, the engine reports the play phase.
+    eng.currentPhase = 0;
+    bus.push({ kind: "intent", phase: "draft", nonce: "i-rem", raw: 42 });
+    // Drain the microtask queue — handleWire awaits tryApply, positionView,
+    // onApplied, onHostCommitted, then maybeEmitPhaseChange (positionView +
+    // snapshotJson + onPhaseChange). 8 ticks is comfortably enough.
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    const pc = bus.sent.find((m) => m.kind === "phase-change");
+    expect(pc).toMatchObject({ from: "draft", to: "play" });
+    expect(listeners.phaseChanges).toEqual(["play"]);
   });
 
   it("surfaces a cheat-detected from the joiner", async () => {

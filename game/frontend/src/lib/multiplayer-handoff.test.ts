@@ -30,7 +30,6 @@ function makeMpEngine(): MpEngineHandle & { promoteCalls: Array<{ matchId: strin
     submitAction: async () => ({ accepted: true }),
     notifyConnectionOpen: () => {},
     notifyConnectionLost: () => {},
-    hostTransitionToPlay: async () => {},
     hostSendSnapshot: async () => {},
     setMatchId: () => {},
     promoteToHost: (opts) => { promoteCalls.push(opts); },

@@ -75,7 +75,7 @@ export type MpStatus =
 export type PillState = "live" | "unstable" | "disconnected" | "forfeit";
 
 const PILL_UNSTABLE_MS = 2_000;
-const PILL_DISCONNECTED_MS = 10_000;
+export const PILL_DISCONNECTED_MS = 10_000;
 const PILL_FORFEIT_MS = 5 * 60_000;
 
 /** How long the player has to wait before they can claim a win by opponent

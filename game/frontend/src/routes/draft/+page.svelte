@@ -79,9 +79,13 @@
     if (currentSeatIsAi) return false;
     if (!isMultiplayer) return true;
     if (mpState.status !== "connected") return false;
-    // Host = P1 (seat index 0), joiner = P2 (seat index 1).
-    if (match.multiplayerRole === "host"   && isP1Turn) return true;
-    if (match.multiplayerRole === "joiner" && !isP1Turn) return true;
+    // Seat-by-localSeat, NOT by role: after a leader handoff the new-host's
+    // role flips from "joiner" → "host" but they still occupy seat 1 (P2),
+    // and the displaced peer who rejoins still occupies seat 0 (P1). Mapping
+    // off role would swap the players' identities mid-game.
+    const seat = match.localSeat ?? (match.multiplayerRole === "host" ? 0 : 1);
+    if (seat === 0 &&  isP1Turn) return true;
+    if (seat === 1 && !isP1Turn) return true;
     return false;
   });
 
@@ -327,7 +331,9 @@
       await recordPly(eng);
       clearPicks();
       await refresh();
-      if ((draftState?.turnNo ?? 0) >= 12) await finishAndForward();
+      // Navigation to /match/ on draft completion is wrapper-driven: the
+      // mpEngine detects engine phase crossing (Draft → Move) and fires
+      // onPhaseChange("play") for solo, host, and joiner alike.
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
@@ -364,6 +370,9 @@
       const r = await eng.stepAi();
       if (r.appliedAction === 0) return;
       await refresh();
+      // AI applies bypass the wrapper (no submitAction call), so the wrapper's
+      // automatic phase-change detection doesn't fire. Solo-only path — drive
+      // the transition manually.
       if ((draftState?.turnNo ?? 0) >= 12) await finishAndForward();
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
@@ -460,10 +469,10 @@
         onApplied: async (raw, _phase) => {
           // Local commits handled in commitTurn — guard via pendingLocalRaw.
           if (raw === pendingLocalRaw) return;
-          // Remote-driven apply (joiner side): the wrapper has already moved
-          // the engine; we refresh, clear stale picks, and let the host's
-          // forthcoming phase-change drive navigation. Joiner's recordPly is
-          // a Step 2 no-op (joinerRole guard inside the helper).
+          // Remote-driven apply: the wrapper has already moved the engine;
+          // we refresh and let the wrapper's automatic phase-change detection
+          // drive navigation. Joiner's recordPly is a Step 2 no-op (joinerRole
+          // guard inside the helper).
           await recordPly(eng!);
           clearPicks();
           await refresh();
@@ -484,6 +493,9 @@
             // Best-effort; /match/ falls back to a fresh engine and the
             // host's next committed will re-sync via audit-mismatch.
           }
+          match.mode = match.mode === "multiplayer"
+            ? "multiplayer"
+            : modeFromSeats(match.side);
           navigatingForward = true;
           await goto("../match/");
         },
@@ -652,14 +664,10 @@
     if (!eng) return;
     starting = true;
     try {
-      // Host-only: broadcast the phase-change envelope (with snapshot + new
-      // seq) before navigating, so the joiner's wrapper applies the same
-      // post-draft state and fires its own onPhaseChange handler. Solo and
-      // joiner-side finishAndForward calls skip this — joiner's navigation
-      // is driven by the wrapper's onPhaseChange callback, not finishAndForward.
-      if (match.mode === "multiplayer" && match.multiplayerRole === "host" && mpEngine) {
-        await mpEngine.hostTransitionToPlay();
-      }
+      // Solo-only fallback for the AI-driven draft path (AI bypasses the
+      // wrapper, so wrapper-driven phase-change auto-broadcast doesn't fire).
+      // Human commits + multiplayer routes navigate via the wrapper's
+      // onPhaseChange callback above.
       const snap = await eng.snapshotJson();
       match.pendingSnapshotJson = snap;
       match.mode = match.mode === "multiplayer"

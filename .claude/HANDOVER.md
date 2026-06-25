@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-06-24 — Session 32 end (match HUD export + in-game Sandbox mode shipped).*
+*Last updated: 2026-06-25 — Session 33 end (L7c authoritative-host multiplayer + L8 draft + cross-peer parity shipped).*
 
 ---
 
@@ -30,19 +30,20 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer. Mine load-bearing content into the DB.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 32 end, 2026-06-24)
+### Where We Are (Session 33 end, 2026-06-25)
 
-- **Engine complete for Stack M** (locked in at S32 start; 297 lib tests green).
-- **Inspector core shipped (S31)** with four entry points (paste MatchLog, paste FEN, restore tree JSON, fresh-draft via `/setup/`), tree-of-positions, POI bookmarks, "Play this position" handoff, AI hint with iterative deepening.
-- **S32 shipped match-HUD surface improvements**: Copy FEN / Copy MatchLog / Download MatchLog buttons, plus in-game **Sandbox mode** (toggle on `/match/`; pulsing blue inset border; capture-then-restore via engine snapshot; confirm-before-discard on exit). The old `/match/` → `/inspector/` "Open in Inspector" button is deleted; `/inspector/` remains a standalone analysis tool reachable via paste/restore entry points only.
-- **Centralised action labelling** — new `lib/engine/action-label.ts` is the single source of truth across inspector picker, `MoveListItem`, and `AiHintBanner`.
-- **Remaining digital work is frontend-only.** Eight follow-up `next_steps` rows (priorities 20–28) cover inspector slices, frontend polish, undo/redo, i18n, a11y, plus one engine optimisation (exact-depth AI search).
+- **Engine complete for Stack M** + L8 draft phase shipped (`Phase::Draft`, `DraftTurn` action with apply/unapply, `setup_with_loadouts()`, pre-made First/Second/Third game loadouts).
+- **Multiplayer is authoritative-host** as of L7c. One peer is AUTH (host) and owns the only engine that originates state; the other (joiner) runs a mirror that re-applies every committed action and reports Zobrist mismatches. The role-aware wrapper `createMpEngine` in `multiplayer-engine.ts` is the single funnel for all engine apply traffic (solo/host/joiner). Leader handoff in place via `promoteToHost`; displaced old-host falls through to joiner on Rejoin via `probeHost` first; IDB schema bumped to v2 with `joined_codes` store retro-added; banner state preserved across auto-redial via `softReconnectJoiner`.
+- **Cross-peer parity** for effects, SFX, and greying-out shipped in-conversation post-L7c-step-6. Wrapper's remote `onApplied` snapshots pre-state from `match.position` (still pre-apply at that point) and runs the full `renderApplied` pipeline. Cross-peer bodyguard prompt + two-stage ally picker for Dash/Retreat retarget under Focus also shipped.
+- **Inspector core (S31) + match-HUD export + Sandbox (S32)** unchanged.
+- **Highest-leverage remaining items:** frontend follow-ups (Inspector L6.7d preview window primitive at `next_steps id=12`), and the deferred IllegalActionInHistory / draft-route-when-in-play replay bugs (snapshot codec or `phase-change` replay path).
 
 ### Immediate Next Action
 
-**Frontend follow-up — highest leverage:** `next_steps` id=12 (Inspector L6.7d — preview window primitive). Unblocks both L6.7b (top-K AI candidates) and L6.8 (skill tooltips). Full body: `sqlite3 design/design.db "SELECT body FROM next_steps WHERE id=12;"`.
-
-Other queued frontend rows: 11, 13–16, 27, 28. Plus row 26 (engine exact-depth AI optimisation) for when frontend has a lull.
+User has been driving the multiplayer lane. Three viable picks — ask which:
+1. **Frontend** — `next_steps id=12` (Inspector L6.7d preview window primitive). Unblocks L6.7b + L6.8.
+2. **Multiplayer hardening** — investigate IllegalActionInHistory + draft-route-when-in-play replay bugs (out of scope for L7c, deferred).
+3. **Design** — `oq-84` (greying-out semantics when bodyguard intercepts a Move-Attack). Argue through before next Stack M digital playtest.
 
 ### Open methodological loose ends
 
@@ -53,12 +54,15 @@ Other queued frontend rows: 11, 13–16, 27, 28. Plus row 26 (engine exact-depth
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM next_steps WHERE id=12;` | Inspector L6.7d preview window primitive (highest-leverage next item) |
-| `SELECT body FROM next_steps WHERE id=15;` | Inspector polish (draft handoff + radial wheel; "Open in Inspector" sub-item now obsolete) |
+| `SELECT body FROM next_steps WHERE id=24;` | L7c shipped scope — full file-of-record list + what is not covered |
+| `SELECT body FROM next_steps WHERE id=12;` | Inspector L6.7d preview window primitive (highest-leverage frontend item) |
+| `SELECT body FROM next_steps WHERE id=15;` | Inspector polish (draft handoff + radial wheel) |
 | `SELECT id, priority, title FROM next_steps WHERE priority >= 20 ORDER BY priority;` | All inspector/frontend follow-ups |
-| `SELECT body FROM sessions WHERE id='session-32';` | This session's narrative |
+| `SELECT body FROM sessions WHERE id='session-33';` | This session's narrative |
+| `SELECT body FROM adrs WHERE id='adr-006';` | Multiplayer lifecycle, lobby/reconnect UX, telemetry persistence |
 | `SELECT body FROM adrs WHERE id='adr-005';` | Digital architecture decision |
 | `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance (engine's source of truth) |
+| `SELECT body FROM open_questions WHERE id='oq-84';` | New OQ — bodyguard intercept greying-out semantics |
 | `SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high');` | Live critical/high OQs |
 
 ### Key Files (still on disk)
@@ -72,10 +76,15 @@ Other queued frontend rows: 11, 13–16, 27, 28. Plus row 26 (engine exact-depth
 | `game/crates/core_engine/src/session.rs` | Match API (incl. `request_ai_move_forced` / `_at_depth`) |
 | `game/crates/core_engine/src/game_logic/make_unmake.rs` | Skill resolvers + Move-kind apply/unmake |
 | `game/crates/core_engine/src/game_logic/generator.rs` | Legal-action enumeration |
-| `game/frontend/src/routes/match/+page.svelte` | Match route — now hosts export + Sandbox mode |
-| `game/frontend/src/routes/inspector/+page.svelte` | Inspector route (paste/restore entry points + tree + board + AI hint) |
-| `game/frontend/src/lib/engine/action-label.ts` | Single source of truth for action labels |
-| `game/frontend/src/lib/state/match-store.svelte.ts` | Match-level reactive state (incl. sandbox fields) |
+| `game/frontend/src/routes/match/+page.svelte` | Match route — wired through MP wrapper; renderApplied runs for remote commits too |
+| `game/frontend/src/routes/draft/+page.svelte` | Draft route — wired through MP wrapper + engine `Phase::Draft` |
+| `game/frontend/src/routes/multiplayer/+page.svelte` | Lobby — host/join/handoff/probe-first Rejoin |
+| `game/frontend/src/routes/inspector/+page.svelte` | Inspector route |
+| `game/frontend/src/lib/multiplayer-protocol-v2.ts` | Authoritative-host wire codec |
+| `game/frontend/src/lib/multiplayer-engine.ts` | Role-aware engine wrapper (single apply funnel) |
+| `game/frontend/src/lib/multiplayer.svelte.ts` | PeerJS lifecycle + softReconnectJoiner + probeHost |
+| `game/frontend/src/lib/state/skill-targets.ts` | Skill target helpers (incl. two-stage ally picker) |
+| `game/frontend/src/lib/state/match-store.svelte.ts` | Match-level reactive state (incl. `localSeat`, sandbox fields) |
 | `game/frontend/src/lib/state/inspector-store.svelte.ts` | Tree-of-positions data model |
 | `.claude/STATUS.md` | One-screen re-entry summary |
 | `CLAUDE.md` | Orientation (points at DB; does not restate facts) |

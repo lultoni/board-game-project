@@ -130,6 +130,7 @@
       const code = await mpHost();
       match.multiplayerRole = "host";
       match.multiplayerCode = code;
+      match.localSeat = 0;
     } catch (e) {
       codeError = (e as Error)?.message ?? String(e);
       view = "choose";
@@ -154,6 +155,10 @@
       match.multiplayerCode = code;
       match.mode = "multiplayer";
       match.side = { p1: "human", p2: "human" };
+      // Fresh-joiner default seat. rejoinHost's probe-fall-through path
+      // overrides this BEFORE calling startJoin when the rejoining peer
+      // was originally the host (seat 0).
+      if (match.localSeat === null) match.localSeat = 1;
       // Remember this code so it shows up under "Resume a recent session"
       // next time the user opens the lobby.
       try {
@@ -198,6 +203,19 @@
       // session-hello + snapshot will re-anchor us on the next bind.
       const codeTaken = await probeHost(code).catch(() => false);
       if (codeTaken) {
+        // This peer was originally the host (seat 0), even though the new
+        // authority forces them into the "joiner" role for this connection.
+        // Pin localSeat now so startJoin's fresh-joiner default doesn't put
+        // them on seat 1 — that would swap player identities mid-game.
+        match.localSeat = 0;
+        // The old matches row stays "mid-match-network-lost" forever otherwise,
+        // and after a subsequent takeover we'd accumulate a second row for the
+        // same code — two lobby cards offering to resume the same session.
+        // Marking it abandoned now keeps the resume list clean. Best-effort.
+        try {
+          const store = getTelemetryStore();
+          await store.dismissNetworkLost(meta.matchId);
+        } catch { /* lobby cleanup is best-effort */ }
         codeInput = code;
         await startJoin();
         return;
@@ -225,6 +243,7 @@
       match.multiplayerCode = code;
       match.mode = "multiplayer";
       match.side = { p1: "human", p2: "human" };
+      match.localSeat = 0;
       hostNavigated = true;
       void goto(targetRoute);
     } catch (e) {
@@ -277,6 +296,7 @@
     mpDisconnect();
     match.multiplayerRole = null;
     match.multiplayerCode = null;
+    match.localSeat = null;
     view = "choose";
   }
 
@@ -292,6 +312,7 @@
     match.side = { p1: "human", p2: "human" };
     match.mode = "multiplayer";
     match.multiplayerRole = "host";
+    if (match.localSeat === null) match.localSeat = 0;
     hostNavigated = true;
     busy = true;
     void goto("../setup/");
@@ -310,6 +331,7 @@
       match.side = { p1: "human", p2: "human" };
       match.mode = "multiplayer";
       match.multiplayerRole = "joiner";
+      if (match.localSeat === null) match.localSeat = 1;
       match.telemetryMatchId = msg.matchId;
       void goto(msg.phase === "draft" ? "../draft/" : "../match/");
       return;
@@ -319,6 +341,7 @@
       mpDisconnect();
       match.multiplayerRole = null;
       match.multiplayerCode = null;
+      match.localSeat = null;
       view = "choose";
       return;
     }

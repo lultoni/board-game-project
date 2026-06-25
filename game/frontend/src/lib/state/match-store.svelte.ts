@@ -53,6 +53,13 @@ export interface MatchState {
    *  Null outside multiplayer. Used by /match/ to decide whether input on a
    *  given seat should be accepted locally or ignored as the peer's. */
   multiplayerRole: "host" | "joiner" | null;
+  /** Which board seat (P1=0, P2=1) this peer occupies for the LIFETIME of the
+   *  current multiplayer match. Set once on session origin (host start → 0,
+   *  joiner connect → 1) and **never changes on takeover** — the new-host who
+   *  was originally joiner stays at seat 1; the displaced-host who rejoins
+   *  as joiner stays at seat 0. Drives the "am I P1?" UI mapping so identity
+   *  survives leader handoff. Null outside multiplayer. */
+  localSeat: 0 | 1 | null;
   /** The 6-digit session code for the active multiplayer session, kept on
    *  the carrier so /match/ can pass it to telemetry's startMatch opts. */
   multiplayerCode: string | null;
@@ -78,6 +85,7 @@ export const match = $state<MatchState>({
   telemetryMatchId: null,
   multiplayerRole: null,
   multiplayerCode: null,
+  localSeat: null,
   telemetryFinalised: false,
 });
 
@@ -146,13 +154,16 @@ export function networkLostTelemetrySession(eng?: EngineClient): Promise<void> {
  *  telemetry row with endReason "opponent_forfeit" and the result favouring
  *  the present player.
  *
- *  Host (P1) claims → resultByte 0 (P1 win). Joiner (P2) claims → resultByte 1
- *  (P2 win). No-op outside multiplayer.
+ *  Result is keyed off `localSeat` (which is stable across leader handoff),
+ *  not `multiplayerRole` — a joiner-promoted new-host still occupies seat 1,
+ *  so their claim still means "P2 wins" (resultByte 1). No-op outside
+ *  multiplayer.
  */
 export async function claimWinByOpponentForfeit(eng: EngineClient): Promise<void> {
   if (match.mode !== "multiplayer" || !match.multiplayerRole) return;
   if (match.telemetryFinalised) return;
-  const resultByte: 0 | 1 = match.multiplayerRole === "host" ? 0 : 1;
+  const seat = match.localSeat ?? (match.multiplayerRole === "host" ? 0 : 1);
+  const resultByte: 0 | 1 = seat === 0 ? 0 : 1;
   try {
     await eng.finaliseLog(resultByte);
   } catch {
