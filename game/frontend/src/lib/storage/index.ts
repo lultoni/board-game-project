@@ -29,6 +29,7 @@ export type { TelemetryStore } from "./types";
 export {
   type EndReason,
   type FinalisedMatch,
+  type JoinedCodeEntry,
   type MatchFilter,
   type MatchMeta,
   type MatchStatus,

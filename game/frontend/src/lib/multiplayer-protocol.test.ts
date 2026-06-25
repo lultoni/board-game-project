@@ -37,23 +37,7 @@ describe("encode/decode round-trip", () => {
   const cases: WireMessage[] = [
     { kind: "ping", t: 1_234_567 },
     { kind: "pong", t: 0 },
-    { kind: "snapshot", snapshotJson: '{"start_fen":"…","actions":[]}' },
-    { kind: "ready" },
-    { kind: "action", raw: 0xdeadbe },
     { kind: "error", reason: "session-full" },
-    { kind: "resume-request", code: "281947", plyCount: 14, zobrist: "9876543210123456789" },
-    { kind: "resume-request", code: "100000", plyCount: 0, zobrist: "0" },
-    { kind: "resume-accept", snapshotJson: '{"start_fen":"…","actions":[1,2,3]}' },
-    { kind: "resume-reject", reason: "zobrist-mismatch" },
-    { kind: "resume-reject", reason: "no-such-session" },
-    { kind: "resume-reject", reason: "host-not-in-match" },
-    { kind: "draft-mode", mode: "custom" },
-    { kind: "draft-mode", mode: "preMade", loadoutId: "firstGame" },
-    { kind: "draft-mode", mode: "preMade", loadoutId: "secondGame" },
-    { kind: "draft-mode", mode: "preMade", loadoutId: "thirdGame" },
-    { kind: "draft-ready" },
-    { kind: "draft-turn", raw: 0 },
-    { kind: "draft-turn", raw: 0xffffffff },
   ];
   for (const m of cases) {
     it(`round-trips ${m.kind}${"reason" in m ? `:${m.reason}` : ""}`, () => {
@@ -68,24 +52,15 @@ describe("encode/decode round-trip", () => {
     expect(decodeMessage("null")).toBeNull();
     expect(decodeMessage("[]")).toBeNull();
     expect(decodeMessage('{"kind":"unknown"}')).toBeNull();
-    expect(decodeMessage('{"kind":"action","raw":"oops"}')).toBeNull();
-    expect(decodeMessage('{"kind":"action","raw":-1}')).toBeNull();
-    expect(decodeMessage('{"kind":"action","raw":4294967296}')).toBeNull();
-    expect(decodeMessage('{"kind":"action","raw":1.5}')).toBeNull();
-    expect(decodeMessage('{"kind":"action","raw":0}')).not.toBeNull();
-    expect(decodeMessage('{"kind":"action","raw":4294967295}')).not.toBeNull();
     expect(decodeMessage('{"kind":"ping"}')).toBeNull(); // missing t
-    expect(decodeMessage('{"kind":"snapshot"}')).toBeNull();
-    expect(decodeMessage('{"kind":"resume-request","code":"123456","plyCount":-1,"zobrist":"0"}')).toBeNull();
-    expect(decodeMessage('{"kind":"resume-request","code":"123456","plyCount":0}')).toBeNull(); // missing zobrist
-    expect(decodeMessage('{"kind":"resume-reject","reason":"made-up"}')).toBeNull();
-    expect(decodeMessage('{"kind":"resume-accept"}')).toBeNull();
-    expect(decodeMessage('{"kind":"draft-mode","mode":"nope"}')).toBeNull();
-    expect(decodeMessage('{"kind":"draft-mode","mode":"preMade"}')).toBeNull(); // missing loadoutId
-    expect(decodeMessage('{"kind":"draft-mode","mode":"preMade","loadoutId":"madeUp"}')).toBeNull();
-    expect(decodeMessage('{"kind":"draft-turn"}')).toBeNull(); // missing raw
-    expect(decodeMessage('{"kind":"draft-turn","raw":-1}')).toBeNull();
-    expect(decodeMessage('{"kind":"draft-turn","raw":4294967296}')).toBeNull();
+    expect(decodeMessage('{"kind":"error"}')).toBeNull(); // missing reason
+    // V1 kinds removed in L7c Step 5 — these now decode as null.
+    expect(decodeMessage('{"kind":"snapshot","snapshotJson":"{}"}')).toBeNull();
+    expect(decodeMessage('{"kind":"ready"}')).toBeNull();
+    expect(decodeMessage('{"kind":"action","raw":0}')).toBeNull();
+    expect(decodeMessage('{"kind":"draft-mode","mode":"custom"}')).toBeNull();
+    expect(decodeMessage('{"kind":"draft-turn","raw":0}')).toBeNull();
+    expect(decodeMessage('{"kind":"resume-request","code":"123456","plyCount":0,"zobrist":"0"}')).toBeNull();
   });
 });
 

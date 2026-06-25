@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   extractPostZobristForPly,
   extractStartZobrist,
-  extractResumeStateFromLog,
+  logIsMidDraftCheap,
+  snapshotJsonFromMatchLog,
 } from "./multiplayer-resume";
 
 // These tests pin the engine's MatchLog v1 JSON shape to the resume regexes.
@@ -77,45 +78,63 @@ describe("extractPostZobristForPly (1-indexed ply_no)", () => {
   });
 });
 
-describe("extractResumeStateFromLog", () => {
-  it("returns plyCount + last ply post_zobrist", () => {
-    const log = makeMatchLog({
-      startZobrist: "100",
+describe("snapshotJsonFromMatchLog", () => {
+  it("rebuilds a Snapshot JSON from a persisted MatchLog", () => {
+    const log = JSON.stringify({
+      start_fen: "8/8/…",
+      config: { board_w: 8, board_h: 8 },
       plies: [
-        { plyNo: 1, postZobrist: "111" },
-        { plyNo: 2, postZobrist: "222" },
+        { action: { raw: 11 } },
+        { action: { raw: 22 } },
       ],
     });
-    expect(extractResumeStateFromLog(log)).toEqual({ plyCount: 2, zobrist: "222" });
-  });
-
-  it("for plyCount=0 returns start_zobrist", () => {
-    const log = makeMatchLog({ startZobrist: "777", plies: [], totalPlies: 0 });
-    expect(extractResumeStateFromLog(log)).toEqual({ plyCount: 0, zobrist: "777" });
-  });
-
-  it("falls back to zobrist=\"0\" when last ply is missing", () => {
-    // total_plies says 5 but only ply 1 is present (truncated log).
-    const log = makeMatchLog({
-      startZobrist: "100",
-      plies: [{ plyNo: 1, postZobrist: "111" }],
-      totalPlies: 5,
+    const snap = snapshotJsonFromMatchLog(log);
+    expect(snap).not.toBeNull();
+    expect(JSON.parse(snap!)).toEqual({
+      start_fen: "8/8/…",
+      actions: [11, 22],
+      config: { board_w: 8, board_h: 8 },
     });
-    expect(extractResumeStateFromLog(log)).toEqual({ plyCount: 5, zobrist: "0" });
   });
 
-  it("survives a round-trip through JSON.parse + JSON.stringify (whitespace + key reorder)", () => {
-    const orig = makeMatchLog({
-      startZobrist: "5000",
-      plies: [
-        { plyNo: 1, postZobrist: "5001" },
-        { plyNo: 2, postZobrist: "5002" },
-      ],
+  it("returns null when start_fen is missing", () => {
+    expect(snapshotJsonFromMatchLog('{"plies":[]}')).toBeNull();
+  });
+
+  it("returns null when a ply action.raw is malformed", () => {
+    const log = JSON.stringify({
+      start_fen: "8/8",
+      config: {},
+      plies: [{ action: { raw: -1 } }],
     });
-    // parse + serialise will normalise whitespace; we expect the regex to keep working.
-    // We can't preserve u64 precision through JSON.parse (that's the whole reason for
-    // string-extraction), so we hand-build an "equivalent re-serialised" version.
-    const reSerialised = `{"start_zobrist": 5000, "total_plies": 2, "plies": [ {"action_raw":1234,"ply_no":1,"post_zobrist":5001,"side":0}, {"action_raw":1234,"ply_no":2,"post_zobrist":5002,"side":0} ]}`;
-    expect(extractResumeStateFromLog(reSerialised)).toEqual({ plyCount: 2, zobrist: "5002" });
+    expect(snapshotJsonFromMatchLog(log)).toBeNull();
+  });
+});
+
+describe("logIsMidDraftCheap", () => {
+  it("returns true for fewer than 12 plies", () => {
+    for (let n = 0; n < 12; n++) {
+      const log = JSON.stringify({
+        start_fen: "8/8",
+        config: {},
+        plies: Array.from({ length: n }, (_, i) => ({ action: { raw: i } })),
+      });
+      expect(logIsMidDraftCheap(log)).toBe(true);
+    }
+  });
+
+  it("returns false at exactly 12 plies (draft complete)", () => {
+    const log = JSON.stringify({
+      start_fen: "8/8",
+      config: {},
+      plies: Array.from({ length: 12 }, (_, i) => ({ action: { raw: i } })),
+    });
+    expect(logIsMidDraftCheap(log)).toBe(false);
+  });
+
+  it("returns false for malformed input", () => {
+    expect(logIsMidDraftCheap("not json")).toBe(false);
+    expect(logIsMidDraftCheap("null")).toBe(false);
+    expect(logIsMidDraftCheap("{}")).toBe(false);
   });
 });

@@ -4,7 +4,6 @@
   import { match, type SeatKind, type DraftMode, type PreMadeLoadoutId } from "$lib/state/match-store.svelte";
   import { settings } from "$lib/state/settings.svelte";
   import { isPreMadeLoadoutReady } from "$lib/state/draft";
-  import { sendData } from "$lib/multiplayer.svelte";
 
   const isMultiplayer = $derived(match.mode === "multiplayer");
 
@@ -37,17 +36,6 @@
     }
     match.draftMode = draftMode;
     match.preMadeLoadoutId = draftMode === "preMade" ? preMadeId : null;
-    // Multiplayer: tell the joiner which path to take. The joiner's lobby is
-    // subscribed to onData and will route to /draft/ (custom) or /match/
-    // (preMade) when this lands. Sent BEFORE the host's own goto so the
-    // joiner is on its way by the time the host arrives at /draft/.
-    if (isMultiplayer && match.multiplayerRole === "host") {
-      if (draftMode === "preMade") {
-        sendData({ kind: "draft-mode", mode: "preMade", loadoutId: preMadeId });
-      } else {
-        sendData({ kind: "draft-mode", mode: "custom" });
-      }
-    }
     if (draftMode === "preMade") {
       // Skip the /draft/ route entirely — /match/ reads preMadeLoadoutId and
       // builds the engine with both sides preloaded.

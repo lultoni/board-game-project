@@ -1,15 +1,14 @@
 // Regex helpers for the multiplayer resume handshake. The engine's MatchLog
 // JSON contains u64 Zobrist hashes that exceed JS's safe-integer range, so we
 // cannot round-trip the log through JSON.parse without lossy bigint coercion.
-// Both helpers therefore extract the raw decimal digit-string directly from
-// the JSON text and leave string comparison to the caller.
+// `extractStartZobrist` / `extractPostZobristForPly` therefore extract the raw
+// decimal digit-string directly from the JSON text and leave string comparison
+// to the caller.
 //
 // Pinned to MatchLog JSON v1 (see core_engine/src/session.rs). If the
 // `match-log` serde representation changes — renamed fields, restructured
 // nesting, base64 zobrist encoding — update these regexes AND the pinning
 // tests in `multiplayer-resume.test.ts`.
-
-import { getEngine } from "./engine";
 
 // MatchLog ply_no is 1-indexed (core_engine/src/session.rs:360); plyCount=0 → start_zobrist.
 export function extractPostZobristForPly(
@@ -28,23 +27,6 @@ export function extractPostZobristForPly(
 export function extractStartZobrist(matchLogJson: string): string | null {
   const m = /"start_zobrist"\s*:\s*(\d+)/.exec(matchLogJson);
   return m ? m[1] : null;
-}
-
-/** Compute the (plyCount, zobrist) pair to send in a resume-request from a
- *  persisted MatchLog. Returns `{plyCount: 0, zobrist: "0"}` when the log
- *  shape is unexpected so the host can still respond (with start_zobrist
- *  comparison) or reject cleanly. */
-export function extractResumeStateFromLog(
-  logJson: string,
-): { plyCount: number; zobrist: string } {
-  const tpMatch = /"total_plies"\s*:\s*(\d+)/.exec(logJson);
-  const plyCount = tpMatch ? parseInt(tpMatch[1], 10) : 0;
-  if (plyCount === 0) {
-    const sz = extractStartZobrist(logJson);
-    return { plyCount: 0, zobrist: sz ?? "0" };
-  }
-  const pz = extractPostZobristForPly(logJson, plyCount);
-  return { plyCount, zobrist: pz ?? "0" };
 }
 
 /** Rebuild an engine Snapshot JSON ({ start_fen, actions, config }) from a
@@ -83,25 +65,18 @@ export function snapshotJsonFromMatchLog(matchLogJson: string): string | null {
   }
 }
 
-/** Restore an engine from the given MatchLog and ask whether the resulting
- *  position is still in `Phase::Draft`. Used by the lobby's rejoin flow to
- *  decide whether to route resume traffic to /draft/ (mid-draft) or /match/
- *  (post-draft / play-phase). Returns false if the log can't be parsed —
- *  the caller treats that as "route to /match/" which is the safe fallback.
+/** Decide whether a persisted MatchLog represents a mid-draft state without
+ *  booting the engine. The draft phase consumes the first 12 actions (six per
+ *  side, two picks each), so any log with fewer than 12 plies is still in
+ *  Phase::Draft. Used by the lobby's host-side Rejoin to route to /draft/ vs
+ *  /match/ without spinning up WASM just for the phase check.
  *
- *  Cost: one WASM engine boot + a snapshot replay. ~50ms when WASM is
- *  cached (typical for a user who just left a match). The lobby fires
- *  this lazily, only when the user clicks Rejoin, so it doesn't add to
- *  page-load time. */
-export async function logIsMidDraft(matchLogJson: string): Promise<boolean> {
-  const snap = snapshotJsonFromMatchLog(matchLogJson);
-  if (!snap) return false;
+ *  Returns false on parse failure — the lobby treats that as "route to /match/",
+ *  which is the safe fallback for any malformed log. */
+export function logIsMidDraftCheap(matchLogJson: string): boolean {
   try {
-    const e = await getEngine();
-    await e.restoreFromSnapshot(snap);
-    const view = await e.positionView();
-    // Phase::Draft = 2 (see core_engine/src/wrapper_api.rs:84 mapping).
-    return view.currentPhase === 2;
+    const log = JSON.parse(matchLogJson) as { plies?: unknown[] };
+    return Array.isArray(log.plies) && log.plies.length < 12;
   } catch {
     return false;
   }

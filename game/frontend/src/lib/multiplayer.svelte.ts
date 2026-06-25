@@ -23,9 +23,9 @@ import {
   generateCode,
   type MpStatus,
   type PillState,
-  type ResumeRejectReason,
   type WireMessage,
 } from "./multiplayer-protocol";
+import { decodeMessageV2 } from "./multiplayer-protocol-v2";
 
 export type { WireMessage, PillState, MpStatus };
 
@@ -36,15 +36,6 @@ interface MpState {
   role: "host" | "joiner" | null;
   lastPongAt: number | null;
   lastError: string | null;
-  /** Set to true on the host once the joiner confirms snapshot received. */
-  opponentReady: boolean;
-  /** When set, the joiner sends a `resume-request` immediately after its
-   *  DataConnection opens instead of waiting passively for a snapshot. The
-   *  lobby's Rejoin flow populates this before calling `join(code)`. */
-  pendingResume: { code: string; plyCount: number; zobrist: string } | null;
-  /** Sticky reason set when the host's last `resume-reject` came in. The
-   *  lobby reads this on mount and surfaces it as a user-facing error. */
-  resumeFailed: ResumeRejectReason | null;
   /** Set to `Date.now()` when status flips to `"disconnected"`; cleared back
    *  to `null` when status returns to `"connected"`. GraceBanner anchors its
    *  5-minute countdown on this so the timer starts when the user actually
@@ -69,9 +60,6 @@ export const mpState = $state<MpState>({
   role: null,
   lastPongAt: null,
   lastError: null,
-  opponentReady: false,
-  pendingResume: null,
-  resumeFailed: null,
   disconnectedSince: null,
   peerEverPaired: false,
 });
@@ -100,6 +88,15 @@ const rawDataHandlers = new Set<(raw: string) => void>();
  *  kind is fine — resume-accept/reject are terminal, and pong/snapshot/ply
  *  callers are happy to skip stale buffered copies. */
 const inbox = new Map<WireMessage["kind"], WireMessage>();
+/** Per-kind raw buffer used by V2 subscribers (`onRawData`). The lobby's V2
+ *  peek subscription unsubscribes when the joiner navigates; the destination
+ *  route mounts and re-subscribes via the wrapper. Anything that arrived in
+ *  that window (the first `committed`, a follow-up `snapshot`, …) needs to
+ *  survive the gap. We key by the decoded kind so newer-of-same-kind wins,
+ *  matching the typed inbox's semantics — committed is a special case (we
+ *  could miss a ply), but the wrapper detects this via seq gaps and asks for
+ *  a snapshot, which the buffer reliably delivers. Cleared on disconnect. */
+const rawInbox = new Map<string, string>();
 let nowTick = $state(Date.now());
 
 // Drive a coarse "now" tick so $derived pillState recomputes every 500ms
@@ -163,9 +160,16 @@ export function sendData(msg: WireMessage): void {
 
 /** Subscribe to raw inbound strings before they're decoded into WireMessage.
  *  Used by createMpEngine to handle v2 envelopes that the legacy decoder
- *  doesn't know about. Disposer follows the same shape as onData. */
+ *  doesn't know about. Disposer follows the same shape as onData. Drains any
+ *  V2 messages that arrived while no raw subscriber was registered (e.g. the
+ *  joiner's lobby→/match/ navigation gap) into the new subscriber. */
 export function onRawData(cb: (raw: string) => void): () => void {
   rawDataHandlers.add(cb);
+  if (rawInbox.size > 0) {
+    const drained = Array.from(rawInbox.values());
+    rawInbox.clear();
+    for (const raw of drained) cb(raw);
+  }
   return () => rawDataHandlers.delete(cb);
 }
 
@@ -199,14 +203,10 @@ export function disconnect(): void {
   mpState.code = null;
   mpState.role = null;
   mpState.lastPongAt = null;
-  mpState.opponentReady = false;
-  mpState.pendingResume = null;
   mpState.peerEverPaired = false;
   inbox.clear();
+  rawInbox.clear();
   redialAttempts = 0;
-  // Note: resumeFailed is intentionally NOT cleared here — the lobby needs
-  // to read it AFTER the failed connection has been torn down. The lobby
-  // clears it when entering "choose" view.
   stopNowTimer();
 }
 
@@ -229,17 +229,6 @@ function bindConnection(c: DataConnection): void {
     // fresh set of retries the next time we drop.
     redialAttempts = 0;
     startHeartbeat();
-    // If the joiner staged a resume request before dialling, fire it now so
-    // the host can validate state before sending a fresh snapshot.
-    if (mpState.role === "joiner" && mpState.pendingResume) {
-      const r = mpState.pendingResume;
-      sendData({
-        kind: "resume-request",
-        code: r.code,
-        plyCount: r.plyCount,
-        zobrist: r.zobrist,
-      });
-    }
   });
   c.on("data", (raw: unknown) => {
     if (typeof raw !== "string") return;
@@ -253,6 +242,13 @@ function bindConnection(c: DataConnection): void {
     // the legacy WireMessage union.
     if (rawDataHandlers.size > 0) {
       for (const h of rawDataHandlers) h(raw);
+    } else {
+      // No raw subscriber yet — buffer per V2 kind so the wrapper, mounting
+      // after the joiner navigates, still sees session-hello / committed /
+      // snapshot that arrived in the gap. Decode-to-key only; we store the
+      // raw string so the wrapper's own decoder owns parsing.
+      const v2 = decodeMessageV2(raw);
+      if (v2) rawInbox.set(v2.kind, raw);
     }
     const msg = decodeMessage(raw);
     if (!msg) return;
@@ -265,9 +261,6 @@ function bindConnection(c: DataConnection): void {
     if (msg.kind === "pong") {
       mpState.lastPongAt = Date.now();
       return;
-    }
-    if (msg.kind === "ready") {
-      mpState.opponentReady = true;
     }
     if (dataHandlers.size === 0) {
       // Nobody listening yet — buffer the latest message of this kind so
@@ -303,13 +296,11 @@ function bindConnection(c: DataConnection): void {
  *  times with increasing backoff (1.5s, 3s, 6s, 12s, 30s — ~52s total) so the
  *  host has wall-clock time to navigate back through home → multiplayer →
  *  Rejoin and re-claim the same code. The counter resets on a successful
- *  `open` and on `disconnect()`. Skipped when we're mid-resume-handshake
- *  (the resume flow has its own semantics) or when the host is the one whose
- *  side dropped (host stays put and waits for the joiner to dial back). If
- *  the budget runs out, the user falls back to manual lobby Rejoin. */
+ *  `open` and on `disconnect()`. Skipped when the host is the one whose side
+ *  dropped (host stays put and waits for the joiner to dial back). If the
+ *  budget runs out, the user falls back to manual lobby Rejoin. */
 function maybeAutoRedialJoiner(): void {
   if (mpState.role !== "joiner") return;
-  if (mpState.pendingResume !== null) return;
   if (mpState.code === null) return;
   if (redialAttempts >= REDIAL_DELAYS.length) return;
   const delay = REDIAL_DELAYS[redialAttempts];
