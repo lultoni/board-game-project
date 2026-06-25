@@ -341,7 +341,10 @@ function maybeAutoRedialJoiner(): void {
     // Bail if the user manually navigated away / disconnected in the meantime.
     if (mpState.role !== "joiner") return;
     if (mpState.status === "connected" || mpState.status === "connecting") return;
-    join(code).catch(() => maybeAutoRedialJoiner());
+    // Use the soft path so peerEverPaired + disconnectedSince survive the
+    // retry — otherwise the GraceBanner would vanish after the first redial
+    // and the takeover countdown would reset.
+    softReconnectJoiner(code).catch(() => maybeAutoRedialJoiner());
   }, delay);
 }
 
@@ -455,6 +458,34 @@ export function join(code: string): Promise<void> {
   mpState.role = "joiner";
   mpState.status = "joining";
   mpState.code = code;
+  return bindJoinerPeer(code);
+}
+
+/** Soft reconnect used by the auto-redial loop. Unlike `join()`, this path
+ *  preserves the carrier fields the GraceBanner depends on
+ *  (`peerEverPaired`, `disconnectedSince`) so the countdown stays anchored
+ *  and the banner stays visible across retry attempts. `code`/`role` are
+ *  preserved too — we're recovering the *same* session, not starting a new one.
+ *
+ *  Caller invariant: `mpState.role === "joiner"` and `mpState.code === code`
+ *  at the time of call. The destroy-peer-keep-state helper handles the
+ *  synchronous teardown; the joiner PeerJS handshake re-runs in
+ *  `bindJoinerPeer`. */
+function softReconnectJoiner(code: string): Promise<void> {
+  destroyPeerKeepState();
+  // After destroyPeerKeepState status is "disconnected". Move to "joining"
+  // so derivePillState's transient-state branch behaves like a fresh join
+  // attempt for the duration of the handshake.
+  mpState.status = "joining";
+  // Note: role/code/peerEverPaired/disconnectedSince intentionally preserved.
+  return bindJoinerPeer(code);
+}
+
+/** Inner joiner PeerJS handshake. Shared by the public `join()` entry point
+ *  (which resets state first) and the internal `softReconnectJoiner()` (which
+ *  preserves it). Does not touch `mpState.role`/`code`/`peerEverPaired`/
+ *  `disconnectedSince` — the caller owns those. */
+function bindJoinerPeer(code: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // Use a random PeerJS ID for the joiner; we never need to be dialled.
     const myId = ID_PREFIX + "j-" + Math.random().toString(36).slice(2, 10);

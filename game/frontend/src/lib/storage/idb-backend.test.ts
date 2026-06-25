@@ -304,3 +304,73 @@ describe("IdbTelemetryStore", () => {
     });
   });
 });
+
+// Regression: users who opened `boardgame-matches-v2` from a build that
+// predated the joined_codes store had a v=1 DB on disk without that store.
+// Calling listJoinedCodes / recordJoinedCode on that DB threw
+// "One of the specified object stores was not found". Bumping DB_VERSION to 2
+// re-runs onupgradeneeded; the store-creation guards in idb-backend already
+// branch on objectStoreNames.contains, so the upgrade is idempotent.
+describe("schema migration v1 → v2", () => {
+  beforeEach(async () => {
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase("boardgame-matches-v2");
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => resolve();
+    });
+  });
+
+  it("creates joined_codes on browsers that have v1 without it; preserves matches", async () => {
+    // 1. Hand-create v1 of the DB containing matches+plies but NOT joined_codes.
+    //    This mirrors the on-disk state of users who opened the DB between the
+    //    DB_NAME bump and the joined_codes store landing.
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open("boardgame-matches-v2", 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        const m = db.createObjectStore("matches", { keyPath: "matchId" });
+        m.createIndex("mode", "mode", { unique: false });
+        m.createIndex("status", "status", { unique: false });
+        m.createIndex("startedAt", "startedAtUnixMs", { unique: false });
+        db.createObjectStore("plies", { keyPath: ["matchId", "plyNo"] });
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        // Seed a row so we can verify it survives the migration.
+        const tx = db.transaction("matches", "readwrite");
+        tx.objectStore("matches").put({
+          matchId: "01TEST-LEGACY-ROW",
+          mode: "multiplayer",
+          startedAtUnixMs: 1_700_000_000_000,
+          status: "in-progress",
+          multiplayerCode: "123456",
+          multiplayerRole: "host",
+        });
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    // 2. Open under the production code (v2). Should run onupgradeneeded and
+    //    create joined_codes without touching matches.
+    const store = new IdbTelemetryStore();
+
+    // 3. joined_codes is usable.
+    await store.recordJoinedCode({ code: "999999", hostPeerId: "p" });
+    const codes = await store.listJoinedCodes();
+    expect(codes.map((e) => e.code)).toEqual(["999999"]);
+
+    // 4. The pre-existing matches row is still readable.
+    const meta = await store.getMatchMeta("01TEST-LEGACY-ROW");
+    expect(meta).not.toBeNull();
+    expect(meta?.multiplayerRole).toBe("host");
+    expect(meta?.multiplayerCode).toBe("123456");
+
+    await store.close();
+  });
+});

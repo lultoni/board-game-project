@@ -190,6 +190,19 @@
     busy = true;
     codeError = null;
     try {
+      // Displaced-host check: if another peer already holds this code, the
+      // joiner has promoted themselves to host during our absence. Falling
+      // through to `hostWithCode` here would conflict with the new authority
+      // (broker rejects the re-claim; both sides briefly think they're host).
+      // Probe first; if the code is taken, rejoin as joiner — the new host's
+      // session-hello + snapshot will re-anchor us on the next bind.
+      const codeTaken = await probeHost(code).catch(() => false);
+      if (codeTaken) {
+        codeInput = code;
+        await startJoin();
+        return;
+      }
+
       const store = getTelemetryStore();
       let matchLogJson: string | null = null;
       try {

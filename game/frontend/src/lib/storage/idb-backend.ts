@@ -25,8 +25,14 @@ import type { MatchMode } from "../state/match-store.svelte";
 // Database name bumped from `boardgame-matches` (v1) to `boardgame-matches-v2`
 // for the L7c authoritative-host redesign. Old data is orphaned — pre-release
 // project, no migration needed. See `.claude/plans/twinkling-questing-quiche.md`.
+//
+// DB_VERSION bumped 1 → 2 to re-run `onupgradeneeded` on browsers that opened
+// `boardgame-matches-v2` from a build that predated the joined_codes store.
+// The handler's `if (!objectStoreNames.contains(...))` guards make the upgrade
+// idempotent — existing matches/plies are untouched; the missing joined_codes
+// store gets created. Fresh DBs at v2 get all three stores in one pass.
 const DB_NAME = "boardgame-matches-v2";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_MATCHES = "matches";
 const STORE_PLIES = "plies";
 // Joiner-side record of multiplayer codes the user has connected to. Joiners
