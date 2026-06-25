@@ -7,7 +7,8 @@
 //!                     ' ' <p1_money> ' ' <p2_money> ' ' <pending_modifiers>
 //!                     ' ' <round_number> ' ' <moved_this_phase>
 //!                     [ ' ' <tracked_enemies> ' ' <tracked_casters>
-//!                       ' ' <champion_credit> ]
+//!                       ' ' <champion_credit>
+//!                       [ ' ' <pending_bodyguard> ] ]
 //! <board>         ::= <rank> ('/' <rank>){7}        ; rank 8 first, rank 1 last
 //! <rank>          ::= ( <piece-token> | <digit> ){1..}    ; squares per rank sum to 8
 //! <piece-token>   ::= <piece-char> [ '[' <hp> '/' <armor> '/' <combo>
@@ -27,6 +28,9 @@
 //! <tracked_casters> ::= <sq-list>
 //! <champion_credit> ::= 0..=u64::MAX decimal     ; multi-Champion combo
 //!                                                  cross-product bitmap
+//! <pending_bodyguard> ::= '-'                          ; None
+//!                       | <src> ':' <now> ':' <tgt> ':' <eligible-list>
+//! <eligible-list>     ::= '-' | <sq> ( ',' <sq> ){0..3}
 //! ```
 //!
 //! Bracketed mailbox fields default to `2/0/0/0/0` (full HP, no armor, no combo,
@@ -58,7 +62,7 @@
 use crate::state::{
     bitboard::Bitboard,
     mailbox::EMPTY_MAILBOX_ENTRY,
-    position::{Phase, Player, Position, MAX_TRACKED_ENEMIES, MAX_TRACKED_CASTERS},
+    position::{Phase, PendingBodyguard, Player, Position, MAX_BODYGUARD_ELIGIBLE, MAX_TRACKED_ENEMIES, MAX_TRACKED_CASTERS},
 };
 use std::fmt::Write as _;
 
@@ -164,12 +168,17 @@ pub fn to_fen(pos: &Position) -> String {
         pos.moved_this_phase.0,
     ).unwrap();
 
-    // Turn-scoped trailer: emit ONLY when at least one of the three is
-    // non-zero. A between-turns FEN therefore matches the legacy 9-field
-    // form byte-for-byte, keeping existing snapshots stable.
+    // Turn-scoped trailer: emit ONLY when at least one of the three trackers
+    // is non-zero, OR pending_bodyguard is Some (because the pending_bodyguard
+    // field is the 13th, and its position is only well-defined after the
+    // tracker fields). A between-turns FEN with all trackers empty AND no
+    // pending bodyguard therefore matches the legacy 9-field form
+    // byte-for-byte, keeping existing snapshots stable.
     let te_len = pos.tracked_enemies_len as usize;
     let tc_len = pos.tracked_casters_len as usize;
-    if te_len > 0 || tc_len > 0 || pos.champion_credit != 0 {
+    let trackers_nonzero = te_len > 0 || tc_len > 0 || pos.champion_credit != 0;
+    let emit_trailer = trackers_nonzero || pos.pending_bodyguard.is_some();
+    if emit_trailer {
         out.push(' ');
         if te_len == 0 {
             out.push('-');
@@ -189,9 +198,25 @@ pub fn to_fen(pos: &Position) -> String {
             }
         }
         write!(&mut out, " {}", pos.champion_credit).unwrap();
+        if let Some(pbg) = pos.pending_bodyguard {
+            out.push(' ');
+            write_pending_bodyguard(&mut out, &pbg);
+        }
     }
 
     out
+}
+
+fn write_pending_bodyguard(out: &mut String, pbg: &PendingBodyguard) {
+    write!(out, "{}:{}:{}:", pbg.attacker_src, pbg.attacker_now, pbg.target_sq).unwrap();
+    if pbg.eligible_len == 0 {
+        out.push('-');
+    } else {
+        for i in 0..pbg.eligible_len as usize {
+            if i > 0 { out.push(','); }
+            write!(out, "{}", pbg.eligible[i]).unwrap();
+        }
+    }
 }
 
 fn parse_sq_list(s: &str, field: &'static str) -> Result<Vec<u8>, FenError> {
@@ -203,6 +228,40 @@ fn parse_sq_list(s: &str, field: &'static str) -> Result<Vec<u8>, FenError> {
         out.push(v);
     }
     Ok(out)
+}
+
+/// Parse a pending-bodyguard tail field. Format:
+///   `-`                                  → `None`
+///   `<src>:<now>:<tgt>:<eligible>`       → `Some(...)`
+/// where `<eligible>` is either `-` (no guards) or a comma-separated list of
+/// up to MAX_BODYGUARD_ELIGIBLE squares. All squares must be < 64.
+fn parse_pending_bodyguard(s: &str) -> Result<Option<PendingBodyguard>, FenError> {
+    if s == "-" || s.is_empty() { return Ok(None); }
+    let parts: Vec<&str> = s.splitn(4, ':').collect();
+    if parts.len() != 4 {
+        return Err(FenError::BadDecimal { field: "pending_bodyguard" });
+    }
+    let parse_sq = |p: &str| -> Result<u8, FenError> {
+        let v = p.parse::<u8>().map_err(|_| FenError::BadDecimal { field: "pending_bodyguard" })?;
+        if v >= 64 { return Err(FenError::BadDecimal { field: "pending_bodyguard" }); }
+        Ok(v)
+    };
+    let attacker_src = parse_sq(parts[0])?;
+    let attacker_now = parse_sq(parts[1])?;
+    let target_sq    = parse_sq(parts[2])?;
+    let elig = parse_sq_list(parts[3], "pending_bodyguard")?;
+    if elig.len() > MAX_BODYGUARD_ELIGIBLE {
+        return Err(FenError::BadDecimal { field: "pending_bodyguard" });
+    }
+    let mut eligible = [0u8; MAX_BODYGUARD_ELIGIBLE];
+    for (i, &sq) in elig.iter().enumerate() { eligible[i] = sq; }
+    Ok(Some(PendingBodyguard {
+        attacker_src,
+        attacker_now,
+        target_sq,
+        eligible,
+        eligible_len: elig.len() as u8,
+    }))
 }
 
 fn write_piece_token(out: &mut String, pos: &Position, sq: u8) {
@@ -240,8 +299,9 @@ fn write_piece_token(out: &mut String, pos: &Position, sq: u8) {
 
 pub fn from_fen(s: &str) -> Result<Position, FenError> {
     let fields: Vec<&str> = s.split_ascii_whitespace().collect();
-    if fields.len() != 9 && fields.len() != 12 {
-        return Err(FenError::WrongFieldCount { got: fields.len() });
+    let len = fields.len();
+    if !matches!(len, 9 | 12 | 13) {
+        return Err(FenError::WrongFieldCount { got: len });
     }
 
     let board_str = fields[0];
@@ -253,11 +313,12 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
     let modifiers_s = fields[6];
     let round_s = fields[7];
     let moved_s = fields[8];
-    let (tracked_enemies_s, tracked_casters_s, credit_s) = if fields.len() == 12 {
+    let (tracked_enemies_s, tracked_casters_s, credit_s) = if len >= 12 {
         (Some(fields[9]), Some(fields[10]), Some(fields[11]))
     } else {
         (None, None, None)
     };
+    let pending_bg_s = if len == 13 { Some(fields[12]) } else { None };
 
     let mut pos = Position::empty();
 
@@ -354,6 +415,13 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
         debug_assert_eq!(pos.champion_credit, 0);
         debug_assert_eq!(pos.tracked_enemies, [0u8; MAX_TRACKED_ENEMIES]);
         debug_assert_eq!(pos.tracked_casters, [0u8; MAX_TRACKED_CASTERS]);
+    }
+
+    // Pending bodyguard tail (13-field form only). Absence ≡ None.
+    if let Some(s) = pending_bg_s {
+        pos.pending_bodyguard = parse_pending_bodyguard(s)?;
+    } else {
+        debug_assert!(pos.pending_bodyguard.is_none());
     }
     debug_assert_eq!(pos.zobrist, 0);
 
@@ -609,6 +677,8 @@ pub(crate) fn position_eq_for_fen(a: &Position, b: &Position) -> bool {
     let tc_len = a.tracked_casters_len as usize;
     if a.tracked_enemies[..te_len] != b.tracked_enemies[..te_len] { return false; }
     if a.tracked_casters[..tc_len] != b.tracked_casters[..tc_len] { return false; }
+    // Pending-bodyguard state — included for Commit 1 round-trip parity.
+    if a.pending_bodyguard != b.pending_bodyguard { return false; }
     // Mailbox: only the occupied squares matter.
     let occ = (a.p1_pieces | a.p2_pieces).0;
     for sq in 0..64u8 {
@@ -1056,5 +1126,147 @@ mod tests {
             Err(FenError::BadDecimal { field: "tracked_enemies" }) => {}
             other => panic!("expected BadDecimal(tracked_enemies), got {:?}", other),
         }
+    }
+
+    // --- Commit 1: pending_bodyguard FEN tail -------------------------------
+
+    #[test]
+    fn legacy_9_field_fen_loads_with_none_pending_bg() {
+        // The canonical setup FEN is 9 fields. Must parse with None.
+        let p = Position::setup_stack_m();
+        let s = to_fen(&p);
+        assert_eq!(s.split_ascii_whitespace().count(), 9,
+            "setup FEN must remain 9 fields with no pending_bg: {}", s);
+        let p2 = from_fen(&s).expect("legacy 9-field parses");
+        assert!(p2.pending_bodyguard.is_none());
+    }
+
+    #[test]
+    fn legacy_12_field_fen_loads_with_none_pending_bg() {
+        // A 12-field FEN with trackers but no pending_bg.
+        let mut p = Position::setup_stack_m();
+        p.current_phase = Phase::Skill;
+        p.champion_credit = 7;
+        let s = to_fen(&p);
+        assert_eq!(s.split_ascii_whitespace().count(), 12,
+            "trackers-only FEN must be 12 fields: {}", s);
+        let p2 = from_fen(&s).expect("12-field parses");
+        assert!(p2.pending_bodyguard.is_none());
+    }
+
+    #[test]
+    fn pending_bodyguard_roundtrip_some() {
+        let mut p = Position::setup_stack_m();
+        p.current_phase = Phase::Move;
+        p.pending_bodyguard = Some(PendingBodyguard {
+            attacker_src: 1,
+            attacker_now: 18,
+            target_sq: 26,
+            eligible: [17, 19, 25, 0],
+            eligible_len: 3,
+        });
+        // Recompute zobrist so position_eq paths that rely on it stay consistent.
+        p.zobrist = crate::state::zobrist::full_recompute(&p);
+        let s = to_fen(&p);
+        assert_eq!(s.split_ascii_whitespace().count(), 13,
+            "pending_bg FEN must be 13 fields: {}", s);
+        assert!(s.contains(" 1:18:26:17,19,25"),
+            "pending_bg field must encode src:now:tgt:eligible — got: {}", s);
+        let p2 = from_fen(&s).expect("round-trip parses");
+        assert!(position_eq_for_fen(&p, &p2), "pending_bg state lost on round-trip");
+        assert_eq!(p2.pending_bodyguard.unwrap().eligible_len, 3);
+    }
+
+    #[test]
+    fn pending_bodyguard_roundtrip_empty_eligible() {
+        let mut p = Position::setup_stack_m();
+        p.pending_bodyguard = Some(PendingBodyguard {
+            attacker_src: 5,
+            attacker_now: 13,
+            target_sq: 21,
+            eligible: [0; 4],
+            eligible_len: 0,
+        });
+        p.zobrist = crate::state::zobrist::full_recompute(&p);
+        let s = to_fen(&p);
+        assert!(s.contains(" 5:13:21:-"), "empty eligible list encodes as '-': {}", s);
+        let p2 = from_fen(&s).expect("round-trip parses");
+        assert_eq!(p2.pending_bodyguard.unwrap().eligible_len, 0);
+    }
+
+    #[test]
+    fn pending_bodyguard_with_full_trackers_roundtrip() {
+        // Combined trackers + pending_bg → 13 fields, both preserved.
+        let mut p = Position::setup_stack_m();
+        p.current_phase = Phase::Skill;
+        p.tracked_enemies[0] = 17;
+        p.tracked_enemies_len = 1;
+        p.tracked_casters[0] = 1;
+        p.tracked_casters_len = 1;
+        p.champion_credit = 3;
+        p.pending_bodyguard = Some(PendingBodyguard {
+            attacker_src: 9,
+            attacker_now: 17,
+            target_sq: 25,
+            eligible: [16, 18, 24, 26],
+            eligible_len: 4,
+        });
+        p.zobrist = crate::state::zobrist::full_recompute(&p);
+        let s = to_fen(&p);
+        assert_eq!(s.split_ascii_whitespace().count(), 13);
+        let p2 = from_fen(&s).expect("round-trip parses");
+        assert!(position_eq_for_fen(&p, &p2));
+    }
+
+    #[test]
+    fn from_fen_rejects_malformed_pending_bg_field_count() {
+        // Only 3 colon-separated parts (missing eligible list).
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0 - - 0 1:2:3";
+        match from_fen(bad) {
+            Err(FenError::BadDecimal { field: "pending_bodyguard" }) => {}
+            other => panic!("expected BadDecimal(pending_bodyguard), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn from_fen_rejects_out_of_range_pending_bg_square() {
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0 - - 0 64:0:0:-";
+        match from_fen(bad) {
+            Err(FenError::BadDecimal { field: "pending_bodyguard" }) => {}
+            other => panic!("expected BadDecimal(pending_bodyguard), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn from_fen_rejects_too_many_eligible_guards() {
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0 - - 0 0:1:2:3,4,5,6,7";
+        match from_fen(bad) {
+            Err(FenError::BadDecimal { field: "pending_bodyguard" }) => {}
+            other => panic!("expected BadDecimal(pending_bodyguard), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn from_fen_rejects_wrong_field_count_with_pending_bg() {
+        // 10/11 fields are not accepted — must be 9, 12, or 13.
+        let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0 -";
+        match from_fen(bad) {
+            Err(FenError::WrongFieldCount { got: 10 }) => {}
+            other => panic!("expected WrongFieldCount(10), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pending_bg_changes_zobrist() {
+        // Two positions identical except for pending_bodyguard hash differently.
+        let p1 = Position::setup_stack_m();
+        let mut p2 = p1.clone();
+        p2.pending_bodyguard = Some(PendingBodyguard {
+            attacker_src: 1, attacker_now: 18, target_sq: 26,
+            eligible: [17, 19, 25, 0], eligible_len: 3,
+        });
+        p2.zobrist = crate::state::zobrist::full_recompute(&p2);
+        assert_ne!(p1.zobrist, p2.zobrist,
+            "pending_bodyguard transition must alter the hash");
     }
 }

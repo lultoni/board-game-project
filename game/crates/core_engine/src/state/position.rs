@@ -53,6 +53,35 @@ pub const MAX_TRACKED_ENEMIES: usize = 8;
 /// follow the move.
 pub const MAX_TRACKED_CASTERS: usize = 8;
 
+/// Maximum number of guards eligible to intercept a single Move-Attack.
+/// Eligible = `eight_neighbours(target) ∩ eight_neighbours(approach_sq) ∩
+/// guards ∩ defender_pieces`. The geometric intersection of two king-move
+/// neighbourhoods (which always share an edge or corner since the approach is
+/// adjacent to the target) is at most 4 squares — and friendly-Guard filtering
+/// can only shrink it. `[u8; 4]` is the exact tight bound.
+pub const MAX_BODYGUARD_ELIGIBLE: usize = 4;
+
+/// Pending two-ply bodyguard resolution state. `Some` between an attacker's
+/// tentative Move-Attack (first hop only, no damage) and the defender's
+/// `BodyguardChoice` action that resolves it. Populated in Commit 3 when the
+/// Move-Attack split lands; in this commit it is always `None`. Hashed into
+/// the Zobrist via dedicated keys (see `state::zobrist`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct PendingBodyguard {
+    /// Square the attacker started on (pre-hop). Kept for display + unmake.
+    pub attacker_src: u8,
+    /// Square the attacker is currently on (post first hop == approach_sq).
+    pub attacker_now: u8,
+    /// Move-Attack's named target.
+    pub target_sq: u8,
+    /// Eligible guards in ascending square order (matches the output ordering
+    /// of `generator::bodyguard_guards_for`). Slots past `eligible_len` are
+    /// unused; convention is to zero-fill but consumers must respect `eligible_len`.
+    pub eligible: [u8; MAX_BODYGUARD_ELIGIBLE],
+    /// Active count in `eligible` (0..=MAX_BODYGUARD_ELIGIBLE).
+    pub eligible_len: u8,
+}
+
 /// Bitfield positions in `Position::pending_modifiers`.
 pub mod modifier_bits {
     pub const FOCUS:  u8 = 1 << 0;  // next skill: +1 Range
@@ -126,6 +155,12 @@ pub struct Position {
     /// turn. 8 × 8 = 64 bits fits exactly in u64. Cleared at end of turn.
     pub champion_credit: u64,
 
+    /// Pending two-ply bodyguard resolution state. `Some` between an attacker's
+    /// tentative Move-Attack and the defender's `BodyguardChoice` that resolves
+    /// it. Always `None` in this commit (Commit 1 of the bodyguard refactor);
+    /// populated in Commit 3 when the Move-Attack split lands.
+    pub pending_bodyguard: Option<PendingBodyguard>,
+
     // === Layer 1: Incrementally maintained Zobrist hash. ===
     pub zobrist: u64,
 
@@ -161,6 +196,7 @@ impl Position {
             tracked_casters: [0; MAX_TRACKED_CASTERS],
             tracked_casters_len: 0,
             champion_credit: 0,
+            pending_bodyguard: None,
             zobrist: 0,
             game_result: None,
         }
@@ -471,5 +507,28 @@ mod tests {
             Err(DraftError::BadSkillId { piece_index: 0, slot: 1, skill_id: 16 }) => {}
             other => panic!("expected BadSkillId(0,1,16), got {:?}", other),
         }
+    }
+
+    // --- Commit 1: PendingBodyguard data-layer is None by default -----------
+
+    #[test]
+    fn empty_position_has_no_pending_bodyguard() {
+        assert!(Position::empty().pending_bodyguard.is_none());
+    }
+
+    #[test]
+    fn setup_stack_m_has_no_pending_bodyguard() {
+        assert!(Position::setup_stack_m().pending_bodyguard.is_none());
+    }
+
+    #[test]
+    fn setup_stack_m_for_draft_has_no_pending_bodyguard() {
+        assert!(Position::setup_stack_m_for_draft().pending_bodyguard.is_none());
+    }
+
+    #[test]
+    fn setup_stack_m_with_loadouts_has_no_pending_bodyguard() {
+        let p = Position::setup_stack_m_with_loadouts(&full_p1_loadout(), &full_p2_loadout());
+        assert!(p.pending_bodyguard.is_none());
     }
 }

@@ -14,12 +14,13 @@ use super::action::Undo;
 /// Skill → next-turn transition. Called from `apply_end_phase` when the
 /// current phase is Skill. Bookkeeping done here (Slice 6):
 ///
-/// 1. Clear combo counters on every square owned by the side that's about
-///    to move (mailbox.combo = 0 for all squares in their occupancy bitboard).
-///    The combo counter is a per-enemy "buildup" — when it's your turn to
-///    play, your *own* enemies' combo counters reset because the buildup
-///    only counts within a single attacker's turn. So we clear the counters
-///    on the NEW side-to-move's pieces (whose enemies were the attackers).
+/// 1. Clear combo counters on EVERY piece on the board. Per Stack M rule:
+///    "combo counter resets at the end of your turn." Originally implemented
+///    as "clear only on the new STM's pieces" (the typical case — combo lives
+///    on enemy pieces from the caster's POV). But self-buff skills like
+///    Tempest place combo on the caster's OWN pieces, and those would survive
+///    the turn flip if we only cleared the new STM side, letting the opponent
+///    capitalise on the stale buildup. Clear all sides defensively.
 /// 2. Clear pending_modifiers (Focus / Charge are turn-scoped).
 /// 3. Clear champion_credit + tracked_enemies + tracked_casters (next turn's
 ///    tracking starts fresh).
@@ -38,20 +39,11 @@ pub fn end_turn(pos: &mut Position, undo: &mut Undo) {
         set_p2_money, set_phase, set_round, write_mailbox,
     };
 
-    // The new side-to-move (after the flip). Combo counters on THEIR pieces
-    // are the ones that need clearing — those represent the buildup their
-    // pieces took during the side-to-move's just-ended turn.
-    let new_stm = match pos.to_move {
-        Player::P1 => Player::P2,
-        Player::P2 => Player::P1,
-    };
-    let new_stm_bb = match new_stm {
-        Player::P1 => pos.p1_pieces,
-        Player::P2 => pos.p2_pieces,
-    };
-
-    // 1. Clear combo counters on the new side-to-move's pieces.
-    let mut bits = new_stm_bb.0;
+    // 1. Clear combo counters on EVERY piece (both sides). Stack M says combo
+    //    resets at the end of your turn — and self-buff skills (e.g. Tempest)
+    //    can place combo on the caster's own pieces, so a one-sided clear
+    //    leaves stale combo on the just-acting side's pieces.
+    let mut bits = (pos.p1_pieces.0) | (pos.p2_pieces.0);
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
         bits &= bits - 1;
@@ -60,6 +52,12 @@ pub fn end_turn(pos: &mut Position, undo: &mut Undo) {
             write_mailbox(pos, undo, sq, prev.with_combo(0));
         }
     }
+
+    // The new side-to-move (after the flip). Needed below for income disburse.
+    let new_stm = match pos.to_move {
+        Player::P1 => Player::P2,
+        Player::P2 => Player::P1,
+    };
 
     // 2. Turn-scoped state — pending_modifiers is hashed (clear via helper).
     //    champion_credit / tracked_*_len are NOT hashed (transient) so they

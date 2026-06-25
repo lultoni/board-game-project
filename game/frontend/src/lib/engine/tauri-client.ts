@@ -23,6 +23,14 @@ interface PositionViewDto {
   pendingModifiers: number;
   gameResult: number;
   zobrist: number | string;
+  /** Optional: the Tauri backend may not yet project pending_bodyguard. When
+   *  absent we surface `null`, matching the engine's common case. */
+  pendingBodyguard?: {
+    attackerSrc: number;
+    attackerNow: number;
+    targetSq: number;
+    eligible: number[];
+  } | null;
 }
 
 interface StepResultDto {
@@ -64,6 +72,7 @@ function normalisePositionView(dto: PositionViewDto): PositionView {
     pendingModifiers: dto.pendingModifiers,
     gameResult: dto.gameResult,
     zobrist: toBigInt(dto.zobrist),
+    pendingBodyguard: dto.pendingBodyguard ?? null,
   };
 }
 

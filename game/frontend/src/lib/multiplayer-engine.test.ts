@@ -44,6 +44,7 @@ class FakeEngine implements EngineClient {
       pendingModifiers: 0,
       gameResult: 0,
       zobrist: this.zobristOverride ?? this.computeZobrist(),
+      pendingBodyguard: null,
     };
   }
   async legalActions(): Promise<Uint32Array> { return new Uint32Array(); }

@@ -23,7 +23,7 @@
 //! a debug-time panic (treated as an engine bug, not a user error).
 
 use super::action::{Action, ActionKind, Undo};
-use crate::state::position::{modifier_bits, GameResult, Phase, Player};
+use crate::state::position::{modifier_bits, GameResult, PendingBodyguard, Phase, Player};
 use crate::state::zobrist::{self, PieceKind as ZKind};
 use crate::state::{magic, Bitboard, MailboxEntry, Position, EMPTY_MAILBOX_ENTRY};
 
@@ -35,6 +35,7 @@ pub fn make(pos: &mut Position, action: Action) -> Undo {
         prev_phase: phase_to_byte(pos.current_phase),
         prev_actions_remaining: pos.actions_remaining,
         prev_to_move: player_to_byte(pos.to_move),
+        prev_pending_bodyguard: pos.pending_bodyguard,
         prev_moved_this_phase: pos.moved_this_phase.0,
         prev_round_number: pos.round_number,
         p1_money_delta: 0,
@@ -57,6 +58,7 @@ pub fn make(pos: &mut Position, action: Action) -> Undo {
 
     match action.kind() {
         _ if action.is_draft_turn() => apply_draft_turn(pos, action, &mut undo),
+        _ if action.is_bodyguard_choice() => apply_bodyguard_choice(pos, action, &mut undo),
         ActionKind::Move      => apply_move(pos, action, &mut undo),
         ActionKind::Skill     => apply_skill(pos, action, &mut undo),
         ActionKind::EndPhase  => apply_end_phase(pos, &mut undo),
@@ -85,6 +87,7 @@ pub fn unmake(pos: &mut Position, undo: &Undo) {
     pos.current_phase      = phase_from_byte(undo.prev_phase);
     pos.actions_remaining  = undo.prev_actions_remaining;
     pos.to_move            = player_from_byte(undo.prev_to_move);
+    pos.pending_bodyguard  = undo.prev_pending_bodyguard;
     pos.moved_this_phase   = Bitboard(undo.prev_moved_this_phase);
     pos.round_number       = undo.prev_round_number;
     pos.champion_credit    = undo.prev_champion_credit;
@@ -116,14 +119,20 @@ fn apply_move(pos: &mut Position, action: Action, undo: &mut Undo) {
     let occ_target_by_p1 = pos.p1_pieces.contains(tgt);
     let occ_target_by_p2 = pos.p2_pieces.contains(tgt);
 
-    if occ_target_by_p1 || occ_target_by_p2 {
-        apply_move_attack(pos, action, undo);
+    let tentative = if occ_target_by_p1 || occ_target_by_p2 {
+        apply_move_attack(pos, action, undo)
     } else {
         apply_plain_move(pos, src, tgt, undo);
-    }
+        false
+    };
 
-    debug_assert!(pos.actions_remaining > 0, "make() invoked with zero actions");
-    dec_actions(pos, undo);
+    // Tentative Move-Attacks (bodyguard pending) defer dec_actions and the
+    // STM flip to `apply_bodyguard_choice` on the defender's reply ply. The
+    // tentative apply already flipped STM internally.
+    if !tentative {
+        debug_assert!(pos.actions_remaining > 0, "make() invoked with zero actions");
+        dec_actions(pos, undo);
+    }
 }
 
 /// Move mover from `src` to `tgt`. `moved_this_phase` is set on `tgt`.
@@ -170,27 +179,46 @@ fn apply_plain_move(pos: &mut Position, src: u8, tgt: u8, undo: &mut Undo) {
 /// Move-Attack (Stack M canonical rule): the attacker advances 1 tile toward
 /// Apply a Move-Attack action. The attacker first relocates one tile short of
 /// the target (stopping on `approach_sq`, the penultimate tile encoded in the
-/// action), then the defender takes 1 damage. If a Guard intercepts via
-/// `choice_idx`, that Guard takes the damage instead — but the attacker still
-/// advances. Armor absorbs first; on Armor=0 the hit removes 1 HP; HP=0
-/// removes the piece from the board.
+/// action), then the defender takes 1 damage.
 ///
-/// **Kill-follow-through** (Stack M, Session 31 clarification — engine fix):
-/// When the strike resolves on the defender (no Bodyguard) AND the defender
-/// dies (HP reaches 0), the attacker performs a second hop from `approach_sq`
-/// into the now-empty `target` tile. This holds for both speed-1 and speed-2
-/// attackers: a speed-1 attacker (approach == src) advances from src → target.
-/// Bodyguard interceptions leave the defender alive on `target`, so the
-/// attacker remains on `approach_sq` in that branch.
+/// **Bodyguard branching (Commit 3, engine-level resolution):**
+/// When the defender has eligible Bodyguard Guards
+/// (`bodyguard_guards_for(pos, tgt, approach)` is non-empty), this is a
+/// *tentative* apply: the attacker relocates to `approach`, the engine stores
+/// `pos.pending_bodyguard = Some(...)`, flips STM to the defender, and
+/// returns early — no damage, no kill-follow-through, no actions decrement,
+/// no moved-this-phase mark. The defender's next ply must be a
+/// `BodyguardChoice` (see `apply_bodyguard_choice`), which finishes the
+/// transaction by resolving damage on the chosen square, optionally doing
+/// the kill-follow-through second hop, flipping STM back, and decrementing
+/// actions. This makes the choice authoritative on the defender's seat in
+/// every play mode (local HvH, HvAI, AivAI, online HvH) without any
+/// out-of-band UI handshake.
+///
+/// When `bodyguard_guards_for(...)` is empty (the common case), the existing
+/// single-ply path runs unchanged — damage on the named target, optional
+/// kill-follow-through, attacker ends on `approach` or `tgt`. The
+/// generator no longer emits Move-Attacks with `choice_idx != 0`, so this
+/// branch ignores `choice_idx` entirely.
+///
+/// **Kill-follow-through** (Stack M, Session 31 clarification): when the
+/// strike resolves on the defender AND the defender dies, the attacker
+/// performs a second hop from `approach_sq` into the now-empty `target`
+/// tile. Bodyguard interceptions (resolved later in `apply_bodyguard_choice`)
+/// follow the same rule: kill-follow-through fires only when the named
+/// target died, not when a redirected Guard died.
 ///
 /// For speed-1 attackers (Champion/King), `approach_sq == src`, so no
 /// physical relocation occurs in the first hop and the function degenerates
 /// to "attacker stays put, defender takes damage" UNLESS the kill-follow-
 /// through triggers — in which case the attacker advances from src → target.
-fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
+///
+/// Returns `true` when the apply was *tentative* (pending bodyguard set,
+/// STM already flipped, actions NOT decremented). The caller in `apply_move`
+/// uses this to skip its own `dec_actions` call.
+fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) -> bool {
     let src = action.src();
     let tgt = action.target();
-    let choice = action.choice_idx();
     // approach_sq carried in bits 23..29 for any generator-emitted Move-Attack.
     // Defensive fallback to src for any externally-constructed legacy action
     // (no current code path produces one, but the make_unmake tests build
@@ -206,20 +234,11 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
         approach == src || !pos.is_occupied(approach),
         "approach_sq must be empty (or == src for speed-1)",
     );
+    debug_assert!(pos.pending_bodyguard.is_none(),
+        "Move-Attack applied while a Bodyguard choice was already pending");
 
-    // Decide which square actually takes the hit (defender or Bodyguard
-    // redirect). Bodyguard eligibility is dual-adjacency: Guard adjacent to
-    // BOTH defender AND approach_sq, on the defender's side.
-    let hit_sq = if choice == 0 {
-        tgt
-    } else {
-        let guards = super::generator::bodyguard_guards_for(pos, tgt, approach);
-        let k = (choice as usize).checked_sub(1).expect("choice_idx>=1 here");
-        debug_assert!(k < guards.len(),
-            "Bodyguard choice_idx={} out of range (only {} eligible Guards for target {} via approach {})",
-            choice, guards.len(), tgt, approach);
-        guards[k]
-    };
+    // Bodyguard eligibility decides whether this is a tentative or direct apply.
+    let bg_guards = super::generator::bodyguard_guards_for(pos, tgt, approach);
 
     // Snapshot attacker identity now — we may need it for the kill-follow-
     // through second hop. Reading from src here is correct because the
@@ -267,30 +286,42 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
         xor_piece(pos, undo, approach, attacker_owner, attacker_kind);
     }
 
-    // Deal damage AFTER the first-hop relocation. The attacker's current
-    // square is `approach`, which by construction is empty AND adjacent to
-    // the target, so it's never `hit_sq`.
+    // Tentative branch: leave pending_bodyguard set, flip STM, and return.
+    // Damage + moved-set + dec_actions defer to apply_bodyguard_choice.
+    if !bg_guards.is_empty() {
+        debug_assert!(bg_guards.len() <= crate::state::position::MAX_BODYGUARD_ELIGIBLE,
+            "bodyguard_guards_for returned more than MAX_BODYGUARD_ELIGIBLE guards: {}", bg_guards.len());
+        let mut eligible = [0u8; crate::state::position::MAX_BODYGUARD_ELIGIBLE];
+        for (i, sq) in bg_guards.iter().copied().enumerate() {
+            eligible[i] = sq;
+        }
+        let pbg = PendingBodyguard {
+            attacker_src: src,
+            attacker_now: approach,
+            target_sq: tgt,
+            eligible,
+            eligible_len: bg_guards.len() as u8,
+        };
+        // Zobrist: pending None → Some(pbg). pending_bg_key(None) is 0.
+        z_apply(pos, undo, zobrist::pending_bg_key(Some(pbg)));
+        pos.pending_bodyguard = Some(pbg);
+        flip_to_move(pos, undo);
+        return true;
+    }
+
+    // Direct branch: no eligible guards, defender takes the hit immediately.
+    let hit_sq = tgt;
     deal_one_damage(pos, hit_sq, undo);
 
     // Kill-follow-through: when the strike landed on the defender (no
     // Bodyguard intercept) and the defender died, the attacker advances
-    // from `approach` to `tgt`. This is the "you actually moved onto the
-    // square you attacked, because it's now empty" rule. Speed-1 case
-    // (approach == src) is handled by the same logic — the second hop
-    // becomes src → tgt.
-    let defender_died = hit_sq == tgt && !pos.is_occupied(tgt);
+    // from `approach` to `tgt`.
+    let defender_died = !pos.is_occupied(tgt);
     let attacker_final = if defender_died {
-        // Move the attacker from `approach` (or `src` for speed-1) into the
-        // vacated target tile. We must not call `write_mailbox` on the same
-        // square twice without the first write being recorded — the helper
-        // dedups on prev snapshot, so it's safe; but to be explicit we
-        // clear `approach` first, then write `tgt`.
         let from = approach;
         let to   = tgt;
-        // Mailbox.
         write_mailbox(pos, undo, from, EMPTY_MAILBOX_ENTRY);
         write_mailbox(pos, undo, to, attacker_entry);
-        // Bitboards: clear `from`, set `to` in every layer the attacker is in.
         let xor = Bitboard::from_square(from).0 | Bitboard::from_square(to).0;
         if attacker_owner == Player::P1 {
             pos.p1_pieces = Bitboard(pos.p1_pieces.0 ^ xor);
@@ -313,7 +344,6 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
                 undo.guards_xor ^= xor;
             }
         }
-        // Zobrist: piece leaves `from`, appears at `to`.
         xor_piece(pos, undo, from, attacker_owner, attacker_kind);
         xor_piece(pos, undo, to, attacker_owner, attacker_kind);
         to
@@ -321,10 +351,87 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) {
         approach
     };
 
-    // Mark the attacker's *final* square as moved-this-phase. For a non-kill,
-    // that's `approach` (== `src` for speed-1). For a kill-follow-through,
-    // it's `tgt`.
     moved_set(pos, undo, attacker_final);
+    false
+}
+
+/// Apply a `BodyguardChoice` ply played by the defender. Reads
+/// `pos.pending_bodyguard` (which was set by the tentative Move-Attack on
+/// the previous ply), resolves damage on the chosen square, optionally does
+/// the kill-follow-through second hop on the original attacker, clears the
+/// pending state, flips STM back to the attacker, and decrements
+/// `actions_remaining`. This is the second half of the two-ply Bodyguard
+/// transaction — see `apply_move_attack` for the first half.
+fn apply_bodyguard_choice(pos: &mut Position, action: Action, undo: &mut Undo) {
+    let pbg = pos.pending_bodyguard
+        .expect("BodyguardChoice applied without a pending_bodyguard state");
+    let idx = action.bg_guard_idx();
+    debug_assert!(idx as usize <= pbg.eligible_len as usize,
+        "BodyguardChoice idx {} out of range (eligible_len = {})",
+        idx, pbg.eligible_len);
+
+    let approach = pbg.attacker_now;
+    let tgt      = pbg.target_sq;
+    let hit_sq = if idx == 0 {
+        tgt
+    } else {
+        pbg.eligible[(idx - 1) as usize]
+    };
+
+    // Snapshot attacker identity from `approach` (where the tentative apply
+    // parked the attacker). We need the kind/owner/mailbox-entry for the
+    // potential kill-follow-through hop.
+    let attacker_owner = player_at(pos, approach);
+    let attacker_kind  = piece_kind_at(pos, approach);
+    let attacker_entry = pos.mailbox[approach as usize];
+
+    deal_one_damage(pos, hit_sq, undo);
+
+    // Kill-follow-through: only triggers if the *named target* died (idx == 0).
+    // A redirected Guard dying does NOT free the target tile, so the attacker
+    // stays on `approach`. This matches the existing direct-branch semantics.
+    let defender_died = idx == 0 && !pos.is_occupied(tgt);
+    let attacker_final = if defender_died {
+        let from = approach;
+        let to   = tgt;
+        write_mailbox(pos, undo, from, EMPTY_MAILBOX_ENTRY);
+        write_mailbox(pos, undo, to, attacker_entry);
+        let xor = Bitboard::from_square(from).0 | Bitboard::from_square(to).0;
+        if attacker_owner == Player::P1 {
+            pos.p1_pieces = Bitboard(pos.p1_pieces.0 ^ xor);
+            undo.p1_pieces_xor ^= xor;
+        } else {
+            pos.p2_pieces = Bitboard(pos.p2_pieces.0 ^ xor);
+            undo.p2_pieces_xor ^= xor;
+        }
+        match attacker_kind {
+            ZKind::King => {
+                pos.kings = Bitboard(pos.kings.0 ^ xor);
+                undo.kings_xor ^= xor;
+            }
+            ZKind::Champion => {
+                pos.champions = Bitboard(pos.champions.0 ^ xor);
+                undo.champions_xor ^= xor;
+            }
+            ZKind::Guard => {
+                pos.guards = Bitboard(pos.guards.0 ^ xor);
+                undo.guards_xor ^= xor;
+            }
+        }
+        xor_piece(pos, undo, from, attacker_owner, attacker_kind);
+        xor_piece(pos, undo, to, attacker_owner, attacker_kind);
+        to
+    } else {
+        approach
+    };
+
+    moved_set(pos, undo, attacker_final);
+
+    // Clear pending bodyguard, flip STM back to attacker, decrement actions.
+    z_apply(pos, undo, zobrist::pending_bg_key(Some(pbg)));
+    pos.pending_bodyguard = None;
+    flip_to_move(pos, undo);
+    dec_actions(pos, undo);
 }
 
 /// Deal 1 point of damage to the piece on `hit_sq`. Armor absorbs first;
@@ -1504,9 +1611,13 @@ mod tests {
 
     #[test]
     fn bodyguard_redirects_damage_to_chosen_guard() {
-        // P1 Champion at 0. P2 Champion at 9 (b2). Adjacent P2 Guards at 1, 8, 10.
-        // Generator emits choice_idx 0 (no redirect) + 1..=3 (per Guard, sorted asc).
-        // Sorted Guards (ascending sq): [1, 8, 10] → choice_idx 1=sq1, 2=sq8, 3=sq10.
+        // Two-stage flow: attacker submits Move-Attack with no choice → engine
+        // sets pending_bodyguard + flips STM. Defender then submits a
+        // BodyguardChoice. Sorted eligible Guards (ascending sq) here: [1, 8,
+        // 10]. P1 Champion at 0 attacks P2 Champion at 9; eligible Guards
+        // adjacent to BOTH defender (9) and approach (=src=0 speed-1) are
+        // those at sq 1 and sq 8 (sq 10 is NOT adjacent to approach 0).
+        // BodyguardChoice idx=2 → eligible[1] = sq 8 takes the hit.
         let mut pos = empty_pos_with_actions(2);
         place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
         place(&mut pos, 9, Player::P2, PieceKind::Champion, 2, 0);
@@ -1514,23 +1625,54 @@ mod tests {
         place(&mut pos, 8, Player::P2, PieceKind::Guard, 2, 0);
         place(&mut pos, 10, Player::P2, PieceKind::Guard, 2, 0);
 
-        // choice_idx = 2 → guard at sq 8 takes the hit.
-        let a = Action::encode(0, 9, ActionKind::Move, 0, 2);
-        let undo = make(&mut pos, a);
+        // Stage 1: tentative Move-Attack.
+        let attack = Action::encode_move_attack(0, 9, 0, 0);
+        let undo_attack = make(&mut pos, attack);
 
-        // Champion at 9 untouched.
+        // No damage yet; STM flipped to defender; actions unchanged.
+        assert_eq!(pos.mailbox[9].hp(), 2, "no damage on tentative");
+        assert_eq!(pos.mailbox[1].hp(), 2);
+        assert_eq!(pos.mailbox[8].hp(), 2);
+        assert_eq!(pos.mailbox[10].hp(), 2);
+        assert!(pos.pending_bodyguard.is_some(), "pending set");
+        assert_eq!(pos.to_move, Player::P2, "STM flipped to defender");
+        assert_eq!(pos.actions_remaining, 2, "actions not yet decremented");
+        let pbg = pos.pending_bodyguard.unwrap();
+        assert_eq!(pbg.attacker_src, 0);
+        assert_eq!(pbg.attacker_now, 0);
+        assert_eq!(pbg.target_sq, 9);
+        // Eligible Guards = those adjacent to BOTH defender (9) and approach
+        // (0). sq 1 adj to both; sq 8 adj to both; sq 10 NOT adj to 0.
+        assert_eq!(pbg.eligible_len, 2);
+        assert_eq!(&pbg.eligible[..2], &[1u8, 8]);
+
+        // Stage 2: defender picks Guard at eligible[1] = sq 8.
+        let choice = Action::encode_bodyguard_choice(2);
+        let undo_choice = make(&mut pos, choice);
+
+        // Champion at 9 untouched; Guard at sq 8 took the hit.
         assert_eq!(pos.mailbox[9].hp(), 2);
-        // Guard at sq 8: HP dropped from 2 → 1.
-        assert_eq!(pos.mailbox[8].hp(), 1);
-        // Other guards untouched.
+        assert_eq!(pos.mailbox[8].hp(), 1, "eligible[1]=sq8 takes the hit");
         assert_eq!(pos.mailbox[1].hp(), 2);
         assert_eq!(pos.mailbox[10].hp(), 2);
-        // Attacker stays put; src marked.
+        // Pending cleared, STM restored, actions decremented.
+        assert!(pos.pending_bodyguard.is_none());
+        assert_eq!(pos.to_move, Player::P1);
+        assert_eq!(pos.actions_remaining, 1);
+        // Attacker stays put (speed-1); src marked as final square.
         assert!(pos.is_occupied(0));
         assert!(pos.moved_this_phase.contains(0));
 
-        unmake(&mut pos, &undo);
+        // Unmake in reverse: choice first, then attack.
+        unmake(&mut pos, &undo_choice);
         assert_eq!(pos.mailbox[8].hp(), 2);
+        assert!(pos.pending_bodyguard.is_some());
+        assert_eq!(pos.to_move, Player::P2);
+        assert_eq!(pos.actions_remaining, 2);
+
+        unmake(&mut pos, &undo_attack);
+        assert!(pos.pending_bodyguard.is_none());
+        assert_eq!(pos.to_move, Player::P1);
         assert_eq!(pos.moved_this_phase.0, 0);
     }
 
@@ -1541,11 +1683,21 @@ mod tests {
         place(&mut pos, 9, Player::P2, PieceKind::Champion, 2, 0);
         place(&mut pos, 1, Player::P2, PieceKind::Guard, 2, 0);
 
-        let a = Action::encode(0, 9, ActionKind::Move, 0, 0);
-        let _undo = make(&mut pos, a);
+        // Stage 1: tentative — pending set, no damage.
+        let attack = Action::encode_move_attack(0, 9, 0, 0);
+        let _u1 = make(&mut pos, attack);
+        assert!(pos.pending_bodyguard.is_some());
+        assert_eq!(pos.mailbox[9].hp(), 2);
+        assert_eq!(pos.mailbox[1].hp(), 2);
+
+        // Stage 2: defender declines redirect (idx=0).
+        let choice = Action::encode_bodyguard_choice(0);
+        let _u2 = make(&mut pos, choice);
 
         assert_eq!(pos.mailbox[9].hp(), 1, "named champion takes the hit");
         assert_eq!(pos.mailbox[1].hp(), 2, "guard untouched on choice=0");
+        assert!(pos.pending_bodyguard.is_none());
+        assert_eq!(pos.to_move, Player::P1);
     }
 
     // --- EndPhase + reversibility ---------------------------------------
@@ -1671,22 +1823,37 @@ mod tests {
         // Dual-adjacency Bodyguard. P1 Champion at a1 (sq 0, speed-1) →
         // approach=src=0. P2 King at b1 (sq 1), HP=1. Protector P2 Guard at
         // b2 (sq 9), adjacent to BOTH defender (b1) and approach (a1).
-        // choice_idx=1 → Guard absorbs.
+        // Defender picks BodyguardChoice idx=1 → eligible[0]=sq9 absorbs.
         let mut pos = empty_pos_with_actions(2);
         place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
         place(&mut pos, 1, Player::P2, PieceKind::King, 1, 0);
         place(&mut pos, 9, Player::P2, PieceKind::Guard, 2, 0);
 
-        let a = Action::encode_move_attack(0, 1, 1, 0);
-        let undo = make(&mut pos, a);
+        // Stage 1: tentative.
+        let attack = Action::encode_move_attack(0, 1, 0, 0);
+        let undo_attack = make(&mut pos, attack);
+        assert!(pos.pending_bodyguard.is_some());
+        assert_eq!(pos.to_move, Player::P2);
+        assert_eq!(pos.mailbox[1].hp(), 1, "King untouched on tentative");
+        assert_eq!(pos.mailbox[9].hp(), 2);
+        assert_eq!(pos.game_result, None);
+
+        // Stage 2: defender redirects to Guard.
+        let choice = Action::encode_bodyguard_choice(1);
+        let undo_choice = make(&mut pos, choice);
 
         assert!(pos.kings.contains(1), "King survives — Bodyguard absorbed");
         assert_eq!(pos.mailbox[1].hp(), 1);
         assert_eq!(pos.mailbox[9].hp(), 1, "Guard HP 2→1");
         assert_eq!(pos.game_result, None);
+        assert!(pos.pending_bodyguard.is_none());
+        assert_eq!(pos.to_move, Player::P1);
 
-        unmake(&mut pos, &undo);
+        unmake(&mut pos, &undo_choice);
         assert_eq!(pos.mailbox[9].hp(), 2);
+        assert!(pos.pending_bodyguard.is_some());
+        unmake(&mut pos, &undo_attack);
+        assert!(pos.pending_bodyguard.is_none());
         assert_eq!(pos.game_result, None);
     }
 
@@ -1753,7 +1920,7 @@ mod tests {
     }
 
     #[test]
-    fn move_attack_with_three_adjacent_guards_emits_four_variants() {
+    fn move_attack_with_three_adjacent_guards_emits_four_bodyguard_choices() {
         // Dual-adjacency requires a speed-2 attacker so approach ≠ src can
         // satisfy "Guard adjacent to BOTH defender AND approach" for three
         // protectors simultaneously. Geometry:
@@ -1761,8 +1928,11 @@ mod tests {
         //   P2 Guards at b2 (sq 9), d2 (sq 11), b3 (sq 17). All sit adjacent
         //   to defender c3. Approach c2 (sq 10) is reachable from c1 in 1
         //   BFS step and is adjacent to all three Guards. With approach=10
-        //   the dual-adjacency Guard set is {9, 11, 17} (ascending) → 4
-        //   variants: choice 0 (no redirect), 1→9, 2→11, 3→17.
+        //   the dual-adjacency Guard set is {9, 11, 17} (ascending).
+        //
+        // Two-stage flow: generator emits ONE Move-Attack at the attacker
+        // ply (per approach). After applying it, the defender ply emits 4
+        // BodyguardChoice actions: decline (idx=0) + one per Guard (idx=1..3).
         let mut pos = empty_pos_with_actions(2);
         place(&mut pos, 2, Player::P1, PieceKind::Guard, 2, 0);
         place(&mut pos, 18, Player::P2, PieceKind::Champion, 2, 0);
@@ -1772,53 +1942,76 @@ mod tests {
         pos.to_move = Player::P1;
 
         let actions = super::super::generator::generate(&pos);
-        let mut variants: Vec<u8> = actions.iter()
+        let move_attacks: Vec<&Action> = actions.iter()
             .filter(|a| a.kind() == ActionKind::Move
                      && a.src() == 2
                      && a.target() == 18
                      && a.has_approach()
                      && a.approach_sq() == 10)
-            .map(|a| a.choice_idx())
             .collect();
-        variants.sort_unstable();
-        assert_eq!(variants, vec![0, 1, 2, 3]);
+        assert_eq!(move_attacks.len(), 1,
+            "exactly one tentative Move-Attack per approach in two-stage flow");
+        assert_eq!(move_attacks[0].choice_idx(), 0);
 
-        // Apply each redirect and confirm the right Guard takes the hit.
-        // Attacker also relocates from src=2 to approach=10.
+        // Apply each redirect by walking the two-stage flow on a clone.
         for (choice, guard_sq) in [(1u8, 9u8), (2, 11), (3, 17)] {
             let mut p = pos.clone();
-            let a = Action::encode_move_attack(2, 18, choice, 10);
-            let _ = make(&mut p, a);
+            let attack = Action::encode_move_attack(2, 18, 0, 10);
+            let _u1 = make(&mut p, attack);
+            assert!(p.pending_bodyguard.is_some());
+            assert_eq!(p.to_move, Player::P2);
+
+            // Defender ply: generator must emit exactly 4 BG choices [0..3].
+            let bg_actions = super::super::generator::generate(&p);
+            let mut bg_idxs: Vec<u8> = bg_actions.iter()
+                .filter(|a| a.is_bodyguard_choice())
+                .map(|a| a.bg_guard_idx())
+                .collect();
+            bg_idxs.sort_unstable();
+            assert_eq!(bg_idxs, vec![0, 1, 2, 3],
+                "defender ply emits decline + per-eligible-Guard choices");
+            // And no other action kinds.
+            assert_eq!(bg_actions.len(), 4,
+                "defender ply restricted to BodyguardChoice actions only");
+
+            let bg = Action::encode_bodyguard_choice(choice);
+            let _u2 = make(&mut p, bg);
+
             assert_eq!(p.mailbox[guard_sq as usize].hp(), 1,
                 "choice {} should hit guard at sq {}", choice, guard_sq);
             assert!(p.is_occupied(10) && !p.is_occupied(2),
                 "attacker relocates to approach sq 10");
-            // The other two Guards untouched, defender untouched.
             for other in [9u8, 11, 17].iter().copied().filter(|&s| s != guard_sq) {
                 assert_eq!(p.mailbox[other as usize].hp(), 2,
                     "guard at {} untouched when choice {} redirects to {}",
                     other, choice, guard_sq);
             }
             assert_eq!(p.mailbox[18].hp(), 2, "defender untouched on redirect");
+            assert!(p.pending_bodyguard.is_none());
+            assert_eq!(p.to_move, Player::P1);
         }
     }
 
     #[test]
     fn bodyguard_choice_zero_against_armored_king_burns_armor() {
-        // Sanity check: choice 0 with an armored King keeps the standard
-        // Armor→HP resolution path; King survives, game continues.
+        // Sanity check: armored King with NO eligible Bodyguard → single-ply
+        // resolution; armor consumed, no pending state. (Guard at sq 2 is
+        // adjacent to defender sq 1 but NOT to approach=src=0, so dual-
+        // adjacency excludes it.)
         let mut pos = empty_pos_with_actions(2);
         place(&mut pos, 0, Player::P1, PieceKind::Champion, 2, 0);
         place(&mut pos, 1, Player::P2, PieceKind::King, 2, 1);
         place(&mut pos, 2, Player::P2, PieceKind::Guard, 2, 0);
 
-        let a = Action::encode(0, 1, ActionKind::Move, 0, 0);
+        let a = Action::encode_move_attack(0, 1, 0, 0);
         let _ = make(&mut pos, a);
 
+        assert!(pos.pending_bodyguard.is_none(),
+            "Guard at sq 2 not eligible (not adjacent to approach 0)");
         assert_eq!(pos.mailbox[1].armor(), 0, "King armor consumed");
         assert_eq!(pos.mailbox[1].hp(), 2);
         assert!(pos.kings.contains(1));
-        assert_eq!(pos.mailbox[2].hp(), 2, "Guard untouched on choice 0");
+        assert_eq!(pos.mailbox[2].hp(), 2, "Guard untouched");
         assert_eq!(pos.game_result, None);
     }
 
@@ -1902,10 +2095,13 @@ mod tests {
     fn move_attack_zigzag_bypass_chooses_clean_approach() {
         // Speed-2 Guard at c1 (sq 2) attacks defender at c3 (sq 18). A single
         // protector P2 Guard at b2 (sq 9) sits adjacent to defender and to
-        // approach c2 (sq 10) but NOT to approach d2 (sq 11). The generator
-        // emits both approach variants. With approach=11 the protector is
-        // bypassed (dual-adjacency excludes sq 9) and choice_idx=0 is the
-        // ONLY legal variant; the defender takes the hit directly.
+        // approach c2 (sq 10) but NOT to approach d2 (sq 11).
+        //
+        // Two-stage flow: generator emits ONE Move-Attack per approach. With
+        // approach=10 the tentative apply sets pending_bodyguard (the
+        // protector is eligible). With approach=11 the protector is bypassed
+        // (dual-adjacency excludes sq 9) so no pending state is set and the
+        // defender takes the hit immediately in a single ply.
         let mut pos = empty_pos_with_actions(2);
         place(&mut pos, 2, Player::P1, PieceKind::Guard, 2, 0);
         place(&mut pos, 18, Player::P2, PieceKind::Champion, 2, 0);
@@ -1920,26 +2116,36 @@ mod tests {
                      && a.has_approach())
             .collect();
 
-        // approach=10 (c2): protector b2 (sq 9) is adjacent → 2 variants
-        // (choice 0 + choice 1 redirect onto sq 9).
-        let via_c2: Vec<u8> = to_18.iter()
-            .filter(|a| a.approach_sq() == 10)
-            .map(|a| a.choice_idx())
-            .collect();
-        let mut via_c2_sorted = via_c2.clone();
-        via_c2_sorted.sort_unstable();
-        assert_eq!(via_c2_sorted, vec![0, 1], "approach c2: redirect available");
+        // Exactly one Move-Attack per approach, choice_idx always 0.
+        let via_c2: Vec<&&Action> = to_18.iter()
+            .filter(|a| a.approach_sq() == 10).collect();
+        assert_eq!(via_c2.len(), 1, "one tentative Move-Attack via c2");
+        assert_eq!(via_c2[0].choice_idx(), 0);
 
-        // approach=11 (d2): protector b2 NOT adjacent → bypass; only choice 0.
-        let via_d2: Vec<u8> = to_18.iter()
-            .filter(|a| a.approach_sq() == 11)
-            .map(|a| a.choice_idx())
-            .collect();
-        assert_eq!(via_d2, vec![0], "approach d2: zig-zag bypasses the Guard");
+        let via_d2: Vec<&&Action> = to_18.iter()
+            .filter(|a| a.approach_sq() == 11).collect();
+        assert_eq!(via_d2.len(), 1, "one direct Move-Attack via d2 (bypass)");
+        assert_eq!(via_d2[0].choice_idx(), 0);
 
-        // Apply the bypass: defender takes 1 damage; protector untouched.
+        // Apply approach=10 → pending should be Some (protector eligible).
+        {
+            let mut p = pos.clone();
+            let attack = Action::encode_move_attack(2, 18, 0, 10);
+            let _ = make(&mut p, attack);
+            assert!(p.pending_bodyguard.is_some(),
+                "approach c2: protector eligible → tentative");
+            assert_eq!(p.to_move, Player::P2, "STM flipped to defender");
+            let pbg = p.pending_bodyguard.unwrap();
+            assert_eq!(pbg.eligible_len, 1);
+            assert_eq!(pbg.eligible[0], 9);
+            assert_eq!(p.mailbox[18].hp(), 2, "no damage on tentative");
+        }
+
+        // Apply the bypass (approach=11): no pending, single-ply resolution.
         let bypass = Action::encode_move_attack(2, 18, 0, 11);
         let undo = make(&mut pos, bypass);
+        assert!(pos.pending_bodyguard.is_none(),
+            "approach d2: no eligible protector → direct hit");
         assert_eq!(pos.mailbox[18].hp(), 1, "defender hit on bypass");
         assert_eq!(pos.mailbox[9].hp(), 2, "protector untouched on bypass");
         assert!(pos.is_occupied(11) && !pos.is_occupied(2));
@@ -3557,6 +3763,23 @@ mod tests {
         let _ = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
         assert_eq!(pos.mailbox[36].combo(), 0,
             "new STM (P2) pieces have combo counter cleared");
+    }
+
+    #[test]
+    fn end_turn_clears_combo_on_just_acted_side_too() {
+        // Per Stack M: combo counter "resets at the end of your turn." This
+        // includes the just-acting side's pieces (e.g. when a self-buff like
+        // Tempest places combo on the caster's own pieces — those must NOT
+        // survive into the opponent's turn, or the opponent gets free
+        // combo-bonus damage on them.
+        let mut pos = skill_phase_pos(0);
+        pos.to_move = Player::P1;
+        // P1's own piece (the just-acted side) carries a combo counter.
+        place(&mut pos, 19, Player::P1, PieceKind::Champion, 2, 0); // d3
+        pos.mailbox[19] = pos.mailbox[19].with_combo(3);
+        let _ = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        assert_eq!(pos.mailbox[19].combo(), 0,
+            "just-acted side (P1) pieces have combo counter cleared too");
     }
 
     // --- Slice 7: Zobrist ----------------------------------------------------

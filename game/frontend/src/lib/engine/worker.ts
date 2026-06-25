@@ -64,6 +64,21 @@ function snapshotPositionView() {
   const bb = new BigUint64Array(e.positionBitboards());
   const mb = new Uint16Array(e.positionMailbox());
   const p = e.phaseState();
+  const pbg = e.pendingBodyguard();
+  let pendingBodyguard: {
+    attackerSrc: number; attackerNow: number; targetSq: number; eligible: number[];
+  } | null = null;
+  if (pbg) {
+    // Copy the eligible view immediately — its underlying wasm buffer can be
+    // invalidated by the next Engine call.
+    const eligible = Array.from(new Uint8Array(pbg.eligible));
+    pendingBodyguard = {
+      attackerSrc: pbg.attackerSrc,
+      attackerNow: pbg.attackerNow,
+      targetSq: pbg.targetSq,
+      eligible,
+    };
+  }
   return {
     bitboards: bb,
     mailbox: mb,
@@ -76,6 +91,7 @@ function snapshotPositionView() {
     pendingModifiers: p.pendingModifiers,
     gameResult: p.gameResult,
     zobrist: p.zobrist,
+    pendingBodyguard,
   };
 }
 

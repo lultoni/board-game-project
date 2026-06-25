@@ -32,7 +32,7 @@
 //!   across builds and machines; no `rand` dependency.
 
 use super::{MailboxEntry, Position};
-use super::position::{GameResult, Phase, Player, modifier_bits};
+use super::position::{GameResult, Phase, PendingBodyguard, Player, modifier_bits};
 
 /// SplitMix64 — a tiny, high-quality 64-bit PRNG suitable for filling
 /// deterministic key tables at compile time. See Vigna 2014.
@@ -75,6 +75,17 @@ struct Tables {
     money_p1:  [u64; 1024],         // p1_money mod 1024
     money_p2:  [u64; 1024],
     game_result: [u64; 2],          // [P1Wins, P2Wins]; None contributes 0
+    // === Appended after existing tables — preserves all prior key indices. ===
+    // These keys are XOR'd only when `Position::pending_bodyguard` is `Some`.
+    // Index assignment from `splitmix64` is order-sensitive: any new keys
+    // MUST be appended at the END of `make_tables()` so existing key values
+    // (and therefore every existing zobrist hash) stay byte-identical.
+    /// XOR'd once whenever `pending_bodyguard` is `Some`.
+    pending_bg_active: u64,
+    /// Per-(target_sq, attacker_now) payload key. Eligible-guard list is
+    /// deterministic given (target, attacker_now, position bitboards), so we
+    /// don't hash it separately. Roughly 32 KiB of static data.
+    pending_bg_payload: [[u64; 64]; 64],
 }
 
 const fn make_tables() -> Tables {
@@ -96,6 +107,8 @@ const fn make_tables() -> Tables {
         money_p1:     [0; 1024],
         money_p2:     [0; 1024],
         game_result:  [0; 2],
+        pending_bg_active:  0,
+        pending_bg_payload: [[0; 64]; 64],
     };
 
     // hp: index 0 contributes 0 so an empty/zero-HP slot adds nothing.
@@ -140,6 +153,18 @@ const fn make_tables() -> Tables {
     let mut i = 1; while i <  1024 { t.money_p1[i] = splitmix64(&mut s); i += 1; }
     let mut i = 1; while i <  1024 { t.money_p2[i] = splitmix64(&mut s); i += 1; }
     let mut i = 0; while i <  2   { t.game_result[i] = splitmix64(&mut s); i += 1; }
+
+    // === Appended pending-bodyguard keys — preserves prior key indices. ===
+    t.pending_bg_active = splitmix64(&mut s);
+    let mut tgt = 0usize;
+    while tgt < 64 {
+        let mut atk = 0usize;
+        while atk < 64 {
+            t.pending_bg_payload[tgt][atk] = splitmix64(&mut s);
+            atk += 1;
+        }
+        tgt += 1;
+    }
 
     t
 }
@@ -251,6 +276,25 @@ pub fn game_result_key(r: Option<GameResult>) -> u64 {
     }
 }
 
+/// XOR contribution of `Position::pending_bodyguard`. `None` is the canonical
+/// baseline (contributes 0) — so the bulk of positions, where no Move-Attack
+/// is mid-resolution, hash exactly as they did before this key was added.
+/// `Some` XORs the active key together with the per-(target, attacker_now)
+/// payload key. The eligible-guard list is deterministic given those two
+/// squares plus the board bitboards, so it doesn't need separate hashing.
+#[inline]
+pub fn pending_bg_key(pbg: Option<PendingBodyguard>) -> u64 {
+    match pbg {
+        None => 0,
+        Some(p) => {
+            debug_assert!(p.target_sq < 64);
+            debug_assert!(p.attacker_now < 64);
+            T.pending_bg_active
+                ^ T.pending_bg_payload[p.target_sq as usize][p.attacker_now as usize]
+        }
+    }
+}
+
 // -----------------------------------------------------------------------
 // Whole-position recompute. Used by setup constructors and by tests that
 // verify the incremental hash hasn't drifted from the from-scratch sum.
@@ -301,6 +345,7 @@ pub fn full_recompute(pos: &Position) -> u64 {
     h ^= money_key_p1(pos.p1_money);
     h ^= money_key_p2(pos.p2_money);
     h ^= game_result_key(pos.game_result);
+    h ^= pending_bg_key(pos.pending_bodyguard);
 
     h
 }
@@ -352,5 +397,79 @@ mod tests {
         // actions_remaining = 0, round = 1, money = 0. Only the round-1 key
         // contributes (actions[0] is 0 by construction).
         assert_eq!(h, round_key(1));
+    }
+
+    // --- Commit 1: pending-bodyguard keys append cleanly --------------------
+
+    #[test]
+    fn pending_bg_key_none_is_zero() {
+        assert_eq!(pending_bg_key(None), 0);
+    }
+
+    #[test]
+    fn pending_bg_key_some_is_nonzero() {
+        let pbg = PendingBodyguard {
+            attacker_src: 1,
+            attacker_now: 18,
+            target_sq: 26,
+            eligible: [17, 19, 25, 0],
+            eligible_len: 3,
+        };
+        assert_ne!(pending_bg_key(Some(pbg)), 0);
+    }
+
+    #[test]
+    fn pending_bg_key_distinct_for_distinct_squares() {
+        let a = PendingBodyguard {
+            attacker_src: 0, attacker_now: 1, target_sq: 2,
+            eligible: [0; 4], eligible_len: 0,
+        };
+        let b = PendingBodyguard {
+            attacker_src: 0, attacker_now: 3, target_sq: 2,
+            eligible: [0; 4], eligible_len: 0,
+        };
+        let c = PendingBodyguard {
+            attacker_src: 0, attacker_now: 1, target_sq: 4,
+            eligible: [0; 4], eligible_len: 0,
+        };
+        let ka = pending_bg_key(Some(a));
+        let kb = pending_bg_key(Some(b));
+        let kc = pending_bg_key(Some(c));
+        assert_ne!(ka, kb);
+        assert_ne!(ka, kc);
+        assert_ne!(kb, kc);
+    }
+
+    #[test]
+    fn pending_bg_key_xor_reversible() {
+        let pbg = PendingBodyguard {
+            attacker_src: 5, attacker_now: 13, target_sq: 21,
+            eligible: [12, 14, 20, 22], eligible_len: 4,
+        };
+        let k = pending_bg_key(Some(pbg));
+        // Applying twice cancels (defining property of XOR contribution).
+        assert_eq!(k ^ k, 0);
+    }
+
+    #[test]
+    fn pending_bg_active_distinct_from_existing_keys() {
+        // Sanity check that the appended splitmix draws don't accidentally
+        // collide with any prior key — probability ~2⁻⁶⁴, but cheap insurance
+        // against an off-by-one in the splitmix call sequence.
+        assert_ne!(T.pending_bg_active, 0);
+        assert_ne!(T.pending_bg_active, T.side_to_move);
+        assert_ne!(T.pending_bg_active, T.phase_skill);
+        assert_ne!(T.pending_bg_active, T.phase_draft);
+        assert_ne!(T.pending_bg_active, T.game_result[0]);
+        assert_ne!(T.pending_bg_active, T.game_result[1]);
+    }
+
+    #[test]
+    fn setup_stack_m_zobrist_matches_full_recompute() {
+        // With pending_bodyguard == None, the appended keys contribute zero,
+        // so the constructor's stored hash should equal full_recompute's
+        // output (which now also includes the pending_bg_key call).
+        let p = Position::setup_stack_m();
+        assert_eq!(p.zobrist, full_recompute(&p));
     }
 }

@@ -113,6 +113,16 @@ pub fn position_fen(m: &Match) -> String {
     m.position().to_fen()
 }
 
+/// Snapshot the engine's `pending_bodyguard` slot. `None` in the common
+/// case; `Some(...)` only between the attacker's tentative Move-Attack and
+/// the defender's `BodyguardChoice`. The renderer uses this to drive the
+/// chooser overlay; clients drive the engine via `BodyguardChoice` actions
+/// — there is no side-channel.
+#[inline]
+pub fn pending_bodyguard(m: &Match) -> Option<crate::state::position::PendingBodyguard> {
+    m.position().pending_bodyguard
+}
+
 // --- Play (hot path) -------------------------------------------------------
 
 /// Fill `buf` with the legal `Action` bits for the current position. Clears

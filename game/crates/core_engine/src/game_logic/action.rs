@@ -124,6 +124,38 @@
 //! diagonal directions. Path-implicit skills (Retreat) pre-resolve their
 //! destination in the generator and write it into `target`.
 //!
+//! ## BodyguardChoice (Commit 2 — defender-driven Bodyguard resolution)
+//!
+//! Bit **31** is `BG_CHOICE_TAG`. When set, the action is a `BodyguardChoice`
+//! ply played by the *defender* in response to a tentatively-applied Move-Attack
+//! that left `Position::pending_bodyguard = Some(_)`. Layout when bit 31 = 1:
+//!
+//! ```text
+//!   bits  0..4   idx              (4 bits, 0..=N where N = eligible_len ≤ 4)
+//!                                    0 = decline redirect (named target takes the hit)
+//!                                    k = redirect to eligible[k-1]
+//!   bit  31      BG_CHOICE_TAG    = 1
+//!   all other bits                 reserved, must be 0
+//! ```
+//!
+//! `kind()`, `src()`, `target()`, `skill_id()`, `has_aux()`, `has_approach()`
+//! are MEANINGLESS on a BodyguardChoice action — callers MUST check
+//! `is_bodyguard_choice()` first and use `bg_guard_idx()` instead. The
+//! attacker / target / approach squares are recovered from
+//! `pos.pending_bodyguard` rather than from the action bits themselves —
+//! the defender is committing only to "which of the eligible squares takes
+//! the hit," and the engine has the rest cached.
+//!
+//! Bit 31 was previously reserved (DraftTurn uses bit 30; bits 23..29 carry
+//! aux_sq whose 5th bit collides with bit 28 when aux_sq ≥ 32). Bit 31 is
+//! the only truly free bit in the layout, so the encoding must occupy a low
+//! bit range for `idx` (0..4) rather than reusing the `choice_idx` slot.
+//!
+//! BodyguardChoice is distinct from DraftTurn (bit 30) and from regular
+//! Move/Skill actions (bits 30, 31 both 0). The three families partition
+//! the legal action space — at most one of `is_draft_turn()` /
+//! `is_bodyguard_choice()` may be true on a well-formed action.
+//!
 //! ## Focus retargeting Self-only skills (Slice 6 / oq-70 final)
 //!
 //! Focus on Shield/Dash/Retreat lets the caster channel the skill onto an
@@ -306,6 +338,59 @@ impl Action {
         let slot  = ((self.0 >> 21) & 0b1)      as u8;
         (skill, sq, slot)
     }
+
+    // ---- BodyguardChoice (bit 31 = 1) ----
+
+    /// Bit mask for the BodyguardChoice tag (bit 31). When set, the action's
+    /// regular fields (kind/src/target/skill/has_aux/has_approach) are
+    /// meaningless — the action carries only an `idx` in bits 0..4 (0 = no
+    /// redirect, k = redirect to `pending_bodyguard.eligible[k-1]`). Bit 31
+    /// is the only truly free bit (bits 23..29 dual-encode aux_sq whose
+    /// upper values would collide with anything mid-word; bit 30 is DraftTurn).
+    /// See the module doc-comment.
+    pub const BG_CHOICE_TAG: u32 = 1 << 31;
+
+    /// Maximum legal value of the `idx` field on a BodyguardChoice action. The
+    /// engine's `MAX_BODYGUARD_ELIGIBLE` is 4, so an idx of 0 (decline) plus
+    /// 1..=4 (pick the k-th eligible Guard) gives a 0..=4 range. Encoded into
+    /// 4 bits (bits 0..4), so the type-level max is 15; the semantic max is
+    /// the smaller bound enforced here.
+    pub const BG_CHOICE_MAX_IDX: u8 = crate::state::position::MAX_BODYGUARD_ELIGIBLE as u8;
+
+    /// Encode a defender's BodyguardChoice ply. `idx == 0` declines the
+    /// redirect (the named target takes the hit). `idx` in `1..=eligible_len`
+    /// redirects damage to `pos.pending_bodyguard.eligible[idx-1]`. Caller
+    /// must consult `pos.pending_bodyguard` for the upper bound — this
+    /// encoder only enforces the type-level `BG_CHOICE_MAX_IDX` cap.
+    ///
+    /// The encoding deliberately omits src/target/kind: those are recovered
+    /// from `pending_bodyguard` at apply-time, so the engine is the single
+    /// source of truth for which attack the choice resolves.
+    #[inline]
+    pub fn encode_bodyguard_choice(idx: u8) -> Self {
+        debug_assert!(idx <= Self::BG_CHOICE_MAX_IDX,
+            "BodyguardChoice idx {} exceeds MAX_BODYGUARD_ELIGIBLE ({})",
+            idx, Self::BG_CHOICE_MAX_IDX);
+        Action((idx as u32 & 0b1111) | Self::BG_CHOICE_TAG)
+    }
+
+    /// True iff bit 31 is set — this action is a `BodyguardChoice` reply.
+    /// When this is true, `kind()` / `src()` / `target()` etc. are
+    /// meaningless and must not be consulted; use `bg_guard_idx()` instead.
+    #[inline]
+    pub fn is_bodyguard_choice(self) -> bool {
+        self.0 & Self::BG_CHOICE_TAG != 0
+    }
+
+    /// Defender's pick index for a BodyguardChoice action. `0` = decline
+    /// redirect (named target takes the hit), `k` = redirect to
+    /// `pending_bodyguard.eligible[k-1]`. Reading this from a non-
+    /// BodyguardChoice action yields garbage — caller must check
+    /// `is_bodyguard_choice()` first.
+    #[inline]
+    pub fn bg_guard_idx(self) -> u8 {
+        (self.0 & 0b1111) as u8
+    }
 }
 
 /// Undo Record — written by `make()`, consumed by `unmake()` to perfectly
@@ -337,6 +422,11 @@ pub struct Undo {
     /// Snapshot of `to_move` before this action. Only end-of-turn flips it,
     /// but unmake must restore it deterministically. 0 = P1, 1 = P2.
     pub prev_to_move: u8,
+
+    /// Snapshot of `pending_bodyguard` before this action. Tentative Move-
+    /// Attacks write `Some(...)`; BodyguardChoice clears it. Each `make()`
+    /// has its own Undo, so the two-stage transaction unwinds cleanly.
+    pub prev_pending_bodyguard: Option<crate::state::position::PendingBodyguard>,
 
     /// Snapshot of `moved_this_phase` (Move-Phase only) and `round_number`.
     /// Both must round-trip exactly under unmake.
@@ -454,5 +544,60 @@ mod tests {
         );
         assert_eq!(a.draft_pick1(), (1, 0, 0));
         assert_eq!(a.draft_pick2(), (15, 63, 1));
+    }
+
+    // ---- BodyguardChoice (Commit 2) ----
+
+    #[test]
+    fn bodyguard_choice_encode_decode_roundtrip() {
+        for idx in 0..=Action::BG_CHOICE_MAX_IDX {
+            let a = Action::encode_bodyguard_choice(idx);
+            assert!(a.is_bodyguard_choice(),
+                "encode_bodyguard_choice({idx}) must set BG_CHOICE_TAG");
+            assert_eq!(a.bg_guard_idx(), idx,
+                "bg_guard_idx must round-trip for idx={idx}");
+            assert!(!a.is_draft_turn(),
+                "BodyguardChoice and DraftTurn tags must not collide");
+        }
+    }
+
+    #[test]
+    fn bodyguard_choice_default_action_is_not_bg() {
+        // Default action (zeroed u32) must not look like a BodyguardChoice —
+        // the TT relies on Action::default() being a recognisable sentinel.
+        assert!(!Action::default().is_bodyguard_choice());
+    }
+
+    #[test]
+    fn bodyguard_choice_distinct_from_every_regular_kind() {
+        // A regular action of any kind must never claim is_bodyguard_choice().
+        for k in [ActionKind::Move, ActionKind::Skill, ActionKind::EndPhase, ActionKind::EndTurn] {
+            let a = Action::encode(/*src*/ 0, /*tgt*/ 0, k, /*skill*/ 0, /*choice*/ 0);
+            assert!(!a.is_bodyguard_choice(),
+                "regular {k:?} action must not look like a BodyguardChoice");
+        }
+        // Move-Attack with non-zero approach/choice mustn't either.
+        let mv = Action::encode_move_attack(/*src*/ 5, /*tgt*/ 12, /*choice*/ 3, /*approach*/ 6);
+        assert!(!mv.is_bodyguard_choice());
+        // Focus-effect, aux-encoded — none should collide with bit 28.
+        let fx = Action::encode_focus_effect(0, 0, ActionKind::Skill, 1, 0);
+        assert!(!fx.is_bodyguard_choice());
+        let ax = Action::encode_with_aux(0, 0, ActionKind::Skill, 1, 0, 1);
+        assert!(!ax.is_bodyguard_choice());
+        // DraftTurn must not look like a BodyguardChoice and vice versa.
+        let dr = Action::encode_draft_turn(1, 0, 0, 2, 1, 1);
+        assert!(!dr.is_bodyguard_choice());
+        let bg = Action::encode_bodyguard_choice(2);
+        assert!(!bg.is_draft_turn());
+    }
+
+    #[test]
+    fn bodyguard_choice_only_sets_tag_and_idx() {
+        // Encoding must not bleed into other bit ranges — src/target/kind/
+        // skill/aux/approach/has_aux/has_approach must read back as zero.
+        // (They are meaningless on BG, but we still want the raw bits clean.)
+        let a = Action::encode_bodyguard_choice(3);
+        assert_eq!(a.0, 3u32 | Action::BG_CHOICE_TAG,
+            "BodyguardChoice raw bits must be exactly tag | idx");
     }
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { getEngine, ActionKind, decodeAction } from "$lib/engine";
+  import { getEngine, ActionKind, decodeAction, encodeBodyguardChoice } from "$lib/engine";
   import { decodeMailbox } from "$lib/engine/mailbox";
   import { buildEngineConfigJson } from "$lib/engine/config";
   import { PRE_MADE_LOADOUTS } from "$lib/state/draft";
@@ -23,7 +23,6 @@
     findActionByKind,
     approachChoicesFor,
   } from "$lib/state/move-targets";
-  import { bodyguardGuardsFor } from "$lib/state/bodyguard";
   import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, hasSelfAndRetargetChoice, variantIsSelfCast, allyMoverCandidates, allyMoverDestinations, rawForAllyMove, type SkillVariant } from "$lib/state/skill-targets";
   import {
     isSelfCast,
@@ -55,6 +54,28 @@
   let busy = $state(false);
   /** True while a `stepAi` call is in flight. Drives the "AI is thinking…" overlay. */
   let aiThinking = $state(false);
+
+  /** A skill action with relocation/death effects defers the position-state flip
+   *  by RELOC_DELAY_MS so the impact animation lands on the pre-skill board
+   *  before pieces visually relocate. If a NEW action commits before the
+   *  timer fires, that newer action's apply path must drain this staged
+   *  refresh synchronously (otherwise the stale callback runs ~260ms later
+   *  and overwrites with pre-end_turn state — visibly persisting cleared
+   *  combo counters on the opponent's pieces for a whole turn). The callback
+   *  also re-checks zobrist on fire as belt-and-suspenders. */
+  type PendingSkillRefresh = {
+    handle: ReturnType<typeof setTimeout>;
+    targetZobrist: bigint;
+    apply: () => void;
+  };
+  let pendingSkillRefresh: PendingSkillRefresh | null = null;
+  function drainPendingSkillRefresh(): void {
+    if (!pendingSkillRefresh) return;
+    clearTimeout(pendingSkillRefresh.handle);
+    const apply = pendingSkillRefresh.apply;
+    pendingSkillRefresh = null;
+    apply();
+  }
   /** AIvAI playback control. When true, the AI loop auto-chains turns. */
   let aiAutoPlay = $state(true);
   let lastAppliedPair = $state<{ src: number; target: number } | null>(null);
@@ -105,27 +126,13 @@
   // with multiple approach paths, we surface a chooser.
   let pendingApproach = $state<{ target: number; approaches: number[] } | null>(null);
 
-  // Bodyguard chooser state. After the attacker commits a Move-Attack on a
-  // Champion/King with eligible adjacent Guards, we PAUSE before applying.
-  // The defender's seat then clicks one of: the defender (take the hit) or
-  // an eligible Guard square (redirect). Each click maps to a pre-decoded
-  // raw action; we just call applyRaw with the chosen one.
-  let pendingBodyguard = $state<{
-    /** Defender square (Champion/King). */
-    target: number;
-    /** Action raw for choice_idx = 0 (defender takes hit). */
-    defenderRaw: number;
-    /** Eligible Guard squares (in canonical ascending order), each paired
-     *  with the raw action for the redirect variant pointing at it. */
-    redirects: { guardSq: number; raw: number }[];
-  } | null>(null);
-
-  /** Multiplayer: set on the ATTACKER's side after they commit a Move-Attack
-   *  whose target has Bodyguard variants. The attacker can't choose — Stack M
-   *  says the defender owns the choice — so we freeze attacker input and
-   *  notify the defender peer via `bodyguard-prompt`. Cleared when the
-   *  resulting `committed` lands (defender's intent went through). */
-  let pendingRemoteBodyguard = $state<{ target: number; approach: number } | null>(null);
+  // Bodyguard chooser state. The engine owns this — `Position.pending_bodyguard`
+  // is set on the attacker's tentative Move-Attack and cleared on the
+  // defender's `BodyguardChoice`. All four play modes converge here because
+  // the engine flips STM to the defender as part of the tentative apply.
+  // `legalActions` is then restricted to BodyguardChoice variants, so any
+  // click that maps to one is automatically valid on the host.
+  const pendingBodyguard = $derived(match.position?.pendingBodyguard ?? null);
 
   // Armed skill: when the player clicks a skill slice on the wheel, the
   // skill is "armed" and the next click on a valid target tile fires it.
@@ -332,16 +339,15 @@
   const endPhaseAction = $derived(findActionByKind(match.legal, ActionKind.EndPhase));
   const inMovePhase = $derived(match.position?.currentPhase === 0);
   // Standard interactivity: it's the local seat's turn and we're not busy.
-  // Bodyguard exception: when a remote attacker has handed us the bodyguard
-  // choice, the seat-to-move is NOT us, so the normal gate would refuse clicks.
-  // Override it for the duration of the prompt — the defender owns the call,
-  // and the chosen raw is still legal at the engine level on the host.
+  // Bodyguard no longer needs a special-case override — when the engine sets
+  // `pending_bodyguard` it also flips STM to the defender, so the defender's
+  // seat naturally becomes `currentSeatIsLocal`.
   const interactive = $derived(
     ready
     && !busy
     && match.position?.gameResult === 0
     && !currentSeatIsAi
-    && (currentSeatIsLocal || pendingBodyguard !== null)
+    && currentSeatIsLocal
   );
 
   // Wheel state. Open whenever a piece is selected in the Skill Phase
@@ -583,9 +589,10 @@
             // applyRaw already snapshotted pre-state and rendered effects;
             // re-rendering here would double-flash and double-bump telemetry.
             if (raw === pendingLocalRaw) return;
-            // Remote-driven apply clears any in-flight remote bodyguard prompt
-            // — the defender just decided, the move has committed.
-            pendingRemoteBodyguard = null;
+            // Drain any deferred Skill refresh from a prior remote-applied
+            // skill — its setTimeout would otherwise fire after we render
+            // this new action and clobber the post-state.
+            drainPendingSkillRefresh();
             // The wrapper has already called tryApply, so the engine itself
             // is post-state. But `match.position` is the route's reactive
             // mirror — refresh() hasn't been called yet for this raw, so
@@ -623,15 +630,16 @@
           else if (mpState.status === "disconnected") mpEngine?.notifyConnectionLost();
         });
       });
-      // Subscribe to route-layer wire side-channel messages — currently just
-      // `bodyguard-prompt`. The engine wrapper ignores these, so we tap the
-      // raw inbox directly. Compose with the existing handlers via separate
-      // subscription (mpOnRawData supports multiple subscribers).
+      // Subscribe to route-layer wire side-channel messages. The legacy
+      // `bodyguard-prompt` variant is deprecated (the engine now owns the
+      // bodyguard handoff via pending_bodyguard + STM flip) and is silently
+      // ignored. Kept here as a one-release deprecation window so old hosts
+      // talking to new joiners don't trip an unknown-message warning.
       mpRouteWireUnsub = mpOnRawData((raw) => {
         const decoded = decodeMessageV2(raw);
         if (!decoded) return;
         if (decoded.kind === "bodyguard-prompt") {
-          onRemoteBodyguardPrompt(decoded.src, decoded.target, decoded.approach);
+          // No-op — engine state drives the defender's chooser now.
         }
       });
       ready = true;
@@ -715,6 +723,7 @@
 
   async function refresh() {
     if (!eng) return;
+    drainPendingSkillRefresh();
     match.position = await eng.positionView();
     match.legal = await eng.legalActions();
   }
@@ -1034,18 +1043,27 @@
       const diff = diffSkillMailbox(preFull, newMailbox);
       const hasReloc = hasRelocationOrDeath(diff);
       const impactFired = emitImpactEvents(preFull, newMailbox, diff);
-      if (hasReloc && impactFired) {
-        setTimeout(() => {
-          match.position = fresh.pos;
-          match.legal = fresh.legal;
-          emitRelocationAndDeathEvents(preFull, diff);
-          reconcilePieceIds();
-        }, RELOC_DELAY_MS);
-      } else {
+      const applyFresh = () => {
         match.position = fresh.pos;
         match.legal = fresh.legal;
         if (hasReloc) emitRelocationAndDeathEvents(preFull, diff);
         reconcilePieceIds();
+      };
+      if (hasReloc && impactFired) {
+        // Drain any previously-deferred skill refresh so it can't fire AFTER
+        // the new one and clobber post-end_turn state.
+        drainPendingSkillRefresh();
+        const targetZobrist = fresh.pos.zobrist;
+        const handle = setTimeout(() => {
+          // Belt-and-suspenders: only apply if we're still the live deferred
+          // refresh AND no later state has superseded us.
+          if (pendingSkillRefresh?.targetZobrist !== targetZobrist) return;
+          pendingSkillRefresh = null;
+          applyFresh();
+        }, RELOC_DELAY_MS);
+        pendingSkillRefresh = { handle, targetZobrist, apply: applyFresh };
+      } else {
+        applyFresh();
       }
     }
 
@@ -1066,6 +1084,11 @@
     if (!eng || busy) return;
     busy = true;
     try {
+      // If a prior Skill action's deferred refresh is still in flight, drain
+      // it synchronously now — otherwise the pre-state we're about to
+      // snapshot would be of the stale visual position, and the deferred
+      // callback would fire later and clobber THIS action's post-state.
+      drainPendingSkillRefresh();
       // Sandbox bypasses the wrapper — the user is exploring locally and
       // sandbox moves must NOT echo to a peer or get logged as match plies.
       if (match.mode === "sandbox") {
@@ -1132,6 +1155,9 @@
     busy = true;
     aiThinking = true;
     try {
+      // Drain any deferred Skill refresh before snapshotting pre-state — see
+      // applyRaw for rationale.
+      drainPendingSkillRefresh();
       // Snapshot from the pre-call position (we don't know the action yet,
       // but the mailbox + adjacency snapshot is action-agnostic).
       const preMailbox = match.position.mailbox;
@@ -1171,96 +1197,18 @@
     }
   }
 
-  /** After the attacker has decided (target, approach) — either apply directly
-   *  or stage a Bodyguard chooser for the defender's seat. */
+  /** After the attacker has decided (target, approach), apply the tentative
+   *  Move-Attack. If the engine has eligible Bodyguard Guards it will set
+   *  `pending_bodyguard` + flip STM to the defender, who then resolves via a
+   *  `BodyguardChoice` ply — handled in `handleSquareClick`. All four play
+   *  modes (local HvH, HvAI, AivAI, online HvH) flow through this same path
+   *  because the engine owns the STM transition. */
   function commitMoveTargetApproach(target: number, approach: number) {
     const perTarget = moveTargets.byTarget.get(target);
     if (!perTarget) return;
     const variants = perTarget.get(approach);
     if (!variants) return;
-    if (variants.redirects.length === 0) {
-      applyRaw(variants.defenderRaw);
-      return;
-    }
-    // Bodyguard variants exist. In multiplayer the DEFENDER picks (Stack M),
-    // so if the defender is the remote peer we hand off the choice over the
-    // wire. The attacker freezes input until a `committed` lands.
-    if (match.mode === "multiplayer") {
-      const toMove = match.position?.toMove ?? 0;
-      const defenderSeat = 1 - toMove;
-      const localSeat = match.localSeat ?? (match.multiplayerRole === "host" ? 0 : 1);
-      const src = match.selection;
-      if (defenderSeat !== localSeat && src !== null) {
-        pendingRemoteBodyguard = { target, approach };
-        const payload: WireMessageV2 = { kind: "bodyguard-prompt", src, target, approach };
-        mpSendRaw(encodeMessageV2(payload));
-        match.selection = null;
-        pendingApproach = null;
-        return;
-      }
-    }
-    // Bodyguard variants exist. Recompute eligible Guard squares from the
-    // current position so we know which square each redirect's choice_idx
-    // points at. The k-th redirect (choiceIdx = k) maps to the k-th Guard
-    // in canonical ascending order — same ordering the engine uses.
-    const pos = match.position;
-    if (!pos) return;
-    const guards = bodyguardGuardsFor(pos, target, approach);
-    const redirects: { guardSq: number; raw: number }[] = [];
-    for (const r of variants.redirects) {
-      const idx = r.choiceIdx - 1;
-      if (idx < 0 || idx >= guards.length) continue;
-      redirects.push({ guardSq: guards[idx], raw: r.raw });
-    }
-    if (redirects.length === 0) {
-      // No mappable redirects (shouldn't happen): apply defender variant.
-      applyRaw(variants.defenderRaw);
-      return;
-    }
-    pendingBodyguard = {
-      target,
-      defenderRaw: variants.defenderRaw,
-      redirects,
-    };
-  }
-
-  /** Defender-side handler for a `bodyguard-prompt` from the attacker.
-   *  Recomputes candidates from the local mirror engine's `match.legal` (which
-   *  is the attacker's side-to-move legal set the joiner mirrors) and opens
-   *  the local Bodyguard chooser so this peer's user picks. Subsequent click
-   *  routes through `applyRaw → submitAction` (intent to host) as normal —
-   *  the engine doesn't care that the chosen raw belongs to the attacker's
-   *  side, it just validates legality. */
-  function onRemoteBodyguardPrompt(src: number, target: number, approach: number) {
-    if (!match.position) return;
-    // Rebuild per-approach variants from the legal set scoped to `src`.
-    const ts = moveTargetsFor(match.legal, src);
-    const perTarget = ts.byTarget.get(target);
-    if (!perTarget) return;
-    const variants = perTarget.get(approach);
-    if (!variants) return;
-    if (variants.redirects.length === 0) {
-      // No bodyguard variants exist locally — defender just commits the
-      // defender-takes-hit variant on behalf of the attacker.
-      applyRaw(variants.defenderRaw);
-      return;
-    }
-    const guards = bodyguardGuardsFor(match.position, target, approach);
-    const redirects: { guardSq: number; raw: number }[] = [];
-    for (const r of variants.redirects) {
-      const idx = r.choiceIdx - 1;
-      if (idx < 0 || idx >= guards.length) continue;
-      redirects.push({ guardSq: guards[idx], raw: r.raw });
-    }
-    if (redirects.length === 0) {
-      applyRaw(variants.defenderRaw);
-      return;
-    }
-    pendingBodyguard = {
-      target,
-      defenderRaw: variants.defenderRaw,
-      redirects,
-    };
+    applyRaw(variants.defenderRaw);
   }
 
   function tryCommitMoveTo(target: number, cx: number, cy: number) {
@@ -1286,25 +1234,21 @@
     if (!interactive) return;
     sfx.unlock();
 
-    // Bodyguard chooser is active: clicks select defender or a Guard.
+    // Bodyguard chooser is active (engine has pending_bodyguard set): clicks
+    // select defender (decline, idx=0) or an eligible Guard (idx=k+1). The
+    // legal-action set is restricted to BodyguardChoice variants at this
+    // point — submitting any other raw would fail anti-cheat in MP.
     if (pendingBodyguard) {
-      if (sq === pendingBodyguard.target) {
-        const raw = pendingBodyguard.defenderRaw;
-        pendingBodyguard = null;
-        applyRaw(raw);
+      if (sq === pendingBodyguard.targetSq) {
+        applyRaw(encodeBodyguardChoice(0));
         return;
       }
-      const hit = pendingBodyguard.redirects.find((r) => r.guardSq === sq);
-      if (hit) {
-        const raw = hit.raw;
-        pendingBodyguard = null;
-        applyRaw(raw);
+      const k = pendingBodyguard.eligible.indexOf(sq);
+      if (k >= 0) {
+        applyRaw(encodeBodyguardChoice(k + 1));
         return;
       }
-      // Click anywhere else: ignore. Attacker already committed; the choice
-      // is binding. (We could cancel here, but Stack M says "the defender
-      // chooses whether to intercept" — there's no opt-out from making a
-      // choice, just from intercepting.)
+      // Click anywhere else: ignore. Defender must pick (decline or redirect).
       return;
     }
 
@@ -1635,12 +1579,12 @@
   }
 
   /** Reset local picker / armed-skill state. Used on sandbox toggle so a
-   *  half-armed action doesn't bleed across the mode boundary. */
+   *  half-armed action doesn't bleed across the mode boundary. Bodyguard
+   *  chooser state is engine-owned now (Position.pending_bodyguard) so it
+   *  isn't reset here — snapshot restore / engine swap handles it. */
   function clearAllPickers(): void {
     match.selection = null;
     pendingApproach = null;
-    pendingBodyguard = null;
-    pendingRemoteBodyguard = null;
     armedSkill = null;
     focusAllyChosen = null;
     pendingDirection = null;
@@ -1651,6 +1595,7 @@
    *  restore. Mirrors the shape of inspector/+page.svelte:syncEngineToNode. */
   async function syncFromEngine(): Promise<void> {
     if (!eng) return;
+    drainPendingSkillRefresh();
     const pv = await eng.positionView();
     const la = await eng.legalActions();
     match.position = pv;
@@ -1844,8 +1789,8 @@
           effectsActive={effectQueue.length > 0}
           approachChoices={pendingApproach?.approaches ?? []}
           bodyguardChoice={pendingBodyguard ? {
-            defender: pendingBodyguard.target,
-            guards: pendingBodyguard.redirects.map((r) => r.guardSq),
+            defender: pendingBodyguard.targetSq,
+            guards: pendingBodyguard.eligible.slice(),
           } : null}
           lastApplied={lastAppliedPair}
           {interactive}
@@ -1899,9 +1844,6 @@
       {/if}
       {#if pendingBodyguard}
         <p class="hint">bodyguard: defender may redirect the hit — click the red defender to take the hit, or a blue guard to intercept</p>
-      {/if}
-      {#if pendingRemoteBodyguard}
-        <p class="hint">bodyguard: waiting for the defender to choose…</p>
       {/if}
       {#if armedNeedsAllyPick && focusAllyChosen === null}
         <p class="hint">pick an adjacent ally to channel onto, then choose where they move</p>

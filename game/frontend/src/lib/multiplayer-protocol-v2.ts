@@ -111,15 +111,13 @@ export type WireMessageV2 =
   // so the host can still send `session-full` to a fourth tab dialling in).
   | { kind: "error"; reason: string }
 
-  // Attacker → defender (relayed through the data channel; symmetric — the
-  // recipient is just "the other peer"). Stack M says the DEFENDER chooses
-  // which of the dual-adjacent Guards intercepts a Move-Attack. The attacker
-  // computes whether bodyguard variants exist locally, then defers to the
-  // defender by sending this prompt. Defender opens its own bodyguard chooser
-  // (recomputed locally from `src` + `target` + `approach` + the mirrored
-  // position), picks a variant, and submits the chosen raw via the normal
-  // `intent` path. The attacker freezes input until a `committed` for that
-  // move lands.
+  // DEPRECATED (engine v0.X+): the engine now owns the bodyguard handoff via
+  // `Position.pending_bodyguard` + STM flip — defender's seat naturally
+  // becomes side-to-move and submits a `BodyguardChoice` action through the
+  // normal `intent` path. Receivers should ignore this variant; senders
+  // should stop emitting it. Kept here for one release as a deprecation
+  // window so old hosts talking to new joiners don't trip
+  // unknown-message warnings; the next protocol bump will remove it.
   | { kind: "bodyguard-prompt"; src: number; target: number; approach: number };
 
 /** JSON-encode a wire message. */

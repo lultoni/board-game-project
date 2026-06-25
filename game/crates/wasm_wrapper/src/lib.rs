@@ -165,6 +165,14 @@ impl Engine {
         api::position_fen(&self.m)
     }
 
+    /// Engine's `pending_bodyguard` slot. `None` (returns `JsValue::NULL`)
+    /// when no Bodyguard prompt is open. Wire-thin: the renderer derives the
+    /// chooser overlay from this; legality flows through `legalActions`.
+    #[wasm_bindgen(js_name = pendingBodyguard)]
+    pub fn pending_bodyguard(&self) -> Option<PendingBodyguardJs> {
+        api::pending_bodyguard(&self.m).map(PendingBodyguardJs::from)
+    }
+
     // --- Play (hot path) ---------------------------------------------------
 
     /// Returns a `Uint32Array` view over the engine's legal-actions buffer.
@@ -360,6 +368,53 @@ impl PhaseStateJs {
     pub fn game_result(&self) -> u8 { self.game_result }
     #[wasm_bindgen(getter)]
     pub fn zobrist(&self) -> u64 { self.zobrist }
+}
+
+/// JS-facing snapshot of the engine's `pending_bodyguard` slot. Only
+/// constructed when `Engine::pendingBodyguard()` returns `Some`. Mirrors
+/// `core_engine::state::position::PendingBodyguard` field-for-field.
+#[wasm_bindgen]
+#[derive(Clone, Copy)]
+pub struct PendingBodyguardJs {
+    attacker_src: u8,
+    attacker_now: u8,
+    target_sq:    u8,
+    eligible:     [u8; 4],
+    eligible_len: u8,
+}
+
+impl From<core_engine::state::position::PendingBodyguard> for PendingBodyguardJs {
+    fn from(p: core_engine::state::position::PendingBodyguard) -> Self {
+        PendingBodyguardJs {
+            attacker_src: p.attacker_src,
+            attacker_now: p.attacker_now,
+            target_sq:    p.target_sq,
+            eligible:     p.eligible,
+            eligible_len: p.eligible_len,
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl PendingBodyguardJs {
+    #[wasm_bindgen(getter, js_name = attackerSrc)]
+    pub fn attacker_src(&self) -> u8 { self.attacker_src }
+    #[wasm_bindgen(getter, js_name = attackerNow)]
+    pub fn attacker_now(&self) -> u8 { self.attacker_now }
+    #[wasm_bindgen(getter, js_name = targetSq)]
+    pub fn target_sq(&self) -> u8 { self.target_sq }
+    /// Eligible Guard squares in canonical ascending order. Always length
+    /// `eligibleLen` — the underlying buffer is sized for the engine's max
+    /// (4) but JS gets the truncated slice. Caller MUST copy if held past
+    /// the next call into Engine.
+    #[wasm_bindgen(getter)]
+    pub fn eligible(&self) -> js_sys::Uint8Array {
+        let n = self.eligible_len as usize;
+        // SAFETY: caller is contracted to copy before re-entering Engine.
+        unsafe { js_sys::Uint8Array::view(&self.eligible[..n]) }
+    }
+    #[wasm_bindgen(getter, js_name = eligibleLen)]
+    pub fn eligible_len(&self) -> u8 { self.eligible_len }
 }
 
 // ---------------------------------------------------------------------------

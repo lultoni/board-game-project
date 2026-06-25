@@ -15,6 +15,25 @@ export interface PositionView {
   pendingModifiers: number;
   gameResult: number;
   zobrist: bigint;
+  /** Engine-owned Bodyguard state. `null` in the common case; populated
+   *  between the attacker's tentative Move-Attack and the defender's
+   *  `BodyguardChoice` ply. Renderer-only — legality flows through the
+   *  legal-actions buffer, which is restricted to BodyguardChoice variants
+   *  while this is non-null. */
+  pendingBodyguard: PendingBodyguardView | null;
+}
+
+export interface PendingBodyguardView {
+  /** Pre-hop square of the attacker (where it sat before Move-Attack). */
+  attackerSrc: number;
+  /** Current square of the attacker (post first-hop relocation). Equal to
+   *  `attackerSrc` for speed-1 attackers. */
+  attackerNow: number;
+  /** Defender square (Champion/King under attack). */
+  targetSq: number;
+  /** Eligible Bodyguard Guard squares in canonical ascending order. The
+   *  k-th entry (0-indexed) corresponds to `BodyguardChoice(idx=k+1)`. */
+  eligible: number[];
 }
 
 export interface StepResult {

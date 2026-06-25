@@ -77,6 +77,20 @@ pub fn generate(pos: &Position) -> Vec<Action> {
 fn generate_move_phase(pos: &Position) -> Vec<Action> {
     let mut out = Vec::with_capacity(64);
 
+    // When a Move-Attack is mid-resolution (the attacker's tentative apply
+    // set `pending_bodyguard`), the ONLY legal actions for the side-to-move
+    // (the defender) are BodyguardChoice replies. Decline (idx=0) is always
+    // legal; idx 1..=eligible_len redirects to that eligible Guard.
+    // BodyguardChoice does not consume an EndPhase slot, so we do not emit
+    // EndPhase here — the choice is mandatory.
+    if let Some(pbg) = pos.pending_bodyguard {
+        out.push(Action::encode_bodyguard_choice(0));
+        for k in 0..pbg.eligible_len {
+            out.push(Action::encode_bodyguard_choice(k + 1));
+        }
+        return out;
+    }
+
     if pos.actions_remaining == 0 {
         // Only legal action: end the phase.
         out.push(Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
@@ -107,6 +121,12 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
         //   different approach_sqs can produce different eligible-Guard sets,
         //   including the "zig-zag bypass" case where one approach has zero
         //   eligible Guards.
+        //
+        // Commit 3 collapses Bodyguard variants: we emit ONE Move-Attack per
+        // (src, tgt, approach) regardless of eligible-Guard count. When
+        // bodyguard_guards_for(...) is non-empty, the engine's `make()` does
+        // a *tentative* apply (relocate attacker, set `pending_bodyguard`,
+        // flip STM) and the defender's next ply is a BodyguardChoice.
         for tgt in iter_squares(reach_attack) {
             for approach in eight_neighbours(tgt) {
                 // approach must be reachable via empties in <= speed-1 steps
@@ -114,17 +134,7 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
                 let d = dist[approach as usize];
                 if d == 255 { continue; }
                 if d as u32 + 1 > speed as u32 { continue; }
-
-                // For each (src, tgt, approach), enumerate Bodyguard choices.
-                let bg_guards = bodyguard_guards_for(pos, tgt, approach);
-                // choice_idx = 0 → no redirect, defender takes the hit.
                 out.push(Action::encode_move_attack(src, tgt, 0, approach));
-                // choice_idx = k → redirect to k-th eligible Guard.
-                for (k, _guard_sq) in bg_guards.into_iter().enumerate() {
-                    let choice_idx = (k as u8) + 1;
-                    if choice_idx > 15 { break; } // 4-bit limit (never hit in Stack M)
-                    out.push(Action::encode_move_attack(src, tgt, choice_idx, approach));
-                }
             }
         }
     }
@@ -1009,12 +1019,11 @@ mod tests {
     fn generates_move_attack_with_bodyguard_choices() {
         // Construct: P1 Champion at e4 (sq 28). P2 King at e5 (sq 36) with
         // two adjacent P2 Guards (d5=35, f5=37). P1 Champion adjacent to King
-        // → one Move-Attack target (sq 36), TWO Bodyguard guards.
-        // Expected actions for src=28, target=36:
-        //   - choice_idx=0 (no redirect)
-        //   - choice_idx=1 (redirect to d5, lower sq)
-        //   - choice_idx=2 (redirect to f5)
-        // = 3 actions total for this src/target pair.
+        // → one tentative Move-Attack against sq 36 (TWO BG-eligible Guards).
+        //
+        // Two-stage flow: at the attacker ply the generator emits ONE
+        // Move-Attack with choice_idx=0. After applying it the defender ply
+        // emits THREE BodyguardChoice actions: decline + d5 + f5.
         let mut p = Position::empty();
         let champ = 28u8;
         let king = 36u8;
@@ -1030,13 +1039,29 @@ mod tests {
         p.actions_remaining = 2;
 
         let actions = generate(&p);
-        let attacks: Vec<u8> = actions.iter()
+        let attacks: Vec<&Action> = actions.iter()
             .filter(|a| a.kind() == ActionKind::Move && a.src() == champ && a.target() == king)
-            .map(|a| a.choice_idx())
             .collect();
-        let mut s = attacks.clone();
-        s.sort_unstable();
-        assert_eq!(s, vec![0, 1, 2], "expected 3 move-attack variants (no-redirect, BG d5, BG f5)");
+        assert_eq!(attacks.len(), 1,
+            "exactly one tentative Move-Attack at attacker ply (two-stage flow)");
+        assert_eq!(attacks[0].choice_idx(), 0);
+
+        // Apply tentative; defender ply must emit decline + per-Guard choices.
+        let attack = *attacks[0];
+        let _u = crate::game_logic::make_unmake::make(&mut p, attack);
+        assert!(p.pending_bodyguard.is_some());
+        assert_eq!(p.to_move, Player::P2);
+
+        let bg_actions = generate(&p);
+        let mut bg_idxs: Vec<u8> = bg_actions.iter()
+            .filter(|a| a.is_bodyguard_choice())
+            .map(|a| a.bg_guard_idx())
+            .collect();
+        bg_idxs.sort_unstable();
+        assert_eq!(bg_idxs, vec![0, 1, 2],
+            "defender ply: decline + 2 BG-eligible Guards");
+        assert_eq!(bg_actions.len(), 3,
+            "defender ply restricted to BodyguardChoice actions only");
     }
 
     #[test]
