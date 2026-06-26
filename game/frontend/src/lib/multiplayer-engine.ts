@@ -21,6 +21,11 @@
 
 import type { EngineClient } from "./engine/types";
 import {
+  SNAPSHOT_BUDGETS,
+  SnapshotValidationError,
+  validateSnapshot,
+} from "./engine/snapshot-validator";
+import {
   encodeMessageV2,
   newIntentNonce,
   type WireMessageV2,
@@ -58,6 +63,11 @@ export interface MpEngineDeps {
   onPhaseChange: (to: "play") => Promise<void> | void;
   /** Host or joiner detected the other side cheating. Forfeit UI. */
   onCheatDetected: (info: { seq: number; raw: number; side: "host" | "joiner" }) => Promise<void> | void;
+  /** Joiner-only: the resync handshake exhausted its retry budget without the
+   *  host returning a usable snapshot. Caller should surface "lost sync with
+   *  host" and offer a manual rejoin. Wrapper does NOT loop further after
+   *  this fires. */
+  onResyncFailed?: (info: { reason: string; attempts: number }) => Promise<void> | void;
   /** Called by the wrapper whenever the host pauses / resumes (joiner sees
    *  `paused`/`resumed` messages; host triggers them on disconnect/reconnect
    *  events delivered by the runtime). UI surfaces a "paused" indicator. */
@@ -164,6 +174,53 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     }
   }
 
+  // Resync retry budget. Joiner: after sending `request-snapshot`, arm a
+  // 10s timer. If no snapshot/phase-change arrives in that window, retry
+  // once. If the retry also times out, fire `onResyncFailed` and stop —
+  // we don't want to hammer the host forever. Successful snapshot or
+  // phase-change clears the timer and counter via `clearResyncBudget`.
+  const RESYNC_TIMEOUT_MS = 10_000;
+  const RESYNC_MAX_ATTEMPTS = 2;
+  let resyncAttempts = 0;
+  let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastResyncReason: string | null = null;
+
+  function clearResyncBudget(): void {
+    if (resyncTimer) {
+      clearTimeout(resyncTimer);
+      resyncTimer = null;
+    }
+    resyncAttempts = 0;
+    lastResyncReason = null;
+  }
+
+  function requestResync(reason: "reconnect" | "stale" | "audit-mismatch", mySeq: number): void {
+    if (role !== "joiner") return;
+    resyncAttempts += 1;
+    lastResyncReason = reason;
+    deps.send({ kind: "request-snapshot", mySeq, reason });
+    if (resyncTimer) clearTimeout(resyncTimer);
+    resyncTimer = setTimeout(() => {
+      resyncTimer = null;
+      if (disposed) return;
+      if (resyncAttempts >= RESYNC_MAX_ATTEMPTS) {
+        const attempts = resyncAttempts;
+        const r = lastResyncReason ?? reason;
+        resyncAttempts = 0;
+        lastResyncReason = null;
+        warn("resync-exhausted", { reason: r, attempts });
+        if (deps.onResyncFailed) {
+          void deps.onResyncFailed({ reason: r, attempts });
+        }
+        return;
+      }
+      // Retry once with the same reason. Use the current seq, which may
+      // have advanced if a stray committed slipped in; the host treats
+      // request-snapshot idempotently.
+      requestResync(reason, seq);
+    }, RESYNC_TIMEOUT_MS);
+  }
+
   // --- wire handler ----------------------------------------------------------
   const unsubscribe = deps.subscribe((m) => {
     if (disposed) return;
@@ -190,7 +247,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         // needed; we'll wait for the first `committed`.
         seq = m.seq;
         if (m.seq > 0) {
-          deps.send({ kind: "request-snapshot", mySeq: 0, reason: "reconnect" });
+          requestResync("reconnect", 0);
         }
         return;
       }
@@ -201,13 +258,25 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           return;
         }
         try {
+          validateSnapshot(m.snapshotJson, {
+            maxActions: SNAPSHOT_BUDGETS.RESUME_MAX_ACTIONS,
+            maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+            requireConfig: true,
+            source: "host-snapshot",
+          });
           await deps.eng.restoreFromSnapshot(m.snapshotJson);
           matchId = m.matchId;
           phase = m.phase;
           seq = m.seq;
+          clearResyncBudget();
           await deps.onSnapshotApplied(phase);
         } catch (e) {
-          warn("snapshot-restore-failed", e);
+          if (e instanceof SnapshotValidationError) {
+            warn("snapshot-validation-failed", e.reason);
+            requestResync("audit-mismatch", seq);
+          } else {
+            warn("snapshot-restore-failed", e);
+          }
         }
         return;
       }
@@ -218,13 +287,25 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           return;
         }
         try {
+          validateSnapshot(m.snapshotJson, {
+            maxActions: SNAPSHOT_BUDGETS.RESUME_MAX_ACTIONS,
+            maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+            requireConfig: true,
+            source: "phase-change",
+          });
           await deps.eng.restoreFromSnapshot(m.snapshotJson);
           phase = m.to;
           seq = m.seq;
+          clearResyncBudget();
           await deps.onSnapshotApplied(phase);
           await deps.onPhaseChange("play");
         } catch (e) {
-          warn("phase-change-restore-failed", e);
+          if (e instanceof SnapshotValidationError) {
+            warn("phase-change-validation-failed", e.reason);
+            requestResync("audit-mismatch", seq);
+          } else {
+            warn("phase-change-restore-failed", e);
+          }
         }
         return;
       }
@@ -281,7 +362,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           // Out-of-order or duplicate. Drop and request fresh snapshot.
           // Duplicate (m.seq <= seq) → silent; gap (m.seq > seq+1) → resync.
           if (m.seq > seq + 1) {
-            deps.send({ kind: "request-snapshot", mySeq: seq, reason: "stale" });
+            requestResync("stale", seq);
           }
           return;
         }
@@ -302,7 +383,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           // Accidental divergence — ask host for a snapshot to re-anchor.
           // We've already mutated the mirror; the incoming snapshot will
           // restore it.
-          deps.send({ kind: "request-snapshot", mySeq: seq, reason: "audit-mismatch" });
+          requestResync("audit-mismatch", seq);
           return;
         }
         seq = m.seq;
@@ -580,6 +661,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     disposed = true;
     unsubscribe();
     clearPendingIntents("disposed");
+    clearResyncBudget();
   }
 
   return {

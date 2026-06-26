@@ -2,6 +2,7 @@
   import "../app.css";
   import { initSettingsPersistence, settings } from "$lib/state/settings.svelte";
   import { applyMasterVolume } from "$lib/audio/sfx";
+  import MpErrorBanner from "$lib/multiplayer/MpErrorBanner.svelte";
   let { children } = $props();
 
   initSettingsPersistence();
@@ -11,4 +12,5 @@
   });
 </script>
 
+<MpErrorBanner />
 {@render children?.()}

@@ -89,8 +89,10 @@
     </header>
     {#if slice.kind !== "endphase"}
       <ul class="stats">
-        <li>{t("wheel.cost", { n: info.cost })}</li>
-        {#if info.range > 0}
+        {#if info.cost != null}
+          <li>{t("wheel.cost", { n: info.cost })}</li>
+        {/if}
+        {#if info.range != null && info.range > 0}
           <li>{t("wheel.range", { n: info.range })}</li>
         {/if}
       </ul>

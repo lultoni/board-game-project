@@ -502,6 +502,9 @@
         onCheatDetected: () => {
           bootError = "anti-cheat: opponent's engine disagreed";
         },
+        onResyncFailed: ({ reason, attempts }) => {
+          mpState.lastError = `lost sync with host (${reason}, ${attempts} attempts) — try Rejoin`;
+        },
         onPausedChange: (p) => { mpPaused = p; },
         onHostCommitted: async () => { /* recordPly fires via onApplied */ },
       },

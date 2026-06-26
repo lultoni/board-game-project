@@ -1,7 +1,7 @@
 // Unit tests for the role-aware multiplayer engine wrapper.
 // Pure: uses a fake engine + an in-memory wire bus. No PeerJS, no IDB.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMpEngine, type MpEngineHandle } from "./multiplayer-engine";
 import type { WireMessageV2, WirePhase } from "./multiplayer-protocol-v2";
 import type { EngineClient, PositionView, StepResult } from "./engine/types";
@@ -120,6 +120,7 @@ interface Listeners {
   cheats: Array<{ seq: number; raw: number; side: "host" | "joiner" }>;
   paused: boolean[];
   hostCommittedCount: number;
+  resyncFailures: Array<{ reason: string; attempts: number }>;
 }
 
 function makeListeners(): Listeners & {
@@ -129,6 +130,7 @@ function makeListeners(): Listeners & {
   onCheatDetected: (info: { seq: number; raw: number; side: "host" | "joiner" }) => void;
   onPausedChange: (paused: boolean) => void;
   onHostCommitted: () => void;
+  onResyncFailed: (info: { reason: string; attempts: number }) => void;
 } {
   const l: Listeners = {
     applied: [],
@@ -137,6 +139,7 @@ function makeListeners(): Listeners & {
     cheats: [],
     paused: [],
     hostCommittedCount: 0,
+    resyncFailures: [],
   };
   return Object.assign(l, {
     onApplied: (raw: number, phase: WirePhase) => { l.applied.push({ raw, phase }); },
@@ -147,6 +150,9 @@ function makeListeners(): Listeners & {
     },
     onPausedChange: (p: boolean) => { l.paused.push(p); },
     onHostCommitted: () => { l.hostCommittedCount++; },
+    onResyncFailed: (info: { reason: string; attempts: number }) => {
+      l.resyncFailures.push(info);
+    },
   });
 }
 
@@ -182,6 +188,7 @@ function build(role: "host" | "joiner" | "solo", phase: WirePhase = "draft"): {
       onCheatDetected: listeners.onCheatDetected,
       onPausedChange: listeners.onPausedChange,
       onHostCommitted: listeners.onHostCommitted,
+      onResyncFailed: listeners.onResyncFailed,
     },
   );
   return { eng, bus, listeners, handle };
@@ -374,16 +381,75 @@ describe("joiner", () => {
 
   it("snapshot envelope restores engine and updates seq", async () => {
     const { bus, eng, listeners } = build("joiner");
+    const snap = JSON.stringify({ start_fen: "8/8", actions: [], config: {} });
     bus.push({
       kind: "snapshot",
-      snapshotJson: '{"foo":"bar"}',
+      snapshotJson: snap,
       seq: 7,
       phase: "play",
       matchId: "h",
     });
     await Promise.resolve(); await Promise.resolve();
-    expect(eng.restoreSpy).toEqual(['{"foo":"bar"}']);
+    expect(eng.restoreSpy).toEqual([snap]);
     expect(listeners.snapshots).toEqual(["play"]);
+  });
+
+  it("snapshot with malformed JSON requests resync instead of restoring", async () => {
+    const { bus, eng } = build("joiner");
+    bus.push({
+      kind: "snapshot",
+      snapshotJson: "{not json",
+      seq: 7,
+      phase: "play",
+      matchId: "h",
+    });
+    await Promise.resolve(); await Promise.resolve();
+    expect(eng.restoreSpy).toEqual([]);
+    const req = bus.sent.find((m) => m.kind === "request-snapshot");
+    expect(req).toMatchObject({ reason: "audit-mismatch" });
+  });
+
+  it("resync request retries once then fires onResyncFailed after budget exhausts", async () => {
+    vi.useFakeTimers();
+    try {
+      const { bus, listeners } = build("joiner");
+      bus.push({ kind: "session-hello", matchId: "h", phase: "play", seq: 5, code: "281947" });
+      await Promise.resolve();
+      // First request-snapshot fired immediately.
+      expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toHaveLength(1);
+      expect(listeners.resyncFailures).toEqual([]);
+      // Host doesn't respond — first timer expires, second request fires.
+      vi.advanceTimersByTime(10_000);
+      expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toHaveLength(2);
+      expect(listeners.resyncFailures).toEqual([]);
+      // Host still doesn't respond — second timer expires, budget exhausted.
+      vi.advanceTimersByTime(10_000);
+      expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toHaveLength(2);
+      expect(listeners.resyncFailures).toHaveLength(1);
+      expect(listeners.resyncFailures[0]).toMatchObject({ reason: "reconnect", attempts: 2 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("successful snapshot clears the resync budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const { bus, listeners } = build("joiner");
+      bus.push({ kind: "session-hello", matchId: "h", phase: "play", seq: 5, code: "281947" });
+      await Promise.resolve();
+      expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toHaveLength(1);
+      // Host responds with a valid snapshot before the retry fires.
+      const snap = JSON.stringify({ start_fen: "8/8", actions: [], config: {} });
+      bus.push({ kind: "snapshot", snapshotJson: snap, seq: 5, phase: "play", matchId: "h" });
+      await Promise.resolve(); await Promise.resolve();
+      // No retry should fire, no resync-failed callback.
+      vi.advanceTimersByTime(30_000);
+      expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toHaveLength(1);
+      expect(listeners.resyncFailures).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("submitAction sends intent and resolves on matching committed", async () => {
@@ -545,15 +611,16 @@ describe("joiner", () => {
 
   it("phase-change restores snapshot and fires onPhaseChange", async () => {
     const { bus, eng, listeners } = build("joiner");
+    const snap = JSON.stringify({ start_fen: "8/8", actions: [], config: {} });
     bus.push({
       kind: "phase-change",
       from: "draft",
       to: "play",
-      snapshotJson: '{"play":true}',
+      snapshotJson: snap,
       seq: 12,
     });
     await Promise.resolve(); await Promise.resolve();
-    expect(eng.restoreSpy).toEqual(['{"play":true}']);
+    expect(eng.restoreSpy).toEqual([snap]);
     expect(listeners.phaseChanges).toEqual(["play"]);
     expect(listeners.snapshots).toEqual(["play"]);
   });

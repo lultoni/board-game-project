@@ -4,6 +4,12 @@
   import Board from "$lib/board/Board.svelte";
   import { getEngine } from "$lib/engine";
   import { buildEngineConfigJson } from "$lib/engine/config";
+  import {
+    SNAPSHOT_BUDGETS,
+    SnapshotValidationError,
+    validateMatchLog,
+    validateSnapshot,
+  } from "$lib/engine/snapshot-validator";
   import { decodeAction, ActionKind } from "$lib/engine/action";
   import { formatAction, formatSquare } from "$lib/engine/action-label";
   import { readPieces } from "$lib/engine/mailbox";
@@ -155,15 +161,21 @@
     busy = true;
     bootError = null;
     try {
+      // Bundle envelopes are not engine MatchLogs — unwrap first if present,
+      // then validate the inner log via the shared trust gate. The bundle
+      // shape itself is structurally trivial (schema string + logs array);
+      // the size cap on the outer JSON is enforced by the inner validator
+      // after we've taken the substring back through JSON.stringify.
+      if (json.length > SNAPSHOT_BUDGETS.MAX_JSON_BYTES) {
+        throw new Error(`input too large: ${json.length} bytes`);
+      }
       let parsed: unknown;
       try {
         parsed = JSON.parse(json);
       } catch (e) {
         throw new Error(`malformed JSON: ${(e as Error)?.message ?? String(e)}`);
       }
-      // Unwrap a bundle envelope if present. `bundleMatches` and the Library's
-      // "Export" buttons both produce `{schema:"boardgame-bundle-v1", logs:[...]}`,
-      // so the inspector accepts that shape interchangeably with a bare MatchLog.
+      let logJson = json;
       let log: any = parsed;
       if (
         log && typeof log === "object" &&
@@ -174,18 +186,29 @@
           throw new Error("bundle contained no matches");
         }
         if (log.logs.length > 1) {
-          // No picker UI yet — load the first one but tell the user what's
-          // happening so they don't think the others vanished. A real picker
-          // can land later; this at least keeps the flow unblocked.
           bootError = `bundle contains ${log.logs.length} matches — loading the first; export individually to inspect others.`;
         }
         log = log.logs[0];
+        logJson = JSON.stringify(log);
       }
-      if (!log || typeof log !== "object" || typeof log.start_fen !== "string") {
+      try {
+        validateMatchLog(logJson, {
+          maxActions: SNAPSHOT_BUDGETS.PASTE_MAX_ACTIONS,
+          maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+          // Inspector paste tolerates missing config (falls back to defaults).
+          requireConfig: false,
+          source: "joiner-paste",
+        });
+      } catch (e) {
+        if (e instanceof SnapshotValidationError) {
+          throw new Error(`invalid MatchLog (${e.reason})`);
+        }
+        throw e;
+      }
+      if (typeof log.start_fen !== "string") {
         throw new Error("not a MatchLog — expected start_fen at root (or a bundle envelope with logs[].start_fen)");
       }
       const startFen: string = log.start_fen;
-      // log.config may be missing/null on partial logs — fall back to user's setup config.
       let configObj = log.config;
       if (!configObj || typeof configObj !== "object") {
         configObj = JSON.parse(defaultConfigJson());
@@ -228,10 +251,20 @@
     busy = true;
     bootError = null;
     try {
-      const snap = JSON.parse(snapshotJson);
-      if (!snap || typeof snap.start_fen !== "string") {
-        throw new Error("not a snapshot — missing start_fen field");
+      try {
+        validateSnapshot(snapshotJson, {
+          maxActions: SNAPSHOT_BUDGETS.PASTE_MAX_ACTIONS,
+          maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+          requireConfig: false,
+          source: "library-handoff",
+        });
+      } catch (e) {
+        if (e instanceof SnapshotValidationError) {
+          throw new Error(`invalid snapshot (${e.reason})`);
+        }
+        throw e;
       }
+      const snap = JSON.parse(snapshotJson);
       const startFen: string = snap.start_fen;
       let configObj = snap.config;
       if (!configObj || typeof configObj !== "object") {

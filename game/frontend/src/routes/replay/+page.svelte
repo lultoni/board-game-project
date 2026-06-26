@@ -6,6 +6,11 @@
   import type { EngineClient } from "$lib/engine/types";
   import { decodeAction, isBodyguardChoice, isDraftTurn } from "$lib/engine/action";
   import { formatAction } from "$lib/engine/action-label";
+  import {
+    SNAPSHOT_BUDGETS,
+    SnapshotValidationError,
+    validateMatchLog,
+  } from "$lib/engine/snapshot-validator";
   import { consumePendingMatchLog } from "$lib/storage/library-handoff";
   import { snapshotJsonFromMatchLog } from "$lib/multiplayer-resume";
   import Board from "$lib/board/Board.svelte";
@@ -58,22 +63,22 @@
     loadError = null;
     playing = false;
     try {
-      let log: { plies?: Array<{ action?: { raw?: number } }> };
       try {
-        log = JSON.parse(json);
-      } catch {
-        loadError = t("replay.invalid");
-        return;
-      }
-      const rawPlies: number[] = [];
-      for (const ply of log.plies ?? []) {
-        const raw = ply.action?.raw;
-        if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
+        validateMatchLog(json, {
+          maxActions: SNAPSHOT_BUDGETS.PASTE_MAX_ACTIONS,
+          maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+          requireConfig: true,
+          source: "library-handoff",
+        });
+      } catch (e) {
+        if (e instanceof SnapshotValidationError) {
           loadError = t("replay.invalid");
           return;
         }
-        rawPlies.push(raw >>> 0);
+        throw e;
       }
+      const log = JSON.parse(json) as { plies?: Array<{ action: { raw: number } }> };
+      const rawPlies: number[] = (log.plies ?? []).map((p) => p.action.raw >>> 0);
 
       const fullSnap = snapshotJsonFromMatchLog(json);
       if (fullSnap === null) {

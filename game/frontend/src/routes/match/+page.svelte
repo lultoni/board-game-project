@@ -3,6 +3,11 @@
   import { getEngine, ActionKind, decodeAction, encodeBodyguardChoice } from "$lib/engine";
   import { decodeMailbox } from "$lib/engine/mailbox";
   import { buildEngineConfigJson } from "$lib/engine/config";
+  import {
+    SNAPSHOT_BUDGETS,
+    SnapshotValidationError,
+    validateSnapshot,
+  } from "$lib/engine/snapshot-validator";
   import { PRE_MADE_LOADOUTS } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
   import {
@@ -487,7 +492,24 @@
         // the inspector) should NOT re-create from loadouts.
         match.preMadeLoadoutId = null;
       } else if (pending) {
-        await eng.restoreFromSnapshot(pending);
+        try {
+          validateSnapshot(pending, {
+            maxActions: SNAPSHOT_BUDGETS.RESUME_MAX_ACTIONS,
+            maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+            requireConfig: true,
+            source: "idb-resume",
+          });
+          await eng.restoreFromSnapshot(pending);
+        } catch (e) {
+          if (e instanceof SnapshotValidationError) {
+            console.warn("idb-resume validation failed:", e.reason);
+          } else {
+            console.warn("idb-resume restore failed:", e);
+          }
+          // Fall back to a fresh engine so the route doesn't deadlock on a
+          // corrupt persisted snapshot. The user lands on a clean board.
+          await eng.createEngine();
+        }
       } else {
         await eng.createEngine();
       }
@@ -567,6 +589,9 @@
           onPhaseChange: async () => { /* no-op in /match/ */ },
           onCheatDetected: () => {
             bootError = "anti-cheat: opponent's engine disagreed";
+          },
+          onResyncFailed: ({ reason, attempts }) => {
+            mpState.lastError = `lost sync with host (${reason}, ${attempts} attempts) — try Rejoin`;
           },
           onPausedChange: (p) => {
             mpPaused = p;
@@ -744,6 +769,11 @@
 
   /** Phase-boundary bookkeeping that used to live inside renderApplied. */
   function afterApplied(): void {
+    // A successful apply means whatever transient error the user was looking
+    // at (move-refused, illegal-target, etc.) is no longer relevant.
+    // Anti-cheat / engine-boot errors set bootError too, but those branches
+    // never reach here — afterApplied only fires after a committed action.
+    if (bootError !== null) bootError = null;
     const k = phaseKey();
     if (k !== lastPhaseKey) {
       usedThisPhase = new Set();
@@ -1224,6 +1254,12 @@
     }
     busy = true;
     try {
+      validateSnapshot(match.trueSnapshotJson, {
+        maxActions: SNAPSHOT_BUDGETS.RESUME_MAX_ACTIONS,
+        maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+        requireConfig: true,
+        source: "sandbox-restore",
+      });
       await eng.restoreFromSnapshot(match.trueSnapshotJson);
       match.trueSnapshotJson = null;
       match.sandboxMovesApplied = 0;
@@ -1359,8 +1395,12 @@
   {/if}
 
   {#if bootError}
-    <p class="err">boot error: {bootError}</p>
-  {:else if !ready}
+    <div class="err" role="alert">
+      <span>{bootError}</span>
+      <button type="button" class="err-dismiss" onclick={() => (bootError = null)} aria-label="dismiss">×</button>
+    </div>
+  {/if}
+  {#if !ready}
     <p>{t("app.loading")}</p>
   {:else}
     <section class="board-wrap">
@@ -1760,10 +1800,33 @@
     text-align: center;
   }
   .err {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
     color: #a94b3b;
     border: 1.5px dashed currentColor;
-    padding: 0.5em 0.8em;
+    padding: 0.4em 0.6em;
+    margin: 0 0 0.5em;
     border-radius: 6px;
+  }
+  .err > span {
+    flex: 1 1 auto;
+  }
+  .err-dismiss {
+    flex: 0 0 auto;
+    width: 1.5em;
+    height: 1.5em;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .err-dismiss:hover {
+    background: rgba(169, 75, 59, 0.12);
   }
   .thinking {
     position: absolute;
