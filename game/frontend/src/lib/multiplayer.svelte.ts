@@ -1,32 +1,24 @@
-// Side-effecting multiplayer layer for L7a. Wraps PeerJS to:
-//   - host a session with a 6-digit code
-//   - join a session by code
-//   - exchange `WireMessage` envelopes over a single DataConnection
-//   - run a 1Hz ping/pong heartbeat that powers the HUD pill
-//   - reject any third peer that tries to connect
+// Side-effecting multiplayer wrapper. Owns the reactive `mpState` carrier,
+// the message inbox/buffering, the heartbeat timers, and the V1 decode +
+// ping/pong handling. PeerJS lifecycle + auto-redial ladder live in
+// `./multiplayer/transport.ts` so they can be unit-tested without runes.
 //
-// The reactive `mpState` carrier here is a `$state` rune — that's why this
-// file uses the `.svelte.ts` extension. Pure helpers (code generation,
-// wire encoding, pill derivation) live in `multiplayer-protocol.ts` so
-// they can be unit-tested without runes.
-//
-// Out of scope for L7a (deferred to L7b):
+// Out of scope (deferred to L7b):
 //   - Reconnect handshake / Zobrist verification
-//   - Forfeit timer + Claim-win UI
-//   - State sync after a mid-match disconnect
+//   - Forfeit timer + Claim-win UI (banner reads `disconnectedSince` from here)
 
-import Peer, { type DataConnection } from "peerjs";
 import {
   decodeMessage,
-  derivePillState,
   encodeMessage,
-  generateCode,
   PILL_DISCONNECTED_MS,
   type MpStatus,
   type PillState,
   type WireMessage,
 } from "./multiplayer-protocol";
 import { decodeMessageV2 } from "./multiplayer-protocol-v2";
+import { createPeerJsTransport, type RedialState, type TransportRole } from "./multiplayer/transport";
+import { derivePillStateWithAnchor } from "./multiplayer/pill-state";
+import { createHeartbeat } from "./multiplayer/heartbeat";
 
 export type { WireMessage, PillState, MpStatus };
 
@@ -50,10 +42,14 @@ interface MpState {
    *  rehost window), don't show the "opponent disconnected" banner.
    *  Cleared only by `disconnect()`. */
   peerEverPaired: boolean;
+  /** Joiner-side auto-redial telemetry exposed for UI. Updated by the
+   *  transport's `onRedialState` callback. `mode="idle"` when no retry is in
+   *  flight; `"ladder"` during the bounded backoff; `"longtail"` once the
+   *  ladder is exhausted (indefinite ~30s retries until host returns or the
+   *  user manually disconnects). Banners read this to render
+   *  "Reconnecting (attempt N, next try in Xs)". */
+  redial: RedialState;
 }
-
-// Namespace the PeerJS ID so two random apps don't clash on the same broker.
-const ID_PREFIX = "boardgame-l7a-";
 
 export const mpState = $state<MpState>({
   status: "idle",
@@ -63,28 +59,9 @@ export const mpState = $state<MpState>({
   lastError: null,
   disconnectedSince: null,
   peerEverPaired: false,
+  redial: { mode: "idle", attempt: 0, nextAttemptAt: null },
 });
 
-let peer: Peer | null = null;
-let conn: DataConnection | null = null;
-let pingTimer: ReturnType<typeof setInterval> | null = null;
-// Per-session counter for joiner auto-redial attempts after a drop. Reset
-// on every successful `open` and on `disconnect()`. Bounded by REDIAL_DELAYS
-// to avoid hammering the broker forever — after the budget is exhausted the
-// user falls back to manual lobby Rejoin.
-let redialAttempts = 0;
-// First slot is intentionally short (~400ms) — when the host vanishes and
-// returns quickly via `hostWithCode`, the joiner's broker registration drops
-// almost immediately. A near-instant first redial lands as soon as the host's
-// reclaim resolves; the longer slots take over if the host stays away.
-const REDIAL_DELAYS = [400, 1_500, 3_000, 6_000, 12_000, 30_000];
-/** While the joiner's auto-redial budget is in flight, transient PeerJS
- *  errors (`Could not connect to peer …`, network blips) are normal — the
- *  retry will mask them. Suppress writing them to `mpState.lastError` so the
- *  banner doesn't surface a misleading toast during recovery. Cleared on
- *  successful reconnect (the `open` handler in `bindConnection`) or when the
- *  budget is exhausted (a single summary error is written there instead). */
-let suppressingRedialErrors = false;
 const dataHandlers = new Set<(msg: WireMessage) => void>();
 /** Raw-string subscribers. The role-aware wrapper (createMpEngine) reads
  *  these so it can decode v2 messages (committed, intent, snapshot, …) that
@@ -111,65 +88,53 @@ const inbox = new Map<WireMessage["kind"], WireMessage>();
 const rawInbox = new Map<string, string>();
 let nowTick = $state(Date.now());
 
-// Drive a coarse "now" tick so $derived pillState recomputes every 500ms
-// even when no messages arrive. The tick is cheap (one Date.now + assign).
+// Heartbeat owns the 1Hz ping + 500ms now-tick timer handles. The callbacks
+// stay in this module because they touch mpState (pong-age-out bridge writes
+// `disconnectedSince` + `status`, ping emits a V1 frame via `sendData`).
 //
-// Also doubles as the pong-age-out → status bridge: PeerJS's DataConnection
-// `close` event is unreliable when the remote peer dies without an explicit
-// `peer.destroy()` call (e.g. a tab crash, or any disconnect we didn't wire
-// teardown for). Without this bridge, `mpState.status` stays "connected"
-// forever, the wrapper's `notifyConnectionLost` never fires, and the
-// GraceBanner never appears. Mirrors the threshold the pill already uses
-// for unstable→disconnected; once we cross it, flip status so every downstream
-// listener (wrapper, GraceBanner via pill, /match/ network-lost effect) gets
-// the same signal a clean `conn.close` would have produced.
-let nowTimer: ReturnType<typeof setInterval> | null = null;
-function ensureNowTimer(): void {
-  if (nowTimer) return;
-  nowTimer = setInterval(() => {
-    nowTick = Date.now();
-    // Bridge: detect a silent peer drop while we still think we're connected.
+// The now-tick doubles as the pong-age-out → status bridge: PeerJS's
+// DataConnection `close` event is unreliable when the remote peer dies
+// without an explicit `peer.destroy()` call. Without this bridge,
+// `mpState.status` stays "connected" forever and the GraceBanner never
+// appears. Once we cross the threshold, flip status so every downstream
+// listener (wrapper, GraceBanner via pill, /match/ network-lost effect)
+// gets the same signal a clean `conn.close` would have produced.
+const heartbeat = createHeartbeat({
+  onPing: () => {
+    sendData({ kind: "ping", t: Date.now() });
+  },
+  onTick: (now: number) => {
+    nowTick = now;
     if (
       mpState.status === "connected"
       && mpState.lastPongAt !== null
-      && nowTick - mpState.lastPongAt > PILL_DISCONNECTED_MS
+      && now - mpState.lastPongAt > PILL_DISCONNECTED_MS
     ) {
       // eslint-disable-next-line no-console
-      console.log("[mp] pong age-out → disconnected", { age: nowTick - mpState.lastPongAt });
+      console.log("[mp] pong age-out → disconnected", { age: now - mpState.lastPongAt });
       if (mpState.disconnectedSince === null) {
-        mpState.disconnectedSince = nowTick;
+        mpState.disconnectedSince = now;
       }
       mpState.status = "disconnected";
     }
-  }, 500);
-}
-function stopNowTimer(): void {
-  if (nowTimer) {
-    clearInterval(nowTimer);
-    nowTimer = null;
-  }
-}
+  },
+});
 
 export function pillState(): PillState {
-  const p = derivePillState(mpState.status, mpState.lastPongAt, nowTick);
-  // Anchor disconnectedSince from the pill itself, not just from PeerJS
-  // close/error events. The DataConnection's close/error handlers don't
-  // fire reliably when the remote peer destroys its Peer object — pong
-  // age-out is often the only signal we get. Without this, the GraceBanner
-  // sees `disconnectedSince === null`, falls into its `deadline === null
-  // ? GRACE_MS` branch, and freezes at 5:00 indefinitely. We also want the
-  // anchor for `forfeit` so claim-win timing stays sensible even if we
-  // landed there without a close event.
-  if ((p === "disconnected" || p === "forfeit") && mpState.disconnectedSince === null) {
-    // Only anchor when an opponent was actually present at some point —
-    // otherwise the host's pre-join "hosting" state would mint a stale
-    // anchor. peerEverPaired latches on first inbound traffic and survives
-    // close/error, so it's reliable across reconnect cycles too.
-    if (mpState.peerEverPaired) {
-      mpState.disconnectedSince = nowTick;
-    }
+  const out = derivePillStateWithAnchor({
+    status: mpState.status,
+    lastPongAt: mpState.lastPongAt,
+    now: nowTick,
+    peerEverPaired: mpState.peerEverPaired,
+    disconnectedSince: mpState.disconnectedSince,
+  });
+  // The pure derivation tells us *whether* to anchor; the wrapper is the one
+  // place that actually writes mpState. Idempotent: the derivation returns
+  // null whenever the anchor is already set.
+  if (out.nextDisconnectedSince !== null) {
+    mpState.disconnectedSince = out.nextDisconnectedSince;
   }
-  return p;
+  return out.pill;
 }
 
 /** Subscribe to incoming wire messages. Returns a disposer. Ping/pong is
@@ -187,12 +152,7 @@ export function onData(cb: (msg: WireMessage) => void): () => void {
 }
 
 export function sendData(msg: WireMessage): void {
-  if (!conn || !conn.open) return;
-  try {
-    conn.send(encodeMessage(msg));
-  } catch (e) {
-    mpState.lastError = (e as Error)?.message ?? String(e);
-  }
+  transport.sendRaw(encodeMessage(msg));
 }
 
 /** Subscribe to raw inbound strings before they're decoded into WireMessage.
@@ -214,105 +174,25 @@ export function onRawData(cb: (raw: string) => void): () => void {
  *  emit v2 envelopes (committed/intent/snapshot/…) without widening the
  *  legacy WireMessage union. No-op when no peer is connected. */
 export function sendRaw(raw: string): void {
-  if (!conn || !conn.open) return;
-  try {
-    conn.send(raw);
-  } catch (e) {
-    mpState.lastError = (e as Error)?.message ?? String(e);
-  }
+  transport.sendRaw(raw);
 }
 
-/** Tear down the peer + connection. Safe to call repeatedly. */
-export function disconnect(): void {
-  // eslint-disable-next-line no-console
-  console.log("[mp] disconnect", { role: mpState.role, status: mpState.status, hadPeer: peer !== null, hadConn: conn !== null });
-  if (pingTimer) {
-    clearInterval(pingTimer);
-    pingTimer = null;
-  }
-  if (conn) {
-    try { conn.close(); } catch { /* noop */ }
-    conn = null;
-  }
-  if (peer) {
-    try { peer.destroy(); } catch { /* noop */ }
-    peer = null;
-  }
-  mpState.status = "idle";
-  mpState.code = null;
-  mpState.role = null;
-  mpState.lastPongAt = null;
-  mpState.peerEverPaired = false;
-  inbox.clear();
-  rawInbox.clear();
-  redialAttempts = 0;
-  suppressingRedialErrors = false;
-  stopNowTimer();
-}
+// === Transport instantiation ============================================
+//
+// The transport is ignorant of mpState and the V1/V2 wire formats. It
+// delivers raw strings via `onData`; we decode + fan out + handle ping/pong
+// here. The role/code accessors let the transport's auto-redial loop gate
+// retries on the current carrier state.
 
-/** Soft teardown used by the leader-handoff path. Drops the PeerJS object and
- *  the open DataConnection synchronously (so the joiner's RTCDataChannel stops
- *  delivering inbound frames from the dying host) but PRESERVES the carrier
- *  fields the takeover flow needs to remain stable: `code` (so hostWithCode
- *  can reclaim the same id), `role`/`peerEverPaired` (so GraceBanner stays
- *  visible during the swap), `disconnectedSince` (so the countdown doesn't
- *  reset and re-trigger the eligibility threshold). Status falls back to
- *  "disconnected" — not "idle" — so the pill renders the same red dot
- *  throughout the swap.
- *
- *  The inbox/rawInbox are preserved too: any frames buffered before the host
- *  vanished are still valid telemetry for the wrapper to drain. Subsequent
- *  reuse of this peer slot via hostWithCode() resets them through the normal
- *  bindConnection path. */
-export function destroyPeerKeepState(): void {
-  if (pingTimer) {
-    clearInterval(pingTimer);
-    pingTimer = null;
-  }
-  if (conn) {
-    try { conn.close(); } catch { /* noop */ }
-    conn = null;
-  }
-  if (peer) {
-    try { peer.destroy(); } catch { /* noop */ }
-    peer = null;
-  }
-  mpState.status = "disconnected";
-  mpState.lastPongAt = null;
-}
-
-function startHeartbeat(): void {
-  if (pingTimer) clearInterval(pingTimer);
-  ensureNowTimer();
-  pingTimer = setInterval(() => {
-    if (!conn || !conn.open) return;
-    sendData({ kind: "ping", t: Date.now() });
-  }, 1_000);
-}
-
-function bindConnection(c: DataConnection): void {
-  conn = c;
-  // eslint-disable-next-line no-console
-  console.log("[mp] bindConnection", { role: mpState.role, peerId: c.peer });
-  c.on("open", () => {
-    // eslint-disable-next-line no-console
-    console.log("[mp] conn.open", { role: mpState.role, peerId: c.peer });
+const transport = createPeerJsTransport({
+  onOpen: () => {
     mpState.status = "connected";
-    // Clear any prior disconnect anchor — peer is back.
     mpState.disconnectedSince = null;
-    // Reset the per-session auto-redial budget — a healthy open earns a
-    // fresh set of retries the next time we drop.
-    redialAttempts = 0;
-    // Recovery succeeded — let any subsequent unrelated errors surface again.
-    suppressingRedialErrors = false;
-    startHeartbeat();
-  });
-  c.on("data", (raw: unknown) => {
-    if (typeof raw !== "string") return;
+    heartbeat.startPings();
+  },
+  onData: (raw: string) => {
     // Any inbound traffic proves a peer is on the other end this session.
-    // Latch this for GraceBanner's visibility gate, which must distinguish
-    // "we never had a peer" (host's pre-join rehost) from "we lost the peer
-    // we had". Survives close/error — unlike lastPongAt, which is reset.
+    // Latch for GraceBanner's visibility gate. Survives close/error.
     mpState.peerEverPaired = true;
     // Fan out the raw string to any wrapper subscribers BEFORE decoding.
     // createMpEngine consumes v2 envelopes this way without taking a dep on
@@ -322,8 +202,7 @@ function bindConnection(c: DataConnection): void {
     } else {
       // No raw subscriber yet — buffer per V2 kind so the wrapper, mounting
       // after the joiner navigates, still sees session-hello / committed /
-      // snapshot that arrived in the gap. Decode-to-key only; we store the
-      // raw string so the wrapper's own decoder owns parsing.
+      // snapshot that arrived in the gap.
       const v2 = decodeMessageV2(raw);
       if (v2) rawInbox.set(v2.kind, raw);
     }
@@ -331,7 +210,6 @@ function bindConnection(c: DataConnection): void {
     if (!msg) return;
     if (msg.kind === "ping") {
       sendData({ kind: "pong", t: msg.t });
-      // Treat any inbound traffic as fresh — peer is clearly alive.
       mpState.lastPongAt = Date.now();
       return;
     }
@@ -340,329 +218,111 @@ function bindConnection(c: DataConnection): void {
       return;
     }
     if (dataHandlers.size === 0) {
-      // Nobody listening yet — buffer the latest message of this kind so
-      // it survives the /multiplayer/→/match/ navigation gap.
       inbox.set(msg.kind, msg);
       return;
     }
     for (const h of dataHandlers) h(msg);
-  });
-  c.on("close", () => {
-    // eslint-disable-next-line no-console
-    console.log("[mp] conn.close", { role: mpState.role, peerId: c.peer, status: mpState.status });
+  },
+  onClose: () => {
     if (mpState.disconnectedSince === null) {
       mpState.disconnectedSince = Date.now();
     }
-    mpState.status = "disconnected";
-    // Pull lastPongAt back to null so the pill stops reporting "live" against
-    // a peer we've just lost. derivePillState falls through to its disconnected
-    // branch once status is disconnected AND lastPongAt is null.
     mpState.lastPongAt = null;
-    maybeAutoRedialJoiner();
-  });
-  c.on("error", (e) => {
-    // eslint-disable-next-line no-console
-    console.log("[mp] conn.error", { role: mpState.role, peerId: c.peer, error: e?.message ?? String(e) });
-    if (!suppressingRedialErrors) {
-      mpState.lastError = e?.message ?? String(e);
-    }
+    heartbeat.stopPings();
+  },
+  onError: (_message: string) => {
     if (mpState.disconnectedSince === null) {
       mpState.disconnectedSince = Date.now();
     }
-    mpState.status = "disconnected";
     mpState.lastPongAt = null;
-    maybeAutoRedialJoiner();
-  });
-}
+    heartbeat.stopPings();
+  },
+  onStatusChange: (s) => {
+    mpState.status = s;
+  },
+  onCode: (code: string) => {
+    mpState.code = code;
+  },
+  onLastError: (message: string) => {
+    mpState.lastError = message;
+  },
+  getRole: (): TransportRole => mpState.role,
+  getCode: () => mpState.code,
+  onRedialState: (next: RedialState) => {
+    mpState.redial = next;
+  },
+});
 
-/** Bounded retry after a joiner-side drop. Tries up to REDIAL_DELAYS.length
- *  times with increasing backoff (1.5s, 3s, 6s, 12s, 30s — ~52s total) so the
- *  host has wall-clock time to navigate back through home → multiplayer →
- *  Rejoin and re-claim the same code. The counter resets on a successful
- *  `open` and on `disconnect()`. Skipped when the host is the one whose side
- *  dropped (host stays put and waits for the joiner to dial back). If the
- *  budget runs out, the user falls back to manual lobby Rejoin. */
-function maybeAutoRedialJoiner(): void {
-  if (mpState.role !== "joiner") return;
-  if (mpState.code === null) return;
-  if (redialAttempts >= REDIAL_DELAYS.length) {
-    // Budget exhausted — let subsequent unrelated errors surface, then emit
-    // a single summary message instead of one per failed attempt.
-    suppressingRedialErrors = false;
-    mpState.lastError = "Connection lost — Rejoin from the lobby.";
-    return;
-  }
-  const delay = REDIAL_DELAYS[redialAttempts];
-  const code = mpState.code;
-  redialAttempts += 1;
-  // From here until either a successful `open` or the budget is exhausted,
-  // suppress lastError writes — every mid-recovery `Could not connect to
-  // peer …` is expected and would otherwise toast misleadingly.
-  suppressingRedialErrors = true;
-  setTimeout(() => {
-    // Bail if the user manually navigated away / disconnected in the meantime.
-    if (mpState.role !== "joiner") return;
-    if (mpState.status === "connected" || mpState.status === "connecting") return;
-    // Use the soft path so peerEverPaired + disconnectedSince survive the
-    // retry — otherwise the GraceBanner would vanish after the first redial
-    // and the takeover countdown would reset.
-    softReconnectJoiner(code).catch(() => maybeAutoRedialJoiner());
-  }, delay);
-}
+// === Public facade ======================================================
 
 /** Host a session. Picks a random 6-digit code and registers with the
  *  PeerJS broker; retries on collision. Resolves with the chosen code. */
 export function host(): Promise<string> {
-  // eslint-disable-next-line no-console
-  console.log("[mp] host() begin");
   disconnect();
   mpState.disconnectedSince = null;
   mpState.role = "host";
-  mpState.status = "hosting";
-  return new Promise((resolve, reject) => {
-    const tryOne = (attemptsLeft: number) => {
-      const code = generateCode();
-      const p = new Peer(ID_PREFIX + code);
-      p.on("open", () => {
-        peer = p;
-        mpState.code = code;
-        // Wait for an incoming DataConnection.
-        p.on("connection", (c) => {
-          // eslint-disable-next-line no-console
-          console.log("[mp] host: incoming connection", { fromPeer: c.peer, hadActiveConn: conn !== null && conn.open });
-          if (conn && conn.open) {
-            // Reject any third peer.
-            c.on("open", () => {
-              try {
-                c.send(encodeMessage({ kind: "error", reason: "session-full" }));
-              } finally {
-                try { c.close(); } catch { /* noop */ }
-              }
-            });
-            return;
-          }
-          mpState.status = "connecting";
-          bindConnection(c);
-        });
-        resolve(code);
-      });
-      p.on("error", (e) => {
-        const msg = e?.message ?? String(e);
-        // "ID is taken" → retry with a fresh code.
-        if (attemptsLeft > 0 && /taken|unavailable-id/i.test(msg)) {
-          try { p.destroy(); } catch { /* noop */ }
-          tryOne(attemptsLeft - 1);
-          return;
-        }
-        mpState.lastError = msg;
-        mpState.status = "error";
-        try { p.destroy(); } catch { /* noop */ }
-        reject(e);
-      });
-    };
-    tryOne(5);
-  });
+  return transport.host();
 }
 
 /** Re-host a session under a specific code. Used by the lobby's Rejoin flow
  *  to reclaim the same PeerJS ID we held before the tab closed, and by the
  *  leader-handoff path where the broker may still hold the dying host's
- *  registration for several seconds. Retries up to 4 times on a broad set
- *  of transient errors (`unavailable-id` / `taken` from the broker, plus
- *  `network` / `socket-error` / `socket-closed` / `disconnected` from the
- *  WebRTC/WebSocket transports) with progressive backoff totalling ~8.8s
- *  to ride out the eviction window. Any other error type rejects immediately. */
+ *  registration for several seconds. */
 export function hostWithCode(code: string): Promise<string> {
-  // eslint-disable-next-line no-console
-  console.log("[mp] hostWithCode() begin", { code });
   disconnect();
   mpState.disconnectedSince = null;
   mpState.role = "host";
-  mpState.status = "hosting";
-  const RETRY_DELAYS = [800, 1_500, 2_500, 4_000];
-  const TRANSIENT_HOST_ERROR = /taken|unavailable-id|network|socket-(?:error|closed)|disconnected/i;
-  return new Promise((resolve, reject) => {
-    const tryOne = (attemptIdx: number): void => {
-      const p = new Peer(ID_PREFIX + code);
-      p.on("open", () => {
-        peer = p;
-        mpState.code = code;
-        p.on("connection", (c) => {
-          // eslint-disable-next-line no-console
-          console.log("[mp] hostWithCode: incoming connection", { fromPeer: c.peer, hadActiveConn: conn !== null && conn.open });
-          if (conn && conn.open) {
-            c.on("open", () => {
-              try {
-                c.send(encodeMessage({ kind: "error", reason: "session-full" }));
-              } finally {
-                try { c.close(); } catch { /* noop */ }
-              }
-            });
-            return;
-          }
-          mpState.status = "connecting";
-          bindConnection(c);
-        });
-        resolve(code);
-      });
-      p.on("error", (e) => {
-        const msg = e?.message ?? String(e);
-        // The broker holds the previous registration for a few seconds after
-        // the old peer dies — retry through that window for the handoff path.
-        if (attemptIdx < RETRY_DELAYS.length && TRANSIENT_HOST_ERROR.test(msg)) {
-          try { p.destroy(); } catch { /* noop */ }
-          setTimeout(() => tryOne(attemptIdx + 1), RETRY_DELAYS[attemptIdx]);
-          return;
-        }
-        mpState.lastError = msg;
-        mpState.status = "error";
-        try { p.destroy(); } catch { /* noop */ }
-        reject(e);
-      });
-    };
-    tryOne(0);
-  });
+  return transport.hostWithCode(code);
 }
 
 /** Join a session by 6-digit code. Resolves when the data channel opens. */
 export function join(code: string): Promise<void> {
-  // eslint-disable-next-line no-console
-  console.log("[mp] join() begin", { code });
   disconnect();
   mpState.disconnectedSince = null;
   mpState.role = "joiner";
-  mpState.status = "joining";
-  mpState.code = code;
-  return bindJoinerPeer(code);
+  return transport.join(code);
 }
 
-/** Soft reconnect used by the auto-redial loop. Unlike `join()`, this path
- *  preserves the carrier fields the GraceBanner depends on
- *  (`peerEverPaired`, `disconnectedSince`) so the countdown stays anchored
- *  and the banner stays visible across retry attempts. `code`/`role` are
- *  preserved too — we're recovering the *same* session, not starting a new one.
+/** Tear down the peer + connection. Safe to call repeatedly. */
+export function disconnect(): void {
+  heartbeat.stopPings();
+  transport.disconnect();
+  mpState.status = "idle";
+  mpState.code = null;
+  mpState.role = null;
+  mpState.lastPongAt = null;
+  mpState.peerEverPaired = false;
+  inbox.clear();
+  rawInbox.clear();
+  heartbeat.stopTicking();
+}
+
+/** Soft teardown used by the leader-handoff path. Drops the PeerJS object and
+ *  the open DataConnection synchronously but PRESERVES the carrier fields the
+ *  takeover flow needs to remain stable: `code` (so hostWithCode can reclaim
+ *  the same id), `role`/`peerEverPaired` (so GraceBanner stays visible during
+ *  the swap), `disconnectedSince` (so the countdown doesn't reset).
  *
- *  Caller invariant: `mpState.role === "joiner"` and `mpState.code === code`
- *  at the time of call. The destroy-peer-keep-state helper handles the
- *  synchronous teardown; the joiner PeerJS handshake re-runs in
- *  `bindJoinerPeer`. */
-function softReconnectJoiner(code: string): Promise<void> {
-  destroyPeerKeepState();
-  // After destroyPeerKeepState status is "disconnected". Move to "joining"
-  // so derivePillState's transient-state branch behaves like a fresh join
-  // attempt for the duration of the handshake.
-  mpState.status = "joining";
-  // Note: role/code/peerEverPaired/disconnectedSince intentionally preserved.
-  return bindJoinerPeer(code);
-}
-
-/** Inner joiner PeerJS handshake. Shared by the public `join()` entry point
- *  (which resets state first) and the internal `softReconnectJoiner()` (which
- *  preserves it). Does not touch `mpState.role`/`code`/`peerEverPaired`/
- *  `disconnectedSince` — the caller owns those. */
-function bindJoinerPeer(code: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // Use a random PeerJS ID for the joiner; we never need to be dialled.
-    const myId = ID_PREFIX + "j-" + Math.random().toString(36).slice(2, 10);
-    const p = new Peer(myId);
-    p.on("open", () => {
-      peer = p;
-      mpState.status = "connecting";
-      const c = p.connect(ID_PREFIX + code, { reliable: true });
-      bindConnection(c);
-      c.on("open", () => resolve());
-      c.on("error", (e) => {
-        if (!suppressingRedialErrors) {
-          mpState.lastError = e?.message ?? String(e);
-        }
-        mpState.status = "error";
-        reject(e);
-      });
-    });
-    p.on("error", (e) => {
-      const msg = e?.message ?? String(e);
-      if (!suppressingRedialErrors) {
-        mpState.lastError = msg;
-      }
-      mpState.status = /peer-unavailable/i.test(msg) ? "error" : "error";
-      try { p.destroy(); } catch { /* noop */ }
-      reject(e);
-    });
-  });
+ *  Status falls back to "disconnected" — not "idle" — so the pill renders the
+ *  same red dot throughout the swap. */
+export function destroyPeerKeepState(): void {
+  heartbeat.stopPings();
+  transport.destroyPeerKeepState();
+  mpState.status = "disconnected";
+  mpState.lastPongAt = null;
 }
 
 /** True when an active session exists (host or joiner, regardless of whether
  *  the pill is currently green). Used by routes to decide whether to forward
  *  snapshots / actions to the peer. */
 export function isActive(): boolean {
-  return peer !== null && mpState.role !== null;
+  return transport.isActive();
 }
 
 /** Liveness probe: open a throwaway Peer + DataConnection to `code` and
  *  resolve `true` if the channel opens AND the host doesn't kick us with a
  *  `session-full` error within a 500ms confirmation window. Else `false`.
- *  Used by the lobby to show 🟢/⚫ dots on recent-sessions cards.
- *
- *  Why the confirmation window: a host that's already paired with another
- *  joiner will accept the open() (PeerJS auto-opens the data channel) and
- *  THEN send `{ kind: "error", reason: "session-full" }` before closing.
- *  Resolving `true` on open alone gives false positives for hosts that
- *  wouldn't accept this user. 500ms covers typical broker latency; longer
- *  delays will register as a false 🟢 but the worst outcome is a hint —
- *  Rejoin still works either way.
- *
- *  Does NOT touch the singleton `peer`/`conn` used by host()/join(). Always
- *  tears down its own Peer in the finally path so probe traffic never lingers
- *  on the broker.
- */
+ *  Used by the lobby to show 🟢/⚫ dots on recent-sessions cards. */
 export function probeHost(code: string, timeoutMs = 2_000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const myId = ID_PREFIX + "probe-" + Math.random().toString(36).slice(2, 10);
-    let p: Peer | null = null;
-    let c: DataConnection | null = null;
-    let settled = false;
-    let confirmTimer: ReturnType<typeof setTimeout> | null = null;
-    const finish = (result: boolean): void => {
-      if (settled) return;
-      settled = true;
-      // eslint-disable-next-line no-console
-      console.log("[mp] probeHost result", { code, result });
-      if (confirmTimer) clearTimeout(confirmTimer);
-      if (c) { try { c.close(); } catch { /* noop */ } }
-      if (p) { try { p.destroy(); } catch { /* noop */ } }
-      resolve(result);
-    };
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    try {
-      p = new Peer(myId);
-      p.on("open", () => {
-        if (!p) return;
-        c = p.connect(ID_PREFIX + code, { reliable: true });
-        c.on("open", () => {
-          clearTimeout(timer);
-          // Watch for a session-full kick from the paired host before
-          // declaring victory.
-          c?.on("data", (raw: unknown) => {
-            if (typeof raw !== "string") return;
-            const msg = decodeMessage(raw);
-            if (msg && msg.kind === "error" && msg.reason === "session-full") {
-              finish(false);
-            }
-          });
-          confirmTimer = setTimeout(() => finish(true), 500);
-        });
-        c.on("error", () => {
-          clearTimeout(timer);
-          finish(false);
-        });
-      });
-      p.on("error", () => {
-        clearTimeout(timer);
-        finish(false);
-      });
-    } catch {
-      clearTimeout(timer);
-      finish(false);
-    }
-  });
+  return transport.probeHost(code, timeoutMs);
 }

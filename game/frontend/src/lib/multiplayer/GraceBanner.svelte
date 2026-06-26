@@ -93,6 +93,30 @@
     return `${mm}:${ss}`;
   });
 
+  // Joiner-side auto-redial telemetry. When a peer drop fires the banner, the
+  // transport is already retrying in the background (bounded ladder up to ~52s,
+  // then indefinite ~30s long-tail). Surface "next attempt in Xs" so the player
+  // doesn't think the client is dead.
+  const redialSecondsLeft = $derived(
+    mpState.redial.nextAttemptAt === null
+      ? null
+      : Math.max(0, Math.ceil((mpState.redial.nextAttemptAt - nowTick) / 1000))
+  );
+  const redialLabel = $derived.by(() => {
+    if (redialSecondsLeft === null) return null;
+    const secs = `${redialSecondsLeft}s`;
+    if (mpState.redial.mode === "ladder") {
+      return t("multiplayer.redialLadder", {
+        attempt: String(mpState.redial.attempt),
+        time: secs,
+      });
+    }
+    if (mpState.redial.mode === "longtail") {
+      return t("multiplayer.redialLongtail", { time: secs });
+    }
+    return null;
+  });
+
   let busy = $state(false);
   async function handleClaim(): Promise<void> {
     if (!canClaim || !eng || busy) return;
@@ -131,6 +155,9 @@
         ? t("multiplayer.graceBannerHost")
         : t("multiplayer.graceBannerJoiner")}
     </p>
+    {#if redialLabel}
+      <p class="redial">{redialLabel}</p>
+    {/if}
     <div class="actions">
       {#if canClaim}
         <button class="primary" type="button" disabled={!eng || busy} onclick={handleClaim}>
@@ -180,6 +207,13 @@
     margin: 0;
     font-weight: 600;
     color: #a94b3b;
+  }
+  .redial {
+    margin: 0;
+    font-size: 0.88em;
+    color: var(--paper-ink-soft);
+    font-variant-numeric: tabular-nums;
+    flex-basis: 100%;
   }
   .actions {
     display: flex;

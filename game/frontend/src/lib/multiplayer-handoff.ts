@@ -39,8 +39,9 @@
 
 import type { EngineClient } from "./engine";
 import type { MpEngineHandle } from "./multiplayer-engine";
-import { mpState } from "./multiplayer.svelte";
-import type { MatchMode } from "./state/match-store.svelte";
+import { destroyPeerKeepState, hostWithCode, mpState } from "./multiplayer.svelte";
+import { _telemetrySession, match, type MatchMode } from "./state/match-store.svelte";
+import { getTelemetryStore } from "./storage";
 import type { TelemetrySession } from "./state/telemetry-session";
 
 /** Minimal subset of the reactive match carrier the orchestrator mutates.
@@ -68,8 +69,9 @@ export type TakeoverResult =
   | { ok: true }
   | { ok: false; reason: TakeoverFailReason; error?: Error };
 
-/** Injection seam for tests — pass overrides; real imports are resolved
- *  lazily so the test file can avoid pulling in `$state`-bearing modules. */
+/** Injection seam for tests — pass overrides; production resolves to the
+ *  static imports at the top of this file. The cycle that originally forced
+ *  dynamic imports (state-store ↔ wrapper) was retired in Phase 3c. */
 export interface TakeoverHooks {
   destroyPeerKeepState?: () => void;
   hostWithCode?: (code: string) => Promise<string>;
@@ -83,22 +85,12 @@ export async function takeoverAsHost(
   deps: TakeoverDeps,
   hooks: TakeoverHooks = {},
 ): Promise<TakeoverResult> {
-  // Resolve defaults lazily — pulling `multiplayer.svelte` / `match-store.svelte`
-  // at module-eval time would force every importer (including tests) through
-  // Svelte's `$state` rune, which isn't available in plain vitest.
-  const destroyPeer = hooks.destroyPeerKeepState
-    ?? (await import("./multiplayer.svelte")).destroyPeerKeepState;
-  const hostWithCode = hooks.hostWithCode
-    ?? (await import("./multiplayer.svelte")).hostWithCode;
-  const startTelemetry = hooks.startTelemetrySession
-    ?? (await import("./state/match-store.svelte"))._telemetrySession.startTelemetrySession;
+  const destroyPeer = hooks.destroyPeerKeepState ?? destroyPeerKeepState;
+  const rehost = hooks.hostWithCode ?? hostWithCode;
+  const startTelemetry = hooks.startTelemetrySession ?? _telemetrySession.startTelemetrySession;
   const checkpoint = hooks.checkpointMatchLog
-    ?? (async (id: string, log: string): Promise<void> => {
-      const { getTelemetryStore } = await import("./storage");
-      await getTelemetryStore().checkpointMatchLog(id, log);
-    });
-  const carrier: HandoffCarrier = hooks.carrier
-    ?? (await import("./state/match-store.svelte")).match;
+    ?? ((id: string, log: string) => getTelemetryStore().checkpointMatchLog(id, log));
+  const carrier: HandoffCarrier = hooks.carrier ?? match;
 
   if (!deps.code) {
     return { ok: false, reason: "no-code" };
@@ -145,7 +137,7 @@ export async function takeoverAsHost(
 
   // 6 — Bring up the new peer. Retries on broker eviction happen inside.
   try {
-    await hostWithCode(deps.code);
+    await rehost(deps.code);
   } catch (e) {
     return { ok: false, reason: "rehost-failed", error: e as Error };
   }
