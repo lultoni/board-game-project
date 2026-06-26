@@ -19,6 +19,16 @@ export class WasmClient implements EngineClient {
   #worker: Worker;
   #pending = new Map<number, Resolver>();
   #seq = 0;
+  /** Set to true when the worker fires `onerror` or `dispose()` is called.
+   *  Once dead, every subsequent `#call` rejects synchronously rather than
+   *  posting a message that will never be answered — callers can re-create
+   *  the engine via `resetEngine()` + `getEngine()` instead of hanging on a
+   *  pending promise. */
+  #dead = false;
+  /** Optional listener invoked once the worker is observed dead. Used by
+   *  `engine/index.ts` to invalidate its cached client so the next
+   *  `getEngine()` re-spawns a fresh worker. Set via `onDead()`. */
+  #onDead: (() => void) | null = null;
 
   constructor() {
     this.#worker = new Worker(new URL("./worker.ts", import.meta.url), {
@@ -34,15 +44,33 @@ export class WasmClient implements EngineClient {
       else r.reject(new Error(error ?? "worker error"));
     };
     this.#worker.onerror = (ev) => {
-      // Reject every outstanding request; the worker is wedged.
-      for (const r of this.#pending.values()) {
-        r.reject(new Error(ev.message ?? "worker error"));
-      }
-      this.#pending.clear();
+      this.#markDead(ev.message ?? "worker error");
     };
   }
 
+  /** Trip the dead flag, reject every outstanding request, and notify the
+   *  module-level cache so the next `getEngine()` re-spawns. Idempotent. */
+  #markDead(message: string): void {
+    if (this.#dead) return;
+    this.#dead = true;
+    for (const r of this.#pending.values()) {
+      r.reject(new Error(message));
+    }
+    this.#pending.clear();
+    this.#onDead?.();
+  }
+
+  /** Subscribe to the one-shot dead notification. Replaces any prior
+   *  listener — only the engine cache needs this hook. */
+  onDead(cb: () => void): void {
+    this.#onDead = cb;
+    if (this.#dead) cb();
+  }
+
   #call<T>(req: object): Promise<T> {
+    if (this.#dead) {
+      return Promise.reject(new Error("engine worker is dead"));
+    }
     const id = ++this.#seq;
     return new Promise<T>((resolve, reject) => {
       this.#pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
@@ -111,7 +139,7 @@ export class WasmClient implements EngineClient {
     return this.#call<void>({ kind: "finaliseLog", result });
   }
   async dispose(): Promise<void> {
+    this.#markDead("engine worker disposed");
     this.#worker.terminate();
-    this.#pending.clear();
   }
 }

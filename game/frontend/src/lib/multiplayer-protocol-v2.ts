@@ -18,7 +18,9 @@ export type IntentRejectReason =
   | "illegal"          // engine try_apply returned Err
   | "out-of-turn"      // not joiner's seat
   | "phase-mismatch"   // intent.phase !== host's current phase
-  | "paused";          // host is paused (waiting for reconnect)
+  | "paused"           // host is paused (waiting for reconnect)
+  | "rate-limit"       // joiner exceeded the intent flood threshold
+  | "seq-overflow";    // host's seq counter is at SEQ_CAP — protocol fault
 
 export type SnapshotRequestReason =
   | "audit-mismatch"   // mirror's Zobrist disagreed with host's
@@ -292,7 +294,12 @@ function isWirePhase(v: unknown): v is WirePhase {
 }
 
 function isIntentRejectReason(v: unknown): v is IntentRejectReason {
-  return v === "illegal" || v === "out-of-turn" || v === "phase-mismatch" || v === "paused";
+  return v === "illegal"
+    || v === "out-of-turn"
+    || v === "phase-mismatch"
+    || v === "paused"
+    || v === "rate-limit"
+    || v === "seq-overflow";
 }
 
 function isSnapshotRequestReason(v: unknown): v is SnapshotRequestReason {

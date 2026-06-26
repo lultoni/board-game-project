@@ -90,6 +90,19 @@ function normaliseStepResult(dto: StepResultDto): StepResult {
 export class TauriClient implements EngineClient {
   #handle = 0;
 
+  /** Guard for every method that operates on an existing engine. A zero
+   *  handle means `dispose()` ran or the engine was never created — calling
+   *  into the Rust `EngineRegistry` with `0` panics in debug builds and
+   *  returns the wrong engine in release builds (registry lookup keyed on
+   *  u64). Throwing synchronously here gives callers a recoverable error
+   *  rather than IPC nonsense. */
+  #requireHandle(): number {
+    if (this.#handle === 0) {
+      throw new Error("engine not initialized");
+    }
+    return this.#handle;
+  }
+
   // Replace the active engine handle, dropping any prior one. Every
   // `createEngine*` / `restoreFromSnapshot` call routes through this so
   // re-entering a route (e.g. /draft/ → /match/ → back to /setup/ → /draft/)
@@ -134,7 +147,7 @@ export class TauriClient implements EngineClient {
   }
 
   async draftState(): Promise<DraftStateView> {
-    const dto = await invoke<DraftStateDto>("draft_state", { handle: this.#handle });
+    const dto = await invoke<DraftStateDto>("draft_state", { handle: this.#requireHandle() });
     return {
       turnNo:     dto.turnNo,
       sideToMove: dto.sideToMove,
@@ -143,47 +156,47 @@ export class TauriClient implements EngineClient {
   }
 
   async positionView(): Promise<PositionView> {
-    const dto = await invoke<PositionViewDto>("position_view", { handle: this.#handle });
+    const dto = await invoke<PositionViewDto>("position_view", { handle: this.#requireHandle() });
     return normalisePositionView(dto);
   }
 
   async legalActions(): Promise<Uint32Array> {
-    const arr = await invoke<number[]>("legal_actions", { handle: this.#handle });
+    const arr = await invoke<number[]>("legal_actions", { handle: this.#requireHandle() });
     return Uint32Array.from(arr);
   }
 
   async tryApply(action: number): Promise<StepResult> {
     const dto = await invoke<StepResultDto>("try_apply", {
-      handle: this.#handle,
+      handle: this.#requireHandle(),
       rawAction: action >>> 0,
     });
     return normaliseStepResult(dto);
   }
 
   async stepAi(): Promise<StepResult> {
-    const dto = await invoke<StepResultDto>("step_ai", { handle: this.#handle });
+    const dto = await invoke<StepResultDto>("step_ai", { handle: this.#requireHandle() });
     return normaliseStepResult(dto);
   }
 
   async requestAiMoveForced(): Promise<StepResult> {
-    const dto = await invoke<StepResultDto>("request_ai_move_forced", { handle: this.#handle });
+    const dto = await invoke<StepResultDto>("request_ai_move_forced", { handle: this.#requireHandle() });
     return normaliseStepResult(dto);
   }
 
   async requestAiMoveAtDepth(maxDepth: number): Promise<StepResult> {
     const dto = await invoke<StepResultDto>("request_ai_move_at_depth", {
-      handle: this.#handle,
+      handle: this.#requireHandle(),
       maxDepth,
     });
     return normaliseStepResult(dto);
   }
 
   async positionFen(): Promise<string> {
-    return await invoke<string>("position_fen", { handle: this.#handle });
+    return await invoke<string>("position_fen", { handle: this.#requireHandle() });
   }
 
   async snapshotJson(): Promise<string> {
-    return await invoke<string>("snapshot_json", { handle: this.#handle });
+    return await invoke<string>("snapshot_json", { handle: this.#requireHandle() });
   }
 
   async restoreFromSnapshot(json: string): Promise<void> {
@@ -192,15 +205,15 @@ export class TauriClient implements EngineClient {
   }
 
   async matchLogJson(): Promise<string | null> {
-    return await invoke<string | null>("match_log_json", { handle: this.#handle });
+    return await invoke<string | null>("match_log_json", { handle: this.#requireHandle() });
   }
 
   async latestPlyJson(): Promise<string | null> {
-    return await invoke<string | null>("latest_ply_json", { handle: this.#handle });
+    return await invoke<string | null>("latest_ply_json", { handle: this.#requireHandle() });
   }
 
   async finaliseLog(result: FinalResultByte): Promise<void> {
-    await invoke<void>("finalise_log", { handle: this.#handle, resultByte: result });
+    await invoke<void>("finalise_log", { handle: this.#requireHandle(), resultByte: result });
   }
 
   async dispose(): Promise<void> {

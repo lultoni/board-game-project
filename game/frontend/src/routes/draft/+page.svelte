@@ -345,19 +345,28 @@
 
   // === AI scheduling ========================================================
 
-  let aiScheduled = false;
+  /** Single owned timer handle replaces the prior `aiScheduled` boolean. The
+   *  handle is set synchronously inside the $effect and cleared inside the
+   *  callback or by `cancelAiTimer()` on teardown — no microtask window for
+   *  a re-entrant $effect run to schedule a duplicate. */
+  let aiTimer: ReturnType<typeof setTimeout> | null = null;
+  function cancelAiTimer(): void {
+    if (aiTimer !== null) {
+      clearTimeout(aiTimer);
+      aiTimer = null;
+    }
+  }
   $effect(() => {
-    if (!booted) return;
-    if (busy) return;
-    if (draftComplete) return;
-    if (!currentSeatIsAi) return;
-    if (aiScheduled) return;
-    aiScheduled = true;
+    if (!booted) return cancelAiTimer();
+    if (draftComplete) return cancelAiTimer();
+    if (!currentSeatIsAi) return cancelAiTimer();
+    if (busy || aiTimer !== null) return;
     const delay = mode === "aivai"
       ? Math.max(16, settings.aivaiStepDelayMs)
       : 200;
-    setTimeout(() => {
-      aiScheduled = false;
+    aiTimer = setTimeout(() => {
+      aiTimer = null;
+      if (!booted || busy || draftComplete || !currentSeatIsAi) return;
       void runAiDraftStep();
     }, delay);
   });
@@ -648,6 +657,7 @@
   });
 
   onDestroy(() => {
+    cancelAiTimer();
     if (typeof window !== "undefined") {
       window.removeEventListener("pagehide", pageHideHandler);
     }

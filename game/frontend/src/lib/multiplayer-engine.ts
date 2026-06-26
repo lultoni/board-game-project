@@ -150,6 +150,41 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
   let paused = false; // host-side: pause while joiner is gone
   let disposed = false;
 
+  // --- seq overflow guard ----------------------------------------------------
+  // The wire protocol pins seq to u32. At 1 ply/sec that's 136 years, so this
+  // is mostly belt-and-braces — but a malicious/buggy actor could send a near-
+  // max seq in `session-hello` and trip undefined behaviour on the next
+  // increment. We cap at `SEQ_CAP` (well below 0xffffffff) and refuse to
+  // increment past it: the host's `submitAction` returns `{accepted:false,
+  // reason:"seq-overflow"}`, joiner's `committed` handler emits a resync
+  // request and stops applying. A future protocol revision can introduce a
+  // seq-reset frame; for now, this is a hard fault rather than silent wrap.
+  const SEQ_CAP = 0xfffffff0;
+  function bumpSeqOrFail(): boolean {
+    if (seq >= SEQ_CAP) return false;
+    seq += 1;
+    return true;
+  }
+
+  // --- intent rate cap (joiner-side flood protection) -----------------------
+  // A malicious/buggy joiner could flood the host with thousands of intents
+  // per second, pinning the AUTH engine's `tryApply` and starving host-local
+  // moves. Track a sliding 1s window of incoming intents; if it exceeds
+  // RATE_CAP_PER_SEC, reject with the `rate-limit` reason. The window resets
+  // naturally as old entries fall off the front.
+  const RATE_CAP_PER_SEC = 30;
+  const RATE_WINDOW_MS = 1000;
+  const intentTimestamps: number[] = [];
+  function intentExceedsRateCap(now: number): boolean {
+    const cutoff = now - RATE_WINDOW_MS;
+    while (intentTimestamps.length > 0 && intentTimestamps[0] < cutoff) {
+      intentTimestamps.shift();
+    }
+    if (intentTimestamps.length >= RATE_CAP_PER_SEC) return true;
+    intentTimestamps.push(now);
+    return false;
+  }
+
   // Joiner: in-flight intents waiting for `committed` or `intent-rejected`.
   const pendingIntents = new Map<string, {
     raw: number;
@@ -323,6 +358,12 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           deps.send({ kind: "intent-rejected", nonce: m.nonce, reason: "phase-mismatch" });
           return;
         }
+        // Rate-limit BEFORE the engine round-trip — a flood of illegal intents
+        // would otherwise still pin tryApply.
+        if (intentExceedsRateCap(Date.now())) {
+          deps.send({ kind: "intent-rejected", nonce: m.nonce, reason: "rate-limit" });
+          return;
+        }
         // Validate via tryApply — engine's deterministic rule check.
         let postZobrist: bigint;
         try {
@@ -333,7 +374,15 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           deps.send({ kind: "intent-rejected", nonce: m.nonce, reason: "illegal" });
           return;
         }
-        seq += 1;
+        if (!bumpSeqOrFail()) {
+          // Engine has accepted the action, but we can't sequence it. Rather
+          // than emit a committed with overflowed seq, we surface the fault.
+          // The joiner's mirror is now ahead of any committed we'd send —
+          // there's no clean recovery short of a fresh match.
+          deps.send({ kind: "intent-rejected", nonce: m.nonce, reason: "seq-overflow" });
+          warn("seq-overflow", { seq });
+          return;
+        }
         const committed: WireMessageV2 = {
           kind: "committed",
           seq,
@@ -545,7 +594,12 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       } catch (e) {
         return { accepted: false, reason: (e as Error)?.message ?? "illegal" };
       }
-      seq += 1;
+      if (!bumpSeqOrFail()) {
+        // Engine applied, but we can't sequence. Surface as a refused submit.
+        // Caller will treat this as an illegal move from the user's POV.
+        warn("seq-overflow", { seq });
+        return { accepted: false, reason: "seq-overflow" };
+      }
       const committed: WireMessageV2 = {
         kind: "committed",
         seq,

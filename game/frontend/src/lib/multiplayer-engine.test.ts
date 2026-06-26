@@ -309,6 +309,26 @@ describe("host", () => {
     expect(rej).toMatchObject({ nonce: "i-x", reason: "phase-mismatch" });
   });
 
+  it("rate-limits joiner intents over 30/sec with reason=rate-limit", async () => {
+    const { bus, handle } = build("host");
+    // Fire 31 intents back-to-back (synchronous push, same Date.now() tick).
+    // The first 30 fill the window; the 31st must be refused.
+    for (let i = 0; i < 31; i++) {
+      bus.push({ kind: "intent", phase: "draft", nonce: `flood-${i}`, raw: i + 1 });
+    }
+    // Drain microtasks so every intent handler completes.
+    for (let i = 0; i < 65; i++) await Promise.resolve();
+    const rejects = bus.sent.filter((m) => m.kind === "intent-rejected");
+    const rateLimited = rejects.filter(
+      (m) => (m as { reason: string }).reason === "rate-limit",
+    );
+    expect(rateLimited.length).toBeGreaterThanOrEqual(1);
+    // And at least one earlier intent was committed normally — the cap isn't
+    // refusing the whole flood, just the overflow.
+    const committed = bus.sent.filter((m) => m.kind === "committed");
+    expect(committed.length).toBeGreaterThan(0);
+  });
+
   it("responds to request-snapshot with a snapshot envelope", async () => {
     const { bus, handle } = build("host");
     bus.push({ kind: "request-snapshot", mySeq: 0, reason: "reconnect" });

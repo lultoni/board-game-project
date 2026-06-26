@@ -431,25 +431,40 @@
    *  every AI ply. For AIvAI it chains turn-after-turn while `aiAutoPlay`
    *  is true; pausing freezes the loop after the in-flight call returns.
    *  Anchored on `phaseKey()` rather than `position` directly so a stable
-   *  side+phase pair doesn't re-trigger when other position fields change. */
-  let aiScheduled = false;
+   *  side+phase pair doesn't re-trigger when other position fields change.
+   *
+   *  Owns a single timer handle (`aiTimer`) rather than a boolean latch. The
+   *  handle is set synchronously when the timer is scheduled and only cleared
+   *  inside the timer callback or by teardown — no microtask window where a
+   *  re-entrant $effect run could schedule a duplicate. */
+  let aiTimer: ReturnType<typeof setTimeout> | null = null;
+  function cancelAiTimer(): void {
+    if (aiTimer !== null) {
+      clearTimeout(aiTimer);
+      aiTimer = null;
+    }
+  }
   $effect(() => {
-    if (!ready) return;
-    if (busy) return;
-    if (match.mode === "sandbox") return;
-    if (!currentSeatIsAi) return;
+    if (!ready) return cancelAiTimer();
+    if (match.mode === "sandbox") return cancelAiTimer();
+    if (!currentSeatIsAi) return cancelAiTimer();
     // For AIvAI, gate on the play/pause toggle. For HvAI, always run.
-    if (match.mode === "aivai" && !aiAutoPlay) return;
-    if (aiScheduled) return;
-    aiScheduled = true;
+    if (match.mode === "aivai" && !aiAutoPlay) return cancelAiTimer();
+    if (busy || aiTimer !== null) return;
     // Defer just long enough for the UI to paint state + "thinking" pill
     // before we block on the engine. For AIvAI, honour the user-configured
     // step delay so a spectator can actually watch the game.
     const delay = match.mode === "aivai"
       ? Math.max(16, settings.aivaiStepDelayMs)
       : 30;
-    setTimeout(() => {
-      aiScheduled = false;
+    aiTimer = setTimeout(() => {
+      aiTimer = null;
+      // Re-check gating: state may have changed during the delay window
+      // (player committed a move, AI got paused, ply ended the match…).
+      if (!ready || busy) return;
+      if (match.mode === "sandbox") return;
+      if (!currentSeatIsAi) return;
+      if (match.mode === "aivai" && !aiAutoPlay) return;
       void runAiStep();
     }, delay);
   });
@@ -1336,6 +1351,7 @@
   });
 
   onDestroy(() => {
+    cancelAiTimer();
     if (typeof window !== "undefined") {
       window.removeEventListener("beforeunload", beforeUnloadGuard);
       window.removeEventListener("pagehide", pageHideHandler);
