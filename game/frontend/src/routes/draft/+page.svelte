@@ -15,6 +15,8 @@
     recordPly,
     abandonTelemetrySession,
     networkLostTelemetrySession,
+    abandonTelemetrySessionSync,
+    networkLostTelemetrySessionSync,
   } from "$lib/state/match-store.svelte";
   import {
     mpState,
@@ -368,7 +370,15 @@
     try {
       clearPicks();
       const r = await eng.stepAi();
-      if (r.appliedAction === 0) return;
+      if (r.appliedAction === 0) {
+        // AI returned no draft action. The scheduler is keyed off
+        // `currentSeatIsAi` which is derived from `match.position`; since
+        // nothing changed it won't re-fire on its own — the route just
+        // stalls silently. Surface the wedge so the user sees why drafting
+        // halted instead of staring at a frozen screen.
+        bootError = "AI returned no draft pick — drafting paused";
+        return;
+      }
       await refresh();
       // AI applies bypass the wrapper (no submitAction call), so the wrapper's
       // automatic phase-change detection doesn't fire. Solo-only path — drive
@@ -428,12 +438,16 @@
     })();
   });
 
+  // Page-hide handler: fires on tab hide / close. Any async work started here
+  // may be discarded before the IDB transaction commits — we use sync-entry
+  // telemetry variants and accept the loss. `onDestroy` keeps the full async
+  // path for client-side nav (where awaits resolve normally).
   function pageHideHandler(): void {
     if (match.telemetryMatchId && !match.telemetryFinalised) {
       if (match.mode === "multiplayer") {
-        void networkLostTelemetrySession(eng ?? undefined);
+        networkLostTelemetrySessionSync();
       } else {
-        void abandonTelemetrySession(eng ?? undefined);
+        abandonTelemetrySessionSync();
       }
     }
   }

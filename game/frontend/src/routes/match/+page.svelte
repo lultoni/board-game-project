@@ -19,6 +19,8 @@
     finalizeTelemetrySession,
     abandonTelemetrySession,
     networkLostTelemetrySession,
+    abandonTelemetrySessionSync,
+    networkLostTelemetrySessionSync,
   } from "$lib/state/match-store.svelte";
   import { settings } from "$lib/state/settings.svelte";
   import {
@@ -606,18 +608,6 @@
           else if (mpState.status === "disconnected") mpEngine?.notifyConnectionLost();
         });
       });
-      // Subscribe to route-layer wire side-channel messages. The legacy
-      // `bodyguard-prompt` variant is deprecated (the engine now owns the
-      // bodyguard handoff via pending_bodyguard + STM flip) and is silently
-      // ignored. Kept here as a one-release deprecation window so old hosts
-      // talking to new joiners don't trip an unknown-message warning.
-      mpRouteWireUnsub = mpOnRawData((raw) => {
-        const decoded = decodeMessageV2(raw);
-        if (!decoded) return;
-        if (decoded.kind === "bodyguard-prompt") {
-          // No-op — engine state drives the defender's chooser now.
-        }
-      });
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
@@ -633,9 +623,6 @@
   let mpPaused = $state(false);
   /** Disposer for the $effect.root that bridges mpState → wrapper lifecycle. */
   let mpConnectedUnsub: (() => void) | null = null;
-  /** Disposer for the route-layer raw-data subscription (currently used for
-   *  the `bodyguard-prompt` side message, which the engine wrapper ignores). */
-  let mpRouteWireUnsub: (() => void) | null = null;
   /** The raw u32 currently being applied via the local submit path. Used to
    *  short-circuit the wrapper's onApplied callback so we don't double-render
    *  on host-side (host's submitAction applies AND fires onApplied). */
@@ -799,8 +786,18 @@
       const result = await eng.stepAi();
       const raw = result.appliedAction;
       if (raw === 0) {
-        // AI returned no move (terminal or error). Refresh and bail.
+        // AI returned no move. Two cases:
+        //   - match.position.gameResult !== 0 → terminal (mate/stalemate),
+        //     legitimate no-op; just refresh.
+        //   - gameResult === 0 → engine returned no action on a live position.
+        //     That's a wedge — the AivAI scheduler would re-fire forever.
+        //     Disable auto-play and surface a toast so the user sees the
+        //     stall instead of an apparent freeze. Don't try to recover here.
         await refresh();
+        if (match.position && match.position.gameResult === 0) {
+          aiAutoPlay = false;
+          showToast("AI returned no move — pausing");
+        }
         return;
       }
       // Persist AI ply telemetry. Sandbox is gated above (early return).
@@ -1313,17 +1310,20 @@
   }
 
   // Page-hide handler: fires when the tab is hidden, navigated away, or closed.
-  // Unlike `beforeunload`, this is the last reliable hook for fire-and-forget
-  // work in modern browsers — but async tasks still get cut. We kick off the
-  // teardown writes here so they have the best chance of landing before the
-  // page is discarded. onDestroy keeps the same logic for client-side nav
-  // (where awaits resolve normally).
+  // Unlike `beforeunload`, this is the last hook the page gets — but ANY async
+  // work started here may be discarded before the IDB transaction commits.
+  // We use the sync-entry telemetry variants (which fire-and-forget the IDB
+  // write without awaiting `eng.matchLogJson()`) and accept the loss: the
+  // matches row's `matchLogJson` is already kept current by `recordPly`'s
+  // checkpoint, so even if the markNetworkLost write is discarded, the row
+  // retains its last-known state and is sweepable on next boot. `onDestroy`
+  // keeps the full async path for client-side nav (awaits resolve normally).
   function pageHideHandler(): void {
     if (match.telemetryMatchId && !match.telemetryFinalised) {
       if (match.mode === "multiplayer") {
-        void networkLostTelemetrySession(eng ?? undefined);
+        networkLostTelemetrySessionSync();
       } else {
-        void abandonTelemetrySession(eng ?? undefined);
+        abandonTelemetrySessionSync();
       }
     }
   }
@@ -1360,10 +1360,6 @@
     if (mpConnectedUnsub) {
       mpConnectedUnsub();
       mpConnectedUnsub = null;
-    }
-    if (mpRouteWireUnsub) {
-      mpRouteWireUnsub();
-      mpRouteWireUnsub = null;
     }
     // Leaving /match/ before a natural end means we're going back to the
     // lobby (or home). Tear down the PeerJS connection so the OTHER peer

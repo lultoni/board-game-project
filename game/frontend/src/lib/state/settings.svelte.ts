@@ -42,17 +42,64 @@ const DEFAULTS: Settings = {
   aivaiStepDelayMs: 300,
 };
 
+const LOCALES: ReadonlyArray<Settings["locale"]> = ["en", "de"];
+
+// Per-field validation. localStorage is user-writable, so a tampered or
+// stale blob can carry NaN, negative budgets, or unknown locale strings
+// that the engine then has to defend against downstream. Each picker
+// silently falls back to DEFAULTS on a bad value — no error surfacing,
+// since the user didn't ask for this read to fail.
+function pickBool(v: unknown, fallback: boolean): boolean {
+  return typeof v === "boolean" ? v : fallback;
+}
+function pickFiniteNonNeg(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
+}
+function pickClamped01(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v)
+    ? Math.min(1, Math.max(0, v))
+    : fallback;
+}
+function pickPosInt(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : fallback;
+}
+function pickLocale(v: unknown, fallback: Settings["locale"]): Settings["locale"] {
+  return typeof v === "string" && (LOCALES as readonly string[]).includes(v)
+    ? (v as Settings["locale"])
+    : fallback;
+}
+
+function validate(raw: unknown): Settings {
+  if (!raw || typeof raw !== "object") return { ...DEFAULTS };
+  const r = raw as Record<string, unknown>;
+  return {
+    showLegalTargets: pickBool(r.showLegalTargets, DEFAULTS.showLegalTargets),
+    showProjectilePath: pickBool(r.showProjectilePath, DEFAULTS.showProjectilePath),
+    showIllegalOwner: pickBool(r.showIllegalOwner, DEFAULTS.showIllegalOwner),
+    showBlockedByFriendly: pickBool(r.showBlockedByFriendly, DEFAULTS.showBlockedByFriendly),
+    audioVolume: pickClamped01(r.audioVolume, DEFAULTS.audioVolume),
+    locale: pickLocale(r.locale, DEFAULTS.locale),
+    p1ThinkTimeMs: pickFiniteNonNeg(r.p1ThinkTimeMs, DEFAULTS.p1ThinkTimeMs),
+    p2ThinkTimeMs: pickFiniteNonNeg(r.p2ThinkTimeMs, DEFAULTS.p2ThinkTimeMs),
+    p1MaxDepth: pickPosInt(r.p1MaxDepth, DEFAULTS.p1MaxDepth),
+    p2MaxDepth: pickPosInt(r.p2MaxDepth, DEFAULTS.p2MaxDepth),
+    aivaiStepDelayMs: pickFiniteNonNeg(r.aivaiStepDelayMs, DEFAULTS.aivaiStepDelayMs),
+  };
+}
+
 function load(): Settings {
   if (typeof localStorage === "undefined") return { ...DEFAULTS };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS };
-    const parsed = JSON.parse(raw);
-    return { ...DEFAULTS, ...parsed };
+    return validate(JSON.parse(raw));
   } catch {
     return { ...DEFAULTS };
   }
 }
+
+// Exported for tests; not part of the public API.
+export const _validateSettings = validate;
 
 export const settings = $state<Settings>(load());
 

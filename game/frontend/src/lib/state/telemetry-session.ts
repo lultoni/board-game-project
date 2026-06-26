@@ -182,6 +182,40 @@ export async function abandonTelemetrySession(
   }
 }
 
+/** Synchronous-entry variant of `networkLostTelemetrySession` for the
+ *  `pagehide` event path. Skips the `await eng.matchLogJson()` round-trip —
+ *  `recordPly` already checkpoints the consolidated MatchLog after every
+ *  applied ply, so the matches row's `matchLogJson` is up-to-date when we
+ *  enter pagehide. The remaining IDB write is fired without `await`; the
+ *  browser may discard it on tab close, and we accept that loss (the row
+ *  stays `in-progress` until the next session sweeps it). Returns nothing
+ *  because no caller awaits — pagehide handlers can't block teardown. */
+export function networkLostTelemetrySessionSync(carrier: TelemetryCarrier): void {
+  if (!carrier.telemetryMatchId || telemetryDisabledForSession) return;
+  const id = carrier.telemetryMatchId;
+  carrier.telemetryMatchId = null;
+  try {
+    const store = getTelemetryStore();
+    void store.markNetworkLost(id).catch((e) => logFail("networkLostTelemetrySessionSync", e));
+  } catch (e) {
+    logFail("networkLostTelemetrySessionSync", e);
+  }
+}
+
+/** Synchronous-entry variant of `abandonTelemetrySession` for the `pagehide`
+ *  event path. See `networkLostTelemetrySessionSync` for the rationale. */
+export function abandonTelemetrySessionSync(carrier: TelemetryCarrier): void {
+  if (!carrier.telemetryMatchId || telemetryDisabledForSession) return;
+  const id = carrier.telemetryMatchId;
+  carrier.telemetryMatchId = null;
+  try {
+    const store = getTelemetryStore();
+    void store.markAbandoned(id).catch((e) => logFail("abandonTelemetrySessionSync", e));
+  } catch (e) {
+    logFail("abandonTelemetrySessionSync", e);
+  }
+}
+
 /** Marks an in-progress multiplayer telemetry session as network-lost.
  *  Used by /match/ when the user leaves the route during a multiplayer match
  *  (tab close, navigation away). Mirrors `abandonTelemetrySession`'s

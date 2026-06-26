@@ -59,8 +59,6 @@ describe("encode/decode round-trip (v2)", () => {
     { kind: "paused" },
     { kind: "resumed" },
     { kind: "error", reason: "session-full" },
-    { kind: "bodyguard-prompt", src: 28, target: 36, approach: 35 },
-    { kind: "bodyguard-prompt", src: 0, target: 63, approach: 7 },
   ];
 
   for (const m of cases) {
@@ -167,12 +165,8 @@ describe("decodeMessageV2 rejects malformed payloads", () => {
     expect(decodeMessageV2('{"kind":"handoff-announce","matchId":"x","seq":-1}')).toBeNull();
   });
 
-  it("bodyguard-prompt requires integer src/target/approach in [0,63]", () => {
-    expect(decodeMessageV2('{"kind":"bodyguard-prompt","src":-1,"target":0,"approach":0}')).toBeNull();
-    expect(decodeMessageV2('{"kind":"bodyguard-prompt","src":64,"target":0,"approach":0}')).toBeNull();
-    expect(decodeMessageV2('{"kind":"bodyguard-prompt","src":0,"target":1.5,"approach":0}')).toBeNull();
-    expect(decodeMessageV2('{"kind":"bodyguard-prompt","src":0,"target":0,"approach":"foo"}')).toBeNull();
-    expect(decodeMessageV2('{"kind":"bodyguard-prompt","src":0,"target":0,"approach":0}')).not.toBeNull();
+  it("bodyguard-prompt is rejected as an unknown kind (removed in Phase 1e)", () => {
+    expect(decodeMessageV2('{"kind":"bodyguard-prompt","src":0,"target":0,"approach":0}')).toBeNull();
   });
 });
 

@@ -149,6 +149,16 @@ export function networkLostTelemetrySession(eng?: EngineClient): Promise<void> {
   return telemetry.networkLostTelemetrySession(match, eng);
 }
 
+/** Sync-entry wrappers for the `pagehide` event path. The browser may discard
+ *  the IDB write on tab-close; we accept the loss. Callers must NOT await. */
+export function abandonTelemetrySessionSync(): void {
+  telemetry.abandonTelemetrySessionSync(match);
+}
+
+export function networkLostTelemetrySessionSync(): void {
+  telemetry.networkLostTelemetrySessionSync(match);
+}
+
 /** Multiplayer claim-win: the present player declares victory after the grace
  *  window expires (peer never came back). Finalises the engine log and the
  *  telemetry row with endReason "opponent_forfeit" and the result favouring

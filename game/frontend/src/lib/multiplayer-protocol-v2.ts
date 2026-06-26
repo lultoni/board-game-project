@@ -109,16 +109,7 @@ export type WireMessageV2 =
 
   // Reserved for the broker's third-peer kick path (kept compatible with v1
   // so the host can still send `session-full` to a fourth tab dialling in).
-  | { kind: "error"; reason: string }
-
-  // DEPRECATED (engine v0.X+): the engine now owns the bodyguard handoff via
-  // `Position.pending_bodyguard` + STM flip — defender's seat naturally
-  // becomes side-to-move and submits a `BodyguardChoice` action through the
-  // normal `intent` path. Receivers should ignore this variant; senders
-  // should stop emitting it. Kept here for one release as a deprecation
-  // window so old hosts talking to new joiners don't trip
-  // unknown-message warnings; the next protocol bump will remove it.
-  | { kind: "bodyguard-prompt"; src: number; target: number; approach: number };
+  | { kind: "error"; reason: string };
 
 /** JSON-encode a wire message. */
 export function encodeMessageV2(m: WireMessageV2): string {
@@ -286,27 +277,6 @@ export function decodeMessageV2(s: string): WireMessageV2 | null {
       return typeof (m as { reason?: unknown }).reason === "string"
         ? (m as WireMessageV2)
         : null;
-
-    case "bodyguard-prompt": {
-      const r = m as { src?: unknown; target?: unknown; approach?: unknown };
-      if (
-        typeof r.src === "number"
-        && Number.isInteger(r.src)
-        && r.src >= 0
-        && r.src < 64
-        && typeof r.target === "number"
-        && Number.isInteger(r.target)
-        && r.target >= 0
-        && r.target < 64
-        && typeof r.approach === "number"
-        && Number.isInteger(r.approach)
-        && r.approach >= 0
-        && r.approach < 64
-      ) {
-        return m as WireMessageV2;
-      }
-      return null;
-    }
 
     default:
       return null;
