@@ -84,6 +84,21 @@ export interface PlyRendererOpts {
   scheduler?: PlyRendererScheduler;
 }
 
+export interface ApplyAndRenderOpts {
+  /** Ply index (0-based) of the ply being applied, relative to a stable base
+   *  snapshot. When provided AND the index is a multiple of `CHECKPOINT_STRIDE`,
+   *  the renderer captures `eng.snapshotJson()` so subsequent `fastForwardTo`
+   *  scrubs to nearby plies can restore from this checkpoint instead of
+   *  replaying from ply 0. Replay's `stepForward` passes `currentPly` here;
+   *  match/draft/inspector don't scrub and omit this, which keeps the
+   *  checkpoint cache empty (and free). */
+  plyHint?: number;
+  /** Base snapshot the `plyHint` is relative to. Required when `plyHint` is
+   *  set so the captured checkpoint can be invalidated if the base changes
+   *  (e.g. a different match log is loaded). */
+  plyHintBase?: string;
+}
+
 export interface PlyRenderer {
   // Reactive state — bind into Board / EffectsLayer.
   readonly position: PositionView | null;
@@ -99,7 +114,11 @@ export interface PlyRenderer {
    *  that's `eng.tryApply` directly or via an MP wrapper), then emit effects
    *  + SFX and flip rendered state. Any pending deferred refresh is drained
    *  synchronously at entry. */
-  applyAndRender(raw: number, applyFn: () => Promise<void>): Promise<void>;
+  applyAndRender(
+    raw: number,
+    applyFn: () => Promise<void>,
+    opts?: ApplyAndRenderOpts,
+  ): Promise<void>;
 
   /** Caller-already-applied variant: the engine has already advanced (e.g.
    *  via the MP wrapper's onApplied callback). Caller passes the pre-state
@@ -152,6 +171,19 @@ export interface PlyRenderer {
 const RELOC_DELAY_MS = 260;
 
 const SHAKE_DURATION_MS = 340;
+
+/** Ply checkpoint stride for `fastForwardTo`. Every N plies during a silent
+ *  fast-forward, we capture `eng.snapshotJson()`; subsequent scrubs near the
+ *  same range restore from the nearest checkpoint instead of replaying from
+ *  ply 0. Replay's autoplay path also drops a checkpoint here via the
+ *  optional `plyHint` on `applyAndRender`, so re-scrubbing a region already
+ *  walked through forward play is cheap. */
+const CHECKPOINT_STRIDE = 32;
+
+/** Minimum number of plies a checkpoint must save to be worth the extra
+ *  `restoreFromSnapshot` round-trip. Below this, we just fall through to the
+ *  naive replay-from-base path. */
+const CHECKPOINT_MIN_SAVING = 4;
 
 // === Internal helpers (module-private) =====================================
 
@@ -261,6 +293,34 @@ export function createPlyRenderer(
   // a shake setTimeout fired after `reset()` would write into the cleared
   // shakingSquares Set.
   const timers = new Set<TimerHandle>();
+
+  // === Checkpoint cache ====================================================
+  // Sparse cache of `eng.snapshotJson()` strings keyed by ply index. Read by
+  // `fastForwardTo` to skip the leading silent replay; written during
+  // fast-forward AND during `applyAndRender` when the caller passes a
+  // `plyHint`. Cleared on `reset()` and whenever the base snapshot changes
+  // (different match log loaded, replay restarted at ply 0 from a new log).
+  const checkpoints = new Map<number, string>();
+  let checkpointsBase: string | null = null;
+
+  function invalidateCheckpointsIfBaseChanged(nextBase: string | null): void {
+    if (nextBase === checkpointsBase) return;
+    checkpoints.clear();
+    checkpointsBase = nextBase;
+  }
+
+  function nearestCheckpoint(target: number): { ply: number; snap: string } | null {
+    if (target <= 0) return null;
+    let bestPly = -1;
+    for (const ply of checkpoints.keys()) {
+      if (ply >= target) continue;
+      if (ply > bestPly) bestPly = ply;
+    }
+    if (bestPly < 0) return null;
+    const snap = checkpoints.get(bestPly);
+    if (snap === undefined) return null;
+    return { ply: bestPly, snap };
+  }
 
   function scheduleTimer(cb: () => void, ms: number): TimerHandle {
     let handle: TimerHandle | null = null;
@@ -605,11 +665,37 @@ export function createPlyRenderer(
         : null;
   }
 
-  async function applyAndRender(raw: number, applyFn: () => Promise<void>): Promise<void> {
+  async function applyAndRender(
+    raw: number,
+    applyFn: () => Promise<void>,
+    opts?: ApplyAndRenderOpts,
+  ): Promise<void> {
     drainPendingSkillRefresh();
     const pre = snapshotPreState(raw);
     await applyFn();
     await renderApplied(raw, pre);
+
+    // Opportunistic checkpoint capture. We log a checkpoint at the ply
+    // *after* this one — i.e., we just finished applying `plyHint` so the
+    // engine is now at position-after-ply-N. Replay's `currentPly` is
+    // incremented to N+1 only after applyAndRender returns, so passing the
+    // pre-apply index here is correct: the checkpoint represents "state
+    // after this ply has been applied". A subsequent fastForwardTo to
+    // target=N+1 can restore from this snapshot and replay zero plies.
+    const hint = opts?.plyHint;
+    if (typeof hint === "number" && opts?.plyHintBase) {
+      invalidateCheckpointsIfBaseChanged(opts.plyHintBase);
+      const checkpointPly = hint + 1;
+      if (checkpointPly > 0 && checkpointPly % CHECKPOINT_STRIDE === 0) {
+        try {
+          const snap = await eng.snapshotJson();
+          checkpoints.set(checkpointPly, snap);
+        } catch {
+          // Snapshot capture is best-effort; a failure here just means
+          // the next scrub does a cold replay. Don't surface this.
+        }
+      }
+    }
   }
 
   // === Bulk operations =====================================================
@@ -639,6 +725,8 @@ export function createPlyRenderer(
     shakingSquares = new Set();
     effectQueue.length = 0;
     lastApplied = null;
+    checkpoints.clear();
+    checkpointsBase = null;
   }
 
   function dispose(): void {
@@ -650,6 +738,8 @@ export function createPlyRenderer(
     pendingSkillRefresh = null;
     effectQueue.length = 0;
     shakingSquares = new Set();
+    checkpoints.clear();
+    checkpointsBase = null;
   }
 
   async function fastForwardTo(
@@ -660,18 +750,45 @@ export function createPlyRenderer(
     drainPendingSkillRefresh();
     const clamped = Math.max(0, Math.min(plies.length, target | 0));
 
-    // Restore to ply 0.
-    await eng.restoreFromSnapshot(baseSnapshotJson);
+    // Cache invalidation: a different base snapshot means the cached
+    // checkpoints reference a different play-line and must be discarded.
+    invalidateCheckpointsIfBaseChanged(baseSnapshotJson);
 
     if (clamped === 0) {
+      await eng.restoreFromSnapshot(baseSnapshotJson);
       await resyncFromEngine();
       return;
     }
 
-    // Silent fast-forward through plies 0..clamped-2. No effects, no SFX,
-    // no position writes — we only care about engine state at the end.
-    for (let i = 0; i < clamped - 1; i++) {
+    // Try to skip the leading silent replay by restoring from the nearest
+    // checkpoint < target. We require at least CHECKPOINT_MIN_SAVING plies of
+    // saving to justify the extra restoreFromSnapshot round-trip.
+    let startIndex = 0;
+    const cp = nearestCheckpoint(clamped);
+    if (cp && clamped - cp.ply >= CHECKPOINT_MIN_SAVING) {
+      await eng.restoreFromSnapshot(cp.snap);
+      startIndex = cp.ply;
+    } else {
+      await eng.restoreFromSnapshot(baseSnapshotJson);
+    }
+
+    // Silent fast-forward from startIndex through plies[clamped-2]. No
+    // effects, no SFX, no position writes — we only care about engine state
+    // at the end. Along the way, capture a checkpoint every CHECKPOINT_STRIDE
+    // plies (using "ply count from base" as the key, not array index) so a
+    // future scrub through the same range gets the perf win on the first
+    // cold pass.
+    for (let i = startIndex; i < clamped - 1; i++) {
       await eng.tryApply(plies[i]);
+      const plyCount = i + 1;
+      if (plyCount % CHECKPOINT_STRIDE === 0 && !checkpoints.has(plyCount)) {
+        try {
+          const snap = await eng.snapshotJson();
+          checkpoints.set(plyCount, snap);
+        } catch {
+          // Best-effort; ignore.
+        }
+      }
     }
 
     // Reconcile pieceIds from the now-restored intermediate state. We need

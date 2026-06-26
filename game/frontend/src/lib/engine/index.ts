@@ -30,6 +30,8 @@ export type {
   SnapshotValidationOpts,
   ValidatedSnapshot,
 } from "./snapshot-validator";
+export { runAiCall, AiCallError } from "./ai-hooks";
+export type { AiCallOpts, AiCallReason } from "./ai-hooks";
 
 let cached: EngineClient | null = null;
 

@@ -13,6 +13,7 @@
     SKILLS,
     MODIFIER_FOCUS,
     MODIFIER_CHARGE,
+    runAiCall,
   } from "$lib/engine";
   import { PRE_MADE_LOADOUTS } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
@@ -786,7 +787,7 @@
       const delayP = minDelayMs > 0
         ? new Promise<void>((r) => setTimeout(r, minDelayMs))
         : Promise.resolve();
-      const [result] = await Promise.all([eng.stepAi(), delayP]);
+      const [result] = await Promise.all([runAiCall(() => eng!.stepAi()), delayP]);
       const raw = result.appliedAction;
       if (raw === 0) {
         // AI returned no move. Two cases:

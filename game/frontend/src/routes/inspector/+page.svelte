@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import Board from "$lib/board/Board.svelte";
+  import EffectsLayer from "$lib/board/EffectsLayer.svelte";
+  import { createPlyRenderer, type PlyRenderer } from "$lib/board/ply-renderer.svelte";
   import {
     getEngine,
     SNAPSHOT_BUDGETS,
@@ -12,8 +14,8 @@
     ActionKind,
     formatAction,
     formatSquare,
-    readPieces,
-    type PositionView,
+    runAiCall,
+    AiCallError,
   } from "$lib/engine";
   import { buildEngineConfigJson } from "$lib/state/match-store.svelte";
   import { match } from "$lib/state/match-store.svelte";
@@ -44,6 +46,7 @@
   } from "$lib/state/inspector-store.svelte";
   import MoveListItem from "$lib/inspector/MoveListItem.svelte";
   import AiHintBanner from "$lib/inspector/AiHintBanner.svelte";
+  import PoiLabelDialog from "$lib/inspector/PoiLabelDialog.svelte";
   import { consumePendingMatchLog } from "$lib/storage/library-handoff";
 
   // ---------------------------------------------------------------------------
@@ -62,14 +65,20 @@
   let aiContinuous = $state(false);
   let aiCancelRequested = false;
 
-  // Piece-id map for Board (stable across moves so CSS slides run).
-  let pieceIds = $state<Map<number, number>>(new Map());
-  let nextPieceId = 1;
+  // PlyRenderer drives Board/EffectsLayer for this route. Stage 6a — replaces
+  // the prior inline pieceIds bookkeeping + manual restoreFromSnapshot path.
+  // `sfxEnabled: false` because inspector is an analysis tool, not a player
+  // surface (matches replay's convention).
+  let renderer = $state<PlyRenderer | null>(null);
 
   // Selection + approach chooser state (for move phase).
   let selection = $state<number | null>(null);
   let approachChoices = $state<number[] | null>(null);
   let approachContext = $state<{ target: number } | null>(null);
+
+  // POI label dialog state (replaces window.prompt in handleMarkPoi).
+  let poiDialogOpen = $state(false);
+  let poiDialogTargetId = $state<string | null>(null);
 
   const tree = $derived(inspector.tree);
   const currentNode = $derived.by<InspectorNode | null>(() => {
@@ -91,7 +100,7 @@
   });
 
   async function syncEngineToNode(nodeId: string): Promise<void> {
-    if (!tree) return;
+    if (!tree || !renderer) return;
     const node = tree.nodes[nodeId];
     if (!node) return;
     busy = true;
@@ -100,31 +109,28 @@
     approachContext = null;
     try {
       const eng = await getEngine();
-      await eng.restoreFromSnapshot(buildSnapshotForNode(tree, node, defaultConfigJson()));
+      // Root snapshot for this tree — actions=[], config from configJson.
+      // The renderer's fastForwardTo restores from here and replays
+      // node.actions silently (with checkpoint caching from Stage 6c), then
+      // runs the full effect pipeline for the landing ply.
+      const cfgObj = JSON.parse(tree.configJson);
+      const baseSnap = JSON.stringify({
+        start_fen: tree.startFen,
+        actions: [],
+        config: cfgObj,
+      });
+      await renderer.fastForwardTo(baseSnap, node.actions, node.actions.length);
       const pv = await eng.positionView();
       const la = await eng.legalActions();
       inspector.position = pv;
       inspector.legal = la;
       if (!node.fen) node.fen = await eng.positionFen();
-      refreshPieceIds(pv);
       lastSyncedNodeId = nodeId;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
       busy = false;
     }
-  }
-
-  function refreshPieceIds(pv: PositionView | null): void {
-    if (!pv) {
-      pieceIds = new Map();
-      return;
-    }
-    const fresh = new Map<number, number>();
-    for (const p of readPieces(pv.bitboards, pv.mailbox)) {
-      fresh.set(p.square, nextPieceId++);
-    }
-    pieceIds = fresh;
   }
 
   // ---------------------------------------------------------------------------
@@ -322,6 +328,8 @@
 
   onMount(async () => {
     resetInspector();
+    const eng = await getEngine();
+    renderer = createPlyRenderer(eng, { sfxEnabled: false });
     if (match.pendingSnapshotJson) {
       const snap = match.pendingSnapshotJson;
       match.pendingSnapshotJson = null;
@@ -336,6 +344,8 @@
 
   onDestroy(() => {
     aiCancelRequested = true;
+    renderer?.dispose();
+    renderer = null;
   });
 
   // ---------------------------------------------------------------------------
@@ -344,7 +354,7 @@
   // ---------------------------------------------------------------------------
 
   async function applyActionToCurrent(raw: number): Promise<void> {
-    if (!tree || !currentNode) return;
+    if (!tree || !currentNode || !renderer) return;
     const existing = findChildByEdge(tree, currentNode.id, raw);
     if (existing !== null) {
       selectNode(tree, existing);
@@ -356,8 +366,12 @@
     approachContext = null;
     try {
       const eng = await getEngine();
-      const r = await eng.tryApply(raw);
-      if (r.appliedAction === 0) {
+      let rejected = false;
+      await renderer.applyAndRender(raw, async () => {
+        const r = await eng.tryApply(raw);
+        if (r.appliedAction === 0) rejected = true;
+      });
+      if (rejected) {
         status = "engine rejected action";
         return;
       }
@@ -368,7 +382,6 @@
       const la = await eng.legalActions();
       inspector.position = pv;
       inspector.legal = la;
-      refreshPieceIds(pv);
       lastSyncedNodeId = newId;
       status = "";
     } catch (e) {
@@ -483,7 +496,10 @@
       // shared TT means earlier plies are mostly TT hits on the next pass.
       let depth = 1;
       while (!aiCancelRequested && depth <= 64) {
-        const r = await eng.requestAiMoveAtDepth(depth);
+        const r = await runAiCall(
+          () => eng.requestAiMoveAtDepth(depth),
+          { cancelled: () => aiCancelRequested },
+        );
         if (!tree || tree.currentId !== nodeId) break;
         inspector.lastAiHint = {
           best: r.appliedAction >>> 0,
@@ -497,7 +513,10 @@
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
     } catch (e) {
-      status = `AI: ${(e as Error)?.message ?? String(e)}`;
+      // Cancellation is user-driven (stopAiSearch); don't surface it as an error.
+      if (!(e instanceof AiCallError && e.reason === "cancelled")) {
+        status = `AI: ${(e as Error)?.message ?? String(e)}`;
+      }
     } finally {
       aiBusy = false;
       aiContinuous = false;
@@ -525,13 +544,26 @@
 
   function handleMarkPoi(id: string): void {
     if (!tree) return;
-    const label = window.prompt("Label for this point of interest:", "");
-    if (label === null) return;
-    markPoi(tree, id, label);
+    poiDialogTargetId = id;
+    poiDialogOpen = true;
   }
   function handleUnmarkPoi(id: string): void {
     if (!tree) return;
     unmarkPoi(tree, id);
+  }
+  function handlePoiSave(label: string): void {
+    if (!tree || poiDialogTargetId === null) {
+      poiDialogOpen = false;
+      poiDialogTargetId = null;
+      return;
+    }
+    markPoi(tree, poiDialogTargetId, label);
+    poiDialogOpen = false;
+    poiDialogTargetId = null;
+  }
+  function handlePoiCancel(): void {
+    poiDialogOpen = false;
+    poiDialogTargetId = null;
   }
 
   // ---------------------------------------------------------------------------
@@ -733,7 +765,8 @@
         <div class="board-wrap">
           <Board
             position={inspector.position}
-            {pieceIds}
+            pieceIds={renderer?.pieceIds ?? new Map()}
+            shakingSquares={renderer?.shakingSquares ?? new Set()}
             interactive={!busy && !aiContinuous}
             {selection}
             moveTargets={moveTargets.squares}
@@ -743,6 +776,9 @@
             onSquareClick={(sq) => handleSquareClick(sq)}
             onApproachChoice={handleApproachChoice}
           />
+          {#if renderer}
+            <EffectsLayer viewBox={800} wheelPad={60} bind:queue={renderer.effectQueue} />
+          {/if}
         </div>
 
         {#if !inMovePhase}
@@ -809,6 +845,13 @@
     </section>
   {/if}
 </main>
+
+<PoiLabelDialog
+  open={poiDialogOpen}
+  initial=""
+  onSave={handlePoiSave}
+  onCancel={handlePoiCancel}
+/>
 
 <style>
   main { max-width: 1400px; margin: 0 auto; padding: 0.6rem 1rem 2rem; }
@@ -880,6 +923,7 @@
     border-radius: 8px;
     overflow: hidden;
     background: var(--paper-bg);
+    position: relative;
   }
   .picker {
     border: 1.5px solid var(--paper-line-strong);

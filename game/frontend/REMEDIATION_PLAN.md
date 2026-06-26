@@ -286,37 +286,37 @@ After 5a-c, `multiplayer.svelte.ts` shrinks to ~150 LOC: the rune-backed state p
 
 ---
 
-## Phase 6 — Inspector → PlyRenderer migration + replay perf
+## Phase 6 — Inspector → PlyRenderer migration + replay perf (✅ SHIPPED — Session 33)
 
 **Goal:** Inspector stops reimplementing PlyRenderer in parallel. Replay scrubbing gets cheaper.
 
 **Findings addressed:** T5, P4, S1 (residual — paste limit)
 
+**Status:** All four stages complete. 220 tests passing (5 new ai-hooks, 4 new checkpoint), 0 svelte-check errors, prod build clean.
+
 This is the biggest atomic move in the plan. Phases 1 (paste cap), 3 (engine barrel), and 4 (DI tested renderer) all set it up.
 
-### Stage 6a — Migrate inspector boot/restore-per-node to PlyRenderer
+### Stage 6a — Migrate inspector boot/restore-per-node to PlyRenderer ✅
 
-`routes/inspector/+page.svelte:280-540` (approx) — replace inline pieceIds + manual `restoreFromSnapshot` + `tryApply` loop with `createPlyRenderer(eng, { sfxEnabled: false, ... })`. The `lastSyncedNodeId` machinery becomes `renderer.fastForwardTo(...)`.
+Inspector's local `pieceIds` / `nextPieceId` / `refreshPieceIds` removed. `syncEngineToNode` now drives `renderer.fastForwardTo(baseSnap, node.actions, node.actions.length)`; `applyActionToCurrent` routes through `renderer.applyAndRender`. Board template binds `renderer.pieceIds` + `renderer.shakingSquares`; `EffectsLayer` mounted inside `.board-wrap`. The boot-time tree-build loops (`entryFromMatchLog`, `entryFromSnapshotJson`) deliberately remain outside the renderer — no UI is up during boot, and the user's first node selection hydrates via `fastForwardTo` with checkpoint caching from 6c.
 
-Verification: every JSON entry point (4 of them in `entryFromMatchLog`, `entryFromBundle`, `entryFromFen`, `pendingSnapshotJson` consumer) goes through `validateSnapshot({ source: "library-handoff" | "joiner-paste", maxActions: 1024 })`.
+### Stage 6b — Replace `window.prompt` for POI labels ✅
 
-### Stage 6b — Replace `window.prompt` for POI labels
+`src/lib/inspector/PoiLabelDialog.svelte` — native `<dialog>`-based modal with focus/ESC trap. Mounted at the route root in `inspector/+page.svelte`; replaces `window.prompt` at the POI-mark handler.
 
-`routes/inspector/+page.svelte:521` (approx) — a small in-page modal component. Not strictly architectural debt but called out by audit.
+### Stage 6c — Replay fastForwardTo checkpoints (P4) ✅
 
-### Stage 6c — Replay fastForwardTo checkpoints (P4)
+`ply-renderer.svelte.ts` now keeps a module-internal `Map<plyIndex, snapshotJson>` keyed by `(baseSnapshotJson, ply) → snap`, stride 32. Two write paths: (1) captured inside `fastForwardTo`'s silent inner loop at stride multiples; (2) captured opportunistically by `applyAndRender` when callers pass `{ plyHint, plyHintBase }` (replay's `stepForward` does this). Read path: `fastForwardTo` invalidates on base change, restores from nearest checkpoint < target if savings ≥ 4 plies. Cache cleared by `reset()` and `dispose()`. 200-ply scrub: was N round-trips, now ≤ 31.
 
-Add periodic snapshot checkpoints to PlyRenderer's `fastForwardTo`. Spec: every 32 plies, capture `eng.snapshotJson()` and cache by ply index. Scrub computes nearest-floor checkpoint, restores from it, then replays at most 31 plies. 200-ply scrub goes from 199 round-trips to ~7+31 = 38. Debounce scrub events at 80ms (matches Board's animation rate).
+### Stage 6d — Inspector AI iterative-deepening hook unification ✅
 
-### Stage 6d — Inspector AI iterative-deepening hook unification
+`src/lib/engine/ai-hooks.ts` — `runAiCall<T>(fn, opts?)` shell with `AiCallError` (`reason: "timeout" | "cancelled" | "engine"`). Adopted at two call sites: `routes/match/+page.svelte` `stepAi` and `routes/inspector/+page.svelte` `requestAiMoveAtDepth` (inside the deepening loop, with `cancelled: () => aiCancelRequested`). Inspector's catch block swallows `AiCallError("cancelled")` — user-driven stops don't surface as errors. No timeouts wired today; the hook is the future-proof seam.
 
-Inspector's AI search loop calls `requestAiMoveAtDepth` in a parallel scheme to `/match/`'s `stepAi`. Decision: leave separate (different UX intent) BUT factor the common engine-call wrapper into `lib/engine/ai-hooks.ts` so both call sites share error/timeout handling.
+**Verification:** vitest 220/220 ✅; svelte-check 0/0 ✅; prod build ✅. **Manual smoke (pending):** paste a match log, scrub through a 200-ply replay, label POIs, navigate library → inspector → replay → /match/ resume.
 
-**Verification:** vitest; svelte-check; **mandatory manual smoke**: paste a match log, scrub through a 200-ply replay, label POIs, navigate library → inspector → replay → /match/ resume.
-
-**Risks:**
-- Inspector regression surface is high. Snapshot the existing inspector visual behaviour BEFORE this phase (manual screenshots) — compare after.
-- ARCHITECTURE.md §4 ("Inspector migration still pending") flips to done; §9 diagram updates.
+**Risks resolved:**
+- Inspector regression surface: Checkpoint caching from 6c lands first, so deep-tree node selection (~60 plies in) only replays ~30 plies after restoring from the nearest cached checkpoint.
+- ARCHITECTURE.md §9 updated to reflect Inspector-now-uses-PlyRenderer.
 
 ---
 

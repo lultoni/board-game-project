@@ -173,23 +173,32 @@ function encodeEndPhase(): number {
 interface StubEngine extends EngineClient {
   setNextView(v: PositionView): void;
   setNextLegal(la: Uint32Array): void;
+  setNextSnapshotJson(json: string): void;
   positionViewCalls: number;
   legalCalls: number;
   tryApplyCalls: number[];
+  snapshotJsonCalls: number;
+  restoreFromSnapshotCalls: string[];
 }
 
 function makeStubEngine(initialView: PositionView): StubEngine {
   let view = initialView;
   let legal: Uint32Array<ArrayBuffer> = new Uint32Array(new ArrayBuffer(0));
+  let nextSnapshotJson = "{}";
   const stub = {
     positionViewCalls: 0,
     legalCalls: 0,
     tryApplyCalls: [] as number[],
+    snapshotJsonCalls: 0,
+    restoreFromSnapshotCalls: [] as string[],
     setNextView(v: PositionView) {
       view = v;
     },
     setNextLegal(la: Uint32Array) {
       legal = la as Uint32Array<ArrayBuffer>;
+    },
+    setNextSnapshotJson(json: string) {
+      nextSnapshotJson = json;
     },
     async version() {
       return "stub";
@@ -225,9 +234,12 @@ function makeStubEngine(initialView: PositionView): StubEngine {
       return "";
     },
     async snapshotJson() {
-      return "{}";
+      this.snapshotJsonCalls++;
+      return nextSnapshotJson;
     },
-    async restoreFromSnapshot() {},
+    async restoreFromSnapshot(json: string) {
+      this.restoreFromSnapshotCalls.push(json);
+    },
     async matchLogJson() {
       return null;
     },
@@ -501,5 +513,118 @@ describe("createPlyRenderer", () => {
     renderer.dispose();
     expect(scheduler.pendingCount()).toBe(0);
     expect(renderer.effectQueue.length).toBe(0);
+  });
+
+  // === Checkpoint behaviour (Stage 6c) =====================================
+  //
+  // fastForwardTo captures a snapshot every CHECKPOINT_STRIDE plies (=32)
+  // during its silent inner loop, then on the next call near the same
+  // play-line it restores from the nearest checkpoint and skips ahead.
+  // applyAndRender also captures opportunistically when the caller passes
+  // `plyHint` + `plyHintBase` (replay's forward-play path).
+
+  it("checkpoint cache: second fast-forward through 64 plies caps tryApply at ≤31", async () => {
+    // Build 64 dummy plies (raw values don't matter — the stub's tryApply
+    // doesn't validate). The renderer never inspects the action payload
+    // during the silent inner loop; it only feeds them to eng.tryApply.
+    const plies = Array.from({ length: 64 }, (_, i) => encodeMove({ src: 0, target: (i + 1) & 0x3f }));
+    const baseSnap = '{"snapshot":"base"}';
+    eng.setNextSnapshotJson('{"snapshot":"checkpoint"}');
+
+    // First fast-forward seeds the checkpoint at ply 32 during the silent loop.
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+    }));
+    await renderer.fastForwardTo(baseSnap, plies, 64);
+    expect(eng.tryApplyCalls.length).toBe(64);
+    expect(eng.snapshotJsonCalls).toBeGreaterThanOrEqual(1);
+
+    // Reset call counters and run the second fast-forward to ply 63.
+    eng.tryApplyCalls.length = 0;
+    eng.restoreFromSnapshotCalls.length = 0;
+
+    await renderer.fastForwardTo(baseSnap, plies, 63);
+
+    // The checkpoint at ply 32 should have been used: restore from there,
+    // then replay plies 32..61 silently (30 calls) + render plies[62] (1 call).
+    expect(eng.tryApplyCalls.length).toBeLessThanOrEqual(31);
+    // It restored from the checkpoint snapshot, not from baseSnap.
+    expect(eng.restoreFromSnapshotCalls).toContain('{"snapshot":"checkpoint"}');
+  });
+
+  it("checkpoint cache: invalidated when baseSnapshotJson changes", async () => {
+    const plies = Array.from({ length: 64 }, (_, i) => encodeMove({ src: 0, target: (i + 1) & 0x3f }));
+    eng.setNextSnapshotJson('{"snapshot":"checkpoint-A"}');
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+    }));
+    await renderer.fastForwardTo('{"snapshot":"base-A"}', plies, 64);
+    // At least one checkpoint captured during the silent loop.
+    expect(eng.snapshotJsonCalls).toBeGreaterThanOrEqual(1);
+
+    eng.tryApplyCalls.length = 0;
+    eng.restoreFromSnapshotCalls.length = 0;
+
+    // Different base — cache must be cleared. With no live checkpoints we
+    // should pay the full silent loop (63 silent + 1 landing = 64 tryApply).
+    await renderer.fastForwardTo('{"snapshot":"base-B"}', plies, 64);
+    expect(eng.tryApplyCalls.length).toBe(64);
+    expect(eng.restoreFromSnapshotCalls[0]).toBe('{"snapshot":"base-B"}');
+  });
+
+  it("reset() clears the checkpoint cache", async () => {
+    const plies = Array.from({ length: 64 }, (_, i) => encodeMove({ src: 0, target: (i + 1) & 0x3f }));
+    const baseSnap = '{"snapshot":"base"}';
+    eng.setNextSnapshotJson('{"snapshot":"checkpoint"}');
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+    }));
+    await renderer.fastForwardTo(baseSnap, plies, 64);
+
+    renderer.reset();
+
+    eng.tryApplyCalls.length = 0;
+    eng.restoreFromSnapshotCalls.length = 0;
+
+    // After reset the checkpoint at ply 32 should be gone — full silent loop again.
+    await renderer.fastForwardTo(baseSnap, plies, 64);
+    expect(eng.tryApplyCalls.length).toBe(64);
+    expect(eng.restoreFromSnapshotCalls[0]).toBe(baseSnap);
+  });
+
+  it("applyAndRender(plyHint) captures a checkpoint at stride multiples", async () => {
+    // Drive 32 plies through applyAndRender with plyHint, simulating replay's
+    // forward-play path. The 32nd call (plyHint=31, checkpoint key = 32)
+    // should trigger a snapshot capture; earlier calls should not.
+    const baseSnap = '{"snapshot":"replay-base"}';
+    eng.setNextSnapshotJson('{"snapshot":"captured-at-32"}');
+
+    for (let i = 0; i < 32; i++) {
+      const raw = encodeMove({ src: 0, target: 8 });
+      eng.setNextView(makePositionView({
+        8: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+        16: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+      }));
+      await renderer.applyAndRender(
+        raw,
+        async () => { await eng.tryApply(raw); },
+        { plyHint: i, plyHintBase: baseSnap },
+      );
+    }
+
+    // Exactly one snapshot capture (at plyHint=31 → key=32).
+    expect(eng.snapshotJsonCalls).toBe(1);
+
+    // Verify the checkpoint is usable by a subsequent fastForwardTo: a scrub
+    // to ply 36 should restore from the captured snapshot, not from baseSnap.
+    eng.restoreFromSnapshotCalls.length = 0;
+    eng.tryApplyCalls.length = 0;
+    const plies = Array.from({ length: 36 }, () => encodeMove({ src: 0, target: 8 }));
+
+    await renderer.fastForwardTo(baseSnap, plies, 36);
+
+    expect(eng.restoreFromSnapshotCalls).toContain('{"snapshot":"captured-at-32"}');
+    // Saved plies: restored at 32, so plies 32..34 silent (3) + plies[35] landing (1) = 4 tryApply.
+    expect(eng.tryApplyCalls.length).toBeLessThanOrEqual(4);
   });
 });

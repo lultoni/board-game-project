@@ -96,7 +96,7 @@ library/+page.svelte ──setPendingMatchLog──▶ sessionStorage
                   eng.restoreFromSnapshot() + tryApply loop
 ```
 
-Replay drives the apply loop through `PlyRenderer` (so skill effects + slide animations work the same way they do in /match/). Inspector still drives its own; migration pending.
+Replay drives the apply loop through `PlyRenderer` (so skill effects + slide animations work the same way they do in /match/). Inspector also drives through `PlyRenderer` (Phase 6 — Session 33): node selection uses `renderer.fastForwardTo(baseSnap, node.actions, node.actions.length)` so piece identity is preserved across sibling navigation and effects animate on the landing ply. The renderer is constructed with `sfxEnabled: false`. Replay's `fastForwardTo` also seeds and consults a checkpoint cache (every 32 plies) — re-scrubs near a previously-visited region pay ≤ 31 round-trips instead of N.
 
 ---
 

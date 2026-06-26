@@ -114,9 +114,14 @@
     busy = true;
     try {
       const raw = plies[currentPly];
-      await renderer.applyAndRender(raw, async () => {
-        await eng!.tryApply(raw);
-      });
+      const base = baseSnapshotJson;
+      await renderer.applyAndRender(
+        raw,
+        async () => {
+          await eng!.tryApply(raw);
+        },
+        base !== null ? { plyHint: currentPly, plyHintBase: base } : undefined,
+      );
       currentPly++;
       if (currentPly >= plies.length) playing = false;
     } finally {
