@@ -5,7 +5,7 @@
 // Selection (`currentId`) drives what the board renders; engine state is
 // resynced by replaying the selected node's snapshot.
 
-import type { PositionView } from "../engine/types";
+import type { PositionView } from "../engine";
 
 export interface InspectorNode {
   id: string;

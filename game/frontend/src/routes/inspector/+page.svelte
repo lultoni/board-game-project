@@ -2,18 +2,20 @@
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import Board from "$lib/board/Board.svelte";
-  import { getEngine } from "$lib/engine";
-  import { buildEngineConfigJson } from "$lib/engine/config";
   import {
+    getEngine,
     SNAPSHOT_BUDGETS,
     SnapshotValidationError,
     validateMatchLog,
     validateSnapshot,
-  } from "$lib/engine/snapshot-validator";
-  import { decodeAction, ActionKind } from "$lib/engine/action";
-  import { formatAction, formatSquare } from "$lib/engine/action-label";
-  import { readPieces } from "$lib/engine/mailbox";
-  import type { PositionView } from "$lib/engine/types";
+    decodeAction,
+    ActionKind,
+    formatAction,
+    formatSquare,
+    readPieces,
+    type PositionView,
+  } from "$lib/engine";
+  import { buildEngineConfigJson } from "$lib/state/match-store.svelte";
   import { match } from "$lib/state/match-store.svelte";
   import {
     moveTargetsFor,

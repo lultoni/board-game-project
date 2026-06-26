@@ -7,15 +7,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
-  startTelemetrySession,
-  recordPly,
-  finalizeTelemetrySession,
-  abandonTelemetrySession,
-  networkLostTelemetrySession,
+  createTelemetrySession,
   extractPlyNo,
   type TelemetryCarrier,
+  type TelemetrySession,
 } from "./telemetry-session";
-import type { EngineClient } from "../engine/types";
+import type { EngineClient } from "../engine";
 import { _setTelemetryStoreForTest, getTelemetryStore } from "../storage";
 import { IdbTelemetryStore } from "../storage/idb-backend";
 
@@ -58,11 +55,13 @@ function newCarrier(): TelemetryCarrier {
 
 describe("telemetry-session helpers", () => {
   let store: IdbTelemetryStore;
+  let session: TelemetrySession;
 
   beforeEach(async () => {
     await resetIdb();
     store = new IdbTelemetryStore();
     _setTelemetryStoreForTest(store);
+    session = createTelemetrySession();
   });
 
   afterEach(async () => {
@@ -73,22 +72,22 @@ describe("telemetry-session helpers", () => {
 
   it("startTelemetrySession assigns a matchId for logged modes", async () => {
     const carrier = newCarrier();
-    const id = await startTelemetrySession(carrier, "hvai");
+    const id = await session.startTelemetrySession(carrier, "hvai");
     expect(id).not.toBeNull();
     expect(carrier.telemetryMatchId).toBe(id);
   });
 
   it("startTelemetrySession is a no-op for sandbox/replay/idle", async () => {
     const carrier = newCarrier();
-    expect(await startTelemetrySession(carrier, "sandbox")).toBeNull();
-    expect(await startTelemetrySession(carrier, "replay")).toBeNull();
-    expect(await startTelemetrySession(carrier, "idle")).toBeNull();
+    expect(await session.startTelemetrySession(carrier, "sandbox")).toBeNull();
+    expect(await session.startTelemetrySession(carrier, "replay")).toBeNull();
+    expect(await session.startTelemetrySession(carrier, "idle")).toBeNull();
     expect(carrier.telemetryMatchId).toBeNull();
   });
 
   it("startTelemetrySession skips multiplayer joiner role (authoritative-host model)", async () => {
     const carrier = newCarrier();
-    const id = await startTelemetrySession(carrier, "multiplayer", {
+    const id = await session.startTelemetrySession(carrier, "multiplayer", {
       multiplayerCode: "281947",
       multiplayerRole: "joiner",
     });
@@ -100,11 +99,11 @@ describe("telemetry-session helpers", () => {
     const carrier = newCarrier();
     const state: StubState = { plies: [], finaliseCalled: 0 };
     const eng = stubEngine(state);
-    const id = (await startTelemetrySession(carrier, "hvh"))!;
+    const id = (await session.startTelemetrySession(carrier, "hvh"))!;
     state.plies.push(JSON.stringify({ ply_no: 1, foo: "a" }));
-    await recordPly(carrier, eng);
+    await session.recordPly(carrier, eng);
     state.plies.push(JSON.stringify({ ply_no: 2, foo: "b" }));
-    await recordPly(carrier, eng);
+    await session.recordPly(carrier, eng);
     const plies = await getTelemetryStore().getPlies(id);
     expect(plies.map((p) => p.plyNo)).toEqual([1, 2]);
     expect(JSON.parse(plies[0].plyJson).foo).toBe("a");
@@ -114,7 +113,7 @@ describe("telemetry-session helpers", () => {
     const carrier = newCarrier();
     const state: StubState = { plies: [JSON.stringify({ ply_no: 1 })], finaliseCalled: 0 };
     const eng = stubEngine(state);
-    await recordPly(carrier, eng);
+    await session.recordPly(carrier, eng);
     expect(carrier.telemetryMatchId).toBeNull();
   });
 
@@ -122,12 +121,12 @@ describe("telemetry-session helpers", () => {
     const carrier = newCarrier();
     const state: StubState = { plies: [], finaliseCalled: 0 };
     const eng = stubEngine(state);
-    const id = (await startTelemetrySession(carrier, "hvai"))!;
+    const id = (await session.startTelemetrySession(carrier, "hvai"))!;
     state.plies.push(JSON.stringify({ ply_no: 1 }));
     state.plies.push(JSON.stringify({ ply_no: 2 }));
-    await recordPly(carrier, eng);
-    await recordPly(carrier, eng);
-    await finalizeTelemetrySession(carrier, eng, "checkmate", 0);
+    await session.recordPly(carrier, eng);
+    await session.recordPly(carrier, eng);
+    await session.finalizeTelemetrySession(carrier, eng, "checkmate", 0);
     expect(carrier.telemetryMatchId).toBeNull();
     const finalised = await getTelemetryStore().getMatch(id);
     expect(finalised).not.toBeNull();
@@ -139,8 +138,8 @@ describe("telemetry-session helpers", () => {
 
   it("abandonTelemetrySession marks the session abandoned and clears the id", async () => {
     const carrier = newCarrier();
-    const id = (await startTelemetrySession(carrier, "hvh"))!;
-    await abandonTelemetrySession(carrier);
+    const id = (await session.startTelemetrySession(carrier, "hvh"))!;
+    await session.abandonTelemetrySession(carrier);
     expect(carrier.telemetryMatchId).toBeNull();
     const meta = await getTelemetryStore().getMatchMeta(id);
     expect(meta!.status).toBe("abandoned");
@@ -150,12 +149,12 @@ describe("telemetry-session helpers", () => {
     const carrier = newCarrier();
     const state: StubState = { plies: [], finaliseCalled: 0 };
     const eng = stubEngine(state);
-    const id = (await startTelemetrySession(carrier, "aivai"))!;
+    const id = (await session.startTelemetrySession(carrier, "aivai"))!;
     state.plies.push(JSON.stringify({ ply_no: 1 }));
     state.plies.push(JSON.stringify({ ply_no: 2 }));
-    await recordPly(carrier, eng);
-    await recordPly(carrier, eng);
-    await abandonTelemetrySession(carrier, eng);
+    await session.recordPly(carrier, eng);
+    await session.recordPly(carrier, eng);
+    await session.abandonTelemetrySession(carrier, eng);
 
     // Status is abandoned but the partial log is recoverable so the
     // library can hand it to the inspector / export.
@@ -172,13 +171,13 @@ describe("telemetry-session helpers", () => {
     const carrier = newCarrier();
     const state: StubState = { plies: [], finaliseCalled: 0 };
     const eng = stubEngine(state);
-    const id = (await startTelemetrySession(carrier, "multiplayer", {
+    const id = (await session.startTelemetrySession(carrier, "multiplayer", {
       multiplayerCode: "281947",
       multiplayerRole: "host",
     }))!;
     state.plies.push(JSON.stringify({ ply_no: 1 }));
-    await recordPly(carrier, eng);
-    await networkLostTelemetrySession(carrier, eng);
+    await session.recordPly(carrier, eng);
+    await session.networkLostTelemetrySession(carrier, eng);
     expect(carrier.telemetryMatchId).toBeNull();
 
     const meta = await getTelemetryStore().getMatchMeta(id);
@@ -194,5 +193,40 @@ describe("telemetry-session helpers", () => {
     expect(extractPlyNo(JSON.stringify({ ply_no: 1, foo: "a" }))).toBe(1);
     expect(extractPlyNo(JSON.stringify({ foo: "x", ply_no: 7, bar: "y" }))).toBe(7);
     expect(extractPlyNo("not json")).toBeNull();
+  });
+
+  it("disabled-for-session latch is per-instance — second factory call ignores the first's failures", async () => {
+    // Simulate startMatch failing on instance A by swapping the store with
+    // one that rejects. The disabled latch on A flips. Instance B, created
+    // afterwards, must NOT see the latch — it should still attempt the write.
+    const failingStore: Partial<IdbTelemetryStore> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      startMatch: () => Promise.reject(new Error("boom")) as any,
+    };
+    _setTelemetryStoreForTest(failingStore as IdbTelemetryStore);
+
+    const a = createTelemetrySession();
+    const carrierA = newCarrier();
+    expect(await a.startTelemetrySession(carrierA, "hvai")).toBeNull();
+    // Latch on A is now hot — any subsequent recordPly/etc. would be no-op
+    // even if we restored a working store. Confirm by restoring the working
+    // store and verifying B (new instance) succeeds while A stays muted.
+    _setTelemetryStoreForTest(store);
+
+    const b = createTelemetrySession();
+    const carrierB = newCarrier();
+    const idB = await b.startTelemetrySession(carrierB, "hvai");
+    expect(idB).not.toBeNull();
+    expect(carrierB.telemetryMatchId).toBe(idB);
+
+    // A is still disabled — startTelemetrySession would clear the latch, but
+    // we only call recordPly here to prove the latch was set, not that it
+    // can never be cleared.
+    const eng = stubEngine({ plies: [JSON.stringify({ ply_no: 1 })], finaliseCalled: 0 });
+    carrierA.telemetryMatchId = "fake-id-that-would-trigger-write-if-not-disabled";
+    await a.recordPly(carrierA, eng);
+    // No plies written under that fake id (the latch short-circuited).
+    const pliesA = await getTelemetryStore().getPlies("fake-id-that-would-trigger-write-if-not-disabled");
+    expect(pliesA).toEqual([]);
   });
 });

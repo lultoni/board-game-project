@@ -8,7 +8,18 @@
 // consolidated MatchLog is written to the `matches` store with end-of-match
 // metadata. Per-ply records are kept for replay / inspector use.
 
-import type { MatchMode } from "../state/match-store.svelte";
+/** The shape of a match's run-time mode. Lives here (not in state/) so the
+ *  storage layer doesn't import upward into the rune store — the engine and
+ *  storage layers are leaves with respect to state. `state/match-store`
+ *  re-exports this so route code can keep its existing import path. */
+export type MatchMode =
+  | "idle"
+  | "hvh"
+  | "hvai"
+  | "aivai"
+  | "replay"
+  | "sandbox"
+  | "multiplayer";
 
 /** End-of-match reason. Authoritative on finalised matches. */
 export type EndReason =

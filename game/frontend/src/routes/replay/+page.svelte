@@ -2,15 +2,17 @@
   import { onMount } from "svelte";
   import { t } from "$lib/state/i18n";
   import { settings } from "$lib/state/settings.svelte";
-  import { getEngine } from "$lib/engine";
-  import type { EngineClient } from "$lib/engine/types";
-  import { decodeAction, isBodyguardChoice, isDraftTurn } from "$lib/engine/action";
-  import { formatAction } from "$lib/engine/action-label";
   import {
+    getEngine,
+    decodeAction,
+    isBodyguardChoice,
+    isDraftTurn,
+    formatAction,
     SNAPSHOT_BUDGETS,
     SnapshotValidationError,
     validateMatchLog,
-  } from "$lib/engine/snapshot-validator";
+    type EngineClient,
+  } from "$lib/engine";
   import { consumePendingMatchLog } from "$lib/storage/library-handoff";
   import { snapshotJsonFromMatchLog } from "$lib/multiplayer-resume";
   import Board from "$lib/board/Board.svelte";

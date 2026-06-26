@@ -18,9 +18,13 @@
 //
 // Adding a new effect (sound or visual) is a one-place edit: this file.
 
-import type { EngineClient, PositionView } from "$lib/engine/types";
-import { ActionKind, decodeAction } from "$lib/engine/action";
-import { decodeMailbox } from "$lib/engine/mailbox";
+import {
+  ActionKind,
+  decodeAction,
+  decodeMailbox,
+  type EngineClient,
+  type PositionView,
+} from "$lib/engine";
 import type { Effect } from "$lib/viz/effects";
 import { sfx } from "$lib/audio/sfx";
 

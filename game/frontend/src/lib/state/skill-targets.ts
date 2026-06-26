@@ -3,7 +3,7 @@
 // modifier_bits) combo; here we surface the *target tiles* a player would
 // see when hovering or arming a skill.
 
-import { ActionKind, decodeAction } from "$lib/engine/action";
+import { ActionKind, decodeAction } from "$lib/engine";
 
 export interface SkillVariant {
   raw: number;

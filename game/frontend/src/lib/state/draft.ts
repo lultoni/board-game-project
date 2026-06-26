@@ -7,9 +7,12 @@
 // squares, a `squareName` helper, the pre-made loadout catalogue, and the
 // designer-readiness check for the /setup/ picker.
 
-import { SKILLS, SKILL_COUNT } from "$lib/engine/skills";
-import type { Owner } from "$lib/engine/mailbox";
-import type { SideLoadout } from "$lib/engine/types";
+import {
+  SKILLS,
+  SKILL_COUNT,
+  type Owner,
+  type SideLoadout,
+} from "$lib/engine";
 import type { PreMadeLoadoutId } from "$lib/state/match-store.svelte";
 
 /** Two skill IDs (1..15). 0 = empty slot. */

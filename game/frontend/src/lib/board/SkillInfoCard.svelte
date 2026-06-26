@@ -5,7 +5,7 @@
   // and whether they're currently staged. For the End-Phase slice we show
   // a short explanation.
 
-  import { SKILLS, CATEGORY_COLOR, type SkillCategory } from "$lib/engine/skills";
+  import { SKILLS, CATEGORY_COLOR, type SkillCategory } from "$lib/engine";
   import { t } from "$lib/state/i18n";
   import type { SliceKind } from "$lib/board/SkillWheel.svelte";
 

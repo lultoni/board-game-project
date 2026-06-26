@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { BoardPiece } from "$lib/engine/mailbox";
-  import { SKILLS, skillColor } from "$lib/engine/skills";
+  import { SKILLS, skillColor, type BoardPiece } from "$lib/engine";
 
   interface Props {
     piece: BoardPiece;

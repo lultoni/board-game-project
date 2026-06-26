@@ -1,19 +1,26 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { getEngine, ActionKind, decodeAction, encodeBodyguardChoice } from "$lib/engine";
-  import { decodeMailbox } from "$lib/engine/mailbox";
-  import { buildEngineConfigJson } from "$lib/engine/config";
   import {
+    getEngine,
+    ActionKind,
+    decodeAction,
+    encodeBodyguardChoice,
+    decodeMailbox,
     SNAPSHOT_BUDGETS,
     SnapshotValidationError,
     validateSnapshot,
-  } from "$lib/engine/snapshot-validator";
+    isSelfCast,
+    SKILLS,
+    MODIFIER_FOCUS,
+    MODIFIER_CHARGE,
+  } from "$lib/engine";
   import { PRE_MADE_LOADOUTS } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
   import {
     match,
     modeFromSeats,
     resetMatchState,
+    buildEngineConfigJson,
     startTelemetrySession,
     recordPly,
     finalizeTelemetrySession,
@@ -31,12 +38,6 @@
     approachChoicesFor,
   } from "$lib/state/move-targets";
   import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, hasSelfAndRetargetChoice, variantIsSelfCast, allyMoverCandidates, allyMoverDestinations, rawForAllyMove, type SkillVariant } from "$lib/state/skill-targets";
-  import {
-    isSelfCast,
-    SKILLS,
-    MODIFIER_FOCUS,
-    MODIFIER_CHARGE,
-  } from "$lib/engine/skills";
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";

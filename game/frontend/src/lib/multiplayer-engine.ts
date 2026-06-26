@@ -19,12 +19,12 @@
 // reactive match carrier) so the test file can drive the wrapper with fakes
 // and the runtime file can wire it to the real PeerJS/WASM/IDB.
 
-import type { EngineClient } from "./engine/types";
 import {
   SNAPSHOT_BUDGETS,
   SnapshotValidationError,
   validateSnapshot,
-} from "./engine/snapshot-validator";
+  type EngineClient,
+} from "./engine";
 import {
   encodeMessageV2,
   newIntentNonce,

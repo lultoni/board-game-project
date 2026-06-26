@@ -3,12 +3,33 @@
 
 import type { EngineClient } from "./types";
 
-export type { EngineClient, PositionView, StepResult, FinalResultByte } from "./types";
+export type {
+  EngineClient,
+  PositionView,
+  PendingBodyguardView,
+  StepResult,
+  FinalResultByte,
+  DraftStateView,
+  SideLoadout,
+} from "./types";
 export { ActionKind, decodeAction, actionKindName, encodeDraftTurn, decodeDraftTurn, isDraftTurn, DRAFT_TURN_TAG, ACTION_BG_CHOICE_TAG, MAX_BODYGUARD_ELIGIBLE, isBodyguardChoice, bgGuardIdx, encodeBodyguardChoice } from "./action";
 export type { ActionDecoded, ActionKindValue, DraftTurnDecoded } from "./action";
 export { decodeMailbox, readPieces, squareToFileRank, bitsOf, bitboardHas } from "./mailbox";
 export type { MailboxEntry, BoardPiece, PieceKind, Owner } from "./mailbox";
 export * from "./skills";
+export { formatAction, formatSquare } from "./action-label";
+export {
+  validateSnapshot,
+  validateMatchLog,
+  SnapshotValidationError,
+  SNAPSHOT_BUDGETS,
+} from "./snapshot-validator";
+export type {
+  SnapshotSource,
+  SnapshotValidationReason,
+  SnapshotValidationOpts,
+  ValidatedSnapshot,
+} from "./snapshot-validator";
 
 let cached: EngineClient | null = null;
 

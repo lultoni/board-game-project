@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatAction } from "$lib/engine/action-label";
+  import { formatAction } from "$lib/engine";
   import type { InspectorNode } from "$lib/state/inspector-store.svelte";
 
   interface Props {

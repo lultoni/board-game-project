@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { takeoverAsHost, type HandoffCarrier } from "./multiplayer-handoff";
 import type { MpEngineHandle } from "./multiplayer-engine";
-import type { EngineClient } from "./engine/types";
+import type { EngineClient } from "./engine";
 
 // --- Stubs -----------------------------------------------------------------
 

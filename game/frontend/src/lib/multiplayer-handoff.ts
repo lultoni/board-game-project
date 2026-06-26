@@ -34,10 +34,10 @@
 // `multiplayerRole === "host"` skip in startTelemetrySession) or navigate
 // to the lobby and start a fresh session.
 
-import type { EngineClient } from "./engine/types";
+import type { EngineClient } from "./engine";
 import type { MpEngineHandle } from "./multiplayer-engine";
 import type { MatchMode } from "./state/match-store.svelte";
-import type { startTelemetrySession as StartTelemetrySession } from "./state/telemetry-session";
+import type { TelemetrySession } from "./state/telemetry-session";
 
 /** Minimal subset of the reactive match carrier the orchestrator mutates.
  *  Receives the live $state in the runtime; tests pass a plain object. */
@@ -69,7 +69,7 @@ export type TakeoverResult =
 export interface TakeoverHooks {
   destroyPeerKeepState?: () => void;
   hostWithCode?: (code: string) => Promise<string>;
-  startTelemetrySession?: typeof StartTelemetrySession;
+  startTelemetrySession?: TelemetrySession["startTelemetrySession"];
   checkpointMatchLog?: (matchId: string, logJson: string) => Promise<void>;
   /** Carrier override — runtime passes the live $state, tests pass a stub. */
   carrier?: HandoffCarrier;
@@ -87,7 +87,7 @@ export async function takeoverAsHost(
   const hostWithCode = hooks.hostWithCode
     ?? (await import("./multiplayer.svelte")).hostWithCode;
   const startTelemetry = hooks.startTelemetrySession
-    ?? (await import("./state/telemetry-session")).startTelemetrySession;
+    ?? (await import("./state/match-store.svelte"))._telemetrySession.startTelemetrySession;
   const checkpoint = hooks.checkpointMatchLog
     ?? (async (id: string, log: string): Promise<void> => {
       const { getTelemetryStore } = await import("./storage");

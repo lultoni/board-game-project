@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { PositionView } from "$lib/engine/types";
-  import { readPieces } from "$lib/engine/mailbox";
+  import { readPieces, type PositionView } from "$lib/engine";
   import Piece from "./Piece.svelte";
   import SkillWheel, { type SliceKind } from "./SkillWheel.svelte";
   import DirectionPicker from "./DirectionPicker.svelte";

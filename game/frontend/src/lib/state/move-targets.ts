@@ -1,7 +1,7 @@
 // Pure helpers over the engine's legal-actions buffer. Kept out of components
 // so derivations stay testable and component code is layout-only.
 
-import { ActionKind, decodeAction, type ActionKindValue } from "$lib/engine/action";
+import { ActionKind, decodeAction, type ActionKindValue } from "$lib/engine";
 
 /** Bodyguard redirect variants for a single (src, target, approach) triple.
  *

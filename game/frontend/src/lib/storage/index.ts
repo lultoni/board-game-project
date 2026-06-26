@@ -32,6 +32,7 @@ export {
   type JoinedCodeEntry,
   type MatchFilter,
   type MatchMeta,
+  type MatchMode,
   type MatchStatus,
   type PlyEntry,
   newMatchId,

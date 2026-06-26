@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMpEngine, type MpEngineHandle } from "./multiplayer-engine";
 import type { WireMessageV2, WirePhase } from "./multiplayer-protocol-v2";
-import type { EngineClient, PositionView, StepResult } from "./engine/types";
+import type { EngineClient, PositionView, StepResult } from "./engine";
 
 // ---------- Fake engine ----------------------------------------------------
 //

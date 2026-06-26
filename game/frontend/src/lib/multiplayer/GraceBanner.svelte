@@ -15,7 +15,7 @@
   import { takeoverAsHost } from "$lib/multiplayer-handoff";
   import { t } from "$lib/state/i18n";
   import { match, claimWinByOpponentForfeit } from "$lib/state/match-store.svelte";
-  import type { EngineClient } from "$lib/engine/types";
+  import type { EngineClient } from "$lib/engine";
   import type { MpEngineHandle } from "$lib/multiplayer-engine";
 
   // Engine handle passed from /match/ so we can finalise on claim. Kept

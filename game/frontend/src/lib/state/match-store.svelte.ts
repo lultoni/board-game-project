@@ -2,13 +2,20 @@
 // engine bridge. This slice creates the skeleton; later slices fill in
 // selection/legal/effects.
 
-import type { PositionView } from "../engine/types";
-import type { EngineClient } from "../engine/types";
-import type { EndReason } from "../storage";
-import * as telemetry from "./telemetry-session";
+import type { PositionView } from "../engine";
+import type { EngineClient } from "../engine";
+import type { EndReason, MatchMode } from "../storage";
+import { buildEngineConfigJson as buildEngineConfigJsonPure, type SeatTag } from "../engine/config";
+import { settings } from "./settings.svelte";
+import { createTelemetrySession } from "./telemetry-session";
+
+const telemetry = createTelemetrySession();
 
 export type SeatKind = "human" | "ai";
-export type MatchMode = "idle" | "hvh" | "hvai" | "aivai" | "replay" | "sandbox" | "multiplayer";
+/** Re-exported from `storage/types` so route code can keep importing it from
+ *  this module. The canonical home is `storage/types.ts` — the engine and
+ *  storage layers must not import from state. */
+export type { MatchMode } from "../storage";
 /** L8 — which draft flow the user picked at /setup/. `custom` runs the
  *  full /draft/ route (12 alternating picks). `preMade` skips the draft and
  *  /match/ opens with both sides preloaded from a curated `SideLoadout`. */
@@ -118,9 +125,33 @@ export function modeFromSeats(side: { p1: SeatKind; p2: SeatKind }): MatchMode {
   return "hvai";
 }
 
+function seatTag(s: SeatKind): SeatTag {
+  return s === "ai" ? "Ai" : "Human";
+}
+
+/** State-aware wrapper around the pure `engine/config.ts` builder. Pulls AI
+ *  budgets and AIvAI delay from `settings` so callers don't have to thread
+ *  six fields through every site. The pure builder is the one that goes to
+ *  the engine — this is just the adapter that reads runes. */
+export function buildEngineConfigJson(side: { p1: SeatKind; p2: SeatKind }): string {
+  return buildEngineConfigJsonPure({
+    p1: seatTag(side.p1),
+    p2: seatTag(side.p2),
+    p1Ai: { timeLimitMs: settings.p1ThinkTimeMs, maxDepth: settings.p1MaxDepth },
+    p2Ai: { timeLimitMs: settings.p2ThinkTimeMs, maxDepth: settings.p2MaxDepth },
+    aivaiStepDelayMs: settings.aivaiStepDelayMs,
+  });
+}
+
 // === Telemetry session lifecycle (bound to `match`) ========================
 // Routes call these without passing the carrier. The pure helpers live in
 // telemetry-session.ts and are tested there.
+
+/** Internal handle on the app-wide telemetry session instance. Exposed for
+ *  cross-module wiring that needs the carrier-ful API (e.g. the multiplayer
+ *  handoff orchestrator, which passes a stub carrier in tests). Routes should
+ *  use the carrier-less wrappers below instead. */
+export const _telemetrySession = telemetry;
 
 export function startTelemetrySession(
   mode: MatchMode,

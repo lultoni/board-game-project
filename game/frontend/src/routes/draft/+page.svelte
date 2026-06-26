@@ -1,10 +1,19 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
-  import { getEngine, encodeDraftTurn } from "$lib/engine";
-  import { buildEngineConfigJson } from "$lib/engine/config";
-  import { decodeMailbox } from "$lib/engine/mailbox";
-  import { SKILLS, SKILL_COUNT, CATEGORY_COLOR, skillColor } from "$lib/engine/skills";
+  import {
+    getEngine,
+    encodeDraftTurn,
+    decodeMailbox,
+    SKILLS,
+    SKILL_COUNT,
+    CATEGORY_COLOR,
+    skillColor,
+    type DraftStateView,
+    type PositionView,
+    type EngineClient,
+  } from "$lib/engine";
+  import { buildEngineConfigJson } from "$lib/state/match-store.svelte";
   import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
   import { t } from "$lib/state/i18n";
   import {
@@ -43,7 +52,6 @@
     STACK_M_LOADOUT_SQUARES,
   } from "$lib/state/draft";
   import { settings } from "$lib/state/settings.svelte";
-  import type { DraftStateView, PositionView, EngineClient } from "$lib/engine/types";
 
   // === Boot / engine handle ==================================================
 

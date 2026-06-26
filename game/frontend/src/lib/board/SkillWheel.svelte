@@ -22,7 +22,7 @@
   // All coordinates are in piece-local space (0..size on each axis). The
   // parent translates by the piece's (x, y) so the wheel sits centred on it.
 
-  import { skillColor, SKILLS } from "$lib/engine/skills";
+  import { skillColor, SKILLS } from "$lib/engine";
 
   export type SliceKind =
     | { kind: "skill"; skillId: number; slot: 1 | 2 }
