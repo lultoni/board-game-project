@@ -90,18 +90,34 @@ function normaliseStepResult(dto: StepResultDto): StepResult {
 export class TauriClient implements EngineClient {
   #handle = 0;
 
+  // Replace the active engine handle, dropping any prior one. Every
+  // `createEngine*` / `restoreFromSnapshot` call routes through this so
+  // re-entering a route (e.g. /draft/ → /match/ → back to /setup/ → /draft/)
+  // doesn't leak Rust-side `Match` records into the `EngineRegistry`. The
+  // WASM client doesn't need this — its worker holds a single engine that
+  // `createEngine*` overwrites in place.
+  async #replaceHandle(newHandle: number): Promise<void> {
+    const prev = this.#handle;
+    this.#handle = newHandle;
+    if (prev !== 0 && prev !== newHandle) {
+      await invoke<boolean>("drop_engine", { handle: prev });
+    }
+  }
+
   async version(): Promise<string> {
     return await invoke<string>("engine_version");
   }
 
   async createEngine(configJson?: string): Promise<void> {
-    this.#handle = await invoke<number>("create_engine", { configJson: configJson ?? null });
+    const h = await invoke<number>("create_engine", { configJson: configJson ?? null });
+    await this.#replaceHandle(h);
   }
 
   async createEngineWithDraft(configJson?: string): Promise<void> {
-    this.#handle = await invoke<number>("create_engine_with_draft", {
+    const h = await invoke<number>("create_engine_with_draft", {
       configJson: configJson ?? null,
     });
+    await this.#replaceHandle(h);
   }
 
   async createEngineWithLoadouts(
@@ -109,11 +125,12 @@ export class TauriClient implements EngineClient {
     p1Loadout: SideLoadout,
     p2Loadout: SideLoadout,
   ): Promise<void> {
-    this.#handle = await invoke<number>("create_engine_with_loadouts", {
+    const h = await invoke<number>("create_engine_with_loadouts", {
       configJson:     configJson ?? null,
       p1LoadoutJson:  JSON.stringify(p1Loadout),
       p2LoadoutJson:  JSON.stringify(p2Loadout),
     });
+    await this.#replaceHandle(h);
   }
 
   async draftState(): Promise<DraftStateView> {
@@ -148,11 +165,6 @@ export class TauriClient implements EngineClient {
     return normaliseStepResult(dto);
   }
 
-  async requestAiMove(): Promise<StepResult> {
-    const dto = await invoke<StepResultDto>("request_ai_move", { handle: this.#handle });
-    return normaliseStepResult(dto);
-  }
-
   async requestAiMoveForced(): Promise<StepResult> {
     const dto = await invoke<StepResultDto>("request_ai_move_forced", { handle: this.#handle });
     return normaliseStepResult(dto);
@@ -175,7 +187,8 @@ export class TauriClient implements EngineClient {
   }
 
   async restoreFromSnapshot(json: string): Promise<void> {
-    this.#handle = await invoke<number>("create_engine_from_snapshot", { snapshotJson: json });
+    const h = await invoke<number>("create_engine_from_snapshot", { snapshotJson: json });
+    await this.#replaceHandle(h);
   }
 
   async matchLogJson(): Promise<string | null> {

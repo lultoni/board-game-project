@@ -122,6 +122,18 @@
     }
   }
 
+  async function openInReplay(matchId: string): Promise<void> {
+    busy = true;
+    try {
+      const m = await getTelemetryStore().getMatch(matchId);
+      if (!m) return;
+      setPendingMatchLog(m.matchLogJson);
+      await goto("../replay/");
+    } finally {
+      busy = false;
+    }
+  }
+
   async function exportSingle(matchId: string): Promise<void> {
     busy = true;
     exportSkipNotice = null;
@@ -240,8 +252,8 @@
           <div class="actions">
             <button
               type="button"
-              disabled
-              title={t("library.replayDisabled")}
+              disabled={busy || !hasLog(m)}
+              onclick={() => openInReplay(m.matchId)}
             >{t("library.actionReplay")}</button>
             <button
               type="button"

@@ -205,21 +205,11 @@ impl Engine {
             .map_err(|e| JsValue::from_str(&format!("{e:?}")))
     }
 
-    /// Like `stepAi` but **does not apply** — returns the best move the AI
-    /// found without mutating state. Used by the inspector to surface
-    /// suggested moves the user can choose to apply (or ignore). The
-    /// returned `applied_action` is the candidate; the caller decides what
-    /// to do with it.
-    #[wasm_bindgen(js_name = requestAiMove)]
-    pub fn request_ai_move(&mut self) -> Result<StepResultJs, JsValue> {
-        api::request_ai_move(&mut self.m)
-            .map(StepResultJs::from)
-            .map_err(|e| JsValue::from_str(&format!("{e:?}")))
-    }
-
-    /// Like `requestAiMove`, but runs the search regardless of seat kind
-    /// (HvH matches included). The inspector uses this so the user can ask
-    /// "what would a strong player do here?" at any position.
+    /// Run the AI search regardless of seat kind (HvH matches included) and
+    /// return the best move without applying it. The inspector uses this so
+    /// the user can ask "what would a strong player do here?" at any
+    /// position. The seat-restricted variant was removed — `stepAi` covers
+    /// the match-route case (search + apply atomically).
     #[wasm_bindgen(js_name = requestAiMoveForced)]
     pub fn request_ai_move_forced(&mut self) -> Result<StepResultJs, JsValue> {
         api::request_ai_move_forced(&mut self.m)

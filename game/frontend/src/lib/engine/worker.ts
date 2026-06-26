@@ -30,7 +30,6 @@ type Req =
   | (ReqBase & { kind: "legalActions" })
   | (ReqBase & { kind: "tryApply"; action: number })
   | (ReqBase & { kind: "stepAi" })
-  | (ReqBase & { kind: "requestAiMove" })
   | (ReqBase & { kind: "requestAiMoveForced" })
   | (ReqBase & { kind: "requestAiMoveAtDepth"; maxDepth: number })
   | (ReqBase & { kind: "positionFen" })
@@ -177,11 +176,6 @@ self.onmessage = async (ev: MessageEvent<Req>) => {
       }
       case "stepAi": {
         const r = requireEngine().stepAi(nowMs());
-        self.postMessage({ id: msg.id, ok: true, value: snapshotStepResult(r) });
-        break;
-      }
-      case "requestAiMove": {
-        const r = requireEngine().requestAiMove();
         self.postMessage({ id: msg.id, ok: true, value: snapshotStepResult(r) });
         break;
       }

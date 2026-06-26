@@ -191,30 +191,11 @@ pub fn step_ai(m: &mut Match, applied_at_unix_ms: u64) -> Result<StepResult, AiE
     })
 }
 
-/// Run the AI search for the side-to-move and return the best move it found,
-/// **without applying it**. Lets inspector / debugger UIs ask "what would
-/// the AI play here?" without mutating state. Honours the same per-seat
-/// `AiBudget` as `step_ai`.
-pub fn request_ai_move(m: &mut Match) -> Result<StepResult, AiError> {
-    let t0 = crate::time::now_ms();
-    let r: SearchResult = m.request_ai_move()?;
-    let thought_ms = crate::time::now_ms()
-        .saturating_sub(t0)
-        .min(u32::MAX as u64) as u32;
-
-    Ok(StepResult {
-        applied_action: r.best.map(|a| a.0).unwrap_or(0),
-        score:          r.score,
-        depth:          r.depth,
-        nodes:          r.nodes,
-        thought_ms,
-        game_result:    encode_game_result(m.game_result()),
-    })
-}
-
-/// Inspector variant of `request_ai_move`: runs the search for whoever is
-/// to move regardless of seat kind (Human vs Human positions included),
-/// returning the best action without applying it.
+/// Inspector variant: runs the AI search for whoever is to move regardless
+/// of seat kind (Human vs Human positions included), returning the best
+/// action without applying it. The seat-restricted variant was removed as
+/// dead surface — the match route uses `step_ai` (which applies atomically),
+/// and the inspector wants the unrestricted form.
 pub fn request_ai_move_forced(m: &mut Match) -> Result<StepResult, AiError> {
     let t0 = crate::time::now_ms();
     let r: SearchResult = m.request_ai_move_forced()?;

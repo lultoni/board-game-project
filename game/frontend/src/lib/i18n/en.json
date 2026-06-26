@@ -67,7 +67,6 @@
     "actionDelete": "Delete",
     "actionConfirmDelete": "Click again to delete",
     "actionCancelDelete": "Cancel",
-    "replayDisabled": "Replay viewer not yet implemented — coming in Slice L6.7",
     "sendBundle": "Send to Designer ({n} selected)",
     "sendBundleNone": "Send to Designer",
     "plies": "{n} plies",
@@ -160,6 +159,19 @@
     "copyFen": "Copy FEN",
     "copyMatchLog": "Copy match log",
     "downloadMatchLog": "Download match log"
+  },
+  "replay": {
+    "title": "Replay",
+    "back": "← back",
+    "pastePlaceholder": "Paste MatchLog JSON here…",
+    "load": "Load",
+    "invalid": "Could not parse MatchLog JSON.",
+    "restart": "Restart",
+    "plyCounter": "Ply {current} / {total}",
+    "atStart": "(start position)",
+    "atEnd": "(end of match)",
+    "noLog": "No replay loaded. Paste a MatchLog JSON below, or open one from the Library.",
+    "jumpToPly": "Jump to ply"
   },
   "toast": {
     "fenCopied": "FEN copied to clipboard",

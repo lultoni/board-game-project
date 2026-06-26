@@ -348,24 +348,6 @@ async fn step_ai(
     res?
 }
 
-/// Like `step_ai` but does not apply. Returns the AI's best candidate move
-/// (in `applied_action`) so the caller can highlight or apply at will.
-#[tauri::command]
-async fn request_ai_move(
-    handle:   u64,
-    registry: State<'_, EngineRegistry>,
-) -> Result<StepResultDto, String> {
-    let res: Result<Result<StepResultDto, String>, String> =
-        tokio::task::block_in_place(|| {
-            registry.with(handle, |e| {
-                api::request_ai_move(&mut e.m)
-                    .map(StepResultDto::from)
-                    .map_err(|err| format!("{err:?}"))
-            })
-        });
-    res?
-}
-
 /// Inspector variant: runs the AI search regardless of seat kind. Used so
 /// "Ask AI" works in HvH positions too.
 #[tauri::command]
@@ -450,7 +432,6 @@ pub fn run() {
             legal_actions,
             try_apply,
             step_ai,
-            request_ai_move,
             request_ai_move_forced,
             request_ai_move_at_depth,
             match_log_json,

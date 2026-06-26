@@ -86,9 +86,6 @@ export class WasmClient implements EngineClient {
   stepAi(): Promise<StepResult> {
     return this.#call<StepResult>({ kind: "stepAi" });
   }
-  requestAiMove(): Promise<StepResult> {
-    return this.#call<StepResult>({ kind: "requestAiMove" });
-  }
   requestAiMoveForced(): Promise<StepResult> {
     return this.#call<StepResult>({ kind: "requestAiMoveForced" });
   }

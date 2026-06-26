@@ -61,7 +61,6 @@ class FakeEngine implements EngineClient {
     };
   }
   async stepAi(): Promise<StepResult> { throw new Error("not used"); }
-  async requestAiMove(): Promise<StepResult> { throw new Error("not used"); }
   async requestAiMoveForced(): Promise<StepResult> { throw new Error("not used"); }
   async requestAiMoveAtDepth(): Promise<StepResult> { throw new Error("not used"); }
   async positionFen(): Promise<string> { return ""; }

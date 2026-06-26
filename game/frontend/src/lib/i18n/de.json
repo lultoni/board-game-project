@@ -67,7 +67,6 @@
     "actionDelete": "Löschen",
     "actionConfirmDelete": "Nochmal klicken zum Löschen",
     "actionCancelDelete": "Abbrechen",
-    "replayDisabled": "Wiedergabe noch nicht verfügbar — folgt in Slice L6.7",
     "sendBundle": "An Designer senden ({n} ausgewählt)",
     "sendBundleNone": "An Designer senden",
     "plies": "{n} Halbzüge",
@@ -145,6 +144,19 @@
     "copyFen": "FEN kopieren",
     "copyMatchLog": "Partieprotokoll kopieren",
     "downloadMatchLog": "Partieprotokoll herunterladen"
+  },
+  "replay": {
+    "title": "Wiederholung",
+    "back": "← zurück",
+    "pastePlaceholder": "MatchLog-JSON hier einfügen…",
+    "load": "Laden",
+    "invalid": "MatchLog-JSON konnte nicht gelesen werden.",
+    "restart": "Neustart",
+    "plyCounter": "Halbzug {current} / {total}",
+    "atStart": "(Startposition)",
+    "atEnd": "(Ende der Partie)",
+    "noLog": "Keine Wiederholung geladen. Füge unten ein MatchLog-JSON ein oder öffne eines aus der Bibliothek.",
+    "jumpToPly": "Zu Halbzug springen"
   },
   "toast": {
     "fenCopied": "FEN in Zwischenablage kopiert",

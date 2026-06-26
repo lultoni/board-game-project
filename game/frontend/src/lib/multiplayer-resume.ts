@@ -1,33 +1,10 @@
-// Regex helpers for the multiplayer resume handshake. The engine's MatchLog
-// JSON contains u64 Zobrist hashes that exceed JS's safe-integer range, so we
-// cannot round-trip the log through JSON.parse without lossy bigint coercion.
-// `extractStartZobrist` / `extractPostZobristForPly` therefore extract the raw
-// decimal digit-string directly from the JSON text and leave string comparison
-// to the caller.
+// Resume-handshake helpers. The current MP wire (`multiplayer-protocol-v2.ts`)
+// sends zobrists as the live `PositionView.zobrist` bigint, so we no longer
+// need to re-parse them out of persisted MatchLog JSON.
 //
-// Pinned to MatchLog JSON v1 (see core_engine/src/session.rs). If the
-// `match-log` serde representation changes — renamed fields, restructured
-// nesting, base64 zobrist encoding — update these regexes AND the pinning
-// tests in `multiplayer-resume.test.ts`.
-
-// MatchLog ply_no is 1-indexed (core_engine/src/session.rs:360); plyCount=0 → start_zobrist.
-export function extractPostZobristForPly(
-  matchLogJson: string,
-  n: number,
-): string | null {
-  const plyRe = new RegExp(`"ply_no"\\s*:\\s*${n}\\b`);
-  const m = plyRe.exec(matchLogJson);
-  if (!m) return null;
-  const tail = matchLogJson.slice(m.index);
-  const zRe = /"post_zobrist"\s*:\s*(\d+)/;
-  const z = zRe.exec(tail);
-  return z ? z[1] : null;
-}
-
-export function extractStartZobrist(matchLogJson: string): string | null {
-  const m = /"start_zobrist"\s*:\s*(\d+)/.exec(matchLogJson);
-  return m ? m[1] : null;
-}
+// What remains: rebuilding an engine Snapshot JSON from a MatchLog (for the
+// host's Rejoin flow), and a cheap mid-draft check used by the lobby to
+// route Rejoin to /draft/ vs /match/.
 
 /** Rebuild an engine Snapshot JSON ({ start_fen, actions, config }) from a
  *  persisted MatchLog. Used by the host's Rejoin flow to re-enter /match/
@@ -36,8 +13,9 @@ export function extractStartZobrist(matchLogJson: string): string | null {
  *  and replays every action through `try_apply` on load.
  *
  *  Returns null if the log can't be parsed or required fields are missing.
- *  Walks the plies array via JSON.parse — the Zobrists in the log overflow
- *  Number precision but `action.raw` is u32 and survives the round-trip. */
+ *  Walks the plies array via JSON.parse — Zobrists in the log overflow Number
+ *  precision but we don't read them here; `action.raw` is u32 and survives
+ *  the round-trip. */
 export function snapshotJsonFromMatchLog(matchLogJson: string): string | null {
   try {
     const log = JSON.parse(matchLogJson) as {

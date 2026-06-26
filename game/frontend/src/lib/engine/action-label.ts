@@ -6,7 +6,7 @@
 // squares for Move-Attacks, push directions for Shove, Bodyguard redirects,
 // Focus-retargeted recipients, and Focus-effect mode for Blast/Shove.
 
-import { ActionKind, decodeAction } from "./action";
+import { ActionKind, decodeAction, decodeDraftTurn, isDraftTurn, isBodyguardChoice, bgGuardIdx } from "./action";
 import { skillById } from "./skills";
 
 export function formatSquare(sq: number): string {
@@ -29,6 +29,15 @@ const FOCUS_RETARGET_SKILLS = new Set<number>([
 ]);
 
 export function formatAction(raw: number): string {
+  if (isBodyguardChoice(raw)) {
+    const idx = bgGuardIdx(raw);
+    return idx === 0 ? "BG decline" : `BG redirect #${idx}`;
+  }
+  if (isDraftTurn(raw)) {
+    const d = decodeDraftTurn(raw);
+    const skillName = (sid: number) => skillById(sid)?.key ?? `s${sid}`;
+    return `Draft ${skillName(d.pick1.skillId)}@${formatSquare(d.pick1.sq)}/${d.pick1.slot + 1} + ${skillName(d.pick2.skillId)}@${formatSquare(d.pick2.sq)}/${d.pick2.slot + 1}`;
+  }
   const d = decodeAction(raw);
   if (d.kind === ActionKind.EndPhase) return "End phase";
   if (d.kind === ActionKind.EndTurn) return "End turn";

@@ -95,11 +95,9 @@ export interface EngineClient {
   legalActions(): Promise<Uint32Array>;
   tryApply(action: number): Promise<StepResult>;
   stepAi(): Promise<StepResult>;
-  /** Run the AI search without applying. `appliedAction` carries the best
-   *  candidate move (0 if none was found). For inspector / hint UIs. */
-  requestAiMove(): Promise<StepResult>;
   /** Inspector variant: runs the search regardless of seat kind so HvH
-   *  positions can also ask "what would the AI play here?". */
+   *  positions can also ask "what would the AI play here?". The seat-
+   *  restricted variant was removed as dead surface — match uses `stepAi`. */
   requestAiMoveForced(): Promise<StepResult>;
   /** Inspector iterative-deepening: runs ID up to `maxDepth` with no time
    *  bound. Caller drives the deepening loop by stepping `maxDepth` up
