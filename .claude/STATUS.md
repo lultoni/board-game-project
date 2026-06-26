@@ -2,35 +2,36 @@
 
 *One-screen re-entry doc. Read first after a gap. Regenerated from the DB at session end.*
 
-*Last updated: 2026-06-25 — Session 33 end (L7c authoritative-host multiplayer + L8 draft + cross-peer parity).*
+*Last updated: 2026-06-26 — Session 34 end (Phase 6 frontend remediation — Inspector→PlyRenderer + replay perf).*
 
 ---
 
 ## Current focus
 
-**Multiplayer is now authoritative-host with cross-peer parity for effects, sounds, and greying-out.** The L7c arc (six steps + bug-fix sweep) plus L8 phases A–E shipped this session. Next likely lane: frontend follow-ups (Inspector L6.7d preview-window primitive) — or further multiplayer hardening if playtesting surfaces issues.
+**Frontend remediation plan complete.** All 6 phases of `game/frontend/REMEDIATION_PLAN.md` are shipped; only 8 deliberately-deferred items remain (3 need ADRs, 1 is engine-side, 1 is a test harness, 3 are cosmetic). No design-side work this session.
 
 ## Active stack
 
-**Stack M — Game Length Cut.** Engine and digital UI are now Stack M-shaped. Still awaiting a real playtest. `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"`.
+**Stack M — Game Length Cut.** Engine and digital UI are Stack M-shaped. Still awaiting a real playtest. `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"`.
 
 ## What changed this session
 
-1. **L8 phases A–E — engine-driven draft.** `Phase::Draft` variant + `DraftTurn` action with apply/unapply; `setup_with_loadouts()` constructor + Tauri/WASM commands; `/draft/` route engine-driven (DnD, glyphs, locked vs tentative, fixed-preset AI draft stand-in); pre-made First/Second/Third game loadouts (OQ-65 for new-player onboarding). `next_steps id=10` closed.
-2. **L7c — authoritative-host multiplayer (six steps + bug-fix sweep).** New wire protocol v2 (`multiplayer-protocol-v2.ts`), role-aware engine wrapper (`multiplayer-engine.ts`) funnelling all apply traffic, joiner anti-cheat audit via mirror re-apply + Zobrist match, leader handoff (`promoteToHost`), IDB v1→v2 retro-add of `joined_codes` store, `softReconnectJoiner` preserving banner state, displaced-host probe-first Rejoin. `/draft/` + `/match/` migrated through wrapper. `next_steps id=24` records shipped scope.
-3. **Cross-peer parity follow-ups.** `match.localSeat`; disconnect-on-exit + pong-age-out; bodyguard prompt where defender chooses; two-stage ally picker for Dash/Retreat retarget under Focus; effect/sound/greying-out parity (wrapper's remote `onApplied` now snapshots pre-state from `match.position` and runs full `renderApplied` so non-acting peer plays SFX, spawns effects, marks `usedThisPhase`).
-4. **New OQ.** `oq-84` (high, p3) — design question on whether bodyguard-intercepted Move-Attack should still mark the attacker as used this phase.
+1. **Phase 6c — PlyRenderer ply checkpoints (P4).** Stride-32 snapshot cache; `fastForwardTo` restores from nearest checkpoint when savings ≥ 4 plies. 200-ply scrub: was N round-trips, now ≤ 31.
+2. **Phase 6d — `lib/engine/ai-hooks.ts`.** `runAiCall` + `AiCallError` (reason: timeout|cancelled|engine). Adopted at match `stepAi` + inspector `requestAiMoveAtDepth`.
+3. **Phase 6a — Inspector → PlyRenderer migration (T5).** Inspector no longer reimplements pieceIds bookkeeping. `syncEngineToNode` drives `renderer.fastForwardTo`; piece identity slides between sibling nodes (was: teleport); effects animate on landing ply.
+4. **Phase 6b — POI label modal.** Native `<dialog>` replaces `window.prompt`.
+5. Updated `ARCHITECTURE.md §9` + `REMEDIATION_PLAN.md` Phase 6 section. Deleted all 12 stale plan files from `~/.claude/plans/`. Verification: 220/220 vitest, 0 svelte-check errors, prod build clean.
 
 ## Immediate next action
 
-User has been driving the multiplayer lane. Three viable picks:
-1. **Frontend** — Inspector L6.7d preview window primitive (`next_steps id=12`).
-2. **Multiplayer hardening** — deferred IllegalActionInHistory / draft-route-when-in-play replay bugs (snapshot codec or `phase-change` replay path).
-3. **Design** — argue through `oq-84` before next Stack M digital playtest.
+No lane forced by this session. Pre-existing picks from S33 still valid:
+1. **Frontend** — Inspector L6.7d preview window primitive (`next_steps id=12`). Unblocks L6.7b + L6.8.
+2. **Multiplayer hardening** — deferred IllegalActionInHistory / draft-route-when-in-play replay bugs.
+3. **Design** — argue through `oq-84` (bodyguard-intercept greying-out) before next Stack M digital playtest.
 
 ## Live critical / high-priority open questions
 
-`sqlite3 design/design.db "SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high') ORDER BY priority, id;"` — 8 critical + 10 high (new `oq-84` added).
+`sqlite3 design/design.db "SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high') ORDER BY priority, id;"` — 8 critical + 10 high. Unchanged this session.
 
 ## Open methodological loose ends
 
