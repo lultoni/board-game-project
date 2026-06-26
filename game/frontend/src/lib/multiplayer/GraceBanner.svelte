@@ -12,21 +12,29 @@
   import { onDestroy } from "svelte";
   import { mpState, pillState } from "$lib/multiplayer.svelte";
   import { GRACE_MS, TAKEOVER_MS } from "$lib/multiplayer-protocol";
-  import { takeoverAsHost } from "$lib/multiplayer-handoff";
   import { t } from "$lib/state/i18n";
-  import { match, claimWinByOpponentForfeit } from "$lib/state/match-store.svelte";
   import type { EngineClient } from "$lib/engine";
   import type { MpEngineHandle } from "$lib/multiplayer-engine";
 
-  // Engine handle passed from /match/ so we can finalise on claim. Kept
-  // optional so the component still renders during boot before eng resolves
-  // — the button stays disabled until eng is wired.
-  // `mpEngine` is the role-aware wrapper; required for the joiner's "Take
-  // over as host" CTA. Null in solo or before mp boot.
+  // Banner is presentational: the route supplies the `role`/`code` identity
+  // and the two action policies (`onClaim`, `onTakeOver`). The banner owns
+  // ONLY the connectivity-derived rendering (pill state, countdowns) — that
+  // is intrinsic to its purpose and is sourced from `mpState`.
   let {
     eng,
     mpEngine = null,
-  }: { eng: EngineClient | null; mpEngine?: MpEngineHandle | null } = $props();
+    role,
+    code,
+    onClaim,
+    onTakeOver,
+  }: {
+    eng: EngineClient | null;
+    mpEngine?: MpEngineHandle | null;
+    role: "host" | "joiner" | null;
+    code: string | null;
+    onClaim: (eng: EngineClient) => Promise<void>;
+    onTakeOver: (args: { eng: EngineClient; mpEngine: MpEngineHandle; code: string }) => Promise<{ ok: boolean }>;
+  } = $props();
 
   // Coarse 500ms ticker so the countdown text updates without leaning on the
   // mpState now-timer (which is private to multiplayer.svelte.ts).
@@ -68,7 +76,7 @@
     takeoverDeadline === null ? TAKEOVER_MS : Math.max(0, takeoverDeadline - nowTick)
   );
   const canTakeOver = $derived(
-    takeoverEligibleMs === 0 && match.multiplayerRole === "joiner"
+    takeoverEligibleMs === 0 && role === "joiner"
   );
   const takeoverLabel = $derived.by(() => {
     const total = Math.ceil(takeoverEligibleMs / 1000);
@@ -86,11 +94,11 @@
   });
 
   let busy = $state(false);
-  async function onClaim(): Promise<void> {
+  async function handleClaim(): Promise<void> {
     if (!canClaim || !eng || busy) return;
     busy = true;
     try {
-      await claimWinByOpponentForfeit(eng);
+      await onClaim(eng);
     } finally {
       busy = false;
     }
@@ -98,14 +106,13 @@
 
   let busyTakeover = $state(false);
   let takeoverError = $state<string | null>(null);
-  async function onTakeOver(): Promise<void> {
+  async function handleTakeOver(): Promise<void> {
     if (!canTakeOver || !eng || !mpEngine || busyTakeover) return;
-    const code = match.multiplayerCode;
     if (!code) return;
     busyTakeover = true;
     takeoverError = null;
     try {
-      const r = await takeoverAsHost({ eng, mpEngine, code });
+      const r = await onTakeOver({ eng, mpEngine, code });
       if (!r.ok) {
         takeoverError = t("multiplayer.takeOverFailed");
       }
@@ -120,25 +127,25 @@
 {#if visible}
   <div class="grace" role="status" aria-live="polite">
     <p class="msg">
-      {match.multiplayerRole === "host"
+      {role === "host"
         ? t("multiplayer.graceBannerHost")
         : t("multiplayer.graceBannerJoiner")}
     </p>
     <div class="actions">
       {#if canClaim}
-        <button class="primary" type="button" disabled={!eng || busy} onclick={onClaim}>
+        <button class="primary" type="button" disabled={!eng || busy} onclick={handleClaim}>
           {t("multiplayer.claimWinNow")}
         </button>
       {:else}
         <span class="countdown">{t("multiplayer.claimWinIn", { time: remainingLabel })}</span>
       {/if}
-      {#if match.multiplayerRole === "joiner"}
+      {#if role === "joiner"}
         {#if canTakeOver}
           <button
             class="secondary"
             type="button"
             disabled={!eng || !mpEngine || busyTakeover}
-            onclick={onTakeOver}
+            onclick={handleTakeOver}
           >
             {busyTakeover
               ? t("multiplayer.takeOverInProgress")

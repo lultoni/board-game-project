@@ -127,9 +127,7 @@
       resetMatchState();
       hostNavigated = false;
       view = "hosting";
-      const code = await mpHost();
-      match.multiplayerRole = "host";
-      match.multiplayerCode = code;
+      await mpHost();
       match.localSeat = 0;
     } catch (e) {
       codeError = (e as Error)?.message ?? String(e);
@@ -151,8 +149,6 @@
       resetMatchState();
       view = "joining";
       await mpJoin(code);
-      match.multiplayerRole = "joiner";
-      match.multiplayerCode = code;
       match.mode = "multiplayer";
       match.side = { p1: "human", p2: "human" };
       // Fresh-joiner default seat. rejoinHost's probe-fall-through path
@@ -239,8 +235,6 @@
       }
       view = "hosting";
       await mpHostWithCode(code);
-      match.multiplayerRole = "host";
-      match.multiplayerCode = code;
       match.mode = "multiplayer";
       match.side = { p1: "human", p2: "human" };
       match.localSeat = 0;
@@ -294,8 +288,6 @@
 
   function cancel(): void {
     mpDisconnect();
-    match.multiplayerRole = null;
-    match.multiplayerCode = null;
     match.localSeat = null;
     view = "choose";
   }
@@ -326,7 +318,6 @@
     if (mpState.status !== "connected") return;
     match.side = { p1: "human", p2: "human" };
     match.mode = "multiplayer";
-    match.multiplayerRole = "host";
     if (match.localSeat === null) match.localSeat = 0;
     hostNavigated = true;
     busy = true;
@@ -345,7 +336,6 @@
     if (msg.kind === "session-hello") {
       match.side = { p1: "human", p2: "human" };
       match.mode = "multiplayer";
-      match.multiplayerRole = "joiner";
       if (match.localSeat === null) match.localSeat = 1;
       match.telemetryMatchId = msg.matchId;
       void goto(msg.phase === "draft" ? "../draft/" : "../match/");
@@ -354,8 +344,6 @@
     if (msg.kind === "error" && msg.reason === "session-full") {
       codeError = t("multiplayer.sessionFull");
       mpDisconnect();
-      match.multiplayerRole = null;
-      match.multiplayerCode = null;
       match.localSeat = null;
       view = "choose";
       return;

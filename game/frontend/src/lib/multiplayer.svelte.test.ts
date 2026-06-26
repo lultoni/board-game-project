@@ -61,20 +61,35 @@ describe("multiplayer joiner state — hard reset path", () => {
     expect(mpState.lastPongAt).toBeNull();
   });
 
-  it("join() clears disconnectedSince + peerEverPaired synchronously", () => {
+  it("join() clears disconnectedSince + peerEverPaired synchronously, then transitions to 'connecting' once PeerJS opens", async () => {
     mpState.disconnectedSince = 1_700_000_000_000;
     mpState.peerEverPaired = true;
 
-    // Fire-and-forget. The pre-PeerJS reset happens synchronously inside
-    // join() before the returned promise is even allocated. We attach a
-    // .catch() to silence the eventual unhandled rejection (FakePeer never
-    // completes a full handshake) but don't await it.
-    void join("123456").catch(() => { /* fake conn never opens */ });
+    // Capture the promise so its eventual rejection has a handler, but
+    // never await it: FakePeer doesn't fire the DataConnection "open" or
+    // "error" events, so the join promise stays pending. The assertions
+    // below check the wrapper's STATE TRANSITIONS at two well-defined
+    // points (synchronous slice + post-Peer-open microtask) rather than
+    // racing the wrapper's internal timeouts as the prior version did.
+    const joinPromise = join("123456");
+    joinPromise.catch(() => { /* fake DataConnection never opens; expected */ });
 
+    // Synchronous slice — the pre-PeerJS reset happens inside join() before
+    // bindJoinerPeer returns the promise.
     expect(mpState.disconnectedSince).toBeNull();
     expect(mpState.peerEverPaired).toBe(false);
     expect(mpState.code).toBe("123456");
     expect(mpState.role).toBe("joiner");
+    expect(mpState.status).toBe("joining");
+
+    // FakePeer's constructor queues a microtask that fires "open". Awaiting
+    // microtask yields drains that queue and lets the wrapper's p.on("open")
+    // handler run, which advances status to "connecting" and calls
+    // p.connect(...). We do not depend on the DataConnection's "open" event.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mpState.status).toBe("connecting");
   });
 });
 

@@ -144,13 +144,15 @@ export class IdbTelemetryStore implements TelemetryStore {
 
   async startMatch(
     meta: { mode: MatchMode; multiplayerCode?: string | null; multiplayerRole?: "host" | "joiner" | null },
+    nowMs?: number,
   ): Promise<string> {
     const db = await this.#dbPromise;
-    const matchId = newMatchId();
+    const now = nowMs ?? Date.now();
+    const matchId = newMatchId(now);
     const row: MatchRow = {
       matchId,
       mode: meta.mode,
-      startedAtUnixMs: Date.now(),
+      startedAtUnixMs: now,
       status: "in-progress",
       multiplayerCode: meta.multiplayerCode ?? null,
       multiplayerRole: meta.multiplayerRole ?? null,

@@ -1,10 +1,11 @@
 // Unit tests for the leader-handoff orchestrator. Pure: every dependency
 // (PeerJS, telemetry, IDB) is injected via the hooks parameter.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { takeoverAsHost, type HandoffCarrier } from "./multiplayer-handoff";
 import type { MpEngineHandle } from "./multiplayer-engine";
 import type { EngineClient } from "./engine";
+import { mpState } from "./multiplayer.svelte";
 
 // --- Stubs -----------------------------------------------------------------
 
@@ -12,8 +13,6 @@ function makeCarrier(overrides: Partial<HandoffCarrier> = {}): HandoffCarrier {
   return {
     mode: "multiplayer",
     telemetryMatchId: null,
-    multiplayerRole: "joiner",
-    multiplayerCode: "424242",
     ...overrides,
   };
 }
@@ -24,8 +23,8 @@ function makeEng(opts: { matchLogJson?: () => Promise<string | null> } = {}): En
   } as unknown as EngineClient;
 }
 
-function makeMpEngine(): MpEngineHandle & { promoteCalls: Array<{ matchId: string; code: string }> } {
-  const promoteCalls: Array<{ matchId: string; code: string }> = [];
+function makeMpEngine(): MpEngineHandle & { promoteCalls: Array<{ matchId: string }> } {
+  const promoteCalls: Array<{ matchId: string }> = [];
   return {
     submitAction: async () => ({ accepted: true }),
     notifyConnectionOpen: () => {},
@@ -36,7 +35,7 @@ function makeMpEngine(): MpEngineHandle & { promoteCalls: Array<{ matchId: strin
     getSeq: () => 0,
     dispose: () => {},
     promoteCalls,
-  } as MpEngineHandle & { promoteCalls: Array<{ matchId: string; code: string }> };
+  } as MpEngineHandle & { promoteCalls: Array<{ matchId: string }> };
 }
 
 interface CallLog {
@@ -75,6 +74,13 @@ function buildHooks(log: CallLog, overrides: {
 // --- Cases -----------------------------------------------------------------
 
 describe("takeoverAsHost", () => {
+  beforeEach(() => {
+    // Reset mpState to a clean joiner-on-424242 baseline so each test starts
+    // from the pre-handoff state the orchestrator expects.
+    mpState.role = "joiner";
+    mpState.code = "424242";
+  });
+
   it("happy path: events fire in correct order, returns ok", async () => {
     const carrier = makeCarrier();
     const eng = makeEng();
@@ -94,11 +100,11 @@ describe("takeoverAsHost", () => {
       "checkpoint",
       "hostWithCode:424242",
     ]);
-    expect(mpEngine.promoteCalls).toEqual([{ matchId: "new-match-id-001", code: "424242" }]);
-    // Carrier flipped to host AFTER promoteToHost; promoteToHost was called
+    expect(mpEngine.promoteCalls).toEqual([{ matchId: "new-match-id-001" }]);
+    // mpState flipped to host AFTER promoteToHost; promoteToHost was called
     // BEFORE hostWithCode (verified via log ordering above).
-    expect(carrier.multiplayerRole).toBe("host");
-    expect(carrier.multiplayerCode).toBe("424242");
+    expect(mpState.role).toBe("host");
+    expect(mpState.code).toBe("424242");
   });
 
   it("rejects with no-code when called with empty code", async () => {
@@ -122,7 +128,7 @@ describe("takeoverAsHost", () => {
     expect(r).toEqual({ ok: false, reason: "telemetry-failed" });
     expect(log.events).toEqual(["destroyPeer", "startTelemetry"]);
     expect(mpEngine.promoteCalls).toEqual([]);
-    expect(carrier.multiplayerRole).toBe("joiner"); // unchanged
+    expect(mpState.role).toBe("joiner"); // unchanged
   });
 
   it("returns engine-failed when matchLogJson rejects, does NOT call hostWithCode or promoteToHost", async () => {
@@ -140,7 +146,7 @@ describe("takeoverAsHost", () => {
     expect((r as { reason?: string }).reason).toBe("engine-failed");
     expect(log.events).toEqual(["destroyPeer", "startTelemetry"]);
     expect(mpEngine.promoteCalls).toEqual([]);
-    expect(carrier.multiplayerRole).toBe("joiner");
+    expect(mpState.role).toBe("joiner");
   });
 
   it("returns rehost-failed when hostWithCode rejects; promotion already happened", async () => {
@@ -155,10 +161,10 @@ describe("takeoverAsHost", () => {
 
     expect(r.ok).toBe(false);
     expect((r as { reason?: string }).reason).toBe("rehost-failed");
-    // Promotion DID happen — carrier is host now, wrapper was flipped.
+    // Promotion DID happen — mpState is host now, wrapper was flipped.
     // The user must navigate to lobby or click again to recover.
-    expect(mpEngine.promoteCalls).toEqual([{ matchId: "new-match-id-001", code: "424242" }]);
-    expect(carrier.multiplayerRole).toBe("host");
+    expect(mpEngine.promoteCalls).toEqual([{ matchId: "new-match-id-001" }]);
+    expect(mpState.role).toBe("host");
     expect(log.events).toEqual([
       "destroyPeer",
       "startTelemetry",

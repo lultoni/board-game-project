@@ -26,6 +26,9 @@
     networkLostTelemetrySession,
     abandonTelemetrySessionSync,
     networkLostTelemetrySessionSync,
+    multiplayerRole,
+    multiplayerCode,
+    claimWinByOpponentForfeit,
   } from "$lib/state/match-store.svelte";
   import {
     mpState,
@@ -44,6 +47,7 @@
     type Role,
     type SubmitResult,
   } from "$lib/multiplayer-engine";
+  import { takeoverAsHost } from "$lib/multiplayer-handoff";
   import ConnectivityPill from "$lib/multiplayer/ConnectivityPill.svelte";
   import GraceBanner from "$lib/multiplayer/GraceBanner.svelte";
   import { getTelemetryStore } from "$lib/storage";
@@ -84,7 +88,6 @@
   let mpEngine = $state<MpEngineHandle | null>(null);
   let mpPaused = $state(false);
   let mpConnectedUnsub: (() => void) | null = null;
-  let pendingLocalRaw: number | null = null;
   const localCanDraft = $derived.by(() => {
     if (currentSeatIsAi) return false;
     if (!isMultiplayer) return true;
@@ -93,7 +96,7 @@
     // role flips from "joiner" → "host" but they still occupy seat 1 (P2),
     // and the displaced peer who rejoins still occupies seat 0 (P1). Mapping
     // off role would swap the players' identities mid-game.
-    const seat = match.localSeat ?? (match.multiplayerRole === "host" ? 0 : 1);
+    const seat = match.localSeat ?? (multiplayerRole() === "host" ? 0 : 1);
     if (seat === 0 &&  isP1Turn) return true;
     if (seat === 1 && !isP1Turn) return true;
     return false;
@@ -314,19 +317,19 @@
       // sends `intent` (joiner) or `committed` (host) and only resolves
       // accepted=true once the action has been applied to our engine. In solo
       // (`role: "solo"`) it just forwards to eng.tryApply and fires onApplied.
-      pendingLocalRaw = raw;
+      // The wrapper's onApplied handles recordPly + clearPicks + refresh for
+      // every code path (local and remote), so commitTurn just submits.
       let result: SubmitResult;
-      try {
-        result = mpEngine
-          ? await mpEngine.submitAction(raw)
-          : { accepted: true };
-        if (!mpEngine) {
-          // Defensive fallback if wrapper failed to instantiate. Should not
-          // happen — `booted` only flips true after bootMpEngine.
-          await eng.tryApply(raw);
-        }
-      } finally {
-        pendingLocalRaw = null;
+      if (mpEngine) {
+        result = await mpEngine.submitAction(raw);
+      } else {
+        // Defensive fallback if wrapper failed to instantiate. Should not
+        // happen — `booted` only flips true after bootMpEngine.
+        await eng.tryApply(raw);
+        await recordPly(eng);
+        clearPicks();
+        await refresh();
+        result = { accepted: true };
       }
       if (!result.accepted) {
         if (result.reason && result.reason !== "illegal") {
@@ -334,13 +337,6 @@
         }
         return;
       }
-      // Telemetry: wrapper's onApplied early-returns on local commits (via the
-      // pendingLocalRaw guard), so we own the recordPly call here. recordPly
-      // is a no-op for joiners (Step 2 guard) and the IDB checkpoint runs
-      // inside it — replaces the old persistMatchLogCheckpoint call.
-      await recordPly(eng);
-      clearPicks();
-      await refresh();
       // Navigation to /match/ on draft completion is wrapper-driven: the
       // mpEngine detects engine phase crossing (Draft → Move) and fires
       // onPhaseChange("play") for solo, host, and joiner alike.
@@ -473,7 +469,7 @@
    *  V2 wire envelopes (host: validate intents + broadcast committed; joiner:
    *  audit committed actions; solo: just forward submitAction → tryApply) and
    *  bridges mpState → notifyConnectionOpen/Lost via a $effect.root. */
-  function bootMpEngine(role: Role, mpCode: string | null): void {
+  function bootMpEngine(role: Role, _mpCode: string | null): void {
     if (!eng) return;
     const isMp = role !== "solo";
     const send = isMp
@@ -488,25 +484,26 @@
 
     mpEngine = createMpEngine(
       {
-        role,
         phase: "draft",
         matchId: match.telemetryMatchId,
-        code: mpCode,
       },
       {
         eng,
+        getRole: () => (isMp ? ((mpState.role ?? "joiner") as Role) : "solo"),
+        getCode: () => mpState.code,
         send,
         subscribe,
-        onApplied: async (raw, _phase) => {
-          // Local commits handled in commitTurn — guard via pendingLocalRaw.
-          if (raw === pendingLocalRaw) return;
-          // Remote-driven apply: the wrapper has already moved the engine;
-          // we refresh and let the wrapper's automatic phase-change detection
-          // drive navigation. Joiner's recordPly is a Step 2 no-op (joinerRole
-          // guard inside the helper).
+        onApplied: async (raw, _phase, meta) => {
+          // Telemetry: recordPly. Helper is keyed off role (no-op on joiner).
+          // Both local commits and remote-driven applies funnel here.
           await recordPly(eng!);
           clearPicks();
           await refresh();
+          // meta carries prePositionView + isLocalEcho. The draft route does
+          // not render animated pre/post-state effects, so prePositionView is
+          // unused here. isLocalEcho is reserved for future local-only hooks.
+          void raw;
+          void meta;
         },
         onSnapshotApplied: async (_phase) => {
           await refresh();
@@ -562,9 +559,9 @@
       // resetMatchState() doesn't clear multiplayerRole, but it does flip mode
       // to "idle". Reading mode here means a reset between routes silently
       // turns off the multiplayer branch below.
-      const wasMultiplayer = match.multiplayerRole !== null;
-      const mpRole = match.multiplayerRole;
-      const mpCode = match.multiplayerCode;
+      const wasMultiplayer = multiplayerRole() !== null;
+      const mpRole = multiplayerRole();
+      const mpCode = multiplayerCode();
       // Capture an in-flight telemetry id before resetMatchState clears it.
       // Rejoin from the lobby sets this; we want the same row to keep
       // accumulating plies, not a fresh one.
@@ -763,7 +760,14 @@
   </header>
 
   {#if isMultiplayer}
-    <GraceBanner {eng} {mpEngine} />
+    <GraceBanner
+      {eng}
+      {mpEngine}
+      role={multiplayerRole()}
+      code={multiplayerCode()}
+      onClaim={claimWinByOpponentForfeit}
+      onTakeOver={takeoverAsHost}
+    />
   {/if}
 
   {#if bootError}

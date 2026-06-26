@@ -172,14 +172,20 @@ function build(role: "host" | "joiner" | "solo", phase: WirePhase = "draft"): {
   bus: Bus;
   listeners: ReturnType<typeof makeListeners>;
   handle: MpEngineHandle;
+  setRole: (r: "host" | "joiner" | "solo") => void;
+  setCode: (c: string | null) => void;
 } {
   const eng = new FakeEngine();
   const bus = makeBus();
   const listeners = makeListeners();
+  let currentRole: "host" | "joiner" | "solo" = role;
+  let currentCode: string | null = "281947";
   const handle = createMpEngine(
-    { role, phase, matchId: role === "host" ? "host-match-1" : null, code: "281947", nonceFactory: deterministicNonce, warn: () => { /* silent */ } },
+    { phase, matchId: role === "host" ? "host-match-1" : null, nonceFactory: deterministicNonce, warn: () => { /* silent */ } },
     {
       eng,
+      getRole: () => currentRole,
+      getCode: () => currentCode,
       send: bus.send,
       subscribe: bus.subscribe,
       onApplied: listeners.onApplied,
@@ -191,7 +197,14 @@ function build(role: "host" | "joiner" | "solo", phase: WirePhase = "draft"): {
       onResyncFailed: listeners.onResyncFailed,
     },
   );
-  return { eng, bus, listeners, handle };
+  return {
+    eng,
+    bus,
+    listeners,
+    handle,
+    setRole: (r) => { currentRole = r; },
+    setCode: (c) => { currentCode = c; },
+  };
 }
 
 // =========================================================================
@@ -527,7 +540,7 @@ describe("joiner", () => {
       postZobrist: "99999", // wrong
       originNonce: "i-0",
     });
-    await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     const req = bus.sent.find((m) => m.kind === "request-snapshot");
     expect(req).toMatchObject({ reason: "audit-mismatch" });
     // The intent is NOT resolved yet — wrapper waits for snapshot to land.
@@ -595,7 +608,7 @@ describe("joiner", () => {
       postZobrist: "38",
       originNonce: null,
     });
-    await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     expect(handle.getSeq()).toBe(1);
     bus.sent.length = 0;
     // Re-send the SAME commit (duplicate after broker resend).
@@ -668,7 +681,7 @@ describe("dispose", () => {
 describe("promoteToHost", () => {
   it("is a no-op on a solo handle", async () => {
     const { bus, handle } = build("solo");
-    handle.promoteToHost({ matchId: "new-mid", code: "999000" });
+    handle.promoteToHost({ matchId: "new-mid" });
     // No session-hello on connection-open (still solo).
     handle.notifyConnectionOpen();
     expect(bus.sent).toEqual([]);
@@ -682,8 +695,8 @@ describe("promoteToHost", () => {
     const { bus, handle } = build("host");
     handle.notifyConnectionOpen();
     bus.sent.length = 0;
-    handle.promoteToHost({ matchId: "other-mid", code: "111111" });
-    // matchId/code should NOT have been adopted from the new opts; the next
+    handle.promoteToHost({ matchId: "other-mid" });
+    // matchId should NOT have been adopted from the new opts; the next
     // session-hello carries the original handle's matchId+code.
     handle.notifyConnectionOpen();
     const hello = bus.sent.find((m) => m.kind === "session-hello");
@@ -691,16 +704,17 @@ describe("promoteToHost", () => {
   });
 
   it("rejects an in-flight joiner intent with reason=promoted", async () => {
-    const { handle } = build("joiner");
+    const { handle, setRole } = build("joiner");
     const p = handle.submitAction(7);
-    handle.promoteToHost({ matchId: "new-mid", code: "999000" });
+    handle.promoteToHost({ matchId: "new-mid" });
+    setRole("host");
     const r = await p;
     expect(r.accepted).toBe(false);
     expect(r.reason).toBe("promoted");
   });
 
   it("after promotion, submitAction follows the host path with seq = prev+1", async () => {
-    const { eng, bus, handle } = build("joiner", "play");
+    const { eng, bus, handle, setRole } = build("joiner", "play");
     // Apply two committed actions on the mirror so seq advances to 2.
     bus.push({ kind: "committed", seq: 1, phase: "play", raw: 10, postZobrist: "41", originNonce: null });
     for (let i = 0; i < 5; i++) await Promise.resolve();
@@ -709,7 +723,8 @@ describe("promoteToHost", () => {
     expect(handle.getSeq()).toBe(2);
     expect(eng.applied).toEqual([10, 20]);
 
-    handle.promoteToHost({ matchId: "new-mid", code: "999000" });
+    handle.promoteToHost({ matchId: "new-mid" });
+    setRole("host");
     bus.sent.length = 0;
 
     const r = await handle.submitAction(30);
@@ -720,8 +735,9 @@ describe("promoteToHost", () => {
   });
 
   it("after promotion, incoming intent is honoured and produces committed", async () => {
-    const { bus, handle } = build("joiner", "play");
-    handle.promoteToHost({ matchId: "new-mid", code: "999000" });
+    const { bus, handle, setRole } = build("joiner", "play");
+    handle.promoteToHost({ matchId: "new-mid" });
+    setRole("host");
     bus.sent.length = 0;
 
     bus.push({ kind: "intent", phase: "play", nonce: "j-abc", raw: 42 });
@@ -732,12 +748,14 @@ describe("promoteToHost", () => {
   });
 
   it("notifyConnectionOpen after promotion emits session-hello with NEW matchId+code and preserved seq", async () => {
-    const { bus, handle } = build("joiner", "draft");
+    const { bus, handle, setRole, setCode } = build("joiner", "draft");
     bus.push({ kind: "committed", seq: 1, phase: "draft", raw: 4, postZobrist: "35", originNonce: null });
     for (let i = 0; i < 5; i++) await Promise.resolve();
     expect(handle.getSeq()).toBe(1);
 
-    handle.promoteToHost({ matchId: "handoff-mid", code: "424242" });
+    handle.promoteToHost({ matchId: "handoff-mid" });
+    setRole("host");
+    setCode("424242");
     bus.sent.length = 0;
 
     handle.notifyConnectionOpen();
@@ -761,7 +779,7 @@ describe("promoteToHost", () => {
     for (let i = 0; i < 5; i++) await Promise.resolve();
     expect(handle.getSeq()).toBe(3);
 
-    handle.promoteToHost({ matchId: "x", code: "555555" });
+    handle.promoteToHost({ matchId: "x" });
     expect(handle.getSeq()).toBe(3);
   });
 });

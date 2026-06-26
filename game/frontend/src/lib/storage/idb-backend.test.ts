@@ -154,11 +154,13 @@ describe("IdbTelemetryStore", () => {
   });
 
   it("listMatches sorts most-recent-first and filters by mode + status", async () => {
-    const a = await store.startMatch({ mode: "hvh" });
-    await new Promise((r) => setTimeout(r, 5));
-    const b = await store.startMatch({ mode: "hvai" });
-    await new Promise((r) => setTimeout(r, 5));
-    const c = await store.startMatch({ mode: "hvai" });
+    // Inject explicit nowMs values so ULID timestamp prefixes are strictly
+    // ordered. Avoids a real-time `setTimeout(5)` whose 5ms spacing can be
+    // swallowed by fast CI OR exceeded by slow CI.
+    const t0 = Date.now();
+    const a = await store.startMatch({ mode: "hvh" }, t0);
+    const b = await store.startMatch({ mode: "hvai" }, t0 + 10);
+    const c = await store.startMatch({ mode: "hvai" }, t0 + 20);
     await store.finalizeMatch(b, "{}", "checkmate", 0, 1, 0);
 
     const all = await store.listMatches();

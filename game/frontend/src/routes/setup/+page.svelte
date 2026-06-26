@@ -5,6 +5,7 @@
   import {
     match,
     modeFromSeats,
+    multiplayerRole,
     type SeatKind,
     type DraftMode,
     type PreMadeLoadoutId,
@@ -35,16 +36,14 @@
       || status === "connecting"
       || status === "hosting"
       || status === "joining";
-    if (!liveMp && match.multiplayerRole !== null) {
+    if (!liveMp && multiplayerRole() !== null) {
       mpDisconnect();
-      match.multiplayerRole = null;
-      match.multiplayerCode = null;
       match.localSeat = null;
       if (match.mode === "multiplayer") match.mode = "idle";
     }
   });
 
-  const isMultiplayer = $derived(match.multiplayerRole !== null);
+  const isMultiplayer = $derived(multiplayerRole() !== null);
 
   let p1: SeatKind = $state(match.side.p1);
   let p2: SeatKind = $state(match.side.p2);
@@ -197,7 +196,7 @@
     </section>
   {/if}
 
-  {#if !isMultiplayer || match.multiplayerRole === "host"}
+  {#if !isMultiplayer || multiplayerRole() === "host"}
     <section class="draftMode">
       <h2>{t("setup.draftMode.header")}</h2>
       <div class="modes">

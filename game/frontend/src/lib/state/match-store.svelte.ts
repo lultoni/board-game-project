@@ -6,6 +6,7 @@ import type { PositionView } from "../engine";
 import type { EngineClient } from "../engine";
 import type { EndReason, MatchMode } from "../storage";
 import { buildEngineConfigJson as buildEngineConfigJsonPure, type SeatTag } from "../engine/config";
+import { mpState } from "../multiplayer.svelte";
 import { settings } from "./settings.svelte";
 import { createTelemetrySession } from "./telemetry-session";
 
@@ -56,10 +57,6 @@ export interface MatchState {
   /** Active telemetry session ID (ULID) — null when not logging (sandbox,
    *  inspector, or before startTelemetrySession is called). */
   telemetryMatchId: string | null;
-  /** Which seat we hold in a multiplayer session. Host plays P1, joiner P2.
-   *  Null outside multiplayer. Used by /match/ to decide whether input on a
-   *  given seat should be accepted locally or ignored as the peer's. */
-  multiplayerRole: "host" | "joiner" | null;
   /** Which board seat (P1=0, P2=1) this peer occupies for the LIFETIME of the
    *  current multiplayer match. Set once on session origin (host start → 0,
    *  joiner connect → 1) and **never changes on takeover** — the new-host who
@@ -67,9 +64,6 @@ export interface MatchState {
    *  as joiner stays at seat 0. Drives the "am I P1?" UI mapping so identity
    *  survives leader handoff. Null outside multiplayer. */
   localSeat: 0 | 1 | null;
-  /** The 6-digit session code for the active multiplayer session, kept on
-   *  the carrier so /match/ can pass it to telemetry's startMatch opts. */
-  multiplayerCode: string | null;
   /** Idempotency flag for telemetry finalisation. Set once a natural game-end
    *  or a claim-win has persisted the telemetry row; consulted to avoid
    *  double-finalise across reactive re-runs, claim-win double-clicks, and
@@ -90,11 +84,24 @@ export const match = $state<MatchState>({
   trueSnapshotJson: null,
   sandboxMovesApplied: 0,
   telemetryMatchId: null,
-  multiplayerRole: null,
-  multiplayerCode: null,
   localSeat: null,
   telemetryFinalised: false,
 });
+
+/** Single-source-of-truth reactive accessors for multiplayer role + code.
+ *  Both originate in `mpState` (the transport's view) and are read elsewhere
+ *  through these functions. Svelte 5 forbids exporting `$derived` from
+ *  modules, so these are getter functions — call them at the read site
+ *  (`multiplayerRole()`). The read still tracks `mpState` reactively because
+ *  the access happens inside the caller's reactive scope. Assignment is
+ *  impossible (no setter exported), which is the structural guarantee
+ *  against re-introducing parallel state. */
+export function multiplayerRole(): "host" | "joiner" | null {
+  return mpState.role;
+}
+export function multiplayerCode(): string | null {
+  return mpState.code;
+}
 
 export function resetMatchState(): void {
   match.mode = "idle";
@@ -113,9 +120,10 @@ export function resetMatchState(): void {
   match.sandboxMovesApplied = 0;
   match.telemetryMatchId = null;
   match.telemetryFinalised = false;
-  // multiplayerRole and multiplayerCode are owned by the lobby; routes
-  // downstream (setup/draft/match) only read them. The lobby is responsible
-  // for clearing them on session teardown.
+  // MP role/code now live in `mpState` (single source) and are exposed here
+  // as the module-level `$derived` constants `multiplayerRole` /
+  // `multiplayerCode`. We don't touch them here — the lobby owns MP
+  // teardown via `mpDisconnect()`.
 }
 
 /** Derive the user-facing mode label from the two seat assignments. */
@@ -190,29 +198,50 @@ export function networkLostTelemetrySessionSync(): void {
   telemetry.networkLostTelemetrySessionSync(match);
 }
 
+/** Pure decision: which side wins on an opponent forfeit. Keyed off
+ *  `localSeat` (stable across leader handoff) — a joiner-promoted new-host
+ *  still occupies seat 1, so their claim still means "P2 wins" (resultByte 1).
+ *  Falls back to mapping role→seat only when localSeat is null (pre-MP-boot). */
+export function computeClaimResultByte(
+  localSeat: 0 | 1 | null,
+  role: "host" | "joiner" | null,
+): 0 | 1 {
+  const seat = localSeat ?? (role === "host" ? 0 : 1);
+  return seat === 0 ? 0 : 1;
+}
+
+/** Persistence-only half of the opponent-forfeit flow: write the telemetry
+ *  row and latch the idempotency flag. Does NOT call `eng.finaliseLog` or
+ *  refresh `match.position` — the caller (route or thin orchestrator) owns
+ *  those two side effects. Re-entry safe via the `telemetryFinalised` early
+ *  return. */
+export async function finaliseOpponentForfeit(
+  eng: EngineClient,
+  resultByte: 0 | 1,
+): Promise<void> {
+  if (match.telemetryFinalised) return;
+  await telemetry.finalizeTelemetrySession(match, eng, "opponent_forfeit", resultByte);
+  match.telemetryFinalised = true;
+}
+
 /** Multiplayer claim-win: the present player declares victory after the grace
- *  window expires (peer never came back). Finalises the engine log and the
- *  telemetry row with endReason "opponent_forfeit" and the result favouring
- *  the present player.
- *
- *  Result is keyed off `localSeat` (which is stable across leader handoff),
- *  not `multiplayerRole` — a joiner-promoted new-host still occupies seat 1,
- *  so their claim still means "P2 wins" (resultByte 1). No-op outside
- *  multiplayer.
+ *  window expires (peer never came back). Thin orchestrator that composes
+ *  the pure resultByte decision, the engine log finalisation, the telemetry
+ *  persistence, and the position refresh needed to fire the game-end UI.
+ *  No-op outside multiplayer.
  */
 export async function claimWinByOpponentForfeit(eng: EngineClient): Promise<void> {
-  if (match.mode !== "multiplayer" || !match.multiplayerRole) return;
+  const role = multiplayerRole();
+  if (match.mode !== "multiplayer" || !role) return;
   if (match.telemetryFinalised) return;
-  const seat = match.localSeat ?? (match.multiplayerRole === "host" ? 0 : 1);
-  const resultByte: 0 | 1 = seat === 0 ? 0 : 1;
+  const resultByte = computeClaimResultByte(match.localSeat, role);
   try {
     await eng.finaliseLog(resultByte);
   } catch {
     // If the engine refuses (already finalised) we still want to persist the
     // telemetry verdict — fall through.
   }
-  await telemetry.finalizeTelemetrySession(match, eng, "opponent_forfeit", resultByte);
-  match.telemetryFinalised = true;
+  await finaliseOpponentForfeit(eng, resultByte);
   // Refresh the live position so the game-end UI fires.
   try {
     match.position = await eng.positionView();

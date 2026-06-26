@@ -73,7 +73,18 @@ let pingTimer: ReturnType<typeof setInterval> | null = null;
 // to avoid hammering the broker forever — after the budget is exhausted the
 // user falls back to manual lobby Rejoin.
 let redialAttempts = 0;
-const REDIAL_DELAYS = [1_500, 3_000, 6_000, 12_000, 30_000];
+// First slot is intentionally short (~400ms) — when the host vanishes and
+// returns quickly via `hostWithCode`, the joiner's broker registration drops
+// almost immediately. A near-instant first redial lands as soon as the host's
+// reclaim resolves; the longer slots take over if the host stays away.
+const REDIAL_DELAYS = [400, 1_500, 3_000, 6_000, 12_000, 30_000];
+/** While the joiner's auto-redial budget is in flight, transient PeerJS
+ *  errors (`Could not connect to peer …`, network blips) are normal — the
+ *  retry will mask them. Suppress writing them to `mpState.lastError` so the
+ *  banner doesn't surface a misleading toast during recovery. Cleared on
+ *  successful reconnect (the `open` handler in `bindConnection`) or when the
+ *  budget is exhausted (a single summary error is written there instead). */
+let suppressingRedialErrors = false;
 const dataHandlers = new Set<(msg: WireMessage) => void>();
 /** Raw-string subscribers. The role-aware wrapper (createMpEngine) reads
  *  these so it can decode v2 messages (committed, intent, snapshot, …) that
@@ -235,6 +246,7 @@ export function disconnect(): void {
   inbox.clear();
   rawInbox.clear();
   redialAttempts = 0;
+  suppressingRedialErrors = false;
   stopNowTimer();
 }
 
@@ -291,6 +303,8 @@ function bindConnection(c: DataConnection): void {
     // Reset the per-session auto-redial budget — a healthy open earns a
     // fresh set of retries the next time we drop.
     redialAttempts = 0;
+    // Recovery succeeded — let any subsequent unrelated errors surface again.
+    suppressingRedialErrors = false;
     startHeartbeat();
   });
   c.on("data", (raw: unknown) => {
@@ -349,7 +363,9 @@ function bindConnection(c: DataConnection): void {
   c.on("error", (e) => {
     // eslint-disable-next-line no-console
     console.log("[mp] conn.error", { role: mpState.role, peerId: c.peer, error: e?.message ?? String(e) });
-    mpState.lastError = e?.message ?? String(e);
+    if (!suppressingRedialErrors) {
+      mpState.lastError = e?.message ?? String(e);
+    }
     if (mpState.disconnectedSince === null) {
       mpState.disconnectedSince = Date.now();
     }
@@ -369,10 +385,20 @@ function bindConnection(c: DataConnection): void {
 function maybeAutoRedialJoiner(): void {
   if (mpState.role !== "joiner") return;
   if (mpState.code === null) return;
-  if (redialAttempts >= REDIAL_DELAYS.length) return;
+  if (redialAttempts >= REDIAL_DELAYS.length) {
+    // Budget exhausted — let subsequent unrelated errors surface, then emit
+    // a single summary message instead of one per failed attempt.
+    suppressingRedialErrors = false;
+    mpState.lastError = "Connection lost — Rejoin from the lobby.";
+    return;
+  }
   const delay = REDIAL_DELAYS[redialAttempts];
   const code = mpState.code;
   redialAttempts += 1;
+  // From here until either a successful `open` or the budget is exhausted,
+  // suppress lastError writes — every mid-recovery `Could not connect to
+  // peer …` is expected and would otherwise toast misleadingly.
+  suppressingRedialErrors = true;
   setTimeout(() => {
     // Bail if the user manually navigated away / disconnected in the meantime.
     if (mpState.role !== "joiner") return;
@@ -441,9 +467,11 @@ export function host(): Promise<string> {
 /** Re-host a session under a specific code. Used by the lobby's Rejoin flow
  *  to reclaim the same PeerJS ID we held before the tab closed, and by the
  *  leader-handoff path where the broker may still hold the dying host's
- *  registration for a few seconds. Retries up to 3 times on `unavailable-id`
- *  / `taken` errors with progressive backoff (~1.5s/2s/2.5s) to ride out
- *  broker eviction. Any other error type rejects immediately. */
+ *  registration for several seconds. Retries up to 4 times on a broad set
+ *  of transient errors (`unavailable-id` / `taken` from the broker, plus
+ *  `network` / `socket-error` / `socket-closed` / `disconnected` from the
+ *  WebRTC/WebSocket transports) with progressive backoff totalling ~8.8s
+ *  to ride out the eviction window. Any other error type rejects immediately. */
 export function hostWithCode(code: string): Promise<string> {
   // eslint-disable-next-line no-console
   console.log("[mp] hostWithCode() begin", { code });
@@ -451,7 +479,8 @@ export function hostWithCode(code: string): Promise<string> {
   mpState.disconnectedSince = null;
   mpState.role = "host";
   mpState.status = "hosting";
-  const RETRY_DELAYS = [1_500, 2_000, 2_500];
+  const RETRY_DELAYS = [800, 1_500, 2_500, 4_000];
+  const TRANSIENT_HOST_ERROR = /taken|unavailable-id|network|socket-(?:error|closed)|disconnected/i;
   return new Promise((resolve, reject) => {
     const tryOne = (attemptIdx: number): void => {
       const p = new Peer(ID_PREFIX + code);
@@ -480,7 +509,7 @@ export function hostWithCode(code: string): Promise<string> {
         const msg = e?.message ?? String(e);
         // The broker holds the previous registration for a few seconds after
         // the old peer dies — retry through that window for the handoff path.
-        if (attemptIdx < RETRY_DELAYS.length && /taken|unavailable-id/i.test(msg)) {
+        if (attemptIdx < RETRY_DELAYS.length && TRANSIENT_HOST_ERROR.test(msg)) {
           try { p.destroy(); } catch { /* noop */ }
           setTimeout(() => tryOne(attemptIdx + 1), RETRY_DELAYS[attemptIdx]);
           return;
@@ -543,14 +572,18 @@ function bindJoinerPeer(code: string): Promise<void> {
       bindConnection(c);
       c.on("open", () => resolve());
       c.on("error", (e) => {
-        mpState.lastError = e?.message ?? String(e);
+        if (!suppressingRedialErrors) {
+          mpState.lastError = e?.message ?? String(e);
+        }
         mpState.status = "error";
         reject(e);
       });
     });
     p.on("error", (e) => {
       const msg = e?.message ?? String(e);
-      mpState.lastError = msg;
+      if (!suppressingRedialErrors) {
+        mpState.lastError = msg;
+      }
       mpState.status = /peer-unavailable/i.test(msg) ? "error" : "error";
       try { p.destroy(); } catch { /* noop */ }
       reject(e);

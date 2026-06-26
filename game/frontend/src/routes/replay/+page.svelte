@@ -8,6 +8,7 @@
     isBodyguardChoice,
     isDraftTurn,
     formatAction,
+    ActionKind,
     SNAPSHOT_BUDGETS,
     SnapshotValidationError,
     validateMatchLog,
@@ -41,18 +42,20 @@
 
   // Replay's lastApplied hint for the board overlay. The renderer also
   // tracks this for Move/Skill but we suppress it for BodyguardChoice
-  // (defender doesn't move) and DraftTurn (no board squares).
+  // (defender doesn't move), DraftTurn (no board squares), and EndPhase /
+  // EndTurn (both encode src=target=0 → corner; no actual ply happened).
   const lastAppliedDisplay = $derived.by<{ src: number; target: number } | null>(() => {
     if (currentPly === 0) return null;
     const raw = plies[currentPly - 1];
     if (isDraftTurn(raw) || isBodyguardChoice(raw)) return null;
     const d = decodeAction(raw);
+    if (d.kind === ActionKind.EndPhase || d.kind === ActionKind.EndTurn) return null;
     return { src: d.src, target: d.target };
   });
 
   onMount(async () => {
     eng = await getEngine();
-    renderer = createPlyRenderer(eng, { sfxEnabled: false });
+    renderer = createPlyRenderer(eng, { sfxEnabled: true });
     const pending = consumePendingMatchLog();
     if (pending !== null) {
       await loadFromJson(pending);
@@ -135,6 +138,22 @@
     }
   }
 
+  // Live-scrub coalescing: while a jumpTo is in flight, the user may drag
+  // further. We remember the latest requested ply and re-fire jumpTo after the
+  // current one settles. Without this, oninput-driven scrubs get dropped
+  // whenever busy=true, and the slider feels unresponsive during drag.
+  let pendingScrubTarget: number | null = null;
+  async function scrubTo(target: number): Promise<void> {
+    pendingScrubTarget = target;
+    if (busy) return;
+    while (pendingScrubTarget !== null) {
+      const next = pendingScrubTarget;
+      pendingScrubTarget = null;
+      if (next === currentPly) continue;
+      await jumpTo(next);
+    }
+  }
+
   function togglePlay(): void {
     if (plies.length === 0) return;
     if (currentPly >= plies.length) return;
@@ -156,9 +175,9 @@
     return () => clearTimeout(id);
   });
 
-  function onScrubChange(ev: Event): void {
+  function onScrubInput(ev: Event): void {
     const v = Number((ev.currentTarget as HTMLInputElement).value);
-    void jumpTo(v);
+    void scrubTo(v);
   }
 
   function onPasteLoad(): void {
@@ -249,8 +268,7 @@
           min="0"
           max={plies.length}
           value={currentPly}
-          disabled={busy}
-          onchange={onScrubChange}
+          oninput={onScrubInput}
         />
         <label class="jump">
           <span>{t("replay.jumpToPly")}</span>

@@ -103,7 +103,7 @@ export interface JoinedCodeEntry {
 /** Storage backend contract. Same surface for IDB (web) and Tauri FS
  *  (desktop). Picked at boot like the engine client. */
 export interface TelemetryStore {
-  startMatch(meta: Omit<MatchMeta, "matchId" | "startedAtUnixMs" | "status">): Promise<string>;
+  startMatch(meta: Omit<MatchMeta, "matchId" | "startedAtUnixMs" | "status">, nowMs?: number): Promise<string>;
   appendPly(matchId: string, plyJson: string, plyNo: number): Promise<void>;
   finalizeMatch(
     matchId: string,

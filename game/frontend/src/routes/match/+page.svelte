@@ -28,6 +28,9 @@
     networkLostTelemetrySession,
     abandonTelemetrySessionSync,
     networkLostTelemetrySessionSync,
+    multiplayerRole,
+    multiplayerCode,
+    claimWinByOpponentForfeit,
   } from "$lib/state/match-store.svelte";
   import { settings } from "$lib/state/settings.svelte";
   import {
@@ -43,6 +46,7 @@
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
   import ConnectivityPill from "$lib/multiplayer/ConnectivityPill.svelte";
   import GraceBanner from "$lib/multiplayer/GraceBanner.svelte";
+  import { takeoverAsHost } from "$lib/multiplayer-handoff";
   import {
     mpState,
     onRawData as mpOnRawData,
@@ -92,7 +96,7 @@
     const toMove = match.position.toMove; // 0 = P1, 1 = P2
     // Seat-by-localSeat, NOT by role: post-handoff the role flips but the
     // peer's board seat stays the same. See match-store.svelte.ts/localSeat.
-    const seat = match.localSeat ?? (match.multiplayerRole === "host" ? 0 : 1);
+    const seat = match.localSeat ?? (multiplayerRole() === "host" ? 0 : 1);
     return toMove === seat;
   });
 
@@ -438,36 +442,22 @@
    *  handle is set synchronously when the timer is scheduled and only cleared
    *  inside the timer callback or by teardown — no microtask window where a
    *  re-entrant $effect run could schedule a duplicate. */
-  let aiTimer: ReturnType<typeof setTimeout> | null = null;
-  function cancelAiTimer(): void {
-    if (aiTimer !== null) {
-      clearTimeout(aiTimer);
-      aiTimer = null;
-    }
-  }
   $effect(() => {
-    if (!ready) return cancelAiTimer();
-    if (match.mode === "sandbox") return cancelAiTimer();
-    if (!currentSeatIsAi) return cancelAiTimer();
+    if (!ready) return;
+    if (match.mode === "sandbox") return;
+    if (!currentSeatIsAi) return;
     // For AIvAI, gate on the play/pause toggle. For HvAI, always run.
-    if (match.mode === "aivai" && !aiAutoPlay) return cancelAiTimer();
-    if (busy || aiTimer !== null) return;
-    // Defer just long enough for the UI to paint state + "thinking" pill
-    // before we block on the engine. For AIvAI, honour the user-configured
-    // step delay so a spectator can actually watch the game.
+    if (match.mode === "aivai" && !aiAutoPlay) return;
+    if (busy) return;
+    // Visible cooldown (so a spectator can watch AIvAI step-by-step, or HvAI
+    // has a beat to repaint the board). `runAiStep` runs the search in
+    // parallel with this delay — the cooldown is a floor, not a sequential
+    // wait. For AIvAI we honour the user-configured step delay; HvAI is a
+    // small fixed beat.
     const delay = match.mode === "aivai"
       ? Math.max(16, settings.aivaiStepDelayMs)
       : 30;
-    aiTimer = setTimeout(() => {
-      aiTimer = null;
-      // Re-check gating: state may have changed during the delay window
-      // (player committed a move, AI got paused, ply ended the match…).
-      if (!ready || busy) return;
-      if (match.mode === "sandbox") return;
-      if (!currentSeatIsAi) return;
-      if (match.mode === "aivai" && !aiAutoPlay) return;
-      void runAiStep();
-    }, delay);
+    void runAiStep(delay);
   });
 
   onMount(async () => {
@@ -484,12 +474,12 @@
       // Snapshot side before reset so it survives the reset (which clears
       // mode/position/legal but preserves side by design).
       const sideAtBoot = { p1: match.side.p1, p2: match.side.p2 };
-      // Preserve multiplayer mode + role/code through the reset — the lobby
-      // set these before navigating here and the reset would otherwise drop
-      // mode back to "idle".
+      // Preserve multiplayer mode through the reset — the lobby set this
+      // before navigating here and the reset would otherwise drop mode back
+      // to "idle". MP role/code now live in mpState (read via the
+      // `multiplayerRole` / `multiplayerCode` $derived constants) so they
+      // automatically survive the reset.
       const wasMultiplayer = match.mode === "multiplayer";
-      const mpRole = match.multiplayerRole;
-      const mpCode = match.multiplayerCode;
       // L8 — pre-made loadout path. Snapshot BEFORE resetMatchState() because
       // the reset clears `preMadeLoadoutId` (so stale ids from a prior match
       // can't leak in via direct navigation). `/setup/` writes the field on
@@ -497,10 +487,6 @@
       const preMadeId = match.preMadeLoadoutId;
       resetMatchState();
       match.side = sideAtBoot;
-      if (wasMultiplayer) {
-        match.multiplayerRole = mpRole;
-        match.multiplayerCode = mpCode;
-      }
       if (preMadeId) {
         // Both sides play the same curated loadout — mirror match.
         const loadout = PRE_MADE_LOADOUTS[preMadeId];
@@ -544,60 +530,64 @@
       // one game and resume cards show duplicates.
       if (!match.telemetryMatchId) {
         await startTelemetrySession(match.mode, {
-          multiplayerCode: mpCode,
-          multiplayerRole: mpRole,
+          multiplayerCode: multiplayerCode(),
+          multiplayerRole: multiplayerRole(),
         });
       }
       // In multiplayer, subscribe to action messages from the peer and
       // apply them locally (with fromWire: true so we don't echo back).
       // Also handle the resume handshake: hosts validate incoming requests
       // against their MatchLog; joiners restore from the host's snapshot.
+      // For solo we hard-pin "solo"; for MP we read live from mpState so a
+      // joiner→host handoff (which mutates mpState.role) is reflected on the
+      // very next decide-branch without re-creating the wrapper.
+      const isMp = wasMultiplayer;
+      const currentRole = multiplayerRole();
       const role: Role =
-        wasMultiplayer && mpRole === "host"
+        wasMultiplayer && currentRole === "host"
           ? "host"
-          : wasMultiplayer && mpRole === "joiner"
+          : wasMultiplayer && currentRole === "joiner"
             ? "joiner"
             : "solo";
       mpEngine = createMpEngine(
         {
-          role,
           phase: "play",
           matchId: match.telemetryMatchId,
-          code: mpCode,
         },
         {
           eng,
+          getRole: () => (isMp ? ((mpState.role ?? "joiner") as Role) : "solo"),
+          getCode: () => mpState.code,
           send: (m: WireMessageV2) => mpSendRaw(encodeMessageV2(m)),
           subscribe: (cb) => mpOnRawData((raw) => {
             const decoded = decodeMessageV2(raw);
             if (decoded) cb(decoded);
           }),
-          onApplied: async (raw, _phase) => {
-            // Skip when this raw was just applied via the local submit path —
-            // applyRaw already snapshotted pre-state and rendered effects;
-            // re-rendering here would double-flash and double-bump telemetry.
-            if (raw === pendingLocalRaw) return;
+          onApplied: async (raw, _phase, meta) => {
             if (!renderer) return;
             // Drain any deferred Skill refresh from a prior remote-applied
             // skill — its setTimeout would otherwise fire after we render
             // this new action and clobber the post-state.
             renderer.drainPendingSkillRefresh();
-            // The wrapper has already called tryApply, so the engine itself
-            // is post-state. But `match.position` is the route's reactive
-            // mirror — refresh() hasn't been called yet for this raw, so
-            // match.position is still the PRE-apply snapshot. Capture from
-            // it before refreshing, then run the full effect pipeline so the
-            // non-acting peer plays sounds, spawns damage/death effects, and
-            // updates usedThisPhase (greying-out parity).
-            const pre = renderer.snapshotPreState(raw);
+            // The wrapper captured `prePositionView` before tryApply, so we
+            // diff against an explicit pre-state value — no reliance on the
+            // reactive mirror's update ordering.
+            const pre = renderer.snapshotPreState(raw, meta.prePositionView);
             await renderer.renderApplied(raw, pre);
             match.lastApplied = raw;
             afterApplied();
-            // Host records the ply for telemetry. Joiner writes nothing
-            // per the authoritative-host model.
+            // Telemetry: host owns the row for both local and joiner-driven
+            // plies (authoritative-host model). Solo records its own. Joiner
+            // writes nothing. `isLocalEcho` is intentionally NOT gating here
+            // — the role check is what determines who owns the telemetry.
             if (role === "host" || role === "solo") {
               await recordPly(eng!);
             }
+            // `meta.isLocalEcho` is observed but currently unused in /match/.
+            // It is the future hook for local-only side effects (sounds,
+            // haptic feedback) that should NOT fire for remote actions on
+            // the non-originating peer.
+            void meta.isLocalEcho;
           },
           onSnapshotApplied: async () => {
             if (!renderer) return;
@@ -639,10 +629,6 @@
   let mpPaused = $state(false);
   /** Disposer for the $effect.root that bridges mpState → wrapper lifecycle. */
   let mpConnectedUnsub: (() => void) | null = null;
-  /** The raw u32 currently being applied via the local submit path. Used to
-   *  short-circuit the wrapper's onApplied callback so we don't double-render
-   *  on host-side (host's submitAction applies AND fires onApplied). */
-  let pendingLocalRaw: number | null = null;
 
   // === Host-side peer-drop detection ========================================
   //
@@ -728,14 +714,14 @@
         return;
       }
 
-      // Snapshot pre-state for effect rendering BEFORE handing off to the
-      // wrapper. On host/solo, submitAction will mutate the engine
-      // synchronously; on joiner, the engine doesn't move until the host's
-      // committed envelope lands, but we still want pre-state captured from
-      // the moment of click.
+      // Funnel through the wrapper. For solo/host, submitAction synchronously
+      // calls onApplied(isLocalEcho=true) before returning, which handles the
+      // pre-state snapshot, render, recordPly, and lastApplied. For joiner,
+      // submitAction sends `intent` and waits for the host's `committed` —
+      // the matching commit handler fires onApplied with isLocalEcho=true.
+      // Either way, render + telemetry happens inside onApplied; applyRaw
+      // only owns the post-success UI cleanup (selection, focus mode).
       renderer.drainPendingSkillRefresh();
-      const pre = renderer.snapshotPreState(raw);
-      pendingLocalRaw = raw;
       const result: SubmitResult = mpEngine
         ? await mpEngine.submitAction(raw)
         : { accepted: true };
@@ -746,17 +732,10 @@
         if (result.reason && result.reason !== "illegal") {
           bootError = `move refused: ${result.reason}`;
         }
-        pendingLocalRaw = null;
         return;
       }
-      // For solo + host: submitAction has already advanced the engine.
-      // For joiner: engine moved when the host's committed landed via the
-      // wrapper's onApplied. Render here either way — the engine state is
-      // authoritative regardless of who originated the action.
-      await recordPly(eng);
-      await renderer.renderApplied(raw, pre);
-      match.lastApplied = raw;
-      afterApplied();
+      // onApplied has already run by now for solo/host. For joiner, it ran
+      // on the same microtask cycle as the intent's promise resolution.
       match.selection = null;
       pendingApproach = null;
       pendingDirection = null;
@@ -765,7 +744,6 @@
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
-      pendingLocalRaw = null;
       busy = false;
     }
   }
@@ -786,8 +764,14 @@
 
   /** Run one AI step for the side-to-move, then render the result. The engine
    *  applies the action atomically inside stepAi, so we snapshot pre-state
-   *  from the current `match.position` BEFORE the call. */
-  async function runAiStep(): Promise<void> {
+   *  from the current `match.position` BEFORE the call.
+   *
+   *  `minDelayMs` runs in parallel with the search so the visible cooldown
+   *  is a floor, not a sequential wait. For HvAI this is a small "let the UI
+   *  paint" beat; for AIvAI it's the user-configured spectator pacing. Either
+   *  way the search starts immediately and we just wait for the slower of the
+   *  two to finish before committing. */
+  async function runAiStep(minDelayMs: number = 0): Promise<void> {
     if (!eng || !renderer || busy) return;
     if (match.mode === "sandbox") return;
     if (match.mode === "multiplayer") return;
@@ -799,7 +783,10 @@
       // Drain any deferred Skill refresh before snapshotting pre-state — see
       // applyRaw for rationale.
       renderer.drainPendingSkillRefresh();
-      const result = await eng.stepAi();
+      const delayP = minDelayMs > 0
+        ? new Promise<void>((r) => setTimeout(r, minDelayMs))
+        : Promise.resolve();
+      const [result] = await Promise.all([eng.stepAi(), delayP]);
       const raw = result.appliedAction;
       if (raw === 0) {
         // AI returned no move. Two cases:
@@ -1352,7 +1339,6 @@
   });
 
   onDestroy(() => {
-    cancelAiTimer();
     if (typeof window !== "undefined") {
       window.removeEventListener("beforeunload", beforeUnloadGuard);
       window.removeEventListener("pagehide", pageHideHandler);
@@ -1404,7 +1390,14 @@
   </header>
 
   {#if match.mode === "multiplayer"}
-    <GraceBanner {eng} {mpEngine} />
+    <GraceBanner
+      {eng}
+      {mpEngine}
+      role={multiplayerRole()}
+      code={multiplayerCode()}
+      onClaim={claimWinByOpponentForfeit}
+      onTakeOver={takeoverAsHost}
+    />
   {/if}
 
   {#if bootError}

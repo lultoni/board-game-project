@@ -24,6 +24,7 @@ import {
   SnapshotValidationError,
   validateSnapshot,
   type EngineClient,
+  type PositionView,
 } from "./engine";
 import {
   encodeMessageV2,
@@ -40,6 +41,22 @@ export interface SubmitResult {
   reason?: string;
 }
 
+/** Metadata accompanying every `onApplied` callback fire. */
+export interface OnAppliedMeta {
+  /** Engine `PositionView` captured by the wrapper BEFORE `tryApply`. Routes
+   *  use it for pre-state diffing (mailbox/bodyguard effects) without having
+   *  to re-read engine state — at the time `onApplied` fires the engine has
+   *  already moved, so a fresh `positionView()` would return post-state. */
+  prePositionView: PositionView;
+  /** True when this `onApplied` fires for an action originated locally on
+   *  THIS peer (solo `submitAction`, host `submitAction`, or joiner's intent
+   *  that the host just acked). False for remote-originated actions (host
+   *  receiving a joiner's intent, joiner mirroring a host-originated commit).
+   *  Routes use this to gate local-only side effects such as telemetry's
+   *  `recordPly`. */
+  isLocalEcho: boolean;
+}
+
 export interface MpEngineDeps {
   /** The booted engine. AUTH on host/solo; MIRROR on joiner. */
   eng: EngineClient;
@@ -52,8 +69,11 @@ export interface MpEngineDeps {
   subscribe: (cb: (m: WireMessageV2) => void) => () => void;
   /** Called after every successfully-applied action so callers can refresh
    *  reactive UI state (`match.position`, `match.legal`, draft view, etc).
-   *  Wrapper does not touch the reactive carrier itself — keeps it pure. */
-  onApplied: (raw: number, phase: WirePhase) => Promise<void> | void;
+   *  Wrapper does not touch the reactive carrier itself — keeps it pure.
+   *  `meta.prePositionView` is the engine's view captured BEFORE `tryApply`;
+   *  `meta.isLocalEcho` distinguishes locally-submitted from remotely-driven
+   *  applies. See `OnAppliedMeta` for full semantics. */
+  onApplied: (raw: number, phase: WirePhase, meta: OnAppliedMeta) => Promise<void> | void;
   /** Snapshot was just restored end-to-end (engine + matchId update). UI
    *  should re-pull position/legal. Distinct from `onApplied` because no
    *  single action triggered it. */
@@ -76,10 +96,16 @@ export interface MpEngineDeps {
    *  caller can write to the host's IDB row. Joiner never writes its own
    *  row — caller's implementation should no-op when `role === "joiner"`. */
   onHostCommitted?: () => Promise<void> | void;
+  /** Live role accessor. The wrapper reads this on every send/decide-branch
+   *  so role changes (the handoff path writes `mpState.role = "host"`) take
+   *  effect without re-instantiating the wrapper. */
+  getRole: () => Role;
+  /** Live code accessor. Used by `session-hello` emission. The handoff path
+   *  writes `mpState.code = newCode` and this read sees it on the next emit. */
+  getCode: () => string | null;
 }
 
 export interface MpEngineOpts {
-  role: Role;
   /** Active draft/play phase at construction time. Host updates this on
    *  `phase-change`; joiner inherits from `session-hello`/`snapshot`. */
   phase: WirePhase;
@@ -87,8 +113,6 @@ export interface MpEngineOpts {
    *  `session-hello` arrives, then updated via `setMatchId`. Solo: pass the
    *  telemetry id or null if not logging. */
   matchId: string | null;
-  /** Host-only: the 6-digit session code, sent on session-hello. */
-  code?: string | null;
   /** Optional clock for nonces / debugging. Defaults to Math.random + Date.now. */
   nonceFactory?: () => string;
   /** Diagnostics — captures internal warnings without spamming console.
@@ -120,15 +144,16 @@ export interface MpEngineHandle {
    *  handoff). On host/solo, no-op. */
   setMatchId(id: string | null): void;
 
-  /** Flip role joiner → host in place. Preserves `seq`, the engine reference,
-   *  and the wrapper's subscription. Used by the leader-handoff path: the
-   *  lobby/banner reclaims the same PeerJS code, starts a fresh telemetry row,
-   *  then calls this. After `promoteToHost`, the next `notifyConnectionOpen`
-   *  will emit `session-hello` with the new matchId + code so the old host
-   *  (now joiner) can re-anchor via snapshot. Pending intents are rejected
-   *  with reason "promoted" since they targeted an authority that no longer
-   *  exists. No-op on host/solo. */
-  promoteToHost(opts: { matchId: string; code: string }): void;
+  /** Flip wrapper-internal state in place for the joiner→host handoff. Caller
+   *  (`multiplayer-handoff.ts`) invokes this BEFORE writing `mpState.role =
+   *  "host"`; the wrapper's own `getRole()` read still sees "joiner" at entry
+   *  (pre-flip check). After this returns, the caller flips `mpState.role`
+   *  and `mpState.code`; the wrapper's deps pick those up reactively on the
+   *  next send/decide-branch — there's no internal `role`/`codeRef` to keep
+   *  in sync. Pending intents are rejected with reason "promoted" since they
+   *  targeted an authority that no longer exists. Preserves `seq`, the engine
+   *  reference, and the wrapper's subscription. No-op on host/solo. */
+  promoteToHost(opts: { matchId: string }): void;
 
   /** The latest committed seq we know about. */
   getSeq(): number;
@@ -139,13 +164,12 @@ export interface MpEngineHandle {
 
 export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngineHandle {
   // --- internal mutable state ------------------------------------------------
-  let role: Role = opts.role;
+  // Role and code are NOT held here — they live in `mpState` (the single
+  // source) and are read through `deps.getRole()` / `deps.getCode()` on every
+  // branch. This lets `promoteToHost` (or any future role/code mutator) flip
+  // them via mpState without re-instantiating the wrapper.
   let phase: WirePhase = opts.phase;
   let matchId: string | null = opts.matchId;
-  // Mutable code carrier so promoteToHost can swap in the reclaimed code
-  // without recreating the wrapper. Initial value comes from opts; null until
-  // a code is known (joiner before session-hello).
-  let codeRef: string | null = opts.code ?? null;
   let seq = 0;
   let paused = false; // host-side: pause while joiner is gone
   let disposed = false;
@@ -230,7 +254,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
   }
 
   function requestResync(reason: "reconnect" | "stale" | "audit-mismatch", mySeq: number): void {
-    if (role !== "joiner") return;
+    if (deps.getRole() !== "joiner") return;
     resyncAttempts += 1;
     lastResyncReason = reason;
     deps.send({ kind: "request-snapshot", mySeq, reason });
@@ -271,7 +295,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         return;
 
       case "session-hello": {
-        if (role !== "joiner") {
+        if (deps.getRole() !== "joiner") {
           warn("session-hello-as-host");
           return;
         }
@@ -288,7 +312,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       }
 
       case "snapshot": {
-        if (role !== "joiner") {
+        if (deps.getRole() !== "joiner") {
           warn("snapshot-as-host");
           return;
         }
@@ -317,7 +341,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       }
 
       case "phase-change": {
-        if (role !== "joiner") {
+        if (deps.getRole() !== "joiner") {
           warn("phase-change-as-host");
           return;
         }
@@ -346,7 +370,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       }
 
       case "intent": {
-        if (role !== "host") {
+        if (deps.getRole() !== "host") {
           warn("intent-as-non-host");
           return;
         }
@@ -365,8 +389,10 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           return;
         }
         // Validate via tryApply — engine's deterministic rule check.
+        let prePositionView: PositionView;
         let postZobrist: bigint;
         try {
+          prePositionView = await deps.eng.positionView();
           await deps.eng.tryApply(m.raw);
           const view = await deps.eng.positionView();
           postZobrist = view.zobrist;
@@ -393,7 +419,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         };
         deps.send(committed);
         try {
-          await deps.onApplied(m.raw, phase);
+          await deps.onApplied(m.raw, phase, { prePositionView, isLocalEcho: false });
           if (deps.onHostCommitted) await deps.onHostCommitted();
         } catch (e) {
           warn("onApplied-host-intent", e);
@@ -403,7 +429,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       }
 
       case "committed": {
-        if (role !== "joiner") {
+        if (deps.getRole() !== "joiner") {
           warn("committed-as-non-joiner");
           return;
         }
@@ -415,9 +441,15 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           }
           return;
         }
+        // Capture `isLocalEcho` BEFORE the pendingIntents.delete below — once
+        // we delete, the .has() check would return false and we'd misreport
+        // joiner-originated commits as remote-driven.
+        const isLocalEcho = !!(m.originNonce && pendingIntents.has(m.originNonce));
         // Audit: re-apply on the mirror engine.
+        let prePositionView: PositionView;
         let mirrorZobrist: bigint;
         try {
+          prePositionView = await deps.eng.positionView();
           await deps.eng.tryApply(m.raw);
           const view = await deps.eng.positionView();
           mirrorZobrist = view.zobrist;
@@ -444,7 +476,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           p?.resolve({ accepted: true });
         }
         try {
-          await deps.onApplied(m.raw, phase);
+          await deps.onApplied(m.raw, phase, { prePositionView, isLocalEcho });
         } catch (e) {
           warn("onApplied-mirror", e);
         }
@@ -452,7 +484,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       }
 
       case "intent-rejected": {
-        if (role !== "joiner") {
+        if (deps.getRole() !== "joiner") {
           warn("intent-rejected-as-non-joiner");
           return;
         }
@@ -465,7 +497,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       }
 
       case "request-snapshot": {
-        if (role !== "host") {
+        if (deps.getRole() !== "host") {
           warn("request-snapshot-as-non-host");
           return;
         }
@@ -475,7 +507,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
 
       case "cheat-detected": {
         // Joiner has detected host cheating; surface to host UI too.
-        if (role !== "host") {
+        if (deps.getRole() !== "host") {
           warn("cheat-detected-as-non-host");
           return;
         }
@@ -491,14 +523,14 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       }
 
       case "paused":
-        if (role === "joiner") {
+        if (deps.getRole() === "joiner") {
           paused = true;
           deps.onPausedChange(true);
         }
         return;
 
       case "resumed":
-        if (role === "joiner") {
+        if (deps.getRole() === "joiner") {
           paused = false;
           deps.onPausedChange(false);
         }
@@ -543,7 +575,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     }
     if (postPhase === PHASE_DRAFT) return;
     phase = "play";
-    if (role === "host") {
+    if (deps.getRole() === "host") {
       try {
         const snapshotJson = await deps.eng.snapshotJson();
         deps.send({
@@ -568,14 +600,17 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
 
   async function submitAction(raw: number): Promise<SubmitResult> {
     if (disposed) return { accepted: false, reason: "disposed" };
+    const role = deps.getRole();
     if (role === "solo") {
+      let prePositionView: PositionView;
       try {
+        prePositionView = await deps.eng.positionView();
         await deps.eng.tryApply(raw);
       } catch (e) {
         return { accepted: false, reason: (e as Error)?.message ?? "illegal" };
       }
       try {
-        await deps.onApplied(raw, phase);
+        await deps.onApplied(raw, phase, { prePositionView, isLocalEcho: true });
       } catch (e) {
         warn("onApplied-solo", e);
       }
@@ -586,8 +621,10 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       if (paused) {
         return { accepted: false, reason: "paused" };
       }
+      let prePositionView: PositionView;
       let postZobrist: bigint;
       try {
+        prePositionView = await deps.eng.positionView();
         await deps.eng.tryApply(raw);
         const view = await deps.eng.positionView();
         postZobrist = view.zobrist;
@@ -610,7 +647,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       };
       deps.send(committed);
       try {
-        await deps.onApplied(raw, phase);
+        await deps.onApplied(raw, phase, { prePositionView, isLocalEcho: true });
         if (deps.onHostCommitted) await deps.onHostCommitted();
       } catch (e) {
         warn("onApplied-host", e);
@@ -636,6 +673,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
 
   function notifyConnectionOpen(): void {
     if (disposed) return;
+    const role = deps.getRole();
     if (role === "host") {
       // Resume host-side operation: clear pause, announce session.
       paused = false;
@@ -645,7 +683,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         matchId: matchId ?? "",
         phase,
         seq,
-        code: codeRef ?? "",
+        code: deps.getCode() ?? "",
       });
       // If seq > 0 the joiner will request a snapshot; we wait passively.
       // If seq === 0 (fresh match) the first `committed` is enough.
@@ -657,6 +695,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
 
   function notifyConnectionLost(): void {
     if (disposed) return;
+    const role = deps.getRole();
     if (role === "host") {
       paused = true;
       deps.onPausedChange(true);
@@ -670,7 +709,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
   }
 
   async function hostSendSnapshot(_reason?: "explicit" | "reply"): Promise<void> {
-    if (disposed || role !== "host") return;
+    if (disposed || deps.getRole() !== "host") return;
     if (!matchId) {
       warn("hostSendSnapshot-no-matchId");
       return;
@@ -689,16 +728,17 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     matchId = id;
   }
 
-  function promoteToHost(promoteOpts: { matchId: string; code: string }): void {
+  function promoteToHost(promoteOpts: { matchId: string }): void {
     if (disposed) return;
-    if (role !== "joiner") return;
+    // Pre-flip check: caller MUST NOT have mutated `mpState.role` yet. The
+    // role/code flip happens in the orchestrator AFTER this call returns, so
+    // `deps.getRole()` still reads "joiner" here.
+    if (deps.getRole() !== "joiner") return;
     // Any joiner intent that hasn't received a `committed` yet was aimed at
     // an authority that no longer exists. Reject so the route's awaiters can
     // clean up their optimistic UI / retry against the new self-host.
     clearPendingIntents("promoted");
-    role = "host";
     matchId = promoteOpts.matchId;
-    codeRef = promoteOpts.code;
     // Fresh host is by definition not paused — we just acquired the role.
     paused = false;
     // seq stays put; new host continues the sequence from the last committed

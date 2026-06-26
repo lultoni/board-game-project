@@ -17,17 +17,20 @@
 //      new row with the engine state we already have. Without this, a
 //      subsequent tab close before the next ply would leave an empty row.
 //
-//   4. mpEngine.promoteToHost({matchId, code}) — flip wrapper role locally.
-//      MUST happen before hostWithCode resolves so that when the old host
-//      dials back in as joiner, the wrapper is already authoritative and
-//      `notifyConnectionOpen` emits `session-hello` (host path) rather than
-//      `request-snapshot` (joiner path).
+//   4. mpEngine.promoteToHost({matchId}) — flip wrapper-internal state
+//      (matchId, paused, pending intents). The wrapper's `getRole()` /
+//      `getCode()` deps read live `mpState`, so the role/code flip happens in
+//      step 5 below and the wrapper picks it up without a local mutation.
+//      MUST run BEFORE step 5's role flip: `promoteToHost` early-outs unless
+//      it still sees "joiner".
 //
-//   5. set `match.multiplayerRole = "host"`, `match.multiplayerCode = code`.
+//   5. mpState.role = "host"; mpState.code = code; — single-source flip.
+//      After this, `multiplayerRole` / `multiplayerCode` (the $derived
+//      constants in match-store) read "host" / code reactively across the UI.
 //
 //   6. await hostWithCode(code) — register the new peer with the broker.
-//      Retries 3× on `peer-unavailable-id` for broker eviction (handled
-//      inside `multiplayer.svelte.ts`).
+//      Retries 4× on transient transport errors for broker eviction.
+//      Idempotent w.r.t. mpState.role/code (it re-writes the same values).
 //
 // If any step fails after (1), the carrier is partially mutated and the user
 // must either retry (which is idempotent for steps 2–5 thanks to the
@@ -36,16 +39,17 @@
 
 import type { EngineClient } from "./engine";
 import type { MpEngineHandle } from "./multiplayer-engine";
+import { mpState } from "./multiplayer.svelte";
 import type { MatchMode } from "./state/match-store.svelte";
 import type { TelemetrySession } from "./state/telemetry-session";
 
 /** Minimal subset of the reactive match carrier the orchestrator mutates.
- *  Receives the live $state in the runtime; tests pass a plain object. */
+ *  Receives the live $state in the runtime; tests pass a plain object.
+ *  Note: MP role/code now live in `mpState` (single source) and are NOT
+ *  carried here — the orchestrator writes them via the mpState import. */
 export interface HandoffCarrier {
   mode: MatchMode;
   telemetryMatchId: string | null;
-  multiplayerRole: "host" | "joiner" | null;
-  multiplayerCode: string | null;
 }
 
 export interface TakeoverDeps {
@@ -127,13 +131,17 @@ export async function takeoverAsHost(
     return { ok: false, reason: "engine-failed", error: e as Error };
   }
 
-  // 4 — Flip wrapper role locally BEFORE the new peer is up, so any inbound
-  // DataConnection in the race window finds us in host role.
-  deps.mpEngine.promoteToHost({ matchId: newMatchId, code: deps.code });
+  // 4 — Flip wrapper-internal state (matchId, paused, pending intents) BEFORE
+  // mpState.role is mutated. The wrapper's `getRole()` early-out inside
+  // `promoteToHost` needs to still see "joiner".
+  deps.mpEngine.promoteToHost({ matchId: newMatchId });
 
-  // 5 — Update the carrier so route-level $effects see the new role.
-  carrier.multiplayerRole = "host";
-  carrier.multiplayerCode = deps.code;
+  // 5 — Single-source role/code flip. After this point, `multiplayerRole` and
+  // `multiplayerCode` (the $derived constants in match-store) read "host" /
+  // code reactively across the UI, and the wrapper's `getRole()`/`getCode()`
+  // deps pick the new values up on every send/decide-branch.
+  mpState.role = "host";
+  mpState.code = deps.code;
 
   // 6 — Bring up the new peer. Retries on broker eviction happen inside.
   try {

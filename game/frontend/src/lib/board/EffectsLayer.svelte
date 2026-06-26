@@ -17,7 +17,8 @@
   let { viewBox, wheelPad = 0, queue = $bindable() }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
-  let raf = 0;
+  let raf: number | null = null;
+  let running = false;
 
   // Dust particles per dust effect.
   type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number };
@@ -59,9 +60,12 @@
   }
 
   function frame(now: number) {
-    raf = requestAnimationFrame(frame);
+    raf = null;
     const c = canvas;
-    if (!c) return;
+    if (!c) {
+      running = false;
+      return;
+    }
     // Resize-aware: keep the canvas pixel-buffer matching the rendered size,
     // but draw in SVG-coordinate space so square sizes match.
     const rect = c.getBoundingClientRect();
@@ -73,7 +77,10 @@
       c.height = wantH;
     }
     const ctx = c.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      running = false;
+      return;
+    }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
     // Map the SVG's outer viewBox (which includes wheelPad on each side)
@@ -87,8 +94,6 @@
     ctx.scale(scale, scale);
     ctx.translate(wheelPad, wheelPad);
     const size = viewBox / 8;
-
-    if (queue.length === 0) return;
 
     // Iterate, render, drop expired.
     let writeIdx = 0;
@@ -105,6 +110,20 @@
       }
     }
     queue.length = writeIdx;
+
+    // P3: re-schedule only while there's work to do. The reactive $effect
+    // below restarts the loop when the queue receives a new push.
+    if (queue.length > 0) {
+      raf = requestAnimationFrame(frame);
+    } else {
+      running = false;
+    }
+  }
+
+  function start() {
+    if (running) return;
+    running = true;
+    raf = requestAnimationFrame(frame);
   }
 
   function renderEffect(ctx: CanvasRenderingContext2D, eff: Effect, age: number, size: number) {
@@ -231,8 +250,21 @@
   }
 
   onMount(() => {
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    // Initial RAF kick only if there's already content. The $effect below
+    // handles the common case (queue receives push → loop starts).
+    if (queue.length > 0) start();
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      raf = null;
+      running = false;
+    };
+  });
+
+  // Reactive restart: any time the queue length transitions from 0 → N (a
+  // producer pushed an effect), kick the RAF if it isn't already running.
+  // Reads `queue.length` so Svelte 5 tracks the $state-backed array.
+  $effect(() => {
+    if (queue.length > 0 && !running) start();
   });
 </script>
 

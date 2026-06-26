@@ -49,6 +49,16 @@ export interface PositionSink {
   legal: Uint32Array;
 }
 
+/** Opaque timer handle. Browser's `setTimeout` returns `number`; Node's
+ *  returns an object — we don't care which, only that callers thread it
+ *  back through `clearTimeout`. */
+export type TimerHandle = ReturnType<typeof globalThis.setTimeout>;
+
+export interface PlyRendererScheduler {
+  setTimeout: (cb: () => void, ms: number) => TimerHandle;
+  clearTimeout: (h: TimerHandle) => void;
+}
+
 export interface PlyRendererOpts {
   /** When set, every post-apply state flip writes here instead of the
    *  driver-local position/legal. The driver's getters still surface the
@@ -60,6 +70,18 @@ export interface PlyRendererOpts {
   /** Optional callback invoked after a Move action lands. Caller uses this
    *  to update its `usedThisPhase` Set for the greying-out UI. */
   onMoveLanding?: (finalSq: number) => void;
+  /** Clock source for effect timestamps. Defaults to `performance`. Tests
+   *  pass a fake to make effect ordering deterministic. */
+  clock?: { now(): number };
+  /** SFX dispatch surface. Defaults to the imported `sfx` singleton. Tests
+   *  pass a fake that records `.play()` calls. */
+  sfxImpl?: Pick<typeof sfx, "play">;
+  /** Warning hook for non-fatal anomalies. Defaults to `console.warn`. */
+  warn?: (stage: string, detail?: unknown) => void;
+  /** Timer surface. Defaults to global `setTimeout`/`clearTimeout`. Tests
+   *  inject a fake to fire timers synchronously and assert pending count
+   *  after `dispose()`. */
+  scheduler?: PlyRendererScheduler;
 }
 
 export interface PlyRenderer {
@@ -84,14 +106,22 @@ export interface PlyRenderer {
    *  it captured before the engine moved. */
   renderApplied(raw: number, pre: PreStateSnapshot): Promise<void>;
 
-  /** Capture a pre-state snapshot from the currently-rendered position.
-   *  Used by callers (MP onApplied) that need to snapshot before the engine
-   *  has moved but can't go through `applyAndRender`. */
-  snapshotPreState(raw: number): PreStateSnapshot;
+  /** Capture a pre-state snapshot. If `prePosition` is supplied (e.g. by the
+   *  MP wrapper, which captures it explicitly before `tryApply`), use that
+   *  view; otherwise fall back to the renderer's currently-rendered position
+   *  (the legacy path used by the AI step and the renderer's internal
+   *  `applyAndRender`). */
+  snapshotPreState(raw: number, prePosition?: PositionView): PreStateSnapshot;
 
   /** Drain any deferred skill-refresh synchronously. Idempotent. Safe to
    *  call defensively before any operation that mutates engine state. */
   drainPendingSkillRefresh(): void;
+
+  /** Cancel all outstanding timers (shake resets, deferred skill refresh)
+   *  and clear visual state. Safe to call multiple times. Routes/tests call
+   *  this on teardown to ensure no timer fires against a torn-down store.
+   *  Does NOT touch the engine. */
+  dispose(): void;
 
   /** Silent fast-forward used by replay scrubbing. Restores from
    *  `baseSnapshotJson`, replays plies 0..target-1 silently (no effects, no
@@ -215,6 +245,42 @@ export function createPlyRenderer(
   eng: EngineClient,
   opts: PlyRendererOpts = {},
 ): PlyRenderer {
+  // === Resolve injected seams (defaults preserve prod behaviour) ===========
+  const clock = opts.clock ?? { now: () => performance.now() };
+  const sfxImpl: Pick<typeof sfx, "play"> = opts.sfxImpl ?? sfx;
+  const warn = opts.warn ?? ((stage: string, detail?: unknown) => {
+    console.warn(`ply-renderer:${stage}`, detail);
+  });
+  const scheduler: PlyRendererScheduler = opts.scheduler ?? {
+    setTimeout: (cb, ms) => globalThis.setTimeout(cb, ms),
+    clearTimeout: (h) => globalThis.clearTimeout(h),
+  };
+
+  // Tracks every outstanding scheduler timer (shake resets + pending skill
+  // refresh). `dispose()` clears all of these. Without this set, P2 stood:
+  // a shake setTimeout fired after `reset()` would write into the cleared
+  // shakingSquares Set.
+  const timers = new Set<TimerHandle>();
+
+  function scheduleTimer(cb: () => void, ms: number): TimerHandle {
+    let handle: TimerHandle | null = null;
+    handle = scheduler.setTimeout(() => {
+      if (handle !== null) timers.delete(handle);
+      cb();
+    }, ms);
+    timers.add(handle);
+    return handle;
+  }
+
+  function cancelTimer(handle: TimerHandle): void {
+    if (timers.delete(handle)) scheduler.clearTimeout(handle);
+  }
+
+  function cancelAllTimers(): void {
+    for (const h of timers) scheduler.clearTimeout(h);
+    timers.clear();
+  }
+
   // Driver-local position/legal — used only when no positionSink is supplied.
   let localPosition = $state<PositionView | null>(null);
   let localLegal = $state<Uint32Array>(new Uint32Array());
@@ -229,7 +295,7 @@ export function createPlyRenderer(
   let lastApplied = $state<{ src: number; target: number } | null>(null);
 
   type PendingSkillRefresh = {
-    handle: ReturnType<typeof setTimeout>;
+    handle: TimerHandle;
     targetZobrist: bigint;
     apply: () => void;
   };
@@ -241,7 +307,7 @@ export function createPlyRenderer(
       : () => opts.sfxEnabled !== false;
 
   function playSfx(...args: Parameters<typeof sfx.play>): void {
-    if (sfxOn()) sfx.play(...args);
+    if (sfxOn()) sfxImpl.play(...args);
   }
 
   function getPosition(): PositionView | null {
@@ -283,7 +349,7 @@ export function createPlyRenderer(
 
   function triggerShake(sq: number): void {
     shakingSquares = new Set([...shakingSquares, sq]);
-    setTimeout(() => {
+    scheduleTimer(() => {
       shakingSquares = new Set([...shakingSquares].filter((s) => s !== sq));
     }, SHAKE_DURATION_MS);
   }
@@ -291,7 +357,7 @@ export function createPlyRenderer(
   function pushDamageEffect(targetSq: number, before: number, after: number): void {
     const dmg = before - after;
     if (dmg <= 0) return;
-    const now = performance.now();
+    const now = clock.now();
     effectQueue.push({ kind: "impact", at: targetSq, startedAt: now });
     effectQueue.push({ kind: "damageNumber", at: targetSq, amount: dmg, startedAt: now + 80 });
     triggerShake(targetSq);
@@ -306,7 +372,7 @@ export function createPlyRenderer(
     post: Uint16Array,
     diff: SkillDiff,
   ): boolean {
-    const now = performance.now();
+    const now = clock.now();
     let fired = false;
     const visit = (preSq: number, postSq: number) => {
       const a = decodeMailbox(pre[preSq]);
@@ -339,7 +405,7 @@ export function createPlyRenderer(
   }
 
   function emitRelocationAndDeathEvents(pre: Uint16Array, diff: SkillDiff): void {
-    const now = performance.now();
+    const now = clock.now();
     for (const m of diff.moves) {
       const path = straightPath(m.from, m.to);
       if (path.length >= 2) {
@@ -367,9 +433,9 @@ export function createPlyRenderer(
 
   // === Pre-state snapshot ==================================================
 
-  function snapshotPreState(raw: number): PreStateSnapshot {
+  function snapshotPreState(raw: number, prePosition?: PositionView): PreStateSnapshot {
     const decoded = decodeAction(raw);
-    const pos = getPosition();
+    const pos = prePosition ?? getPosition();
     const preMailbox = pos?.mailbox ?? null;
     const preFull: Uint16Array | null = preMailbox ? new Uint16Array(preMailbox) : null;
     const preTarget = preMailbox ? decodeMailbox(preMailbox[decoded.target]) : null;
@@ -395,7 +461,7 @@ export function createPlyRenderer(
 
   function drainPendingSkillRefresh(): void {
     if (!pendingSkillRefresh) return;
-    clearTimeout(pendingSkillRefresh.handle);
+    cancelTimer(pendingSkillRefresh.handle);
     const apply = pendingSkillRefresh.apply;
     pendingSkillRefresh = null;
     apply();
@@ -471,7 +537,7 @@ export function createPlyRenderer(
     if (decoded.kind === ActionKind.Move) {
       const path = walkedPath(decoded, killed);
       if (path.length >= 2) {
-        effectQueue.push({ kind: "dust", path, startedAt: performance.now() });
+        effectQueue.push({ kind: "dust", path, startedAt: clock.now() });
       }
       const finalAttackerSq = decoded.hasAux
         ? (killed ? decoded.target : decoded.auxSq)
@@ -522,7 +588,7 @@ export function createPlyRenderer(
         // clobber post-end-turn state.
         drainPendingSkillRefresh();
         const targetZobrist = fresh.pos.zobrist;
-        const handle = setTimeout(() => {
+        const handle = scheduleTimer(() => {
           if (pendingSkillRefresh?.targetZobrist !== targetZobrist) return;
           pendingSkillRefresh = null;
           applyFresh();
@@ -564,11 +630,26 @@ export function createPlyRenderer(
 
   function reset(): void {
     drainPendingSkillRefresh();
+    // P2 fix: also cancel outstanding shake timers. Without this, a shake
+    // setTimeout scheduled by a pre-reset action would fire after reset and
+    // re-introduce stale square ids into shakingSquares.
+    cancelAllTimers();
     pieceIds = new Map();
     nextPieceId = 1;
     shakingSquares = new Set();
     effectQueue.length = 0;
     lastApplied = null;
+  }
+
+  function dispose(): void {
+    // Drain (apply pending refresh in case caller wants final state visible),
+    // then cancel any timers scheduled BY that drain (none in current impl,
+    // but defensive). Finally cancel everything else.
+    drainPendingSkillRefresh();
+    cancelAllTimers();
+    pendingSkillRefresh = null;
+    effectQueue.length = 0;
+    shakingSquares = new Set();
   }
 
   async function fastForwardTo(
@@ -624,6 +705,7 @@ export function createPlyRenderer(
     renderApplied,
     snapshotPreState,
     drainPendingSkillRefresh,
+    dispose,
     fastForwardTo,
     resyncFromEngine,
     reset,
