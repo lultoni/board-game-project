@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-06-26 — Session 34 end (Phase 6 frontend remediation shipped — Inspector→PlyRenderer + replay perf).*
+*Last updated: 2026-06-26 — Session 35 end (NN-rater scoping + search-speed benchmark + AB optimisation catalogue).*
 
 ---
 
@@ -30,38 +30,43 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer. Mine load-bearing content into the DB.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 34 end, 2026-06-26)
+### Where We Are (Session 35 end, 2026-06-26)
 
-- **Frontend remediation plan complete.** All 6 phases of `game/frontend/REMEDIATION_PLAN.md` are shipped (T5, P4, S1-residual closed in S34). Only 8 explicitly-deferred items remain — see `REMEDIATION_PLAN.md` "Out of scope". None block anything.
-- **Inspector now uses PlyRenderer.** `syncEngineToNode` drives `renderer.fastForwardTo(baseSnap, node.actions, len)`; piece identity slides between sibling nodes; effects animate on landing ply. POI labels via native `<dialog>` (no more `window.prompt`).
-- **Replay scrubbing has stride-32 snapshot checkpoints.** 200-ply re-scrub: was N round-trips, now ≤ 31. Cache lives in the `PlyRenderer` factory closure; invalidates on base change; cleared by `reset()` / `dispose()`.
-- **Shared AI-call shell at `lib/engine/ai-hooks.ts`.** `runAiCall` + `AiCallError { reason: "timeout" | "cancelled" | "engine" }` adopted at match `stepAi` + inspector `requestAiMoveAtDepth`. No timeouts wired today — future-proof seam.
-- **Engine complete for Stack M** + L8 draft phase shipped (S33). Multiplayer is authoritative-host with cross-peer parity for effects/SFX/greying-out (S33). Inspector core (S31) + match-HUD export + Sandbox (S32) unchanged.
+- **Three new plan docs in `design/inbox/digital/`.** No code changes this session — pure scoping for the next work tranche.
+  - `nn-rater-plan.md` — full NN position-rater scope. Path 3 + perturbation, two-tier gauntlet, three champion tracks, opt-in observability UI. No blocking ADR.
+  - `search-speed-benchmark-plan.md` — benchmark infra; FEN-driven; two modes (fixed depth + fixed time); doubles as correctness regression test; manual-run-only.
+  - `alpha-beta-optimisation-catalogue.md` — 9 categories of AB techniques with game-specific adaptations. Critical flags: `EndPhase` ≠ null-move; no chess-SEE port; QS loud/quiet redefined for HP-skills.
+- **`next_steps id=25`** body appended with pointer to all three.
+- **Engine and UI unchanged** from S34. Stack M still awaiting a real playtest.
 
 ### Immediate Next Action
 
-No lane forced by S34. Pre-existing picks from S33 still valid — ask which:
-1. **Frontend** — `next_steps id=12` (Inspector L6.7d preview window primitive). Unblocks L6.7b + L6.8.
-2. **Multiplayer hardening** — investigate IllegalActionInHistory + draft-route-when-in-play replay bugs (deferred during L7c).
-3. **Design** — `oq-84` (greying-out semantics when bodyguard intercepts a Move-Attack). Argue through before next Stack M digital playtest.
+**Begin search-speed work** per `search-speed-benchmark-plan.md` §"Execution order":
+1. Scaffold the bench binary (native, FEN-driven, structured output).
+2. Build the 20-50-position FEN corpus including ≥1 known-result tactical position.
+3. Verify determinism (same-position-same-result-N-times).
+4. Generate initial baseline at `game/bench/baseline.json`.
+5. Land optimisations one at a time per `alpha-beta-optimisation-catalogue.md` order (PVS first, then TT-move, aspiration, killers+history, LMR, ...).
+
+Pre-existing alternative lanes still valid if you prefer:
+- **Frontend** — Inspector L6.7d preview window primitive (`next_steps id=12`).
+- **Multiplayer hardening** — deferred IllegalActionInHistory + draft-route-when-in-play replay bugs.
+- **Design** — argue through `oq-84` (bodyguard-intercept greying-out) before next Stack M digital playtest.
 
 ### Open methodological loose ends
 
 - **oq-69 — Skill-Phase action progression curve.** Resolved in code as `2 + (round_number-1)/10` (`make_unmake.rs:982-985`). OQ row may still be marked open in DB — verify and resolve if so.
-- **oq-70 — Focus on Move-skills.** Caster chooses activation-range or effect-range. Encoding lives in engine Focus + Move-skill resolvers; verify OQ status against current code.
+- **oq-70 — Focus on Move-skills.** Caster chooses activation-range or effect-range. Encoding shipped in engine Focus + Move-skill resolvers; verify OQ status against current code.
 
 ### Key DB Queries (instead of file paths)
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM sessions WHERE id='session-34';` | This session's narrative (Phase 6 remediation) |
-| `SELECT body FROM next_steps WHERE id=12;` | Inspector L6.7d preview window primitive (highest-leverage frontend item) |
-| `SELECT body FROM next_steps WHERE id=15;` | Inspector polish (draft handoff + radial wheel) |
-| `SELECT id, priority, title FROM next_steps WHERE priority >= 20 ORDER BY priority;` | All inspector/frontend follow-ups |
-| `SELECT body FROM adrs WHERE id='adr-006';` | Multiplayer lifecycle, lobby/reconnect UX, telemetry persistence |
+| `SELECT body FROM sessions WHERE id='session-35';` | This session's narrative (NN-rater scope + bench plan + AB catalogue) |
+| `SELECT body FROM next_steps WHERE id=25;` | NN position rater idea + S35 scoping pointer |
+| `SELECT body FROM open_questions WHERE id='oq-81';` | AI search branching-factor + strategy plan (informs the catalogue) |
 | `SELECT body FROM adrs WHERE id='adr-005';` | Digital architecture decision |
-| `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance (engine's source of truth) |
-| `SELECT body FROM open_questions WHERE id='oq-84';` | New OQ (S33) — bodyguard intercept greying-out semantics |
+| `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance |
 | `SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high');` | Live critical/high OQs |
 
 ### Key Files (still on disk)
@@ -69,21 +74,12 @@ No lane forced by S34. Pre-existing picks from S33 still valid — ask which:
 | Path | Purpose |
 |------|---------|
 | `design/design.db` | Source of truth (binary; committed) |
-| `design/schema.sql` | 12-table schema |
-| `design/inbox/{brainstorm,ai-chats,digital}/` | Designer's inbox channels |
-| `game/Cargo.toml` | Rust workspace root |
-| `game/crates/core_engine/src/session.rs` | Match API (incl. `request_ai_move_forced` / `_at_depth`) |
-| `game/crates/core_engine/src/game_logic/make_unmake.rs` | Skill resolvers + Move-kind apply/unmake |
-| `game/crates/core_engine/src/game_logic/generator.rs` | Legal-action enumeration |
-| `game/frontend/REMEDIATION_PLAN.md` | Frontend remediation tracker — all 6 phases shipped, 8 items deferred |
-| `game/frontend/ARCHITECTURE.md` | Frontend layering doc (§9 updated S34) |
-| `game/frontend/src/lib/board/ply-renderer.svelte.ts` | PlyRenderer factory (checkpoint cache lives here) |
-| `game/frontend/src/lib/engine/ai-hooks.ts` | Shared AI-call error/timeout shell |
-| `game/frontend/src/lib/inspector/PoiLabelDialog.svelte` | POI label modal (replaces window.prompt) |
-| `game/frontend/src/routes/match/+page.svelte` | Match route — MP wrapper + runAiCall(stepAi) |
-| `game/frontend/src/routes/draft/+page.svelte` | Draft route — wired through MP wrapper + engine `Phase::Draft` |
-| `game/frontend/src/routes/multiplayer/+page.svelte` | Lobby — host/join/handoff/probe-first Rejoin |
-| `game/frontend/src/routes/inspector/+page.svelte` | Inspector route (now drives via PlyRenderer) |
-| `game/frontend/src/routes/replay/+page.svelte` | Replay route (passes plyHint for checkpoint seeding) |
+| `design/inbox/digital/nn-rater-plan.md` | NN-rater full scope (S35) |
+| `design/inbox/digital/search-speed-benchmark-plan.md` | Benchmark infrastructure plan (S35) |
+| `design/inbox/digital/alpha-beta-optimisation-catalogue.md` | AB technique catalogue with implementation order (S35) |
+| `game/crates/core_engine/src/search/alpha_beta.rs` | Search loop under optimisation |
+| `game/crates/core_engine/src/search/evaluator.rs` | Current hand-coded eval (header carries load-bearing eval philosophy) |
+| `game/crates/core_engine/src/search/transposition.rs` | TT infrastructure |
+| `game/crates/core_engine/src/state/fen.rs` | `to_fen` / `from_fen` for corpus loading |
 | `.claude/STATUS.md` | One-screen re-entry summary |
 | `CLAUDE.md` | Orientation (points at DB; does not restate facts) |

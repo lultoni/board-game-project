@@ -2,13 +2,13 @@
 
 *One-screen re-entry doc. Read first after a gap. Regenerated from the DB at session end.*
 
-*Last updated: 2026-06-26 — Session 34 end (Phase 6 frontend remediation — Inspector→PlyRenderer + replay perf).*
+*Last updated: 2026-06-26 — Session 35 end (NN-rater scoping + search-speed benchmark + AB optimisation catalogue).*
 
 ---
 
 ## Current focus
 
-**Frontend remediation plan complete.** All 6 phases of `game/frontend/REMEDIATION_PLAN.md` are shipped; only 8 deliberately-deferred items remain (3 need ADRs, 1 is engine-side, 1 is a test harness, 3 are cosmetic). No design-side work this session.
+**Search-speed pass.** S35 produced three linked plan documents in `design/inbox/digital/` scoping the next work tranche (search-speed first, NN evaluator second). No code changes this session. Next action is benchmark scaffolding.
 
 ## Active stack
 
@@ -16,18 +16,22 @@
 
 ## What changed this session
 
-1. **Phase 6c — PlyRenderer ply checkpoints (P4).** Stride-32 snapshot cache; `fastForwardTo` restores from nearest checkpoint when savings ≥ 4 plies. 200-ply scrub: was N round-trips, now ≤ 31.
-2. **Phase 6d — `lib/engine/ai-hooks.ts`.** `runAiCall` + `AiCallError` (reason: timeout|cancelled|engine). Adopted at match `stepAi` + inspector `requestAiMoveAtDepth`.
-3. **Phase 6a — Inspector → PlyRenderer migration (T5).** Inspector no longer reimplements pieceIds bookkeeping. `syncEngineToNode` drives `renderer.fastForwardTo`; piece identity slides between sibling nodes (was: teleport); effects animate on landing ply.
-4. **Phase 6b — POI label modal.** Native `<dialog>` replaces `window.prompt`.
-5. Updated `ARCHITECTURE.md §9` + `REMEDIATION_PLAN.md` Phase 6 section. Deleted all 12 stale plan files from `~/.claude/plans/`. Verification: 220/220 vitest, 0 svelte-check errors, prod build clean.
+Three companion plans written to `design/inbox/digital/` (not yet promoted to DB rows):
+
+1. **`nn-rater-plan.md`** — full NN-rater scope. Path 3 (gradient descent) + perturbation injection. Two-tier gauntlet (best-of-three at 100/300/500 ms, mirrored loadouts, three champion tracks). Native-only training crate, rayon-parallel. Opt-in observability UI via local-file polling. No blocking ADR.
+2. **`search-speed-benchmark-plan.md`** — benchmark infrastructure. FEN-corpus driven, two modes (fixed depth + fixed time), doubles as correctness regression test, manual-run-only.
+3. **`alpha-beta-optimisation-catalogue.md`** — web-search synthesised catalogue (chessprogramming wiki + Stockfish + amateur engines). 9 categories, each technique annotated with expected Elo / complexity / our-game-specific adaptations. Flags `EndPhase ≠ null-move`, no chess-SEE port, QS loud/quiet redefinition.
+
+`next_steps id=25` body appended with a pointer to the three docs.
 
 ## Immediate next action
 
-No lane forced by this session. Pre-existing picks from S33 still valid:
-1. **Frontend** — Inspector L6.7d preview window primitive (`next_steps id=12`). Unblocks L6.7b + L6.8.
-2. **Multiplayer hardening** — deferred IllegalActionInHistory / draft-route-when-in-play replay bugs.
-3. **Design** — argue through `oq-84` (bodyguard-intercept greying-out) before next Stack M digital playtest.
+Begin search-speed work per `search-speed-benchmark-plan.md` §11:
+1. Scaffold the bench binary (native, FEN-driven, structured output).
+2. Build the 20-50-position FEN corpus including ≥1 known-result tactical position.
+3. Verify determinism.
+4. Generate initial baseline.
+5. Land optimisations one at a time per the catalogue ordering (PVS → TT-move → aspiration → killers+history → LMR → ...).
 
 ## Live critical / high-priority open questions
 
@@ -35,7 +39,7 @@ No lane forced by this session. Pre-existing picks from S33 still valid:
 
 ## Open methodological loose ends
 
-- **oq-69** (Skill-Phase action progression curve) — resolved in code as `2 + (round_number-1)/10`. OQ row may still be marked open in DB; verify and resolve.
+- **oq-69** (Skill-Phase action progression curve) — resolved in code as `2 + (round_number-1)/10`. OQ row may still be marked open; verify and resolve.
 - **oq-70** (Focus on Move-skills) — encoding shipped; verify OQ status against current code.
 
 ## DB sanity
