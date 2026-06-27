@@ -18,6 +18,7 @@ pub mod lineage;
 pub mod loadout;
 pub mod model;
 pub mod persistence;
+pub mod registry;
 pub mod selfplay;
 pub mod train;
 
@@ -33,6 +34,7 @@ pub use persistence::{
     load_rater, paths_from_stem, save_rater, BracketWinRate, PerturbationEvent,
     PersistenceError, RaterMetadata, TrainingConfigSnapshot, RATER_FORMAT_VERSION,
 };
+pub use registry::{IndexEntry, IndexError, RaterIndex, Track, INDEX_FORMAT_VERSION};
 pub use selfplay::{play_game, GameRecord, LabelledPosition};
 pub use batch::generate_corpus;
 pub use loadout::{random_loadout, random_loadout_from_seed};
