@@ -2293,16 +2293,6 @@ mod tests {
         Action::encode(src, tgt, ActionKind::Skill, skill as u8, 0)
     }
 
-    fn fen_snapshot(pos: &Position) -> String {
-        // Skill-phase positions with mid-cast tracking state aren't valid FEN
-        // (FEN is between-turn). For roundtrip-equality, compare structural
-        // state via the `position_eq_for_fen` helper instead. Provided here
-        // as a no-op placeholder if a test wants `format!` debug output.
-        format!("{:?}", (pos.p1_pieces.0, pos.p2_pieces.0, pos.kings.0,
-                        pos.champions.0, pos.guards.0,
-                        pos.p1_money, pos.p2_money))
-    }
-
     /// Deep-equal positions including the incremental zobrist hash.
     fn pos_eq(a: &Position, b: &Position) -> bool {
         pos_diff(a, b).is_none()

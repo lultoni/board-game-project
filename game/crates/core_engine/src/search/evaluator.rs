@@ -132,6 +132,30 @@ pub fn evaluate(pos: &Position) -> i32 {
     evaluate_breakdown(pos).total
 }
 
+/// Position-rater interface. The search calls `evaluate` once per leaf; an
+/// `Evaluator` impl returns a P1-POV score in the same units as the free
+/// `evaluate()` function above (positive = P1, ±MATE_SCORE for terminals).
+///
+/// Two impls are planned: `HeuristicEvaluator` wraps today's hand-coded eval
+/// (zero-behaviour-change default); a future `NnEvaluator` will host the
+/// trained position rater (`design/inbox/digital/nn-rater-plan.md`).
+pub trait Evaluator: Sync {
+    fn evaluate(&self, pos: &Position) -> i32;
+    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown;
+}
+
+/// Zero-size wrapper around the free `evaluate()` / `evaluate_breakdown()`
+/// functions. The default evaluator everywhere — preserves S36 behaviour.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HeuristicEvaluator;
+
+impl Evaluator for HeuristicEvaluator {
+    #[inline]
+    fn evaluate(&self, pos: &Position) -> i32 { evaluate(pos) }
+    #[inline]
+    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown { evaluate_breakdown(pos) }
+}
+
 pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     // (a) Terminal — overrules everything. Per-bucket fields stay zero;
     //     only `total` carries the ±MATE_SCORE.

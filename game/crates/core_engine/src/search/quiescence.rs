@@ -34,7 +34,7 @@
 use crate::time::now_ms;
 
 use super::alpha_beta::{SearchCtx, INF, TIME_CHECK_MASK};
-use super::evaluator::{evaluate, MATE_SCORE};
+use super::evaluator::MATE_SCORE;
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::skills::{
     skill_category, skill_cost, skill_default_range, skill_from_id, Skill, SkillCategory,
@@ -183,11 +183,11 @@ pub(super) fn quiesce(
     }
 
     if qs_ply >= MAX_QS_PLY || ply >= MAX_PLY {
-        return evaluate(pos);
+        return ctx.evaluator.evaluate(pos);
     }
 
     let in_check = is_king_threatened(pos, pos.to_move);
-    let static_eval = evaluate(pos);
+    let static_eval = ctx.evaluator.evaluate(pos);
     let maximising = pos.to_move == Player::P1;
 
     // Stand-pat — skip when in check (otherwise side-to-move can "stand still"

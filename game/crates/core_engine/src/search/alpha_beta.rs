@@ -36,7 +36,7 @@ use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 /// to grade QS vs non-QS play strength. Production callers must not flip it.
 pub static DISABLE_QS: AtomicBool = AtomicBool::new(false);
 
-use super::evaluator::MATE_SCORE;
+use super::evaluator::{Evaluator, HeuristicEvaluator, MATE_SCORE};
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::{generator, make_unmake};
@@ -171,8 +171,9 @@ fn score_from_tt(s: i32, ply: i32) -> i32 {
 }
 
 pub(super) struct SearchCtx<'a> {
-    pub(super) tt:       &'a mut TranspositionTable,
-    pub(super) ord:      &'a mut OrderingTables,
+    pub(super) tt:        &'a mut TranspositionTable,
+    pub(super) ord:       &'a mut OrderingTables,
+    pub(super) evaluator: &'a dyn Evaluator,
     /// Absolute deadline in `time::now_ms()` units. `None` disables the
     /// time check (max_depth is the sole bound).
     pub(super) deadline: Option<u64>,
@@ -199,7 +200,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 
     if depth <= 0 {
         if DISABLE_QS.load(AtomicOrdering::Relaxed) {
-            return super::evaluator::evaluate(pos);
+            return ctx.evaluator.evaluate(pos);
         }
         return super::quiescence::quiesce(pos, alpha, beta, ply, 0, ctx);
     }
@@ -311,6 +312,15 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 /// complete at least one ply unless the position is already terminal).
 pub fn find_best(pos: &mut Position, tt: &mut TranspositionTable,
                  time_limit_ms: u64, max_depth: u8) -> SearchResult {
+    find_best_with_evaluator(pos, tt, time_limit_ms, max_depth, &HeuristicEvaluator)
+}
+
+/// `find_best` with an explicit evaluator. Intended for the NN-rater training
+/// loop and for A/B experiments comparing rater versions. Production callers
+/// use `find_best` and get the hand-coded heuristic.
+pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
+                                time_limit_ms: u64, max_depth: u8,
+                                evaluator: &dyn Evaluator) -> SearchResult {
     tt.new_search();
     let deadline = if time_limit_ms == 0 {
         None
@@ -326,7 +336,7 @@ pub fn find_best(pos: &mut Position, tt: &mut TranspositionTable,
     let mut ord = OrderingTables::new();
 
     for d in 1..=max_depth.max(1) {
-        let mut ctx = SearchCtx { tt, ord: &mut ord, deadline, nodes: 0, aborted: false };
+        let mut ctx = SearchCtx { tt, ord: &mut ord, evaluator, deadline, nodes: 0, aborted: false };
         let score = search(pos, d as i32, 0, -INF, INF, &mut ctx);
         total_nodes += ctx.nodes;
 
