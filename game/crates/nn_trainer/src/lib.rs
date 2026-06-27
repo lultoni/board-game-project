@@ -22,6 +22,7 @@ pub mod model;
 pub mod nn_evaluator;
 pub mod persistence;
 pub mod registry;
+pub mod run;
 pub mod selfplay;
 pub mod snapshot;
 pub mod train;
@@ -45,6 +46,7 @@ pub use persistence::{
     PersistenceError, RaterMetadata, TrainingConfigSnapshot, RATER_FORMAT_VERSION,
 };
 pub use registry::{IndexEntry, IndexError, RaterIndex, Track, INDEX_FORMAT_VERSION};
+pub use run::{run_training, RunConfig, RunError, RunSummary};
 pub use selfplay::{play_game, GameRecord, LabelledPosition};
 pub use snapshot::{
     read_snapshot, write_snapshot, ActiveMatch, PopulationMember, SnapshotError,
