@@ -133,11 +133,7 @@
           </table>
         </section>
       {:else}
-        <p class="hint">
-          Per-layer weight statistics aren't published yet — the trainer-side
-          introspection is deferred to a follow-up slice. For now the panel
-          shows the forward output only.
-        </p>
+        <p class="hint">No weight stats available for this rater.</p>
       {/if}
     {/if}
   {/if}

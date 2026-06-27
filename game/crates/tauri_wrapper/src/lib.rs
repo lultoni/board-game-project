@@ -587,11 +587,20 @@ fn inspect_rater(
     use core_engine::state::fen::from_fen;
     let pos = from_fen(&fen).map_err(|e| format!("fen parse: {e:?}"))?;
     let stem = std::path::Path::new(&run_dir).join("raters").join(&rater_id);
-    let forward_output = nn_trainer::NnEvaluator::evaluate_fen_at_stem(&stem, &pos)
-        .map_err(|e| format!("load rater: {e}"))?;
-    // Per-layer weight stats are deferred to the next slice (the inspector
-    // panel will populate this once we surface burn-side introspection).
-    let weight_stats = vec![];
+    let (forward_output, layer_stats) =
+        nn_trainer::NnEvaluator::inspect_fen_at_stem(&stem, &pos)
+            .map_err(|e| format!("load rater: {e}"))?;
+    let weight_stats = layer_stats
+        .into_iter()
+        .map(|s| WeightStats {
+            layer: s.layer,
+            mean: s.mean,
+            std: s.std,
+            min: s.min,
+            max: s.max,
+            nan_count: s.nan_count,
+        })
+        .collect();
     Ok(RaterInspection {
         rater_id,
         forward_output,

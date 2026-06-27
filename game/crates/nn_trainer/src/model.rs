@@ -84,6 +84,77 @@ impl<B: Backend> Mlp<B> {
         }
         x
     }
+
+    /// Per-layer summary statistics. One `LayerStats` per `Linear`, in
+    /// forward order — last entry is the scalar output projection. Used by
+    /// the Training Observatory's Network Inspector to surface mean/std/
+    /// min/max/NaN-count per layer without leaking raw weights through the
+    /// Tauri boundary.
+    pub fn weight_stats(&self) -> Vec<LayerStats> {
+        self.layers
+            .iter()
+            .enumerate()
+            .map(|(i, layer)| {
+                let weight: Vec<f32> = layer.weight.val().into_data().to_vec().unwrap_or_default();
+                let bias: Vec<f32> = layer
+                    .bias
+                    .as_ref()
+                    .map(|b| b.val().into_data().to_vec().unwrap_or_default())
+                    .unwrap_or_default();
+                let mut all = weight;
+                all.extend(bias);
+                LayerStats::from_values(format!("linear_{i}"), &all)
+            })
+            .collect()
+    }
+}
+
+/// Summary statistics for one parameter tensor (concatenated weight + bias
+/// for a `Linear` layer). Plain `f32`/`u32` so it can be serialised without
+/// dragging burn types through the Tauri boundary.
+#[derive(Clone, Debug)]
+pub struct LayerStats {
+    pub layer: String,
+    pub mean: f32,
+    pub std: f32,
+    pub min: f32,
+    pub max: f32,
+    pub nan_count: u32,
+}
+
+impl LayerStats {
+    pub fn from_values(layer: String, values: &[f32]) -> Self {
+        if values.is_empty() {
+            return Self { layer, mean: 0.0, std: 0.0, min: 0.0, max: 0.0, nan_count: 0 };
+        }
+        let mut nan_count: u32 = 0;
+        let mut min = f32::INFINITY;
+        let mut max = f32::NEG_INFINITY;
+        let mut sum = 0.0_f64;
+        let mut count = 0_u64;
+        for &v in values {
+            if v.is_nan() {
+                nan_count += 1;
+                continue;
+            }
+            if v < min { min = v; }
+            if v > max { max = v; }
+            sum += v as f64;
+            count += 1;
+        }
+        if count == 0 {
+            return Self { layer, mean: 0.0, std: 0.0, min: 0.0, max: 0.0, nan_count };
+        }
+        let mean = (sum / count as f64) as f32;
+        let mut var_sum = 0.0_f64;
+        for &v in values {
+            if v.is_nan() { continue; }
+            let d = (v - mean) as f64;
+            var_sum += d * d;
+        }
+        let std = (var_sum / count as f64).sqrt() as f32;
+        Self { layer, mean, std, min, max, nan_count }
+    }
 }
 
 #[cfg(test)]
@@ -131,5 +202,43 @@ mod tests {
         let input: Tensor<B, 2> = Tensor::from_data(data, &device);
         let out = model.forward(input);
         assert_eq!(out.dims(), [1, 1]);
+    }
+
+    #[test]
+    fn weight_stats_returns_one_entry_per_layer() {
+        let device = Default::default();
+        let cfg = MlpConfig::new()
+            .with_input_dim(10)
+            .with_hidden_sizes(vec![4, 3]);
+        let model: Mlp<B> = cfg.init(&device);
+
+        let stats = model.weight_stats();
+        // hidden_sizes.len() + 1 = 3 layers.
+        assert_eq!(stats.len(), 3);
+        for s in &stats {
+            assert!(s.layer.starts_with("linear_"));
+            assert!(s.min.is_finite());
+            assert!(s.max.is_finite());
+            assert!(s.mean.is_finite());
+            assert!(s.std >= 0.0);
+            assert_eq!(s.nan_count, 0);
+        }
+    }
+
+    #[test]
+    fn layer_stats_handles_nan_and_empty() {
+        let s = LayerStats::from_values("empty".into(), &[]);
+        assert_eq!(s.mean, 0.0);
+        assert_eq!(s.std, 0.0);
+        assert_eq!(s.min, 0.0);
+        assert_eq!(s.max, 0.0);
+        assert_eq!(s.nan_count, 0);
+
+        let s = LayerStats::from_values("mixed".into(), &[1.0, 2.0, f32::NAN, 3.0]);
+        // Mean of finite values = 2.0; std non-negative.
+        assert!((s.mean - 2.0).abs() < 1e-6);
+        assert_eq!(s.nan_count, 1);
+        assert_eq!(s.min, 1.0);
+        assert_eq!(s.max, 3.0);
     }
 }

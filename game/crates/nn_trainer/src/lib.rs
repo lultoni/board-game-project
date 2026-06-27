@@ -39,7 +39,7 @@ pub use live::{
     EvalBars, LiveError, LivePosition, LIVE_POSITION_VERSION,
     LIVE_STATE_FILENAME, LIVE_SUBSCRIBE_FILENAME,
 };
-pub use model::{Mlp, MlpConfig};
+pub use model::{LayerStats, Mlp, MlpConfig};
 pub use nn_evaluator::{InferenceBackend, NnEvaluator, EVAL_SCALE, MAX_NN_SCORE};
 pub use persistence::{
     load_rater, paths_from_stem, save_rater, BracketWinRate, PerturbationEvent,

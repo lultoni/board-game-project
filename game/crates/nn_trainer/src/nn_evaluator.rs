@@ -90,6 +90,25 @@ impl NnEvaluator {
         let out = model.forward(input);
         Ok(out.into_data().to_vec::<f32>().unwrap()[0])
     }
+
+    /// Inspect a rater: load from disk, run a forward pass on `pos`, and
+    /// collect per-layer weight stats. Used by the Training Observatory's
+    /// Network Inspector via a single Tauri call so the panel doesn't have
+    /// to round-trip twice.
+    pub fn inspect_fen_at_stem(
+        stem: &std::path::Path,
+        pos: &Position,
+    ) -> Result<(f32, Vec<crate::model::LayerStats>), crate::persistence::PersistenceError> {
+        let device = Default::default();
+        let (model, _meta) = crate::persistence::load_rater::<InferenceBackend>(stem, &device)?;
+        let features = encode_position(pos);
+        let data = TensorData::new(features, [1, INPUT_DIM]);
+        let input: Tensor<InferenceBackend, 2> = Tensor::from_data(data, &device);
+        let out = model.forward(input);
+        let scalar = out.into_data().to_vec::<f32>().unwrap()[0];
+        let stats = model.weight_stats();
+        Ok((scalar, stats))
+    }
 }
 
 /// Convert an MLP forward output (unit-scale) to a centipawn-scale i32 with
