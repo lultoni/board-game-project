@@ -73,6 +73,23 @@ impl NnEvaluator {
         let out = self.model.forward(input);
         out.into_data().to_vec::<f32>().unwrap()[0]
     }
+
+    /// Load a rater from `<dir>/raters/<rater_id>` and run a forward pass on
+    /// `pos`. Convenience wrapper that hides the burn-side plumbing from
+    /// callers (the Tauri command surface, primarily). Returns the raw NN
+    /// output scalar.
+    pub fn evaluate_fen_at_stem(
+        stem: &std::path::Path,
+        pos: &Position,
+    ) -> Result<f32, crate::persistence::PersistenceError> {
+        let device = Default::default();
+        let (model, _meta) = crate::persistence::load_rater::<InferenceBackend>(stem, &device)?;
+        let features = encode_position(pos);
+        let data = TensorData::new(features, [1, INPUT_DIM]);
+        let input: Tensor<InferenceBackend, 2> = Tensor::from_data(data, &device);
+        let out = model.forward(input);
+        Ok(out.into_data().to_vec::<f32>().unwrap()[0])
+    }
 }
 
 /// Convert an MLP forward output (unit-scale) to a centipawn-scale i32 with

@@ -411,6 +411,232 @@ fn snapshot_json(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Str
 }
 
 // ---------------------------------------------------------------------------
+// Training Observatory — orchestrator IPC (plan §7).
+//
+// The trainer writes status.json / live.json / matrix.json / raters/ into a
+// run directory. These commands let the frontend:
+//   - read those files (no schema duplication: serde does the round-trip),
+//   - subscribe / unsubscribe to the live-position stream,
+//   - parse a FEN string into the existing PositionView shape so Board.svelte
+//     can render it unchanged,
+//   - start / stop a training run in a background thread.
+//
+// State management: `TrainingState` holds the stop flag + JoinHandle for the
+// running orchestrator. Registered with `.manage(...)` in `run()`.
+// ---------------------------------------------------------------------------
+
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
+/// Process-global training-run state. At most one run can be active at a time.
+#[derive(Default)]
+pub struct TrainingState {
+    inner: Mutex<TrainingInner>,
+}
+
+#[derive(Default)]
+struct TrainingInner {
+    stop: Option<Arc<AtomicBool>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+/// Repo-relative default run directory. Computed at command-invocation time
+/// from `CARGO_MANIFEST_DIR` so the path follows the binary across machines.
+/// Falls back to `./runs/active` if the env var isn't set (e.g. tauri bundle).
+fn default_run_dir_path() -> std::path::PathBuf {
+    // Walk up from the tauri_wrapper crate dir to the `game/` root, then into
+    // `runs/active`. CARGO_MANIFEST_DIR points at the crate, so its parent's
+    // parent is `game/`.
+    let crate_dir = env!("CARGO_MANIFEST_DIR");
+    let game_dir = std::path::Path::new(crate_dir)
+        .parent()           // crates/
+        .and_then(|p| p.parent()); // game/
+    match game_dir {
+        Some(g) => g.join("runs").join("active"),
+        None => std::path::PathBuf::from("runs/active"),
+    }
+}
+
+#[tauri::command]
+fn default_run_dir() -> Result<String, String> {
+    Ok(default_run_dir_path().to_string_lossy().to_string())
+}
+
+/// Parse a FEN string and produce the same `PositionViewDto` shape the rest
+/// of the wrapper uses. Lets the Live Match View reuse `Board.svelte` without
+/// duplicating FEN-parsing logic in the frontend.
+#[tauri::command]
+fn fen_to_position_view(fen: String) -> Result<PositionViewDto, String> {
+    use core_engine::state::fen::from_fen;
+    use core_engine::state::position::{Phase, Player};
+    let pos = from_fen(&fen).map_err(|e| format!("fen parse error: {e:?}"))?;
+    // Mailbox: MailboxEntry is repr(transparent) over u16 — same trick as
+    // wrapper_api::position_mailbox.
+    let mailbox: Vec<u16> = pos.mailbox.iter().map(|m| m.0).collect();
+    let game_result = match pos.game_result {
+        None => 0,
+        Some(core_engine::state::position::GameResult::P1Wins) => 1,
+        Some(core_engine::state::position::GameResult::P2Wins) => 2,
+    };
+    Ok(PositionViewDto {
+        bitboards: [
+            pos.p1_pieces.0,
+            pos.p2_pieces.0,
+            pos.kings.0,
+            pos.champions.0,
+            pos.guards.0,
+        ],
+        mailbox,
+        to_move: match pos.to_move { Player::P1 => 0, Player::P2 => 1 },
+        current_phase: match pos.current_phase {
+            Phase::Move => 0,
+            Phase::Skill => 1,
+            Phase::Draft => 2,
+        },
+        actions_remaining: pos.actions_remaining,
+        round_number: pos.round_number,
+        p1_money: pos.p1_money,
+        p2_money: pos.p2_money,
+        pending_modifiers: pos.pending_modifiers,
+        game_result,
+        zobrist: pos.zobrist,
+    })
+}
+
+#[tauri::command]
+fn read_training_status(
+    run_dir: String,
+) -> Result<Option<nn_trainer::StatusSnapshot>, String> {
+    nn_trainer::read_snapshot(std::path::Path::new(&run_dir))
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn read_training_live(
+    run_dir: String,
+) -> Result<Option<nn_trainer::LivePosition>, String> {
+    nn_trainer::read_live(std::path::Path::new(&run_dir))
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn subscribe_training_live(run_dir: String) -> Result<(), String> {
+    nn_trainer::subscribe(std::path::Path::new(&run_dir))
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn unsubscribe_training_live(run_dir: String) -> Result<(), String> {
+    nn_trainer::unsubscribe(std::path::Path::new(&run_dir))
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn read_rater_index(run_dir: String) -> Result<Option<nn_trainer::RaterIndex>, String> {
+    // RaterIndex lives under <run_dir>/raters/. load() returns an empty index
+    // when the file is missing; we map that to None so the UI can show
+    // "no run yet" vs "empty run" without ambiguity.
+    let raters = std::path::Path::new(&run_dir).join("raters");
+    if !raters.join("index.json").exists() {
+        return Ok(None);
+    }
+    nn_trainer::RaterIndex::load(&raters)
+        .map(Some)
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn read_gauntlet_matrix(run_dir: String) -> Result<Option<nn_trainer::GauntletMatrix>, String> {
+    let path = std::path::Path::new(&run_dir).join(nn_trainer::MATRIX_FILENAME);
+    if !path.exists() {
+        return Ok(None);
+    }
+    nn_trainer::load_matrix(std::path::Path::new(&run_dir))
+        .map(Some)
+        .map_err(|e| format!("{e}"))
+}
+
+/// Network Inspector data for one (rater, position) pair. Returns weight
+/// summary stats per layer plus the raw forward output. Heatmap data is
+/// out-of-scope for v1 — we add it once the inspector panel is wired up.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WeightStats {
+    pub layer: String,
+    pub mean: f32,
+    pub std: f32,
+    pub min: f32,
+    pub max: f32,
+    pub nan_count: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RaterInspection {
+    pub rater_id: String,
+    pub forward_output: f32,
+    pub weight_stats: Vec<WeightStats>,
+}
+
+#[tauri::command]
+fn inspect_rater(
+    run_dir: String,
+    rater_id: String,
+    fen: String,
+) -> Result<RaterInspection, String> {
+    use core_engine::state::fen::from_fen;
+    let pos = from_fen(&fen).map_err(|e| format!("fen parse: {e:?}"))?;
+    let stem = std::path::Path::new(&run_dir).join("raters").join(&rater_id);
+    let forward_output = nn_trainer::NnEvaluator::evaluate_fen_at_stem(&stem, &pos)
+        .map_err(|e| format!("load rater: {e}"))?;
+    // Per-layer weight stats are deferred to the next slice (the inspector
+    // panel will populate this once we surface burn-side introspection).
+    let weight_stats = vec![];
+    Ok(RaterInspection {
+        rater_id,
+        forward_output,
+        weight_stats,
+    })
+}
+
+#[tauri::command]
+fn start_training_run(
+    run_dir: String,
+    state: State<'_, TrainingState>,
+) -> Result<(), String> {
+    let mut inner = state.inner.lock().unwrap();
+    if inner.handle.as_ref().map_or(false, |h| !h.is_finished()) {
+        return Err("training already running".to_string());
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_clone = Arc::clone(&stop);
+    let path = std::path::PathBuf::from(run_dir);
+    let handle = std::thread::spawn(move || {
+        // Use defaults for now; a future revision wires the frontend's run
+        // config through this command's args.
+        let cfg = nn_trainer::RunConfig::default();
+        let _ = nn_trainer::run_training(&cfg, &path, stop_clone);
+    });
+    inner.stop = Some(stop);
+    inner.handle = Some(handle);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_training_run(state: State<'_, TrainingState>) -> Result<(), String> {
+    let mut inner = state.inner.lock().unwrap();
+    if let Some(flag) = inner.stop.as_ref() {
+        flag.store(true, Ordering::Relaxed);
+    }
+    // We don't join() here — the run may take a while to wind down and
+    // blocking the IPC thread is rude. The orchestrator writes a final
+    // phase=Idle snapshot on the way out, which is what the UI observes.
+    inner.stop = None;
+    inner.handle = None;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Entry point.
 // ---------------------------------------------------------------------------
 
@@ -418,6 +644,7 @@ fn snapshot_json(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Str
 pub fn run() {
     tauri::Builder::default()
         .manage(EngineRegistry::default())
+        .manage(TrainingState::default())
         .invoke_handler(tauri::generate_handler![
             engine_version,
             create_engine,
@@ -438,6 +665,18 @@ pub fn run() {
             latest_ply_json,
             finalise_log,
             snapshot_json,
+            // Training Observatory
+            default_run_dir,
+            fen_to_position_view,
+            read_training_status,
+            read_training_live,
+            subscribe_training_live,
+            unsubscribe_training_live,
+            read_rater_index,
+            read_gauntlet_matrix,
+            inspect_rater,
+            start_training_run,
+            stop_training_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -580,5 +819,102 @@ mod tests {
         let h = r.insert(m);
         let v = r.with(h, |e| api::position_view(&e.m)).unwrap();
         assert_eq!(v.current_phase, 0, "loadout path must skip draft → Phase::Move");
+    }
+
+    // --- Training Observatory smoke tests ------------------------------------
+    //
+    // We can't spin up Tauri here, but the command functions are plain Rust —
+    // we can exercise them directly and confirm the serde shapes round-trip.
+
+    fn tempdir() -> std::path::PathBuf {
+        use std::sync::atomic::AtomicU64;
+        static NONCE: AtomicU64 = AtomicU64::new(0);
+        let n = NONCE.fetch_add(1, Ordering::Relaxed);
+        let pid = std::process::id();
+        let dir = std::env::temp_dir()
+            .join(format!("tauri_wrapper_training_{}_{}", pid, n));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn default_run_dir_is_under_game_runs_active() {
+        let path = default_run_dir().unwrap();
+        // The path must end in `runs/active`. We don't assert the absolute
+        // prefix because tests run from various invocation roots.
+        assert!(
+            path.ends_with("runs/active") || path.ends_with("runs\\active"),
+            "default run dir should end in runs/active, got {path}",
+        );
+    }
+
+    #[test]
+    fn fen_to_position_view_round_trips_stack_m_start() {
+        // FEN of the Stack M start position. We round-trip it through the
+        // command and confirm the major fields land in plausible places.
+        let pos = core_engine::state::Position::setup_stack_m();
+        let fen = core_engine::state::fen::to_fen(&pos);
+        let dto = fen_to_position_view(fen).expect("parse");
+        assert_eq!(dto.to_move, 0, "P1 starts");
+        assert_eq!(dto.current_phase, 0, "Move phase");
+        assert_eq!(dto.game_result, 0, "ongoing");
+        assert_eq!(dto.mailbox.len(), 64);
+        assert_ne!(dto.bitboards[0], 0, "P1 occupancy non-empty at start");
+    }
+
+    #[test]
+    fn read_training_status_missing_returns_none() {
+        let dir = tempdir();
+        let got = read_training_status(dir.to_string_lossy().to_string()).expect("read");
+        assert!(got.is_none(), "missing snapshot must return None");
+    }
+
+    #[test]
+    fn read_training_live_missing_returns_none() {
+        let dir = tempdir();
+        let got = read_training_live(dir.to_string_lossy().to_string()).expect("read");
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn subscribe_then_unsubscribe_is_idempotent() {
+        let dir = tempdir();
+        let s = dir.to_string_lossy().to_string();
+        subscribe_training_live(s.clone()).expect("subscribe");
+        subscribe_training_live(s.clone()).expect("subscribe again");
+        unsubscribe_training_live(s.clone()).expect("unsubscribe");
+        unsubscribe_training_live(s).expect("unsubscribe again");
+    }
+
+    #[test]
+    fn read_rater_index_missing_returns_none() {
+        let dir = tempdir();
+        let got = read_rater_index(dir.to_string_lossy().to_string()).expect("read");
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn read_gauntlet_matrix_missing_returns_none() {
+        let dir = tempdir();
+        let got = read_gauntlet_matrix(dir.to_string_lossy().to_string()).expect("read");
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn read_gauntlet_matrix_after_save_returns_entries() {
+        // Save a one-cell matrix, then read it back through the command.
+        let dir = tempdir();
+        let mut m = nn_trainer::GauntletMatrix::default();
+        m.record_series(
+            "v0001", "v0000", "fast",
+            nn_trainer::SeriesTally { candidate_wins: 2, baseline_wins: 1, indecisive: 0 },
+        );
+        nn_trainer::save_matrix(&dir, &m).expect("save");
+
+        let got = read_gauntlet_matrix(dir.to_string_lossy().to_string())
+            .expect("read")
+            .expect("present");
+        assert_eq!(got.entries.len(), 1);
+        assert_eq!(got.entries[0].result.candidate_wins, 2);
     }
 }
