@@ -11,7 +11,7 @@ import type {
   StepResult,
 } from "./types";
 
-interface PositionViewDto {
+export interface PositionViewDto {
   bitboards: string[] | number[]; // serde encodes u64 as JS number/string depending on size
   mailbox: number[];
   toMove: number;
@@ -54,7 +54,7 @@ function toBigInt(v: number | string | bigint): bigint {
   return BigInt(v);
 }
 
-function normalisePositionView(dto: PositionViewDto): PositionView {
+export function normalisePositionView(dto: PositionViewDto): PositionView {
   const bb = new BigUint64Array(5);
   for (let i = 0; i < 5; i++) {
     bb[i] = toBigInt(dto.bitboards[i] as number | string);

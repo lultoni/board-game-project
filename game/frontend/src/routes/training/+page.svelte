@@ -13,6 +13,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { createPollingStore } from "$lib/training/polling";
   import type { StatusSnapshot, TrainingPhase } from "$lib/training/types";
+  import LiveMatchView from "$lib/training/LiveMatchView.svelte";
 
   type Tab = "live" | "standings" | "lineage" | "matrix";
 
@@ -180,7 +181,7 @@
 
       <div class="panel" role="tabpanel">
         {#if activeTab === "live"}
-          <div class="stub">Live Match View — landing in C3</div>
+          <LiveMatchView />
         {:else if activeTab === "standings"}
           <div class="stub">Tournament Standings — landing in C4</div>
         {:else if activeTab === "lineage"}
