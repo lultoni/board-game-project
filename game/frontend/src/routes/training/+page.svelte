@@ -17,6 +17,7 @@
   import TournamentStandings from "$lib/training/TournamentStandings.svelte";
   import LineageTree from "$lib/training/LineageTree.svelte";
   import NetworkInspector from "$lib/training/NetworkInspector.svelte";
+  import GauntletMatrix from "$lib/training/GauntletMatrix.svelte";
 
   type Tab = "live" | "standings" | "lineage" | "matrix";
 
@@ -190,7 +191,7 @@
         {:else if activeTab === "lineage"}
           <LineageTree />
         {:else if activeTab === "matrix"}
-          <div class="stub">Gauntlet Matrix — landing in C7</div>
+          <GauntletMatrix />
         {/if}
       </div>
     </div>
@@ -355,10 +356,6 @@
     padding: 1rem;
     background: white;
     min-height: 320px;
-  }
-  .stub {
-    color: var(--paper-ink-soft);
-    font-style: italic;
   }
   .rightPane h2 {
     margin: 0;
