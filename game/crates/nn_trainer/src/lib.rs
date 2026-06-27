@@ -15,6 +15,7 @@ pub mod batch;
 pub mod encoding;
 pub mod gauntlet;
 pub mod lineage;
+pub mod live;
 pub mod loadout;
 pub mod model;
 pub mod nn_evaluator;
@@ -31,6 +32,11 @@ pub use gauntlet::{
     MatchOutcome, RaterId, SeriesTally, TrackUpdate,
 };
 pub use lineage::{perturb_model, train_lineages, Lineage, LineageConfig};
+pub use live::{
+    is_subscribed, read_live, subscribe, unsubscribe, write_if_subscribed,
+    EvalBars, LiveError, LivePosition, LIVE_POSITION_VERSION,
+    LIVE_STATE_FILENAME, LIVE_SUBSCRIBE_FILENAME,
+};
 pub use model::{Mlp, MlpConfig};
 pub use nn_evaluator::{InferenceBackend, NnEvaluator, EVAL_SCALE, MAX_NN_SCORE};
 pub use persistence::{
