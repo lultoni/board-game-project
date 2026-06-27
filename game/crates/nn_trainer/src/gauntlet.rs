@@ -35,6 +35,7 @@
 //! no dependency on this module.
 
 use crate::loadout::random_loadout_from_seed;
+use core_engine::game_logic::action::Action;
 use core_engine::game_logic::make_unmake;
 use core_engine::game_logic::skills::SideLoadout;
 use core_engine::search::alpha_beta::find_best_with_evaluator;
@@ -91,12 +92,35 @@ pub fn play_match(
     loadout_p2: &SideLoadout,
     bracket: Bracket,
 ) -> MatchOutcome {
+    play_match_with_callback(
+        eval_p1, eval_p2, loadout_p1, loadout_p2, bracket,
+        |_, _, _| {},
+    )
+}
+
+/// Same as `play_match`, but invokes `on_ply(position_after_ply, ply_index,
+/// action_played)` after every move. The callback is the hook the trainer
+/// orchestrator uses to write `live.json` for the UI's Live Match View
+/// (plan §10 panel 1). When nobody is subscribed, `on_ply` becomes a cheap
+/// noop — the orchestrator gates expensive work inside the closure on
+/// `live::is_subscribed`.
+pub fn play_match_with_callback<F>(
+    eval_p1: &dyn Evaluator,
+    eval_p2: &dyn Evaluator,
+    loadout_p1: &SideLoadout,
+    loadout_p2: &SideLoadout,
+    bracket: Bracket,
+    mut on_ply: F,
+) -> MatchOutcome
+where
+    F: FnMut(&Position, u32, &Action),
+{
     let mut pos = Position::setup_stack_m_with_loadouts(loadout_p1, loadout_p2);
     let mut tt_p1 = TranspositionTable::with_capacity_pow2(16);
     let mut tt_p2 = TranspositionTable::with_capacity_pow2(16);
     let time = bracket.time_limit_ms();
 
-    for _ply in 0..MAX_PLIES {
+    for ply in 0..MAX_PLIES {
         if pos.game_result.is_some() { break; }
         let (eval, tt) = match pos.to_move {
             Player::P1 => (eval_p1, &mut tt_p1),
@@ -107,6 +131,7 @@ pub fn play_match(
         );
         let Some(action) = sr.best else { return None; };
         let _undo = make_unmake::make(&mut pos, action);
+        on_ply(&pos, ply as u32, &action);
     }
 
     pos.game_result
@@ -471,6 +496,33 @@ mod tests {
         let result = play_match(&HeuristicEvaluator, &HeuristicEvaluator, &l, &l, Bracket::Fast);
         if let Some(r) = result {
             assert!(matches!(r, GameResult::P1Wins | GameResult::P2Wins));
+        }
+    }
+
+    #[test]
+    fn callback_fires_once_per_ply_with_advancing_index() {
+        // The callback variant must invoke `on_ply` exactly once per move,
+        // with `ply` advancing 0, 1, 2, … and the position reflecting the
+        // *post-move* state (so `game_result` is `Some` on the final call
+        // iff the game terminated normally).
+        let l = random_loadout_from_seed(2);
+        let mut seen_plies: Vec<u32> = Vec::new();
+        let mut final_pos_was_terminal = false;
+        let outcome = play_match_with_callback(
+            &HeuristicEvaluator, &HeuristicEvaluator, &l, &l, Bracket::Fast,
+            |pos, ply, _action| {
+                seen_plies.push(ply);
+                final_pos_was_terminal = pos.game_result.is_some();
+            },
+        );
+        assert!(!seen_plies.is_empty(), "callback never fired");
+        for (i, p) in seen_plies.iter().enumerate() {
+            assert_eq!(*p as usize, i,
+                "ply index must advance 0,1,2,…; got {:?}", seen_plies);
+        }
+        if outcome.is_some() {
+            assert!(final_pos_was_terminal,
+                "final on_ply must see terminal position when game completed");
         }
     }
 
