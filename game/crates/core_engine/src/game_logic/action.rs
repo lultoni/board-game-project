@@ -439,7 +439,7 @@ pub struct Undo {
     pub p2_money_delta: i16,
 
     /// Combo-credit + tracked-enemies + tracked-casters snapshot.
-    pub prev_champion_credit: u64,
+    pub prev_champion_credit: u128,
     pub prev_tracked_enemies: [u8; crate::state::position::MAX_TRACKED_ENEMIES],
     pub prev_tracked_enemies_len: u8,
     pub prev_tracked_casters: [u8; crate::state::position::MAX_TRACKED_CASTERS],

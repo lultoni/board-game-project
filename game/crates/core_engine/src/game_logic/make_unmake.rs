@@ -952,9 +952,9 @@ fn deal_damage(pos: &mut Position, hit_sq: u8, dmg: u8, undo: &mut Undo) {
 /// Returns true iff a tick happened.
 fn combo_tick(pos: &mut Position, src_sq: u8, tgt_sq: u8, undo: &mut Undo) -> bool {
     use crate::state::position::MAX_TRACKED_ENEMIES;
-    let caster_slot = ensure_tracked_caster(pos, src_sq) as u64;
-    let target_slot = ensure_tracked_enemy(pos, tgt_sq) as u64;
-    let bit = 1u64 << (caster_slot * MAX_TRACKED_ENEMIES as u64 + target_slot);
+    let caster_slot = ensure_tracked_caster(pos, src_sq) as u128;
+    let target_slot = ensure_tracked_enemy(pos, tgt_sq) as u128;
+    let bit = 1u128 << (caster_slot * MAX_TRACKED_ENEMIES as u128 + target_slot);
     if pos.champion_credit & bit != 0 { return false; }
     pos.champion_credit |= bit;
 
@@ -970,8 +970,13 @@ fn ensure_tracked_enemy(pos: &mut Position, sq: u8) -> u8 {
         if pos.tracked_enemies[i] == sq { return i as u8; }
     }
     let i = pos.tracked_enemies_len;
-    debug_assert!((i as usize) < MAX_TRACKED_ENEMIES,
-                  "tracked_enemies capacity exhausted in single turn");
+    // Hard panic in release as well as debug: writing past the array would
+    // be UB and the prior debug_assert! got stripped from release builds
+    // (see OQ-85). The cap backs the 16×8-bit `champion_credit` u128
+    // cross-product. Hitting it means the turn touched >16 distinct enemy
+    // combo-tick targets, which exceeds the opponent's piece count (12).
+    assert!((i as usize) < MAX_TRACKED_ENEMIES,
+            "tracked_enemies capacity exhausted in single turn (cap={})", MAX_TRACKED_ENEMIES);
     pos.tracked_enemies[i as usize] = sq;
     pos.tracked_enemies_len += 1;
     i
@@ -983,8 +988,10 @@ fn ensure_tracked_caster(pos: &mut Position, sq: u8) -> u8 {
         if pos.tracked_casters[i] == sq { return i as u8; }
     }
     let i = pos.tracked_casters_len;
-    debug_assert!((i as usize) < MAX_TRACKED_CASTERS,
-                  "tracked_casters capacity exhausted in single turn");
+    // See ensure_tracked_enemy — same reasoning, same hard panic instead of
+    // a stripped debug_assert.
+    assert!((i as usize) < MAX_TRACKED_CASTERS,
+            "tracked_casters capacity exhausted in single turn (cap={})", MAX_TRACKED_CASTERS);
     pos.tracked_casters[i as usize] = sq;
     pos.tracked_casters_len += 1;
     i

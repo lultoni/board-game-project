@@ -38,11 +38,14 @@ pub enum GameResult { P1Wins, P2Wins }
 pub const CHAMPIONS_PER_PLAYER: usize = 5;
 
 /// Maximum number of distinct enemy targets a player's Champions can have
-/// struck for combo purposes within a single turn. 8 is loose upper bound:
-/// 2 actions × Skill Phase × multi-strike skills can realistically hit at
-/// most a handful of distinct enemies. Sized for u64 indexing convenience
-/// (`caster_slot * 8 + target_slot` fits in u64 — see `champion_credit`).
-pub const MAX_TRACKED_ENEMIES: usize = 8;
+/// struck for combo purposes within a single turn. Bumped from 8 to 16 in
+/// session-37: multi-Tempest turns can legitimately accumulate >8 distinct
+/// enemy targets across the turn (each Tempest can tick its pivot plus any
+/// enemy neighbours pushed). 16 is the absolute upper bound for a single
+/// player's reachable enemies — opponent has at most 12 pieces (1 King + 5
+/// Champions + 6 Guards), capped further by board geometry. See
+/// `champion_credit` for the cross-product packing.
+pub const MAX_TRACKED_ENEMIES: usize = 16;
 
 /// Maximum number of distinct caster squares tracked for combo-tick gating
 /// within a single turn. Stack-M's combo rule is identity-based ("new
@@ -152,8 +155,8 @@ pub struct Position {
     /// Bitmap: bit `caster_slot * MAX_TRACKED_ENEMIES + target_slot` is set
     /// iff the caster at `tracked_casters[caster_slot]` has already ticked
     /// the combo counter of the enemy at `tracked_enemies[target_slot]` this
-    /// turn. 8 × 8 = 64 bits fits exactly in u64. Cleared at end of turn.
-    pub champion_credit: u64,
+    /// turn. 8 casters × 16 enemies = 128 bits → u128. Cleared at end of turn.
+    pub champion_credit: u128,
 
     /// Pending two-ply bodyguard resolution state. `Some` between an attacker's
     /// tentative Move-Attack and the defender's `BodyguardChoice` that resolves

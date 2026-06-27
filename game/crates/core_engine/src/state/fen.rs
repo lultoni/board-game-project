@@ -26,7 +26,7 @@
 //!                                              no padding (0x0 is canonical empty)
 //! <tracked_enemies> ::= <sq-list>           ; comma-sep square indices or "-"
 //! <tracked_casters> ::= <sq-list>
-//! <champion_credit> ::= 0..=u64::MAX decimal     ; multi-Champion combo
+//! <champion_credit> ::= 0..=u128::MAX decimal    ; multi-Champion combo
 //!                                                  cross-product bitmap
 //! <pending_bodyguard> ::= '-'                          ; None
 //!                       | <src> ':' <now> ':' <tgt> ':' <eligible-list>
@@ -402,7 +402,7 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
         if tc.len() > MAX_TRACKED_CASTERS {
             return Err(FenError::BadDecimal { field: "tracked_casters" });
         }
-        let credit = cc_s.parse::<u64>().map_err(|_| FenError::BadDecimal { field: "champion_credit" })?;
+        let credit = cc_s.parse::<u128>().map_err(|_| FenError::BadDecimal { field: "champion_credit" })?;
         for (i, &sq) in te.iter().enumerate() { pos.tracked_enemies[i] = sq; }
         for (i, &sq) in tc.iter().enumerate() { pos.tracked_casters[i] = sq; }
         pos.tracked_enemies_len = te.len() as u8;

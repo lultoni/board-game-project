@@ -460,28 +460,12 @@ mod tests {
         }
     }
 
-    // -------------------------------------------------------------------
-    // Tests that run real time-bounded matches are gated behind #[ignore]
-    // because release-mode runs panic in core_engine:
-    //
-    //   make_unmake.rs:975 — `pos.tracked_enemies[i as usize] = sq` writes
-    //   past the end of an 8-slot array when more than MAX_TRACKED_ENEMIES
-    //   distinct enemies are touched in a single turn. The debug_assert!
-    //   on the preceding line catches this in debug builds; release builds
-    //   strip the assert and proceed to UB.
-    //
-    // This is a pre-existing engine bug exposed by the gauntlet's longer
-    // time-budget searches, not a gauntlet defect. The synthetic tests
-    // below (`champion_tracker_*`) exercise all of the gauntlet's
-    // bookkeeping logic without running real matches and pass on every
-    // build configuration.
-    //
-    // TODO(engine): raise MAX_TRACKED_ENEMIES or harden ensure_tracked_enemy
-    // against overflow. Until then `--ignored` tests stay gated.
-    // -------------------------------------------------------------------
+    // Real time-bounded matches. The 8-slot tracked_enemies cap is
+    // structural (backs the 8×8-bit champion_credit u64) and Stack M
+    // can't exceed it (≤6 enemies on board, no summoning). OQ-85
+    // resolved in session-37 — the doc was stale, engine is the spec.
 
     #[test]
-    #[ignore = "engine bug: tracked_enemies OOB at make_unmake.rs:975 in release"]
     fn match_terminates_with_outcome() {
         let l = random_loadout_from_seed(1);
         let result = play_match(&HeuristicEvaluator, &HeuristicEvaluator, &l, &l, Bracket::Fast);
@@ -491,7 +475,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "engine bug: tracked_enemies OOB at make_unmake.rs:975 in release"]
     fn mirrored_bo3_plays_at_least_two_games() {
         // Two identical evaluators on the same loadout — outcome depends on
         // colour-symmetry of the position; we don't predict the winner,
@@ -502,7 +485,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "engine bug: tracked_enemies OOB at make_unmake.rs:975 in release"]
     fn heuristic_beats_constant_evaluator_at_fast_bracket() {
         // The plumbing-correctness test: a real evaluator should out-perform
         // one that always returns 0. We use a 4-game mini-gauntlet (two
@@ -517,7 +499,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "engine bug: tracked_enemies OOB at make_unmake.rs:975 in release"]
     fn tier2_against_self_does_not_pass() {
         // Heuristic vs heuristic at three brackets. Symmetric matchup —
         // candidate shouldn't pass the BO3-win-vs-immediate-predecessor
@@ -528,9 +509,10 @@ mod tests {
         // Pass flags may or may not be true depending on the deterministic
         // outcome of self-play (whoever moves first might always win, in
         // which case it does "pass" trivially). We don't assert pass=false;
-        // we only assert the *report shape* is well-formed.
-        assert!(report.aggregate.fast.games_played() >= 3);
-        assert!(report.aggregate.slow.games_played() >= 3);
+        // we only assert the *report shape* is well-formed. Mirrored BO3
+        // early-returns at 2-0, so the floor is 2 games per bracket, not 3.
+        assert!(report.aggregate.fast.games_played() >= 2);
+        assert!(report.aggregate.slow.games_played() >= 2);
     }
 
     #[test]
