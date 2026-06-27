@@ -298,10 +298,11 @@ pub fn run_training(
             let blob_model = into_inference::<AutodiffB>(lineages[best_idx].model.clone());
             // save_rater expects a model with autodiff stripped — the
             // inference-mode model is exactly that.
+            let parent_id_for_entry = index.latest().map(|e| e.id.clone());
             let metadata = build_metadata(
                 &config,
                 &rater_id,
-                index.latest().map(|e| e.id.clone()),
+                parent_id_for_entry.clone(),
                 &report,
                 &lineages[best_idx],
             );
@@ -310,6 +311,7 @@ pub fn run_training(
                 id: rater_id.clone(),
                 stem: PathBuf::from(&rater_id),
                 accepted_at: metadata.created_at.clone(),
+                parent_id: parent_id_for_entry,
                 bracket_results: metadata.bracket_results.clone(),
             };
             index.append(entry)?;

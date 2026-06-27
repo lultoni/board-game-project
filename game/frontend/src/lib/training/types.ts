@@ -70,6 +70,10 @@ export interface IndexEntry {
   id: string;
   stem: string;
   accepted_at: string;
+  /** Parent rater id; null for the founding entry. Optional for
+   *  backwards-compat with index.json files written before the field
+   *  was added. */
+  parent_id?: string | null;
   bracket_results: Record<string, BracketWinRate>;
 }
 

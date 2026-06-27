@@ -72,6 +72,13 @@ pub struct IndexEntry {
     /// ISO-8601 UTC timestamp at acceptance.
     pub accepted_at: String,
 
+    /// Parent rater this candidate descends from. `None` for the founding
+    /// entry (no prior accepted rater to clone from). Optional via
+    /// `#[serde(default)]` so older index.json files without this field
+    /// still parse.
+    #[serde(default)]
+    pub parent_id: Option<String>,
+
     /// Bracket results that earned this rater its place in the index.
     /// Keyed by bracket name (`"fast"`, `"medium"`, `"slow"`). Empty is
     /// allowed for legacy/seeded entries that pre-date the gauntlet.
@@ -230,6 +237,7 @@ mod tests {
             id: id.to_string(),
             stem: PathBuf::from(id),
             accepted_at: "2026-06-27T00:00:00Z".to_string(),
+            parent_id: None,
             bracket_results: BTreeMap::new(),
         }
     }

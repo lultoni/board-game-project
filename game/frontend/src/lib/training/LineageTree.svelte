@@ -44,30 +44,91 @@
   });
 
   // --- Layout ---------------------------------------------------------------
-  // IndexEntry doesn't carry parent_id (that lives on PopulationMember in the
-  // status snapshot). For this panel we render a flat acceptance-order
-  // ladder, which is honest about the data we actually have. Wiring real
-  // parent edges would require cross-referencing the status snapshot — we
-  // can add that later by widening the context API to expose both stores.
-  type Node = { id: string; entry: IndexEntry; x: number; y: number };
+  // IndexEntry carries `parent_id` (added alongside this panel). We build a
+  // children-of map and walk the forest from each root in acceptance order
+  // to lay out a tidy tree. Roots stack vertically; each subtree extends
+  // rightward column-by-column. Depth-first traversal assigns row numbers
+  // by post-order, which keeps siblings adjacent.
+  type Node = {
+    id: string;
+    entry: IndexEntry;
+    children: Node[];
+    depth: number;
+    row: number;
+    x: number;
+    y: number;
+  };
 
   const layout = $derived.by(() => {
     const entries = index?.entries ?? [];
-    if (entries.length === 0) return { nodes: [] as Node[], width: 0, height: 0 };
-    const ROW = 64;
-    const PAD = 24;
-    const W = 200;
-    const nodes: Node[] = entries.map((e, i) => ({
-      id: e.id,
-      entry: e,
-      x: PAD,
-      y: PAD + i * ROW,
-    }));
-    return {
-      nodes,
-      width: PAD * 2 + W,
-      height: PAD * 2 + entries.length * ROW,
+    if (entries.length === 0) return { nodes: [] as Node[], edges: [] as { x1: number; y1: number; x2: number; y2: number }[], width: 0, height: 0 };
+
+    const byId = new Map<string, Node>();
+    for (const e of entries) {
+      byId.set(e.id, {
+        id: e.id,
+        entry: e,
+        children: [],
+        depth: 0,
+        row: 0,
+        x: 0,
+        y: 0,
+      });
+    }
+    const roots: Node[] = [];
+    for (const e of entries) {
+      const node = byId.get(e.id)!;
+      const pid = e.parent_id ?? null;
+      if (pid && byId.has(pid)) {
+        byId.get(pid)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    // Post-order row assignment: every leaf takes the next row; every
+    // internal node sits at the midpoint of its children's rows.
+    let nextRow = 0;
+    const assign = (n: Node, depth: number): void => {
+      n.depth = depth;
+      if (n.children.length === 0) {
+        n.row = nextRow++;
+      } else {
+        for (const c of n.children) assign(c, depth + 1);
+        const first = n.children[0].row;
+        const last = n.children[n.children.length - 1].row;
+        n.row = (first + last) / 2;
+      }
     };
+    for (const r of roots) assign(r, 0);
+
+    const ROW = 56;
+    const COL = 200;
+    const PAD = 24;
+    const NODE_W = 170;
+    const NODE_H = 44;
+
+    const nodes: Node[] = [];
+    const visit = (n: Node): void => {
+      n.x = PAD + n.depth * COL;
+      n.y = PAD + n.row * ROW;
+      nodes.push(n);
+      for (const c of n.children) visit(c);
+    };
+    for (const r of roots) visit(r);
+
+    const edges = nodes.flatMap((n) =>
+      n.children.map((c) => ({
+        x1: n.x + NODE_W,
+        y1: n.y + NODE_H / 2,
+        x2: c.x,
+        y2: c.y + NODE_H / 2,
+      })),
+    );
+
+    const maxX = Math.max(...nodes.map((n) => n.x + NODE_W), 0);
+    const maxY = Math.max(...nodes.map((n) => n.y + NODE_H), 0);
+    return { nodes, edges, width: maxX + PAD, height: maxY + PAD };
   });
 
   const selected = $derived<string | null>(getSelected());
@@ -85,6 +146,13 @@
     <div class="empty">No accepted raters yet. The first acceptance lands when a candidate clears both gauntlet tiers.</div>
   {:else}
     <svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="xMinYMin meet">
+      {#each layout.edges as e}
+        <path
+          class="edge"
+          d={`M ${e.x1} ${e.y1} C ${(e.x1 + e.x2) / 2} ${e.y1}, ${(e.x1 + e.x2) / 2} ${e.y2}, ${e.x2} ${e.y2}`}
+          fill="none"
+        />
+      {/each}
       {#each layout.nodes as n (n.id)}
         <g
           class="node"
@@ -95,9 +163,9 @@
           onclick={() => pick(n.id)}
           onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") pick(n.id); }}
         >
-          <rect x="0" y="0" width="160" height="44" rx="6" />
-          <text x="80" y="18" text-anchor="middle" class="title">{n.entry.id}</text>
-          <text x="80" y="34" text-anchor="middle" class="sub">{n.entry.stem.split("/").pop() ?? n.entry.stem}</text>
+          <rect x="0" y="0" width="170" height="44" rx="6" />
+          <text x="85" y="18" text-anchor="middle" class="title">{n.entry.id}</text>
+          <text x="85" y="34" text-anchor="middle" class="sub">{n.entry.stem.split("/").pop() ?? n.entry.stem}</text>
         </g>
       {/each}
     </svg>
@@ -140,6 +208,11 @@
   }
   .node {
     cursor: pointer;
+  }
+  .edge {
+    stroke: var(--paper-ink-soft);
+    stroke-width: 1.5;
+    opacity: 0.6;
   }
   .node rect {
     fill: white;
