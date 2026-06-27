@@ -15,6 +15,7 @@
   import type { StatusSnapshot, TrainingPhase } from "$lib/training/types";
   import LiveMatchView from "$lib/training/LiveMatchView.svelte";
   import TournamentStandings from "$lib/training/TournamentStandings.svelte";
+  import LineageTree from "$lib/training/LineageTree.svelte";
 
   type Tab = "live" | "standings" | "lineage" | "matrix";
 
@@ -186,7 +187,7 @@
         {:else if activeTab === "standings"}
           <TournamentStandings />
         {:else if activeTab === "lineage"}
-          <div class="stub">Lineage Tree — landing in C5</div>
+          <LineageTree />
         {:else if activeTab === "matrix"}
           <div class="stub">Gauntlet Matrix — landing in C7</div>
         {/if}
