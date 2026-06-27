@@ -14,6 +14,7 @@
   import { createPollingStore } from "$lib/training/polling";
   import type { StatusSnapshot, TrainingPhase } from "$lib/training/types";
   import LiveMatchView from "$lib/training/LiveMatchView.svelte";
+  import TournamentStandings from "$lib/training/TournamentStandings.svelte";
 
   type Tab = "live" | "standings" | "lineage" | "matrix";
 
@@ -183,7 +184,7 @@
         {#if activeTab === "live"}
           <LiveMatchView />
         {:else if activeTab === "standings"}
-          <div class="stub">Tournament Standings — landing in C4</div>
+          <TournamentStandings />
         {:else if activeTab === "lineage"}
           <div class="stub">Lineage Tree — landing in C5</div>
         {:else if activeTab === "matrix"}
