@@ -1,0 +1,24 @@
+[package]
+name = "nn_trainer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "NN position-rater trainer for (GAME NAME). Native-only, rayon-parallel self-play; ndarray-backed burn. See design/inbox/digital/nn-rater-plan.md."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+core_engine = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# burn = autograd + optimisers + serialisation (ADR-007). ndarray backend keeps
+# the dependency footprint small and matches the future WASM-inference target.
+burn = { version = "0.21", default-features = false, features = ["ndarray", "train", "std"] }
+# Self-play data generation: deterministic RNG (seeded loadouts + game seeds)
+# and parallel execution (corpus generation is embarrassingly parallel).
+rand = "0.8"
+rand_chacha = "0.3"
+rand_distr = "0.4"
+rayon = "1.10"

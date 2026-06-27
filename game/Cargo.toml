@@ -5,6 +5,7 @@ members = [
     "crates/wasm_wrapper",
     "crates/tauri_wrapper",
     "crates/search_bench",
+    "crates/nn_trainer",
 ]
 
 [workspace.package]
