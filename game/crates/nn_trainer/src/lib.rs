@@ -21,6 +21,7 @@ pub mod nn_evaluator;
 pub mod persistence;
 pub mod registry;
 pub mod selfplay;
+pub mod snapshot;
 pub mod train;
 
 pub use encoding::{encode_position, INPUT_DIM};
@@ -38,6 +39,10 @@ pub use persistence::{
 };
 pub use registry::{IndexEntry, IndexError, RaterIndex, Track, INDEX_FORMAT_VERSION};
 pub use selfplay::{play_game, GameRecord, LabelledPosition};
+pub use snapshot::{
+    read_snapshot, write_snapshot, ActiveMatch, PopulationMember, SnapshotError,
+    StatusSnapshot, TrainingPhase, STATUS_FILENAME, STATUS_SNAPSHOT_VERSION,
+};
 pub use batch::generate_corpus;
 pub use loadout::{random_loadout, random_loadout_from_seed};
 pub use train::{batch_to_tensors, into_inference, train, train_step, TrainingConfig};
