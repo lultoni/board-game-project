@@ -17,6 +17,7 @@ pub mod gauntlet;
 pub mod lineage;
 pub mod live;
 pub mod loadout;
+pub mod matrix;
 pub mod model;
 pub mod nn_evaluator;
 pub mod persistence;
@@ -51,6 +52,10 @@ pub use snapshot::{
 };
 pub use batch::generate_corpus;
 pub use loadout::{random_loadout, random_loadout_from_seed};
+pub use matrix::{
+    load_matrix, save_matrix, GauntletMatrix, MatrixEntry, MatrixError,
+    MATRIX_FILENAME, MATRIX_FORMAT_VERSION,
+};
 pub use train::{batch_to_tensors, into_inference, train, train_step, TrainingConfig};
 
 #[cfg(test)]
