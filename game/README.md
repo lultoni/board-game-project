@@ -56,3 +56,21 @@ sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"
 ```
 
 `core_engine` implements that ruleset. When Stack M changes (or 6×8 follow-on lands), the engine changes with it.
+
+## Training Observatory
+
+The NN-rater training loop (Step 7 of the NN-rater plan) is wired
+through a dedicated UI at **`/training`** in the desktop app. Open
+`cargo tauri dev` from `crates/tauri_wrapper`, then navigate to
+`/training` — the route renders:
+
+- **Live Match View** — board + three centipawn eval bars updated per ply
+- **Tournament Standings** — table of every population member, W-L-D, win rate
+- **Lineage Tree** — every accepted rater (click one to populate the Inspector)
+- **Network Inspector** — forward output + per-layer weight stats for the selected rater
+- **Gauntlet Matrix** — N×N win-rate heat-map per bracket
+
+Status / live-position / index / matrix snapshots are persisted under
+**`game/runs/active/`** (gitignored — large, churny). Promote an
+interesting run by copying it to `game/runs/archive/<run-id>/`.
+

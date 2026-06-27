@@ -4,3 +4,9 @@ Cargo.lock
 
 # Tauri auto-generated schemas (regenerated each build)
 crates/tauri_wrapper/gen/
+
+# Training Observatory run dir — large, churny JSON snapshots + .mpk
+# rater blobs. Keep the directory shell (.gitkeep) so the trainer can
+# write there out of the box. Promote interesting runs to runs/archive/.
+runs/active/*
+!runs/active/.gitkeep
