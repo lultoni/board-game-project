@@ -1,0 +1,16 @@
+[package]
+name = "search_bench"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Search-speed benchmark for core_engine. FEN-driven corpus, two modes (fixed-depth + fixed-time), correctness regression test."
+
+[[bin]]
+name = "search_bench"
+path = "src/main.rs"
+
+[dependencies]
+core_engine = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

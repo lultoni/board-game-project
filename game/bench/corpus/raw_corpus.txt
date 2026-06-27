@@ -1,0 +1,26 @@
+# Auto-generated corpus rows. Hand-curate before committing.
+# Format: id, category, expected_depth_n, expected_score_range, fen [; expected_best_move_raw,...]
+opening-01, opening, -, -, 1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0
+opening-02, opening, -, -, 1ccckcc1/1gggggg1/8/8/1G6/8/1G1GGGG1/1CCKCCC1 P1 M 1 6 6 0 1 0x2000000
+opening-03, opening, -, -, 1ccckcc1/1gggggg1/8/8/1G6/8/1GCGGGG1/1C1KCCC1 P1 M 0 6 6 0 1 0x2000400
+opening-04, opening, -, -, 1ccckcc1/2ggggg1/8/1g6/1G6/8/1GCGGGG1/1C1KCCC1 P2 M 1 6 6 0 1 0x200000000
+opening-05, opening, -, -, 1ccckcc1/3gggg1/4g3/1g6/1G6/8/1GCGGGG1/1C1KCCC1 P2 M 0 6 6 0 1 0x100200000000
+opening-06, opening, -, -, 1ccckcc1/3gggg1/4g3/1g6/G7/8/1GCGGGG1/1C1KCCC1 P1 M 1 8 6 0 2 0x1000000
+midgame-low-skill-01, midgame-low-skill, -, -, 1ccckccg/5g2/3g4/1g6/4G3/1G2g2g/1CG1GGG1/1C1KCCC1 P1 M 1 18 15 0 6 0x10000000
+midgame-low-skill-02, midgame-low-skill, -, -, 1ccckccg/5g2/3g4/1g6/4G1G1/1G2g2g/1CG1GG2/1C1KCCC1 P1 M 0 18 15 0 6 0x50000000
+midgame-low-skill-03, midgame-low-skill, -, -, 1ccckccg/5g2/3g4/3g4/4G1G1/1G2g2g/1CG1GG2/1C1KCCC1 P2 M 1 18 18 0 6 0x800000000
+midgame-low-skill-04, midgame-low-skill, -, -, 1ccckccg/7g/3g4/3g4/4G1G1/1G2g2g/1CG1GG2/1C1KCCC1 P2 M 0 18 18 0 6 0x80000800000000
+midgame-low-skill-05, midgame-low-skill, -, -, 1ccckccg/7g/3g4/3g4/4G1G1/4g2g/1CG1GG2/GC1KCCC1 P1 M 1 21 18 0 7 0x1
+midgame-low-skill-06, midgame-low-skill, -, -, 1ccckccg/7g/3g4/3g4/4G1G1/4g2g/2G1GG2/GCCKCCC1 P1 M 0 21 18 0 7 0x5
+phase-boundary-01, phase-boundary, -, -, 1ccckcc1/1gggggg1/8/8/1G6/8/1GCGGGG1/1C1KCCC1 P1 S 2 6 6 0 1 0x0
+phase-boundary-02, phase-boundary, -, -, 1ccckcc1/1gggggg1/8/8/1G6/8/1GCGGGG1/1C1KCCC1 P2 M 2 6 6 0 1 0x0
+phase-boundary-03, phase-boundary, -, -, 1ccckcc1/3gggg1/4g3/1g6/1G6/8/1GCGGGG1/1C1KCCC1 P2 S 2 6 6 0 1 0x0
+phase-boundary-04, phase-boundary, -, -, 1ccckcc1/3gggg1/4g3/1g6/1G6/8/1GCGGGG1/1C1KCCC1 P1 M 2 8 6 0 2 0x0
+phase-boundary-05, phase-boundary, -, -, 1ccckcc1/3gggg1/4g3/1g6/G7/8/G1CGGGG1/1C1KCCC1 P1 S 2 8 6 0 2 0x0
+phase-boundary-06, phase-boundary, -, -, 1ccckcc1/3gggg1/4g3/1g6/G7/8/G1CGGGG1/1C1KCCC1 P2 M 2 8 8 0 2 0x0
+endgame-sparse-01, endgame-sparse, -, -, 7c[1/0/0/0/0]/c[1/0/0/0/0]5c1/g[1/0/0/0/0]4g2/1c[1/0/0/0/0]6/6k1/3C[1/0/0/0/0]4/4C3/4K[1/0/0/0/0]3 P2 M 1 400 400 0 55 0x40000000000000
+endgame-sparse-02, endgame-sparse, -, -, 7c[1/0/0/0/0]/c[1/0/0/0/0]5cg/g[1/0/0/0/0]7/1c[1/0/0/0/0]6/6k1/3C[1/0/0/0/0]4/4C3/4K[1/0/0/0/0]3 P2 M 0 400 400 0 55 0xc0000000000000
+endgame-sparse-03, endgame-sparse, -, -, 7c[1/0/0/0/0]/c[1/0/0/0/0]5cg/g[1/0/0/0/0]7/1c[1/0/0/0/0]6/6k1/3C[1/0/0/0/0]4/4C3/3K[1/0/0/0/0]4 P1 M 1 413 400 0 56 0x8
+endgame-sparse-04, endgame-sparse, -, -, 7c[1/0/0/0/0]/c[1/0/0/0/0]5cg/g[1/0/0/0/0]7/1c[1/0/0/0/0]6/6k1/3C[1/0/0/0/0]1C2/8/3K[1/0/0/0/0]4 P1 M 0 413 400 0 56 0x200008
+endgame-sparse-05, endgame-sparse, -, -, 7c[1/0/0/0/0]/c[1/0/0/0/0]5c1/g[1/0/0/0/0]7/1c[1/0/0/0/0]4g1/6k1/3C[1/0/0/0/0]1C2/8/3K[1/0/0/0/0]4 P2 M 1 413 413 0 56 0x4000000000
+endgame-sparse-06, endgame-sparse, -, -, g[1/0/0/0/0]6c[1/0/0/0/0]/c[1/0/0/0/0]5c1/8/1c[1/0/0/0/0]4g1/6k1/3C[1/0/0/0/0]1C2/8/3K[1/0/0/0/0]4 P2 M 0 413 413 0 56 0x100004000000000

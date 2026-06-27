@@ -1,0 +1,597 @@
+//! Search-speed benchmark for `core_engine`.
+//!
+//! See `design/inbox/digital/search-speed-benchmark-plan.md` for the design.
+//! Manual-run-only tool — not part of CI.
+//!
+//! Usage:
+//!   cargo run -p search_bench --release -- \
+//!       --corpus game/bench/corpus/corpus.txt \
+//!       --mode depth --depth 6 --runs 5 \
+//!       --out game/bench/results/run.json
+//!
+//!   cargo run -p search_bench --release -- \
+//!       --corpus game/bench/corpus/corpus.txt \
+//!       --mode time --time-ms 1000 --runs 5 \
+//!       --out game/bench/results/run.json
+//!
+//!   cargo run -p search_bench --release -- --determinism
+//!       (runs the corpus 10× at depth 6 and asserts identical node counts)
+//!
+//! Output format: structured JSON (one object per position + an aggregate
+//! block). Field names are intentionally stable; downstream diff tooling
+//! reads them by name.
+
+use core_engine::game_logic::action::{Action, ActionKind};
+use core_engine::search::alpha_beta::{find_best, SearchResult};
+use core_engine::search::transposition::{Stats as TtStats, TranspositionTable};
+use core_engine::state::Position;
+use core_engine::state::fen::from_fen;
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
+use std::time::Instant;
+
+const DEFAULT_DEPTH: u8 = 6;
+const DEFAULT_TIME_MS: u64 = 1000;
+const DEFAULT_RUNS: usize = 5;
+const TT_MB: usize = 64;
+
+/// One corpus entry. Parsed from `corpus.txt`.
+#[derive(Debug, Clone)]
+struct CorpusEntry {
+    id: String,
+    category: String,
+    /// Optional minimum depth at which the tactical assertion applies.
+    expected_best_move_depth_n: Option<u8>,
+    /// Optional inclusive score range the tactical assertion must lie in.
+    expected_score_range: Option<(i32, i32)>,
+    /// Optional list of acceptable best-move encodings (Action.0 raw u32).
+    expected_best_moves: Vec<u32>,
+    fen: String,
+}
+
+/// One measurement of one position in one mode.
+#[derive(Debug, Clone)]
+struct Measurement {
+    nodes: u64,
+    depth: u8,
+    score: i32,
+    best_move: Option<Action>,
+    time_ms: f64,
+    nodes_per_sec: f64,
+    tt_probes: u64,
+    tt_hits: u64,
+    tt_hit_rate: f64,
+    ebf: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Mode {
+    Depth(u8),
+    Time(u64),
+}
+
+struct Args {
+    corpus_path: PathBuf,
+    mode: Mode,
+    runs: usize,
+    out_path: Option<PathBuf>,
+    determinism: bool,
+    determinism_runs: usize,
+}
+
+fn print_usage_and_exit() -> ! {
+    eprintln!("usage: search_bench --corpus <path> [--mode depth|time] [--depth N] [--time-ms M] [--runs N] [--out <path>]");
+    eprintln!("       search_bench --determinism [--corpus <path>] [--depth N] [--determinism-runs N]");
+    std::process::exit(2);
+}
+
+fn parse_args() -> Args {
+    let mut corpus_path = PathBuf::from("game/bench/corpus/corpus.txt");
+    let mut mode_kind = "depth".to_string();
+    let mut depth = DEFAULT_DEPTH;
+    let mut time_ms = DEFAULT_TIME_MS;
+    let mut runs = DEFAULT_RUNS;
+    let mut out_path: Option<PathBuf> = None;
+    let mut determinism = false;
+    let mut determinism_runs = 10usize;
+
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let mut i = 0;
+    while i < argv.len() {
+        match argv[i].as_str() {
+            "--corpus" => {
+                corpus_path = PathBuf::from(argv.get(i + 1).cloned().unwrap_or_else(|| {
+                    eprintln!("--corpus needs a path");
+                    std::process::exit(2);
+                }));
+                i += 2;
+            }
+            "--mode" => {
+                mode_kind = argv.get(i + 1).cloned().unwrap_or_default();
+                i += 2;
+            }
+            "--depth" => {
+                depth = argv
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(|| {
+                        eprintln!("--depth needs a number");
+                        std::process::exit(2);
+                    });
+                i += 2;
+            }
+            "--time-ms" => {
+                time_ms = argv
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(|| {
+                        eprintln!("--time-ms needs a number");
+                        std::process::exit(2);
+                    });
+                i += 2;
+            }
+            "--runs" => {
+                runs = argv
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(|| {
+                        eprintln!("--runs needs a number");
+                        std::process::exit(2);
+                    });
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(argv.get(i + 1).cloned().unwrap_or_else(|| {
+                    eprintln!("--out needs a path");
+                    std::process::exit(2);
+                })));
+                i += 2;
+            }
+            "--determinism" => {
+                determinism = true;
+                i += 1;
+            }
+            "--determinism-runs" => {
+                determinism_runs = argv
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(|| {
+                        eprintln!("--determinism-runs needs a number");
+                        std::process::exit(2);
+                    });
+                i += 2;
+            }
+            "--help" | "-h" => print_usage_and_exit(),
+            other => {
+                eprintln!("unknown arg: {}", other);
+                print_usage_and_exit();
+            }
+        }
+    }
+
+    let mode = match mode_kind.as_str() {
+        "depth" => Mode::Depth(depth),
+        "time" => Mode::Time(time_ms),
+        other => {
+            eprintln!("--mode must be 'depth' or 'time', got '{}'", other);
+            print_usage_and_exit();
+        }
+    };
+
+    Args {
+        corpus_path,
+        mode,
+        runs,
+        out_path,
+        determinism,
+        determinism_runs,
+    }
+}
+
+/// Parse `corpus.txt`. Format:
+///
+/// ```text
+/// # Comment lines start with '#'. Blank lines ignored.
+/// # Columns (5, comma-separated): id, category, expected_best_move_depth_N, expected_score_range, fen
+/// # Use '-' for any unused expectation field. Score range syntax: "lo..hi" inclusive.
+/// # Expected-best-move encodings can be appended after the FEN, comma-separated.
+/// # The FEN itself contains spaces — its commas are the only commas after the score range.
+/// # So we split on the FIRST FOUR commas, treat the rest as "fen [;move1,move2,...]" where
+/// # the optional best-move list is appended after a `;` separator.
+/// opening-01, opening, -, -, <fen> ; <action_u32>[,<action_u32>...]
+/// mate-in-3-01, tactical, 6, -32700..-32600, <fen> ; 12345678
+/// ```
+fn load_corpus(path: &PathBuf) -> Vec<CorpusEntry> {
+    let raw = fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!("failed to read corpus {}: {}", path.display(), e);
+        std::process::exit(2);
+    });
+
+    let mut out = Vec::new();
+    for (line_no, raw_line) in raw.lines().enumerate() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        // Split on first four commas only — the FEN may contain spaces but no
+        // commas before the optional ';' best-move trailer.
+        let mut parts = Vec::with_capacity(5);
+        let mut rest = line;
+        for _ in 0..4 {
+            let (head, tail) = match rest.split_once(',') {
+                Some(x) => x,
+                None => {
+                    eprintln!("corpus line {} malformed (expected 5 cols): {}", line_no + 1, line);
+                    std::process::exit(2);
+                }
+            };
+            parts.push(head.trim().to_string());
+            rest = tail.trim_start();
+        }
+        parts.push(rest.trim().to_string());
+
+        let id = parts[0].clone();
+        let category = parts[1].clone();
+        let depth_n = if parts[2] == "-" {
+            None
+        } else {
+            Some(parts[2].parse::<u8>().unwrap_or_else(|_| {
+                eprintln!("corpus line {}: bad depth_n '{}'", line_no + 1, parts[2]);
+                std::process::exit(2);
+            }))
+        };
+        let score_range = if parts[3] == "-" {
+            None
+        } else {
+            let (lo, hi) = parts[3].split_once("..").unwrap_or_else(|| {
+                eprintln!("corpus line {}: bad score_range '{}'", line_no + 1, parts[3]);
+                std::process::exit(2);
+            });
+            Some((
+                lo.trim().parse::<i32>().expect("score_range lo"),
+                hi.trim().parse::<i32>().expect("score_range hi"),
+            ))
+        };
+
+        // Split optional best-move trailer.
+        let (fen_str, best_move_trailer) = match parts[4].rsplit_once(';') {
+            Some((f, t)) => (f.trim().to_string(), t.trim().to_string()),
+            None => (parts[4].clone(), String::new()),
+        };
+        let expected_best_moves: Vec<u32> = if best_move_trailer.is_empty() {
+            Vec::new()
+        } else {
+            best_move_trailer
+                .split(',')
+                .map(|s| s.trim().parse::<u32>())
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap_or_else(|e| {
+                    eprintln!("corpus line {}: bad best-move trailer: {}", line_no + 1, e);
+                    std::process::exit(2);
+                })
+        };
+
+        out.push(CorpusEntry {
+            id,
+            category,
+            expected_best_move_depth_n: depth_n,
+            expected_score_range: score_range,
+            expected_best_moves,
+            fen: fen_str,
+        });
+    }
+    out
+}
+
+fn one_run(pos_template: &Position, mode: Mode) -> (Measurement, TtStats) {
+    let mut pos = pos_template.clone();
+    let mut tt = TranspositionTable::with_capacity_mb(TT_MB);
+    let t0 = Instant::now();
+    let (time_ms_arg, max_depth_arg) = match mode {
+        Mode::Depth(d) => (0u64, d),
+        Mode::Time(t) => (t, 64u8),
+    };
+    let sr: SearchResult = find_best(&mut pos, &mut tt, time_ms_arg, max_depth_arg);
+    let elapsed = t0.elapsed().as_secs_f64();
+    let stats = tt.stats();
+
+    let nps = if elapsed > 0.0 { sr.nodes as f64 / elapsed } else { 0.0 };
+    let ebf = if sr.depth > 0 {
+        (sr.nodes as f64).powf(1.0 / sr.depth as f64)
+    } else {
+        0.0
+    };
+    let hit_rate = if stats.probes > 0 {
+        stats.hits as f64 / stats.probes as f64
+    } else {
+        0.0
+    };
+
+    let m = Measurement {
+        nodes: sr.nodes,
+        depth: sr.depth,
+        score: sr.score,
+        best_move: sr.best,
+        time_ms: elapsed * 1000.0,
+        nodes_per_sec: nps,
+        tt_probes: stats.probes,
+        tt_hits: stats.hits,
+        tt_hit_rate: hit_rate,
+        ebf,
+    };
+    (m, stats)
+}
+
+fn median_measurement(samples: &[Measurement]) -> Measurement {
+    assert!(!samples.is_empty());
+    let mut by_nodes = samples.to_vec();
+    by_nodes.sort_by_key(|m| m.nodes);
+    let mid = by_nodes.len() / 2;
+    by_nodes[mid].clone()
+}
+
+fn geometric_mean(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let sum_ln: f64 = values
+        .iter()
+        .filter(|v| **v > 0.0)
+        .map(|v| v.ln())
+        .sum();
+    let n = values.iter().filter(|v| **v > 0.0).count();
+    if n == 0 {
+        return 0.0;
+    }
+    (sum_ln / n as f64).exp()
+}
+
+fn action_brief(a: Option<Action>) -> String {
+    match a {
+        None => "(none)".to_string(),
+        Some(act) => {
+            if act.is_draft_turn() {
+                return format!("Draft(raw=0x{:08x})", act.0);
+            }
+            if act.is_bodyguard_choice() {
+                return format!("BG(raw=0x{:08x})", act.0);
+            }
+            let kind = match act.kind() {
+                ActionKind::Move => "Move",
+                ActionKind::Skill => "Skill",
+                ActionKind::EndPhase => "EndPhase",
+                ActionKind::EndTurn => "EndTurn",
+            };
+            format!("{}({}->{}, skill={}, raw=0x{:08x})",
+                    kind, act.src(), act.target(), act.skill_id(), act.0)
+        }
+    }
+}
+
+fn run_corpus(entries: &[CorpusEntry], mode: Mode, runs: usize) -> (Vec<(String, Measurement)>, Vec<String>) {
+    let mut results = Vec::with_capacity(entries.len());
+    let mut regressions: Vec<String> = Vec::new();
+
+    for entry in entries {
+        let template = match from_fen(&entry.fen) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("FEN parse failed for {}: {:?}", entry.id, e);
+                std::process::exit(2);
+            }
+        };
+
+        let mut samples = Vec::with_capacity(runs);
+        for _ in 0..runs {
+            let (m, _stats) = one_run(&template, mode);
+            samples.push(m);
+        }
+        let med = median_measurement(&samples);
+
+        // Correctness assertions (apply to median).
+        if let Some(n) = entry.expected_best_move_depth_n {
+            if med.depth >= n {
+                if !entry.expected_best_moves.is_empty() {
+                    let bm_raw = med.best_move.map(|a| a.0).unwrap_or(0);
+                    if !entry.expected_best_moves.contains(&bm_raw) {
+                        regressions.push(format!(
+                            "{}: REGRESSION best-move at depth {} (got raw=0x{:08x}, expected one of {:?})",
+                            entry.id, med.depth, bm_raw, entry.expected_best_moves
+                        ));
+                    }
+                }
+                if let Some((lo, hi)) = entry.expected_score_range {
+                    if med.score < lo || med.score > hi {
+                        regressions.push(format!(
+                            "{}: REGRESSION score at depth {} (got {}, expected [{}, {}])",
+                            entry.id, med.depth, med.score, lo, hi
+                        ));
+                    }
+                }
+            }
+        }
+
+        println!(
+            "{:30}  cat={:20}  d={:>2}  nodes={:>10}  nps={:>10.0}  time={:>7.1}ms  tt_hit={:>5.1}%  ebf={:>5.2}  best={}",
+            entry.id,
+            entry.category,
+            med.depth,
+            med.nodes,
+            med.nodes_per_sec,
+            med.time_ms,
+            med.tt_hit_rate * 100.0,
+            med.ebf,
+            action_brief(med.best_move),
+        );
+
+        results.push((entry.id.clone(), med));
+    }
+
+    (results, regressions)
+}
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn write_json(
+    out_path: &PathBuf,
+    mode: Mode,
+    runs: usize,
+    results: &[(String, Measurement)],
+    entries_by_id: &BTreeMap<String, CorpusEntry>,
+) {
+    let mut s = String::new();
+    s.push_str("{\n");
+    s.push_str(&format!("  \"mode\": \"{}\",\n", match mode {
+        Mode::Depth(_) => "depth",
+        Mode::Time(_) => "time",
+    }));
+    match mode {
+        Mode::Depth(d) => s.push_str(&format!("  \"depth\": {},\n", d)),
+        Mode::Time(t) => s.push_str(&format!("  \"time_ms\": {},\n", t)),
+    }
+    s.push_str(&format!("  \"runs_per_position\": {},\n", runs));
+
+    let nps_values: Vec<f64> = results.iter().map(|(_, m)| m.nodes_per_sec).collect();
+    let depth_values: Vec<u8> = results.iter().map(|(_, m)| m.depth).collect();
+    let geo_nps = geometric_mean(&nps_values);
+    let depth_min = depth_values.iter().copied().min().unwrap_or(0);
+    let depth_max = depth_values.iter().copied().max().unwrap_or(0);
+    s.push_str(&format!("  \"aggregate\": {{\n"));
+    s.push_str(&format!("    \"geometric_mean_nps\": {:.2},\n", geo_nps));
+    s.push_str(&format!("    \"depth_min\": {},\n", depth_min));
+    s.push_str(&format!("    \"depth_max\": {},\n", depth_max));
+    s.push_str(&format!("    \"positions\": {}\n", results.len()));
+    s.push_str(&format!("  }},\n"));
+
+    s.push_str("  \"positions\": [\n");
+    for (i, (id, m)) in results.iter().enumerate() {
+        let cat = entries_by_id.get(id).map(|e| e.category.as_str()).unwrap_or("?");
+        s.push_str("    {\n");
+        s.push_str(&format!("      \"id\": \"{}\",\n", json_escape(id)));
+        s.push_str(&format!("      \"category\": \"{}\",\n", json_escape(cat)));
+        s.push_str(&format!("      \"nodes\": {},\n", m.nodes));
+        s.push_str(&format!("      \"depth\": {},\n", m.depth));
+        s.push_str(&format!("      \"score\": {},\n", m.score));
+        s.push_str(&format!("      \"best_move_raw\": {},\n",
+            m.best_move.map(|a| a.0).unwrap_or(0)));
+        s.push_str(&format!("      \"time_ms\": {:.3},\n", m.time_ms));
+        s.push_str(&format!("      \"nodes_per_sec\": {:.2},\n", m.nodes_per_sec));
+        s.push_str(&format!("      \"tt_probes\": {},\n", m.tt_probes));
+        s.push_str(&format!("      \"tt_hits\": {},\n", m.tt_hits));
+        s.push_str(&format!("      \"tt_hit_rate\": {:.4},\n", m.tt_hit_rate));
+        s.push_str(&format!("      \"ebf\": {:.3}\n", m.ebf));
+        s.push_str("    }");
+        if i + 1 < results.len() {
+            s.push(',');
+        }
+        s.push('\n');
+    }
+    s.push_str("  ]\n");
+    s.push_str("}\n");
+
+    if let Some(parent) = out_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let mut f = fs::File::create(out_path).unwrap_or_else(|e| {
+        eprintln!("failed to create {}: {}", out_path.display(), e);
+        std::process::exit(2);
+    });
+    f.write_all(s.as_bytes()).expect("write json");
+    eprintln!("wrote {}", out_path.display());
+}
+
+fn run_determinism(entries: &[CorpusEntry], depth: u8, runs: usize) {
+    eprintln!("Determinism check: {} positions × {} runs each at depth {}", entries.len(), runs, depth);
+    let mut all_ok = true;
+    for entry in entries {
+        let template = match from_fen(&entry.fen) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("{}: FEN parse failed: {:?}", entry.id, e);
+                all_ok = false;
+                continue;
+            }
+        };
+        let mut first: Option<(u64, i32, u32)> = None;
+        let mut ok = true;
+        for r in 0..runs {
+            let (m, _) = one_run(&template, Mode::Depth(depth));
+            let bm = m.best_move.map(|a| a.0).unwrap_or(0);
+            match first {
+                None => first = Some((m.nodes, m.score, bm)),
+                Some((n, s, b)) => {
+                    if m.nodes != n || m.score != s || m.best_move.map(|a| a.0).unwrap_or(0) != b {
+                        ok = false;
+                        eprintln!(
+                            "{}: NON-DETERMINISTIC at run {} (nodes {}→{}, score {}→{}, best 0x{:08x}→0x{:08x})",
+                            entry.id, r, n, m.nodes, s, m.score, b, bm
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+        if ok {
+            println!("{:30}  ok  (nodes={} score={})", entry.id, first.unwrap().0, first.unwrap().1);
+        } else {
+            all_ok = false;
+        }
+    }
+    if !all_ok {
+        std::process::exit(3);
+    }
+    eprintln!("All positions deterministic.");
+}
+
+fn main() {
+    let args = parse_args();
+    let entries = load_corpus(&args.corpus_path);
+    if entries.is_empty() {
+        eprintln!("corpus is empty: {}", args.corpus_path.display());
+        std::process::exit(2);
+    }
+    eprintln!("loaded {} positions from {}", entries.len(), args.corpus_path.display());
+
+    if args.determinism {
+        let depth = match args.mode {
+            Mode::Depth(d) => d,
+            Mode::Time(_) => DEFAULT_DEPTH,
+        };
+        run_determinism(&entries, depth, args.determinism_runs);
+        return;
+    }
+
+    let entries_by_id: BTreeMap<String, CorpusEntry> =
+        entries.iter().map(|e| (e.id.clone(), e.clone())).collect();
+    let (results, regressions) = run_corpus(&entries, args.mode, args.runs);
+
+    if let Some(path) = &args.out_path {
+        write_json(path, args.mode, args.runs, &results, &entries_by_id);
+    }
+
+    if !regressions.is_empty() {
+        eprintln!("---");
+        for r in &regressions {
+            eprintln!("{}", r);
+        }
+        std::process::exit(4);
+    }
+}

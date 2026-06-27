@@ -1,0 +1,47 @@
+# Search-Speed Benchmark Corpus
+#
+# Each row: id, category, expected_best_move_depth_N, expected_score_range, fen [; expected_best_move_raw,...]
+#
+# - Use '-' in the expectation columns for non-tactical positions.
+# - Score range syntax: "lo..hi" (inclusive). Use mate-bound semantics:
+#     MATE_SCORE = 32767. A "mate in 3 for P1" score is ~32764.
+# - Expected best-move encodings are optional, comma-separated raw u32s,
+#   after a ';' separator. If non-empty AND depth assertion fires, the
+#   search's best move must match one of them.
+#
+# Sourced from random self-play with the build_corpus example
+# (cargo run -p core_engine --example build_corpus --release).
+# Format and process: see design/inbox/digital/search-speed-benchmark-plan.md.
+
+# --- Opening (6) — full board, low piece interaction, broad fan-out ---
+opening-01, opening, -, -, 1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0
+opening-02, opening, -, -, 1ccckcc1/1gggggg1/8/8/1G6/8/1G1GGGG1/1CCKCCC1 P1 M 1 6 6 0 1 0x2000000
+opening-03, opening, -, -, 1ccckcc1/1gggggg1/8/8/1G6/8/1GCGGGG1/1C1KCCC1 P1 M 0 6 6 0 1 0x2000400
+opening-04, opening, -, -, 1ccckcc1/2ggggg1/8/1g6/1G6/8/1GCGGGG1/1C1KCCC1 P2 M 1 6 6 0 1 0x200000000
+opening-05, opening, -, -, 1ccckcc1/3gggg1/4g3/1g6/1G6/8/1GCGGGG1/1C1KCCC1 P2 M 0 6 6 0 1 0x100200000000
+opening-06, opening, -, -, 1ccckcc1/3gggg1/4g3/1g6/G7/8/1GCGGGG1/1C1KCCC1 P1 M 1 8 6 0 2 0x1000000
+
+# --- Midgame, low skill density (4) — Move phase, modest branching ---
+midgame-low-skill-01, midgame-low-skill, -, -, 1ccckccg/5g2/3g4/1g6/4G3/1G2g2g/1CG1GGG1/1C1KCCC1 P1 M 1 18 15 0 6 0x10000000
+midgame-low-skill-03, midgame-low-skill, -, -, 1ccckccg/5g2/3g4/3g4/4G1G1/1G2g2g/1CG1GG2/1C1KCCC1 P2 M 1 18 18 0 6 0x800000000
+midgame-low-skill-05, midgame-low-skill, -, -, 1ccckccg/7g/3g4/3g4/4G1G1/4g2g/1CG1GG2/GC1KCCC1 P1 M 1 21 18 0 7 0x1
+midgame-low-skill-06, midgame-low-skill, -, -, 1ccckccg/7g/3g4/3g4/4G1G1/4g2g/2G1GG2/GCCKCCC1 P1 M 0 21 18 0 7 0x5
+
+# --- Phase boundary (6) — first ply of phase change; worst-case branching ---
+phase-boundary-01, phase-boundary, -, -, 1ccckcc1/1gggggg1/8/8/1G6/8/1GCGGGG1/1C1KCCC1 P1 S 2 6 6 0 1 0x0
+phase-boundary-02, phase-boundary, -, -, 1ccckcc1/1gggggg1/8/8/1G6/8/1GCGGGG1/1C1KCCC1 P2 M 2 6 6 0 1 0x0
+phase-boundary-03, phase-boundary, -, -, 1ccckcc1/3gggg1/4g3/1g6/1G6/8/1GCGGGG1/1C1KCCC1 P2 S 2 6 6 0 1 0x0
+phase-boundary-04, phase-boundary, -, -, 1ccckcc1/3gggg1/4g3/1g6/1G6/8/1GCGGGG1/1C1KCCC1 P1 M 2 8 6 0 2 0x0
+phase-boundary-05, phase-boundary, -, -, 1ccckcc1/3gggg1/4g3/1g6/G7/8/G1CGGGG1/1C1KCCC1 P1 S 2 8 6 0 2 0x0
+phase-boundary-06, phase-boundary, -, -, 1ccckcc1/3gggg1/4g3/1g6/G7/8/G1CGGGG1/1C1KCCC1 P2 M 2 8 8 0 2 0x0
+
+# --- Endgame, sparse (4) — late round, few pieces left, mate possibilities ---
+endgame-sparse-01, endgame-sparse, -, -, 7c[1/0/0/0/0]/c[1/0/0/0/0]5c1/g[1/0/0/0/0]4g2/1c[1/0/0/0/0]6/6k1/3C[1/0/0/0/0]4/4C3/4K[1/0/0/0/0]3 P2 M 1 400 400 0 55 0x40000000000000
+endgame-sparse-03, endgame-sparse, -, -, 7c[1/0/0/0/0]/c[1/0/0/0/0]5cg/g[1/0/0/0/0]7/1c[1/0/0/0/0]6/6k1/3C[1/0/0/0/0]4/4C3/3K[1/0/0/0/0]4 P1 M 1 413 400 0 56 0x8
+endgame-sparse-05, endgame-sparse, -, -, 7c[1/0/0/0/0]/c[1/0/0/0/0]5c1/g[1/0/0/0/0]7/1c[1/0/0/0/0]4g1/6k1/3C[1/0/0/0/0]1C2/8/3K[1/0/0/0/0]4 P2 M 1 413 413 0 56 0x4000000000
+endgame-sparse-06, endgame-sparse, -, -, g[1/0/0/0/0]6c[1/0/0/0/0]/c[1/0/0/0/0]5c1/8/1c[1/0/0/0/0]4g1/6k1/3C[1/0/0/0/0]1C2/8/3K[1/0/0/0/0]4 P2 M 0 413 413 0 56 0x100004000000000
+
+# --- Tactical / known-result placeholder ---
+# TODO(post-baseline): pin a mate-in-N FEN with expected score range + best
+# move list once the baseline depth-N convergence has been recorded. See
+# search-speed-benchmark-plan.md §"Correctness assertions".

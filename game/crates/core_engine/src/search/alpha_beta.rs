@@ -31,15 +31,111 @@ use crate::time::now_ms;
 
 use super::evaluator::{evaluate, MATE_SCORE};
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
-use crate::game_logic::action::Action;
+use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::{generator, make_unmake};
 use crate::state::Position;
-use crate::state::position::{GameResult, Player};
+use crate::state::position::{GameResult, Phase, Player};
 
 const MAX_PLY: i32 = 128;
 const MATE_THRESHOLD: i32 = MATE_SCORE - MAX_PLY;
 const INF: i32 = MATE_SCORE + 1;
 const TIME_CHECK_MASK: u64 = 0x3FF;
+
+// --- Move-ordering tables (killers + history) ---
+//
+// **Killers.** Two slots per (ply, phase). Phase is part of the index because
+// the Move-phase and Skill-phase action sets are disjoint — a Skill-phase
+// killer is meaningless during the Move phase that follows. Indexed
+// `[ply][phase_idx][slot]`. `Action(0)` is the empty sentinel.
+//
+// **History.** Indexed `[side][action_kind][from][to]`, incremented by
+// `depth*depth` on every beta-cutoff. `EndPhase` and `EndTurn` accrue history
+// at `(from, to) = (0, 0)` — the catalogue explicitly allows EndPhase to
+// participate in ordering, and our move generator emits at most one
+// EndPhase/EndTurn per phase so the slot collision is fine.
+//
+// Cleared (zeroed) at the start of every top-level `find_best` call. Surviving
+// killers / history within a single iterative-deepening run is by design:
+// the cumulative score over deepening iterations is what makes history useful.
+const PHASES: usize = 3;        // Phase::{Draft, Move, Skill}
+const KIND_COUNT: usize = 4;    // ActionKind::{Move, Skill, EndPhase, EndTurn}
+const KILLERS_PER_PLY: usize = 2;
+const SIDES: usize = 2;
+
+struct OrderingTables {
+    killers: [[[Action; KILLERS_PER_PLY]; PHASES]; MAX_PLY as usize],
+    history: [[[[i32; 64]; 64]; KIND_COUNT]; SIDES],
+}
+
+impl OrderingTables {
+    fn new() -> Box<Self> {
+        // Box-allocate — ~128 KB total, too big for the stack frame.
+        Box::new(OrderingTables {
+            killers: [[[Action::default(); KILLERS_PER_PLY]; PHASES]; MAX_PLY as usize],
+            history: [[[[0_i32; 64]; 64]; KIND_COUNT]; SIDES],
+        })
+    }
+
+    #[inline]
+    fn phase_idx(phase: Phase) -> usize {
+        match phase {
+            Phase::Draft => 0,
+            Phase::Move  => 1,
+            Phase::Skill => 2,
+        }
+    }
+
+    #[inline]
+    fn side_idx(p: Player) -> usize {
+        match p { Player::P1 => 0, Player::P2 => 1 }
+    }
+
+    #[inline]
+    fn kind_idx(k: ActionKind) -> usize { k as usize }
+
+    /// Score a regular (non-Draft, non-BodyguardChoice) action for ordering.
+    /// Higher = try earlier. TT-move handling lives outside (it's swap-to-0
+    /// before we score at all).
+    #[inline]
+    fn score(&self, a: Action, side: Player, ply: i32, phase: Phase) -> i32 {
+        // DraftTurn / BodyguardChoice fall through to the regular path here.
+        // Their src/target/kind accessors return garbage but the resulting
+        // index is still well-defined (in-range u8 → u8) — we just never
+        // record cutoffs for them so their history score stays 0, and they
+        // never end up in killer slots either.
+        let k1 = self.killers[ply as usize][Self::phase_idx(phase)][0];
+        let k2 = self.killers[ply as usize][Self::phase_idx(phase)][1];
+        if a == k1 { return 1_000_000; }
+        if a == k2 { return    900_000; }
+        let kind = a.kind();
+        let from = a.src() as usize;
+        let to   = a.target() as usize;
+        self.history[Self::side_idx(side)][Self::kind_idx(kind)][from][to]
+    }
+
+    /// Record a beta-cutoff. Bumps history and slides the move into the
+    /// killer slot if it wasn't already killer1.
+    #[inline]
+    fn record_cutoff(&mut self, a: Action, side: Player, depth: i32, ply: i32, phase: Phase) {
+        // Skip DraftTurn / BodyguardChoice — those tags collide with regular
+        // bit layouts and recording them would corrupt history slots.
+        if a.is_draft_turn() || a.is_bodyguard_choice() { return; }
+        let kind = a.kind();
+        let from = a.src() as usize;
+        let to   = a.target() as usize;
+        let bonus = depth * depth;
+        // Saturating add — histories are i32 and a long search could
+        // theoretically overflow; saturating keeps ordering stable past that.
+        let cell = &mut self.history[Self::side_idx(side)][Self::kind_idx(kind)][from][to];
+        *cell = cell.saturating_add(bonus);
+
+        let slot = &mut self.killers[ply as usize][Self::phase_idx(phase)];
+        if slot[0] != a {
+            slot[1] = slot[0];
+            slot[0] = a;
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SearchResult {
@@ -69,6 +165,7 @@ fn score_from_tt(s: i32, ply: i32) -> i32 {
 
 struct SearchCtx<'a> {
     tt:       &'a mut TranspositionTable,
+    ord:      &'a mut OrderingTables,
     /// Absolute deadline in `time::now_ms()` units. `None` disables the
     /// time check (max_depth is the sole bound).
     deadline: Option<u64>,
@@ -116,9 +213,29 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 
     let mut moves = generator::generate(pos);
     debug_assert!(!moves.is_empty(), "non-terminal position with no legal actions");
-    if tt_move.0 != 0 {
+
+    // Move ordering: TT-move first (if present), then killers + history score
+    // for the remainder. We swap the TT-move to slot 0 *first*, then sort the
+    // remainder by score so the TT-move is preserved at the front.
+    let tt_at_front = if tt_move.0 != 0 {
         if let Some(i) = moves.iter().position(|m| *m == tt_move) {
             moves.swap(0, i);
+            true
+        } else { false }
+    } else { false };
+    let side = pos.to_move;
+    let phase = pos.current_phase;
+    if ply < MAX_PLY && depth >= 3 {
+        let start = if tt_at_front { 1 } else { 0 };
+        if moves.len() - start > 1 {
+            // Sort descending by ordering score. Stable sort keeps original
+            // (generator) order as the tiebreaker.
+            //
+            // Skip the sort below depth 3: at low depth the per-node sort
+            // overhead dominates the cutoff savings (the TT-move is already
+            // at slot 0 from the swap above, which is the only thing that
+            // matters when the first move usually causes a cutoff anyway).
+            moves[start..].sort_by_key(|a| -ctx.ord.score(*a, side, ply, phase));
         }
     }
 
@@ -139,7 +256,15 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
             if s < best_score { best_score = s; best_action = a; }
             if best_score < beta  { beta  = best_score; }
         }
-        if alpha >= beta { break; }
+        if alpha >= beta {
+            // Record killer / history bump on the cutoff move. Skip if ply
+            // is out of range (defensive — we already bound at MAX_PLY in
+            // the ordering read above).
+            if ply < MAX_PLY {
+                ctx.ord.record_cutoff(a, side, depth, ply, phase);
+            }
+            break;
+        }
     }
 
     let flag = if maximising {
@@ -184,8 +309,12 @@ pub fn find_best(pos: &mut Position, tt: &mut TranspositionTable,
     let mut best = SearchResult::default();
     let mut total_nodes: u64 = 0;
 
+    // Killers + history persist across iterative-deepening iterations within
+    // this single `find_best` call. Allocated once on the heap.
+    let mut ord = OrderingTables::new();
+
     for d in 1..=max_depth.max(1) {
-        let mut ctx = SearchCtx { tt, deadline, nodes: 0, aborted: false };
+        let mut ctx = SearchCtx { tt, ord: &mut ord, deadline, nodes: 0, aborted: false };
         let score = search(pos, d as i32, 0, -INF, INF, &mut ctx);
         total_nodes += ctx.nodes;
 
@@ -474,5 +603,37 @@ mod tests {
         let r = find_best(&mut pos, &mut tt, 0, 2);
         assert!(r.best.is_some());
         assert_eq!(r.depth, 2);
+    }
+
+    #[test]
+    fn ordering_tables_record_cutoffs() {
+        // Sanity: record_cutoff bumps history and seeds killer slots.
+        let mut ord = OrderingTables::new();
+        let a1 = Action::encode(/*src*/ 10, /*tgt*/ 20, ActionKind::Move, 0, 0);
+        let a2 = Action::encode(/*src*/ 11, /*tgt*/ 21, ActionKind::Move, 0, 0);
+        // First cutoff: a1 becomes killer1, history[+1].
+        ord.record_cutoff(a1, Player::P1, /*depth*/ 4, /*ply*/ 3, Phase::Move);
+        assert_eq!(ord.killers[3][OrderingTables::phase_idx(Phase::Move)][0], a1);
+        assert_eq!(ord.killers[3][OrderingTables::phase_idx(Phase::Move)][1], Action::default());
+        assert_eq!(ord.history[OrderingTables::side_idx(Player::P1)]
+                              [OrderingTables::kind_idx(ActionKind::Move)][10][20], 16);
+        // Second cutoff (different move): a2 slides into killer1, a1 to killer2.
+        ord.record_cutoff(a2, Player::P1, /*depth*/ 3, /*ply*/ 3, Phase::Move);
+        assert_eq!(ord.killers[3][OrderingTables::phase_idx(Phase::Move)][0], a2);
+        assert_eq!(ord.killers[3][OrderingTables::phase_idx(Phase::Move)][1], a1);
+        // Repeating a2 must NOT push a2 into the killer2 slot (no self-displacement).
+        ord.record_cutoff(a2, Player::P1, /*depth*/ 2, /*ply*/ 3, Phase::Move);
+        assert_eq!(ord.killers[3][OrderingTables::phase_idx(Phase::Move)][0], a2);
+        assert_eq!(ord.killers[3][OrderingTables::phase_idx(Phase::Move)][1], a1);
+        // Draft / BG actions must not corrupt the table.
+        let dr = Action::encode_draft_turn(1, 0, 0, 2, 1, 1);
+        let bg = Action::encode_bodyguard_choice(2);
+        let h_before = ord.history[OrderingTables::side_idx(Player::P1)]
+                                  [OrderingTables::kind_idx(ActionKind::Move)][10][20];
+        ord.record_cutoff(dr, Player::P1, 5, 3, Phase::Move);
+        ord.record_cutoff(bg, Player::P1, 5, 3, Phase::Move);
+        let h_after = ord.history[OrderingTables::side_idx(Player::P1)]
+                                 [OrderingTables::kind_idx(ActionKind::Move)][10][20];
+        assert_eq!(h_before, h_after, "Draft/BG cutoffs must not touch history");
     }
 }
