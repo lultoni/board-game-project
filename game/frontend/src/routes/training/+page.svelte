@@ -16,6 +16,7 @@
   import LiveMatchView from "$lib/training/LiveMatchView.svelte";
   import TournamentStandings from "$lib/training/TournamentStandings.svelte";
   import LineageTree from "$lib/training/LineageTree.svelte";
+  import NetworkInspector from "$lib/training/NetworkInspector.svelte";
 
   type Tab = "live" | "standings" | "lineage" | "matrix";
 
@@ -197,14 +198,7 @@
     <aside class="rightPane">
       <h2>Network Inspector</h2>
       <div class="panel">
-        <div class="stub">
-          Network Inspector — landing in C6
-          {#if selectedRaterId}
-            <p class="selected">Selected: <code>{selectedRaterId}</code></p>
-          {:else}
-            <p class="hint">Select a rater from the Lineage panel.</p>
-          {/if}
-        </div>
+        <NetworkInspector />
       </div>
     </aside>
   </section>
@@ -365,16 +359,6 @@
   .stub {
     color: var(--paper-ink-soft);
     font-style: italic;
-  }
-  .hint {
-    margin: 0.5em 0 0;
-    font-size: 0.92em;
-  }
-  .selected code {
-    font-family: inherit;
-    background: var(--paper-bg);
-    padding: 0.1em 0.4em;
-    border-radius: 3px;
   }
   .rightPane h2 {
     margin: 0;
