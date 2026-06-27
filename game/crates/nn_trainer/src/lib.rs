@@ -17,6 +17,7 @@ pub mod gauntlet;
 pub mod lineage;
 pub mod loadout;
 pub mod model;
+pub mod nn_evaluator;
 pub mod persistence;
 pub mod registry;
 pub mod selfplay;
@@ -30,6 +31,7 @@ pub use gauntlet::{
 };
 pub use lineage::{perturb_model, train_lineages, Lineage, LineageConfig};
 pub use model::{Mlp, MlpConfig};
+pub use nn_evaluator::{InferenceBackend, NnEvaluator, EVAL_SCALE, MAX_NN_SCORE};
 pub use persistence::{
     load_rater, paths_from_stem, save_rater, BracketWinRate, PerturbationEvent,
     PersistenceError, RaterMetadata, TrainingConfigSnapshot, RATER_FORMAT_VERSION,
