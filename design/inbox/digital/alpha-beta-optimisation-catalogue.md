@@ -61,6 +61,56 @@ Highest-leverage area. Ideal ordering shrinks tree toward `sqrt(N)`. Modern engi
 | **ProbCut** | Statistical NMP: at depth d, do depth d' < d with raised β. Requires regression-tuned `(a, b, σ)`. | Real Elo in Stockfish; more in Othello. | High (offline regression) | Heuristic | Premature. Revisit after engine is stable. |
 | **Multi-cut** | At cut-nodes, search first M moves at reduced depth; if C cause β-cutoff, prune. | Modest, superseded by SE+LMR. | Medium | Heuristic | Skip. |
 
+### RFP / Static NMP — Session 36 result, rejected (standalone)
+
+Implemented as a post-TT-probe early return: at low depth, if `static_eval ± margin*depth` is past the cutoff bound, return `static_eval` directly. Gated `ply > 0` and `!is_mate(α) && !is_mate(β)`.
+
+Margin sweep at fixed depth 6:
+1. `margin=120, depth∈[1,3]` — Δnodes -0.1%, Δtime **+6.4%**. **1 score regression** (endgame-sparse-05: -3950 → -3775) with best-move disagreement. Static eval and 6-ply minimax disagree by ~175cp on that position; that margin doesn't gate it out.
+2. `margin=200, depth∈[1,3]` — Δnodes -0.0% (zero pruning), Δtime **+6.1%**. No regressions but strictly worse than baseline: pure overhead from per-node `evaluate()` with no offsetting cutoffs.
+3. `margin=150, depth∈[1,2]` — Δnodes -0.1%, Δtime +6.2%. Same regression as config 1.
+
+**Root cause.** The +6% time overhead is from calling `evaluate(pos)` at every internal node at depths 1-2 (or 1-3). After killers+history, those nodes are already getting cut on the TT-move or killer-1, so RFP almost never finds a position to prune that wasn't already pruned. When the margin is loose enough to fire (≤150), it occasionally returns a stale static_eval where 3-ply minimax disagrees → correctness regression. When the margin is tight enough to be safe (≥200), nothing prunes. There is no useful margin band.
+
+**Mechanistic difference from LMP, but same outcome.** RFP doesn't poison TT/history at deeper iterations the way LMP does (it returns `static_eval` rather than changing which leaves get visited). But its dependence on static-eval accuracy at "decision-relevant boundary" positions means it inherits a related problem from a different angle: static eval is noisy at depth-1-2 nodes in the mid-skill-exchange regime that QS would clean up.
+
+Methodology note: see the methodological note at the bottom of the LMP entry below — baselines are deterministic, regressions are real algorithmic deltas.
+
+**Revisit conditions:**
+- After **QS** lands. QS would make the static eval at depth-1-2 nodes reliable (eval'd at quiet leaves, not mid-skill-exchange) — the endgame-sparse-05 regression specifically would likely not recur because static eval there would be post-quiesce.
+- After **incremental eval** lands (if pursued). The +6% time cost would drop substantially if `evaluate()` were O(1) updates on make/unmake rather than O(N) recomputation.
+- Could be a **fixed-depth-only** training-pipeline optimisation if we find a margin that's both safe at depth 6 AND useful at depth-12+ (the regression at depth 6 doesn't tell us about deeper iterations — it's plausible the static-eval gap closes at depth 10+).
+
+---
+
+### LMP — Session 36 result, rejected (standalone)
+
+Implemented LMP with several threshold configurations. **All standalone configurations regressed at least one position at one time budget. Rejected per strict no-regression protocol.**
+
+Configurations tried (all gate `lmp_active = lmp_threshold > 0 && !is_mate(α) && !is_mate(β)`, never prunes index 0):
+1. `{1→8, 2→12, 3→18}` — depth-6 -43% wall-clock, -55% nodes, BUT **3 score regressions at fixed depth** (midgame-low-skill-01/03/05 each lost ~600 score units). Far too aggressive.
+2. `{1→12, 2→24}` — depth-6 -35%, 1 score regression (midgame-low-skill-03: 825 → 75). Still unsafe.
+3. `{1→16, 2→32}` — depth-6 -34%, 1 score regression remained (midgame-low-skill-03: 825 → 225).
+4. `{1→16}` only (depth-1 LMP, depth ≥ 2 untouched) — **depth-6 clean: -33% wall-clock, -45% nodes, zero correctness regressions, zero best-move disagreements.** Time-budget sweep: 16W:5L across 100/500/1000/3000ms.
+5. `{1→16}` + skip-history-record-at-depth-1 — depth-6 still clean (-32%, no regressions). Time-mode improved at 1000ms (opening-02 was 9 now 10 vs baseline 11) but 500ms regression unchanged.
+
+**Root-cause diagnosis (opening-02, the worst regressor):**
+- Baseline 500ms: depth **10**, 2.2M nodes, EBF 4.31.
+- LMP v5 500ms: depth **8**, 85K nodes, EBF 4.13.
+- LMP v5 *fixed-depth-9*: 4.46M nodes, 830ms, **EBF 5.48** — i.e. LMP makes the effective branching factor *worse* on this position at the depth that would have fit baseline's budget.
+- Mechanism: LMP's depth-1 pruning changes the leaf-set, which changes TT contents at deeper iterations, which changes move ordering at non-leaf depths. On positions where one move is dominant and standard AB already cuts on index-0, LMP's leaf-pruning has nothing positive to contribute but its TT/history side-effects poison deeper iterations.
+
+**Methodological note (carries over to every entry in this catalogue):**
+- Baselines are **deterministic** across 3-run and 10-run sweeps at every time budget (verified Session 36, 0/20 positions disagreed across budgets). Time-mode "regressions" are real algorithmic deltas, not measurement noise. The "median-by-nodes" reduction in the bench binary is stable because every position reaches the same depth across repeated runs.
+- Therefore: per-position regressions at any time budget must be explained, not waved away as noise.
+
+**Revisit conditions:**
+- After **better move ordering** matures (e.g., MVV/LVA-style scoring for skill captures, SEE-equivalent). LMP's regressions come from poor deeper-iteration ordering; better ordering may close the gap.
+- After **QS** lands. QS limits the volatility at depth 0, which reduces the cost of LMP's leaf-pruning getting "the wrong answer".
+- Maybe valuable as a **fixed-depth-only optimization** for the training pipeline (gate by `time_limit_ms == 0`). -33% on depth-6 with zero regressions is a real win for the NN-rater training loop.
+
+---
+
 ### NMP — critical adaptation for our `EndPhase` action
 
 The conceptual basis of NMP is "if I do nothing, my position is still ≥ β." In our game, `EndPhase` is a legal move — it transitions Move → Skill → end-of-round, **advancing state**. So:
@@ -121,8 +171,12 @@ Most strong engines do this for the first 1-2 plies of QS. Our analog: generate 
 ### PVS vs straight alpha-beta
 Drop-in replacement: first move with `[α, β]`, rest with null window `[α, α+1]`. On null-window > α, re-search with `[score, β]`. Gain: 5-15% in chess given good move ordering. **Worth switching** — composes cleanly with LMR (the LMR re-search is itself usually null-window). Almost all modern engines are PVS, not straight AB.
 
+**Session 36 result — rejected (standalone).** Implemented PVS with absolute-POV framing (P1 null-window `[α, α+1]`, P2 null-window `[β-1, β]`), gated by `depth >= 2`. Outcome at depth-6: +0.8% wall-clock (essentially a no-op — killers+history orders so well that PVS finds nothing left to save). Time-mode budgets: 500/1000/3000ms each gained 1-4 positions, but 100ms lost 2 positions (opening-02 8→7, midgame-low-skill-06 9→8) and 3000ms lost 1 (endgame-sparse-06 18→17). Regressions are deterministic (see LMP entry's methodological note). Hypothesis: PVS's win materialises when null-window re-searches are *cheap* — that requires LMR to be reducing the re-search depth. Standalone PVS atop strong move ordering has almost nothing to save. **Revisit alongside LMR** — PVS is the canonical re-search target for LMR, so they should be implemented together and graded as a pair.
+
 ### Aspiration windows
 After iteration N, set `α = score_N − δ`, `β = score_N + δ` for iteration N+1, with δ ~ 25 cp. Widen exponentially on fail. Gain: 10-20% time-to-depth. Low complexity. Don't aspirate until depth ≥ 5. Disable near mate scores.
+
+**Session 36 result — rejected (standalone).** Tried at δ=50/150/300 with 4× exponential widening, MAX_WIDENINGS=4, MIN_DEPTH=5. Outcome: depth-6 wall-clock improved ~25%, BUT 1-3 corpus positions regressed by 1 ply at the extreme time budgets (100ms and 3000ms) regardless of δ. δ=300 also regressed depth-6 wall-clock (+3.8%). No δ achieves strict no-regression across the multi-budget sweep. Regressions are deterministic, not noise (baseline 3-run vs 10-run sweeps agreed on every position at every budget — see LMP entry above for the methodological note). Hypothesis: at very tight budgets the re-search after a fail-high/fail-low burns enough time to fall short of the next depth. **Revisit after LMR/PVS** — those make the re-search itself cheaper and may eliminate the time-mode regressions. Don't retry the same parameter range alone.
 
 ---
 
@@ -227,6 +281,43 @@ Items 1-8 will produce a strong tactical engine on their own. Items 12+ are the 
 - This is the optimisation queue for `search-speed-benchmark-plan.md`. Each technique is a candidate benchmark run.
 - The order above is a default, not a hard sequence. The benchmark's data may suggest reordering — e.g. if move-ordering is already excellent, LMR's payoff drops; if QS is poorly defined, razoring is pointless.
 - Each landing commit should include: benchmark before, benchmark after, technique name, baseline update.
+
+---
+
+## Session 37 retrospective — the evaluator is the bottleneck, not the search
+
+Implemented full QS (catalogue §3 spec, minus SEE) over the session. After it landed: re-attempted RFP atop QS (both `evaluate`- and `quiesce`-eval variants), re-attempted aspiration windows atop QS. All three rejected at the multi-budget sweep.
+
+**Then ran a head-to-head play match** (QS engine vs no-QS engine, 1000 ms/move, 3 games, swapping sides). Outcome: 1 win for QS, 0 for baseline, 2 ply-cap stalemates at 600 plies. The win-rate was secondary — the diagnostic was the **action breakdown** of each game:
+
+| Game | Move actions | Skill actions | EndPhase actions |
+|---|---|---|---|
+| 1 (decisive) — 194 plies | 74 | **0** | 120 |
+| 2 (cap) — 600 plies      | 181 | **0** | 419 |
+
+Then `aivai_demo --max-plies 80`: **80 consecutive `EndPhase` plies, no piece ever moves.** The evaluator score drifts 0→150 across those 80 plies — purely from asymmetric round-by-round money accumulation. The search is alive (30 k–67 k nodes per ply, depth 6), but every legal Move-action is eval-neutral so the engine prefers the cheap `EndPhase` cutoff.
+
+**Root cause.** `evaluate()` is purely material + HP + armor + skills + money. There is no positional term — no piece-square table, no king-pressure / proximity-to-enemy-king, no centre-control. A piece on `c2` and the same piece on `f7` evaluate identically, so every Move action has Δeval = 0 and the search has no gradient to climb. The only Move actions that have non-zero Δeval are Move-Attacks already in range — which is why QS appears to find tactics at leaves: those are the only moves the eval rewards.
+
+**Implications for every catalogue entry tried so far (Session 36–37):**
+- RFP / aspiration / PVS / LMP rejections at the depth-reached protocol are **uninterpretable** as algorithmic signals. The corpus consists of self-play positions generated by an engine that doesn't move pieces — many corpus positions are effectively "money-accumulating starting positions" where any search optimisation amounts to fine-tuning which `EndPhase` line the engine prefers.
+- QS's "horizon-effect" wins at depth 6 (`midgame-low-skill-01: -750 → -300` etc.) are real but conditional: they only fire when a tactical position exists at the corpus seed. In actual self-play, neither side reaches that range without piece movement.
+- **The multi-budget no-regression protocol is not invalid — it just doesn't grade what matters.** Depth-reached compares engines that play the same eval-neutral wandering deeper. Play-strength is what we care about.
+
+**Action items for next time around:**
+1. **Add positional terms to `evaluate()` before retrying any search optimisation.** Minimum viable:
+   - King-attack-distance: bonus for own piece Chebyshev-close to enemy king (mirrors what `quiescence::is_king_threatened` already computes).
+   - Piece-square table or centre-control: distinguish `c2` from `f7`.
+   - Optional: tempo bonus to break ties toward forward motion.
+2. **Re-grade QS, RFP, aspiration, PVS, LMP atop the new eval.** All rejections to date are provisional — the regressions may have been eval-noise artefacts.
+3. **Replace the corpus** once the eval moves pieces. Current corpus (random self-play) inherits the no-movement pathology.
+4. **The head-to-head match harness (`examples/qs_match.rs`) is the new accept/reject test**, not depth-reached. Pit candidate-engine vs baseline-engine, 3+ games, swap sides, count decisive wins. Once eval supports real play, this scales naturally.
+
+**What stays banked from Session 36–37:**
+- QS module itself is correct (380/380 tests, including mate-distance invariants and unmake-symmetry). Keep it hooked; it can only help once the eval moves pieces.
+- `is_king_threatened` bitboard fast path (Session 37 v2): 79% wall-clock vs 151% for the generator-based v1. Real engineering win, independent of the eval issue.
+- `DISABLE_QS` runtime flag in `alpha_beta.rs` and the match harness in `examples/qs_match.rs`. Both are general-purpose A/B tooling — any future "X vs no-X" grading reuses them.
+- Catalogue rejections of RFP/aspiration/PVS/LMP remain as Session 36 entries, but **with the caveat that they were graded against a non-playing engine.** Don't treat them as final verdicts.
 
 ## Cross-references
 

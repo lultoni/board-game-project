@@ -29,7 +29,14 @@
 
 use crate::time::now_ms;
 
-use super::evaluator::{evaluate, MATE_SCORE};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+/// Runtime kill-switch for the quiescence search at depth-0 boundary. Default
+/// `false` (QS enabled). The AI-vs-AI evaluation harness toggles this per side
+/// to grade QS vs non-QS play strength. Production callers must not flip it.
+pub static DISABLE_QS: AtomicBool = AtomicBool::new(false);
+
+use super::evaluator::MATE_SCORE;
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::{generator, make_unmake};
@@ -38,8 +45,8 @@ use crate::state::position::{GameResult, Phase, Player};
 
 const MAX_PLY: i32 = 128;
 const MATE_THRESHOLD: i32 = MATE_SCORE - MAX_PLY;
-const INF: i32 = MATE_SCORE + 1;
-const TIME_CHECK_MASK: u64 = 0x3FF;
+pub(super) const INF: i32 = MATE_SCORE + 1;
+pub(super) const TIME_CHECK_MASK: u64 = 0x3FF;
 
 // --- Move-ordering tables (killers + history) ---
 //
@@ -62,7 +69,7 @@ const KIND_COUNT: usize = 4;    // ActionKind::{Move, Skill, EndPhase, EndTurn}
 const KILLERS_PER_PLY: usize = 2;
 const SIDES: usize = 2;
 
-struct OrderingTables {
+pub(super) struct OrderingTables {
     killers: [[[Action; KILLERS_PER_PLY]; PHASES]; MAX_PLY as usize],
     history: [[[[i32; 64]; 64]; KIND_COUNT]; SIDES],
 }
@@ -163,14 +170,14 @@ fn score_from_tt(s: i32, ply: i32) -> i32 {
     else                         { s }
 }
 
-struct SearchCtx<'a> {
-    tt:       &'a mut TranspositionTable,
-    ord:      &'a mut OrderingTables,
+pub(super) struct SearchCtx<'a> {
+    pub(super) tt:       &'a mut TranspositionTable,
+    pub(super) ord:      &'a mut OrderingTables,
     /// Absolute deadline in `time::now_ms()` units. `None` disables the
     /// time check (max_depth is the sole bound).
-    deadline: Option<u64>,
-    nodes:    u64,
-    aborted:  bool,
+    pub(super) deadline: Option<u64>,
+    pub(super) nodes:    u64,
+    pub(super) aborted:  bool,
 }
 
 fn search(pos: &mut Position, depth: i32, ply: i32,
@@ -190,7 +197,12 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         };
     }
 
-    if depth <= 0 { return evaluate(pos); }
+    if depth <= 0 {
+        if DISABLE_QS.load(AtomicOrdering::Relaxed) {
+            return super::evaluator::evaluate(pos);
+        }
+        return super::quiescence::quiesce(pos, alpha, beta, ply, 0, ctx);
+    }
 
     let key = pos.zobrist;
     let alpha_orig = alpha;
@@ -338,6 +350,7 @@ pub fn find_best(pos: &mut Position, tt: &mut TranspositionTable,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::evaluator::evaluate;
     use crate::game_logic::action::ActionKind;
     use crate::game_logic::skills::Skill;
     use crate::state::{Bitboard, MailboxEntry, Position};

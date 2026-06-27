@@ -7,3 +7,4 @@
 pub mod evaluator;
 pub mod transposition;
 pub mod alpha_beta;
+pub mod quiescence;

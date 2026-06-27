@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-06-26 — Session 35 end (NN-rater scoping + search-speed benchmark + AB optimisation catalogue).*
+*Last updated: 2026-06-27 — Session 36 end (Quiescence Search + head-to-head match reveals evaluator bottleneck).*
 
 ---
 
@@ -30,56 +30,56 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer. Mine load-bearing content into the DB.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 35 end, 2026-06-26)
+### Where We Are (Session 36 end, 2026-06-27)
 
-- **Three new plan docs in `design/inbox/digital/`.** No code changes this session — pure scoping for the next work tranche.
-  - `nn-rater-plan.md` — full NN position-rater scope. Path 3 + perturbation, two-tier gauntlet, three champion tracks, opt-in observability UI. No blocking ADR.
-  - `search-speed-benchmark-plan.md` — benchmark infra; FEN-driven; two modes (fixed depth + fixed time); doubles as correctness regression test; manual-run-only.
-  - `alpha-beta-optimisation-catalogue.md` — 9 categories of AB techniques with game-specific adaptations. Critical flags: `EndPhase` ≠ null-move; no chess-SEE port; QS loud/quiet redefined for HP-skills.
-- **`next_steps id=25`** body appended with pointer to all three.
-- **Engine and UI unchanged** from S34. Stack M still awaiting a real playtest.
+- **QS module shipped** at `game/crates/core_engine/src/search/quiescence.rs`. Catalogue §3 minus SEE. 380/380 tests pass. Hooked at `depth <= 0` in `alpha_beta.rs`.
+- **Bitboard `is_king_threatened`** replaces generator-based first cut. Chebyshev + skill cost/range gating.
+- **`DISABLE_QS` AtomicBool** + **`qs_match` example** ship a runtime A/B kill-switch and head-to-head match harness.
+- **RFP and aspiration retested on top of QS** — still failed multi-budget sweep. Reverted.
+- **Critical finding**: 3-game head-to-head match at 1000 ms/move showed **0 skills cast across 105 rounds**, EndPhase-dominated. Root cause: `search/evaluator.rs` has no positional terms (eval = material + HP + armor + skills + money), so Move actions have Δeval=0. The entire S36 grading protocol was measuring a non-playing engine. All S36 rejections (RFP, aspiration, PVS, LMP) are provisional pending eval fix.
 
 ### Immediate Next Action
 
-**Begin search-speed work** per `search-speed-benchmark-plan.md` §"Execution order":
-1. Scaffold the bench binary (native, FEN-driven, structured output).
-2. Build the 20-50-position FEN corpus including ≥1 known-result tactical position.
-3. Verify determinism (same-position-same-result-N-times).
-4. Generate initial baseline at `game/bench/baseline.json`.
-5. Land optimisations one at a time per `alpha-beta-optimisation-catalogue.md` order (PVS first, then TT-move, aspiration, killers+history, LMR, ...).
+**NN position-rater** per `design/inbox/digital/nn-rater-plan.md`:
+1. Native-only training crate (rayon-parallel).
+2. Path 3 (gradient descent) + perturbation injection.
+3. Two-tier gauntlet (best-of-three at 100/300/500 ms, mirrored loadouts, three champion tracks).
+4. Opt-in observability UI via local-file polling.
 
-Pre-existing alternative lanes still valid if you prefer:
-- **Frontend** — Inspector L6.7d preview window primitive (`next_steps id=12`).
-- **Multiplayer hardening** — deferred IllegalActionInHistory + draft-route-when-in-play replay bugs.
-- **Design** — argue through `oq-84` (bodyguard-intercept greying-out) before next Stack M digital playtest.
+After eval supports real play, **re-run the full S36 sweep** (QS, RFP, aspiration, PVS, LMP) AND the `qs_match` head-to-head harness on top of the new evaluator before accepting/rejecting any technique.
+
+### Banked wins from S36 (kept hooked)
+
+- QS module — correct, ready to grade once eval supports real play.
+- Bitboard `is_king_threatened` — load-bearing primitive.
+- `DISABLE_QS` + `qs_match` — play-strength accept/reject path independent of corpus depth-reached.
 
 ### Open methodological loose ends
 
 - **oq-69 — Skill-Phase action progression curve.** Resolved in code as `2 + (round_number-1)/10` (`make_unmake.rs:982-985`). OQ row may still be marked open in DB — verify and resolve if so.
-- **oq-70 — Focus on Move-skills.** Caster chooses activation-range or effect-range. Encoding shipped in engine Focus + Move-skill resolvers; verify OQ status against current code.
+- **oq-70 — Focus on Move-skills.** Caster chooses activation-range or effect-range. Encoding shipped. Verify OQ status.
 
 ### Key DB Queries (instead of file paths)
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM sessions WHERE id='session-35';` | This session's narrative (NN-rater scope + bench plan + AB catalogue) |
+| `SELECT body FROM sessions WHERE id='session-36';` | This session's narrative (QS + evaluator bottleneck finding) |
+| `SELECT body FROM sessions WHERE id='session-35';` | Previous session — NN-rater scope + bench plan + AB catalogue |
 | `SELECT body FROM next_steps WHERE id=25;` | NN position rater idea + S35 scoping pointer |
-| `SELECT body FROM open_questions WHERE id='oq-81';` | AI search branching-factor + strategy plan (informs the catalogue) |
-| `SELECT body FROM adrs WHERE id='adr-005';` | Digital architecture decision |
+| `SELECT body FROM open_questions WHERE id='oq-81';` | AI search branching-factor + strategy plan |
 | `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance |
-| `SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high');` | Live critical/high OQs |
 
 ### Key Files (still on disk)
 
 | Path | Purpose |
 |------|---------|
 | `design/design.db` | Source of truth (binary; committed) |
-| `design/inbox/digital/nn-rater-plan.md` | NN-rater full scope (S35) |
-| `design/inbox/digital/search-speed-benchmark-plan.md` | Benchmark infrastructure plan (S35) |
-| `design/inbox/digital/alpha-beta-optimisation-catalogue.md` | AB technique catalogue with implementation order (S35) |
-| `game/crates/core_engine/src/search/alpha_beta.rs` | Search loop under optimisation |
-| `game/crates/core_engine/src/search/evaluator.rs` | Current hand-coded eval (header carries load-bearing eval philosophy) |
-| `game/crates/core_engine/src/search/transposition.rs` | TT infrastructure |
-| `game/crates/core_engine/src/state/fen.rs` | `to_fen` / `from_fen` for corpus loading |
+| `design/inbox/digital/nn-rater-plan.md` | NN-rater full scope (next session focus) |
+| `design/inbox/digital/alpha-beta-optimisation-catalogue.md` | AB catalogue + S37-retrospective (DB Session 36) |
+| `design/inbox/digital/search-speed-benchmark-plan.md` | Benchmark infrastructure plan |
+| `game/crates/core_engine/src/search/quiescence.rs` | QS module (shipped S36) |
+| `game/crates/core_engine/examples/qs_match.rs` | Head-to-head match harness |
+| `game/crates/core_engine/src/search/alpha_beta.rs` | Main search; carries `DISABLE_QS` kill-switch |
+| `game/crates/core_engine/src/search/evaluator.rs` | **The bottleneck.** Material/HP/armor/skills/money only — no positional terms |
 | `.claude/STATUS.md` | One-screen re-entry summary |
 | `CLAUDE.md` | Orientation (points at DB; does not restate facts) |
