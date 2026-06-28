@@ -3,6 +3,6 @@
   "productName": "(game-name) CUDA",
   "identifier": "com.elias.gamename.cuda",
   "bundle": {
-    "targets": ["appimage"]
+    "targets": ["appimage", "msi", "nsis"]
   }
 }

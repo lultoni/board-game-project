@@ -31,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "appimage"],
-    "icon": ["icons/icon.png"]
+    "targets": ["dmg", "appimage", "msi", "nsis"],
+    "icon": ["icons/icon.png", "icons/icon.ico"]
   }
 }
