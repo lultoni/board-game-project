@@ -67,6 +67,9 @@
       <li><a href="./inspector/">{t("menu.openInspector")}</a></li>
       <li><a href="./replay/">{t("menu.openReplay")}</a></li>
       <li><a href="./library/">{t("menu.openLibrary")}</a></li>
+      {#if backend === "tauri"}
+        <li><a href="./training/">Training Observatory</a></li>
+      {/if}
     </ul>
   </section>
 </main>

@@ -27,6 +27,10 @@
   let starting = $state<boolean>(false);
   let stopping = $state<boolean>(false);
   let startError = $state<string | null>(null);
+  // Set to true the moment we issue start_training_run, cleared once the
+  // status file confirms the run is actually progressing. Decouples button
+  // state from the in-flight IPC, which returns instantly.
+  let runRequested = $state<boolean>(false);
 
   let selectedRaterId = $state<string | null>(null);
 
@@ -85,10 +89,12 @@
     if (!runDir) return;
     starting = true;
     startError = null;
+    runRequested = true;
     try {
       await invoke("start_training_run", { runDir });
     } catch (e: unknown) {
       startError = e instanceof Error ? e.message : String(e);
+      runRequested = false;
     } finally {
       starting = false;
     }
@@ -96,6 +102,7 @@
 
   async function stop(): Promise<void> {
     stopping = true;
+    runRequested = false;
     try {
       await invoke("stop_training_run");
     } catch (e: unknown) {
@@ -105,11 +112,67 @@
     }
   }
 
-  const phase = $derived<TrainingPhase | null>(statusValue?.data?.phase ?? null);
+  // The status file is considered "live" if it was written within the last
+  // few seconds — the orchestrator throttles writes to ~1 Hz, so anything
+  // older than ~5s means either nobody's running or the run died.
+  const STALE_MS = 5000;
+  const statusFresh = $derived.by(() => {
+    const ts = statusValue?.data?.written_at_ms;
+    if (!ts) return false;
+    return Date.now() - ts < STALE_MS;
+  });
+
+  // The phase we display: only honour the file's `phase` field when the
+  // status is fresh AND we're not in pre-start state. Otherwise show "idle"
+  // (the orchestrator's idle-phase indicator does not need to round-trip via
+  // disk to be true).
+  const phase = $derived<TrainingPhase>(
+    statusFresh ? (statusValue?.data?.phase ?? "idle") : "idle",
+  );
+  const isRunning = $derived(runRequested || (statusFresh && phase !== "idle"));
 
   const generation = $derived(statusValue?.data?.generation ?? null);
   const round = $derived(statusValue?.data?.round ?? null);
   const etaSeconds = $derived(statusValue?.data?.eta_seconds ?? null);
+  const populationCount = $derived(statusValue?.data?.population?.length ?? 0);
+  const activeMatch = $derived(statusValue?.data?.active_match ?? null);
+
+  // Once a fresh, non-idle snapshot lands, the run is observably progressing
+  // and we can clear the "we just clicked start" flag — from that moment on,
+  // button state is driven by `statusFresh && phase !== idle`.
+  $effect(() => {
+    if (runRequested && statusFresh && phase !== "idle") {
+      runRequested = false;
+    }
+  });
+
+  // Human-readable activity sub-line — what is the orchestrator doing right
+  // now? Honours phase + active_match + population so the long, quiet
+  // training phase of generation 1 isn't invisible.
+  const activityLine = $derived.by(() => {
+    if (!isRunning) return "Not running.";
+    if (!statusFresh && runRequested) return "Starting up…";
+    if (phase === "training") {
+      const gen = generation ?? "?";
+      const pop = populationCount > 0
+        ? ` — ${populationCount} candidates ready`
+        : " — no candidates yet";
+      return `Training generation ${gen}${pop}`;
+    }
+    if (phase === "gauntlet") {
+      const gen = generation ?? "?";
+      const r = round ?? "?";
+      if (activeMatch) {
+        const a = activeMatch;
+        return `Gauntlet gen ${gen}, round ${r} — ${a.challenger} vs ${a.defender} (${a.bracket}, game ${a.game_index + 1}/${a.games_total})`;
+      }
+      return `Gauntlet gen ${gen}, round ${r} — preparing next match`;
+    }
+    if (phase === "bookkeeping") {
+      return `Bookkeeping generation ${generation ?? "?"} — saving accepted raters`;
+    }
+    return "";
+  });
 
   function fmtEta(s: number | null | undefined): string {
     if (s === null || s === undefined || !Number.isFinite(s)) return "—";
@@ -138,8 +201,8 @@
 
     <div class="phase">
       <span class="lbl">Phase</span>
-      <span class="phaseBadge" data-phase={phase ?? "unknown"}>
-        {phase ?? "—"}
+      <span class="phaseBadge" data-phase={phase}>
+        {phase}
       </span>
     </div>
 
@@ -153,14 +216,16 @@
     </div>
 
     <div class="controls">
-      <button onclick={start} disabled={starting || !runDir}>
-        {starting ? "Starting…" : "Start"}
+      <button onclick={start} disabled={starting || isRunning || !runDir}>
+        {starting ? "Starting…" : isRunning ? "Running…" : "Start"}
       </button>
-      <button onclick={stop} disabled={stopping}>
+      <button onclick={stop} disabled={stopping || !isRunning}>
         {stopping ? "Stopping…" : "Stop"}
       </button>
     </div>
   </section>
+
+  <p class="activity" class:idle={!isRunning}>{activityLine}</p>
 
   {#if startError}
     <p class="error">{startError}</p>
@@ -318,6 +383,14 @@
     color: var(--p2, #a13a2a);
     background: #fff5f3;
     margin-bottom: 0.8rem;
+  }
+  .activity {
+    margin: -0.4rem 0 0.8rem;
+    font-size: 0.95em;
+    color: var(--paper-ink-soft);
+  }
+  .activity.idle {
+    font-style: italic;
   }
   .workspace {
     display: grid;

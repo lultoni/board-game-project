@@ -256,6 +256,26 @@ pub fn train_lineages<B: AutodiffBackend>(
 where
     Mlp<B>: Clone,
 {
+    train_lineages_with_progress::<B, _>(
+        corpus, base_seed, config, model_cfg, device, |_, _, _| {},
+    )
+}
+
+/// Same as `train_lineages` but invokes `on_progress(lineage_idx, round_idx,
+/// n_rounds)` after each (lineage, round) pair. Used by the orchestrator to
+/// emit status heartbeats during the otherwise-silent training phase.
+pub fn train_lineages_with_progress<B: AutodiffBackend, F>(
+    corpus: &[LabelledPosition],
+    base_seed: u64,
+    config: &LineageConfig,
+    model_cfg: &MlpConfig,
+    device: &B::Device,
+    mut on_progress: F,
+) -> Vec<Lineage<B>>
+where
+    Mlp<B>: Clone,
+    F: FnMut(usize /* lineage */, usize /* round */, usize /* n_rounds */),
+{
     let mut lineages: Vec<Lineage<B>> = (0..config.n_lineages)
         .map(|i| {
             let seed = base_seed
@@ -264,8 +284,8 @@ where
         })
         .collect();
 
-    for _round in 0..config.n_rounds {
-        for lin in lineages.iter_mut() {
+    for round in 0..config.n_rounds {
+        for (idx, lin) in lineages.iter_mut().enumerate() {
             lin.train_burst(corpus, config.steps_per_burst, &config.training, device);
 
             let base_loss = validation_loss(
@@ -291,6 +311,8 @@ where
                 lin.model = cand_lineage.model;
                 lin.seed = cand_lineage.seed;
             }
+
+            on_progress(idx, round, config.n_rounds);
         }
     }
 

@@ -36,7 +36,7 @@ use crate::gauntlet::{
     play_match_with_callback, tier1_fitness,
     AcceptanceReport, Bracket, ChampionTracker, SeriesTally, TrackUpdate,
 };
-use crate::lineage::{train_lineages, Lineage, LineageConfig};
+use crate::lineage::{Lineage, LineageConfig};
 use crate::live::{is_subscribed, write_if_subscribed, EvalBars, LivePosition, LIVE_POSITION_VERSION};
 use crate::loadout::random_loadout_from_seed;
 use crate::matrix::{load_matrix, save_matrix, GauntletMatrix, MatrixError};
@@ -188,13 +188,51 @@ pub fn run_training(
             continue;
         }
 
-        let lineages: Vec<Lineage<AutodiffB>> = train_lineages::<AutodiffB>(
-            &corpus,
-            gen_seed,
-            &config.lineage,
-            &config.model,
-            &device,
-        );
+        let lineages: Vec<Lineage<AutodiffB>> = {
+            // Throttle heartbeats to ~1 Hz — train_lineages_with_progress
+            // fires the callback after every (lineage, round) pair, which is
+            // frequent enough to spam status writes but also frequent enough
+            // that we never go more than a second or two without one.
+            let run_dir_cb = run_dir.to_path_buf();
+            let mut last_write = std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(10))
+                .unwrap_or_else(std::time::Instant::now);
+            crate::lineage::train_lineages_with_progress::<AutodiffB, _>(
+                &corpus,
+                gen_seed,
+                &config.lineage,
+                &config.model,
+                &device,
+                |lineage_idx, round_idx, n_rounds| {
+                    if last_write.elapsed() < std::time::Duration::from_millis(800) {
+                        return;
+                    }
+                    last_write = std::time::Instant::now();
+                    let round = (round_idx as u32) + 1;
+                    let _ = write_snapshot(
+                        &run_dir_cb,
+                        &snapshot_for(
+                            TrainingPhase::Training,
+                            generation,
+                            round,
+                            &[PopulationMember {
+                                rater_id: format!("g{:04}-l{}", generation, lineage_idx),
+                                parent_id: None,
+                                lineage: lineage_idx as u32,
+                                generation,
+                                wins: 0,
+                                losses: 0,
+                                draws: 0,
+                                alive: true,
+                            }],
+                            None,
+                        ),
+                    );
+                    // Capture n_rounds in a way the compiler doesn't warn about
+                    let _ = n_rounds;
+                },
+            )
+        };
 
         if should_stop.load(Ordering::Relaxed) {
             summary.stopped_early = true;
