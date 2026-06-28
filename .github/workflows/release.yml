@@ -45,7 +45,7 @@ jobs:
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             features: backend-ndarray,backend-cuda
-            config: "../tauri.cuda.conf.json"
+            config: "tauri.cuda.conf.json"
             artefact_glob: |
               game/target/release/bundle/appimage/*.AppImage
     runs-on: ${{ matrix.os }}
@@ -109,9 +109,10 @@ jobs:
         working-directory: game/crates/tauri_wrapper
         run: |
           cargo tauri build \
+            ${{ matrix.config != '' && format('--config {0}', matrix.config) || '' }} \
+            -- \
             --no-default-features \
-            --features "${{ matrix.features }}" \
-            ${{ matrix.config != '' && format('--config {0}', matrix.config) || '' }}
+            --features "${{ matrix.features }}"
 
       - name: Upload artefacts to Release
         uses: softprops/action-gh-release@v2
