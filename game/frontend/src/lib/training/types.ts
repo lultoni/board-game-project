@@ -8,6 +8,14 @@
 
 export type TrainingPhase = "idle" | "training" | "gauntlet" | "bookkeeping";
 
+/** Mirrors `BackendInfo` from `list_backends`. `id` is the lowercase tag
+ *  echoed back to `start_training_run`'s `backend` argument. */
+export interface BackendInfo {
+  id: "cpu" | "wgpu" | "cuda";
+  label: string;
+  is_default: boolean;
+}
+
 export interface PopulationMember {
   rater_id: string;
   parent_id: string | null;

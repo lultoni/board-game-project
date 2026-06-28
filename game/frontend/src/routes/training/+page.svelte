@@ -12,7 +12,7 @@
   import { onMount, setContext } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { createPollingStore } from "$lib/training/polling";
-  import type { StatusSnapshot, TrainingPhase } from "$lib/training/types";
+  import type { StatusSnapshot, TrainingPhase, BackendInfo } from "$lib/training/types";
   import LiveMatchView from "$lib/training/LiveMatchView.svelte";
   import TournamentStandings from "$lib/training/TournamentStandings.svelte";
   import LineageTree from "$lib/training/LineageTree.svelte";
@@ -26,6 +26,8 @@
   let runDirInput = $state<string>("");
   let activeTab = $state<Tab>("live");
   let preset = $state<Preset>("smoke");
+  let backends = $state<BackendInfo[]>([]);
+  let backend = $state<string>("cpu");
   let starting = $state<boolean>(false);
   let stopping = $state<boolean>(false);
   let startError = $state<string | null>(null);
@@ -72,6 +74,13 @@
         args: { runDir: def },
         intervalMs: 1000,
       });
+      const list = await invoke<BackendInfo[]>("list_backends");
+      backends = list;
+      const persisted = typeof localStorage !== "undefined"
+        ? localStorage.getItem("training:backend")
+        : null;
+      const fallback = list.find((b) => b.is_default)?.id ?? list[0]?.id ?? "cpu";
+      backend = persisted && list.some((b) => b.id === persisted) ? persisted : fallback;
     } catch (e: unknown) {
       startError = e instanceof Error ? e.message : String(e);
     }
@@ -93,7 +102,10 @@
     startError = null;
     runRequested = true;
     try {
-      await invoke("start_training_run", { runDir, preset });
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("training:backend", backend);
+      }
+      await invoke("start_training_run", { runDir, preset, backend });
     } catch (e: unknown) {
       startError = e instanceof Error ? e.message : String(e);
       runRequested = false;
@@ -247,6 +259,19 @@
       </div>
     </div>
 
+    <div class="backend">
+      <span class="lbl">Backend</span>
+      <select
+        bind:value={backend}
+        disabled={isRunning || backends.length === 0}
+        title="GPU = training on GPU; inference (search-time evaluator) is always CPU."
+      >
+        {#each backends as b}
+          <option value={b.id}>{b.label}{b.is_default ? " (default)" : ""}</option>
+        {/each}
+      </select>
+    </div>
+
     <div class="controls">
       <button onclick={start} disabled={starting || isRunning || !runDir}>
         {starting ? "Starting…" : isRunning ? "Running…" : "Start"}
@@ -323,7 +348,7 @@
   }
   .topbar {
     display: grid;
-    grid-template-columns: 2fr 1fr 2fr auto auto;
+    grid-template-columns: 2fr 1fr 2fr auto auto auto;
     gap: 1rem;
     align-items: center;
     border: 1.5px solid var(--paper-line-strong);
@@ -331,6 +356,23 @@
     padding: 0.6em 0.9em;
     background: var(--paper-bg);
     margin-bottom: 0.8rem;
+  }
+  .backend {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 0.4em;
+    align-items: center;
+  }
+  .backend select {
+    font: inherit;
+    padding: 0.3em 0.5em;
+    border: 1.5px solid var(--paper-line);
+    border-radius: 4px;
+    background: var(--paper-bg);
+  }
+  .backend select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .presets {
     display: grid;
