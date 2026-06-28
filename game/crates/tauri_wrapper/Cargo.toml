@@ -12,7 +12,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 core_engine = { workspace = true }
 nn_trainer = { path = "../nn_trainer", default-features = false }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["devtools"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread"] }

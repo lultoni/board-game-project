@@ -16,6 +16,7 @@
     }
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "(GAME NAME)",
@@ -30,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["dmg", "appimage"],
     "icon": ["icons/icon.png"]
   }
 }

@@ -38,10 +38,15 @@ let cached: EngineClient | null = null;
 function detectTauri(): boolean {
   if (typeof window === "undefined") return false;
   const w = window as unknown as {
+    isTauri?: boolean;
     __TAURI__?: unknown;
     __TAURI_INTERNALS__?: unknown;
   };
-  return typeof w.__TAURI__ !== "undefined" || typeof w.__TAURI_INTERNALS__ !== "undefined";
+  return (
+    w.isTauri === true ||
+    typeof w.__TAURI_INTERNALS__ !== "undefined" ||
+    typeof w.__TAURI__ !== "undefined"
+  );
 }
 
 /**

@@ -1,14 +1,16 @@
 name: Release
 
-# Tag-triggered desktop release pipeline. Three matrix jobs produce the
+# Tag-triggered desktop release pipeline. Five matrix jobs produce the
 # artefacts attached to the GitHub Release for the tag:
 #
-#   - macOS Apple Silicon  → universal .dmg (CPU + wgpu/Metal)
-#   - Linux x86_64         → .AppImage     (CPU + wgpu/Vulkan)
-#   - Linux x86_64 CUDA    → .AppImage     (CPU + CUDA; separate download)
+#   - macOS Apple Silicon   → .dmg          (CPU + wgpu/Metal)
+#   - Linux x86_64          → .AppImage     (CPU + wgpu/Vulkan)
+#   - Linux x86_64 CUDA     → .AppImage     (CPU + CUDA; separate download)
+#   - Windows x86_64        → .msi + .exe   (CPU + wgpu/DX12)
+#   - Windows x86_64 CUDA   → .msi + .exe   (CPU + CUDA; separate download)
 #
-# The CUDA build is its own job because burn-cuda requires the CUDA Toolkit
-# 12.x at link time. End users grab whichever artefact matches their
+# The CUDA builds are their own jobs because burn-cuda requires the CUDA
+# Toolkit 12.x at link time. End users grab whichever artefact matches their
 # machine; the launched app exposes a runtime backend dropdown.
 
 on:
@@ -32,7 +34,6 @@ jobs:
             config: ""
             artefact_glob: |
               game/target/release/bundle/dmg/*.dmg
-              game/target/release/bundle/macos/*.app.tar.gz
           - name: linux
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -40,7 +41,6 @@ jobs:
             config: ""
             artefact_glob: |
               game/target/release/bundle/appimage/*.AppImage
-              game/target/release/bundle/deb/*.deb
           - name: linux-cuda
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -48,6 +48,22 @@ jobs:
             config: "tauri.cuda.conf.json"
             artefact_glob: |
               game/target/release/bundle/appimage/*.AppImage
+          - name: windows
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            features: backend-ndarray,backend-wgpu
+            config: ""
+            artefact_glob: |
+              game/target/release/bundle/msi/*.msi
+              game/target/release/bundle/nsis/*.exe
+          - name: windows-cuda
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            features: backend-ndarray,backend-cuda
+            config: "tauri.cuda.conf.json"
+            artefact_glob: |
+              game/target/release/bundle/msi/*.msi
+              game/target/release/bundle/nsis/*.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -77,12 +93,20 @@ jobs:
             patchelf \
             libvulkan-dev
 
-      - name: Install CUDA Toolkit
+      - name: Install CUDA Toolkit (Linux)
         if: matrix.name == 'linux-cuda'
         uses: Jimver/cuda-toolkit@v0.2.16
         with:
           cuda: "12.5.0"
           method: "network"
+
+      - name: Install CUDA Toolkit (Windows)
+        if: matrix.name == 'windows-cuda'
+        uses: Jimver/cuda-toolkit@v0.2.16
+        with:
+          cuda: "12.5.0"
+          method: "network"
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "curand", "curand_dev", "thrust", "visual_studio_integration"]'
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -107,12 +131,9 @@ jobs:
 
       - name: Build desktop bundle
         working-directory: game/crates/tauri_wrapper
+        shell: bash
         run: |
-          cargo tauri build \
-            ${{ matrix.config != '' && format('--config {0}', matrix.config) || '' }} \
-            -- \
-            --no-default-features \
-            --features "${{ matrix.features }}"
+          cargo tauri build ${{ matrix.config != '' && format('--config {0}', matrix.config) || '' }} -- --no-default-features --features "${{ matrix.features }}"
 
       - name: Upload artefacts to Release
         uses: softprops/action-gh-release@v2
@@ -123,8 +144,10 @@ jobs:
           body: |
             Desktop builds for `${{ github.ref_name }}`.
 
-            - **macOS (Apple Silicon)** — `.dmg`. Ad-hoc signed; right-click → Open on first launch.
-            - **Linux x86_64** — `.AppImage` (CPU + GPU via wgpu/Vulkan).
+            - **macOS (Apple Silicon)** — `.dmg`. Ad-hoc signed; on first launch macOS will say the app is damaged. Workaround until v0.2 signing: `xattr -cr "/Applications/(game-name).app"` after dragging to Applications, then double-click.
+            - **Linux x86_64** — `.AppImage` (CPU + GPU via wgpu/Vulkan). `chmod +x` then run.
             - **Linux x86_64 + CUDA** — `.AppImage` (CPU + NVIDIA CUDA). Requires CUDA 12.x runtime.
+            - **Windows x86_64** — `.msi` or `.exe` (CPU + GPU via wgpu/DX12).
+            - **Windows x86_64 + CUDA** — `.msi` or `.exe` (CPU + NVIDIA CUDA). Requires CUDA 12.x runtime.
 
             In the app, open the Training Observatory and pick a backend from the dropdown.
