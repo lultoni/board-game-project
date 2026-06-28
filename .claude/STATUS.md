@@ -2,42 +2,36 @@
 
 *One-screen re-entry doc. Read first after a gap. Regenerated from the DB at session end.*
 
-*Last updated: 2026-06-27 — Session 36 end (Quiescence Search + head-to-head match reveals evaluator bottleneck).*
+*Last updated: 2026-06-28 — Session 37 end (Backend flexibility + clean install/release pipeline).*
 
 ---
 
 ## Current focus
 
-**Pivot to NN position-rater** per `design/inbox/digital/nn-rater-plan.md`. The search-speed pass surfaced a deeper finding: the current hand-eval has no positional terms and the engine plays 80+ consecutive EndPhases in self-play. Every search optimisation graded in S36 was graded against a non-playing engine and is therefore provisional. Eval is the bottleneck for both play strength and the search-optimisation grading protocol.
+**Cut a v0.1.0 release.** Eight infrastructure commits landed in S37 to make the trainer backend runtime-switchable (CPU vs GPU from the UI) and produce signed-or-at-least-bundled `.dmg` / `.AppImage` artefacts from a tag push. The release workflow is unproven — first push of `v0.1.0-rc1` is the smoke test.
+
+Underlying design / NN-rater work from S35–S36 (evaluator bottleneck, QS retest pending real eval) is unchanged and still queued.
 
 ## Active stack
 
-**Stack M — Game Length Cut.** Engine and digital UI are Stack M-shaped. Still awaiting a real playtest. `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"`.
+**Stack M — Game Length Cut.** Engine + UI are Stack M-shaped, awaiting a real playtest. `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"`.
 
 ## What changed this session
 
-- **QS module shipped** (`game/crates/core_engine/src/search/quiescence.rs`). Catalogue §3 minus SEE. Stand-pat + loud-action loop. MAX_QS_PLY=8. 380/380 tests pass.
-- **Bitboard `is_king_threatened`** replaces generator-based first cut. Chebyshev + skill cost/range gating.
-- **`DISABLE_QS` kill-switch** + **`qs_match` example** (head-to-head match harness). Lets us A/B without recompiling.
-- **RFP and aspiration retested on top of QS** — both still failed sweep. Reverted.
-- **3-game head-to-head match run** at 1000 ms/move: QS 1, base 0, 2 caps. 0 skills cast across 105 rounds. EndPhase-dominated.
-- **`alpha-beta-optimisation-catalogue.md`** appended with Session 37 retrospective (catalogue numbering is +1 vs DB: catalogue "Session 36" = DB S35, catalogue "Session 37" = DB S36).
+- **F1** — Repo cleanup: deleted `archive/migrators/` + `archive/old-game-versions/`; relocated `archive/paper-pipeline/` → `design/raw/paper-pipeline-archive/`.
+- **A1+A2** — `nn_trainer::backend` rewritten; backend Cargo features now additive (`backend-ndarray` + `backend-wgpu` default; `backend-cuda` opt-in). `run_training` is generic over `B: AutodiffBackend`; a top-level `match BackendChoice` dispatcher monomorphises into the right backend. Cross-backend acceptance hop uses burn's `.mpk` recorder; `NnEvaluator` stays CPU regardless.
+- **B1** — Tauri `list_backends` command; `start_training_run` gains `backend` arg.
+- **C1** — `/training` top-bar has a Backend dropdown (default from `BackendChoice::default_choice`, last choice persists in localStorage).
+- **D1** — `.github/workflows/release.yml`: three-job matrix on `v*` tags (macOS arm64 `.dmg`, Linux x86_64 `.AppImage`, Linux x86_64 + CUDA `.AppImage`). `tauri.cuda.conf.json` overlay for the CUDA variant.
+- **E1** — Root README Download section; `game/README.md` backend feature matrix; new `CONTRIBUTING.md`.
+
+No design knowledge changed. No OQs resolved. No engine logic touched.
 
 ## Immediate next action
 
-Begin NN position-rater work per `design/inbox/digital/nn-rater-plan.md`:
-1. Native-only training crate (rayon-parallel).
-2. Path 3 (gradient descent) + perturbation injection.
-3. Two-tier gauntlet (best-of-three at 100/300/500 ms, mirrored loadouts, three champion tracks).
-4. Opt-in observability UI via local-file polling.
+Push (`git push` — 36 commits ahead of `origin/main`), then tag `v0.1.0-rc1` and watch the Actions run. Expect the first run to fail somewhere — fix glob patterns / CUDA Toolkit action version / 22.04 deps iteratively until all three artefacts land in a draft Release. Then download + install on Mac and CUDA box and click through the backend dropdown.
 
-Once eval supports real play, **re-run the full S36 sweep and the `qs_match` head-to-head harness** on top of the new evaluator. All S36 rejections (RFP, aspiration, PVS, LMP) are provisional pending that re-run.
-
-## Banked wins from S36 (kept hooked)
-
-- QS module — correct, ready to grade once eval supports real play.
-- Bitboard `is_king_threatened` — load-bearing primitive.
-- `DISABLE_QS` + `qs_match` — play-strength accept/reject path independent of corpus depth-reached.
+After rc1 settles, return to the NN-rater work (S36's deferred evaluator-bottleneck thread) — see `design/inbox/digital/nn-rater-plan.md`.
 
 ## Live critical / high-priority open questions
 

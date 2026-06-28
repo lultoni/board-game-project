@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-06-27 — Session 36 end (Quiescence Search + head-to-head match reveals evaluator bottleneck).*
+*Last updated: 2026-06-28 — Session 37 end (Backend flexibility + clean install/release pipeline).*
 
 ---
 
@@ -30,43 +30,33 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer. Mine load-bearing content into the DB.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 36 end, 2026-06-27)
+### Where We Are (Session 37 end, 2026-06-28)
 
-- **QS module shipped** at `game/crates/core_engine/src/search/quiescence.rs`. Catalogue §3 minus SEE. 380/380 tests pass. Hooked at `depth <= 0` in `alpha_beta.rs`.
-- **Bitboard `is_king_threatened`** replaces generator-based first cut. Chebyshev + skill cost/range gating.
-- **`DISABLE_QS` AtomicBool** + **`qs_match` example** ship a runtime A/B kill-switch and head-to-head match harness.
-- **RFP and aspiration retested on top of QS** — still failed multi-budget sweep. Reverted.
-- **Critical finding**: 3-game head-to-head match at 1000 ms/move showed **0 skills cast across 105 rounds**, EndPhase-dominated. Root cause: `search/evaluator.rs` has no positional terms (eval = material + HP + armor + skills + money), so Move actions have Δeval=0. The entire S36 grading protocol was measuring a non-playing engine. All S36 rejections (RFP, aspiration, PVS, LMP) are provisional pending eval fix.
+- **Trainer backend is runtime-switchable.** `nn_trainer::backend::BackendChoice` (Cpu / Wgpu / Cuda); features additive (default ndarray + wgpu, CUDA opt-in). `run_training` matches on `BackendChoice` and dispatches into the right `B: AutodiffBackend` monomorphisation. `NnEvaluator` stays CPU regardless; the cross-backend hop uses burn's wire-compatible `.mpk` recorder.
+- **Tauri IPC + frontend wired.** `list_backends` command, Training Observatory has a Backend dropdown (preselection = build default, last choice in localStorage).
+- **Release workflow drafted but unproven** — `.github/workflows/release.yml` matrix on `v*` tags produces macOS arm64 `.dmg`, Linux x86_64 `.AppImage`, and Linux x86_64 + CUDA `.AppImage`. Has never run.
+- **Repo cleanup landed** — stale `archive/migrators/` + `archive/old-game-versions/` deleted; `archive/paper-pipeline/` relocated to `design/raw/paper-pipeline-archive/`.
+- 36 commits ahead of `origin/main`; nothing pushed yet.
 
 ### Immediate Next Action
 
-**NN position-rater** per `design/inbox/digital/nn-rater-plan.md`:
-1. Native-only training crate (rayon-parallel).
-2. Path 3 (gradient descent) + perturbation injection.
-3. Two-tier gauntlet (best-of-three at 100/300/500 ms, mirrored loadouts, three champion tracks).
-4. Opt-in observability UI via local-file polling.
+**Push, then tag `v0.1.0-rc1` and watch the release workflow.** First run will surface anything wrong with the CUDA toolkit action, AppImage glob patterns, or 22.04 build deps. Fix iteratively in `.github/workflows/release.yml` until all three artefacts land in a draft Release; install on Mac + CUDA box; verify the backend dropdown lists what each build supports.
 
-After eval supports real play, **re-run the full S36 sweep** (QS, RFP, aspiration, PVS, LMP) AND the `qs_match` head-to-head harness on top of the new evaluator before accepting/rejecting any technique.
+Once rc1 is healthy, return to the **NN position-rater** thread (still the primary design/engineering focus per S35–S36 — eval is the bottleneck, S36 sweep results all provisional pending real eval).
 
-### Banked wins from S36 (kept hooked)
+### Open methodological loose ends (carried from S36)
 
-- QS module — correct, ready to grade once eval supports real play.
-- Bitboard `is_king_threatened` — load-bearing primitive.
-- `DISABLE_QS` + `qs_match` — play-strength accept/reject path independent of corpus depth-reached.
-
-### Open methodological loose ends
-
-- **oq-69 — Skill-Phase action progression curve.** Resolved in code as `2 + (round_number-1)/10` (`make_unmake.rs:982-985`). OQ row may still be marked open in DB — verify and resolve if so.
-- **oq-70 — Focus on Move-skills.** Caster chooses activation-range or effect-range. Encoding shipped. Verify OQ status.
+- **oq-69 — Skill-Phase action progression curve.** Resolved in code (`make_unmake.rs:982-985`); OQ row status may still be open — verify.
+- **oq-70 — Focus on Move-skills.** Encoding shipped. Verify OQ status.
 
 ### Key DB Queries (instead of file paths)
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM sessions WHERE id='session-36';` | This session's narrative (QS + evaluator bottleneck finding) |
-| `SELECT body FROM sessions WHERE id='session-35';` | Previous session — NN-rater scope + bench plan + AB catalogue |
-| `SELECT body FROM next_steps WHERE id=25;` | NN position rater idea + S35 scoping pointer |
-| `SELECT body FROM open_questions WHERE id='oq-81';` | AI search branching-factor + strategy plan |
+| `SELECT body FROM sessions WHERE id='session-37';` | This session — backend flexibility + release pipeline |
+| `SELECT body FROM sessions WHERE id='session-36';` | QS + evaluator bottleneck finding |
+| `SELECT body FROM next_steps WHERE id=15;` | rc1 smoke-test checklist |
+| `SELECT body FROM next_steps WHERE id=16;` | A3 cross-backend save/load test (deferred) |
 | `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance |
 
 ### Key Files (still on disk)
@@ -74,12 +64,12 @@ After eval supports real play, **re-run the full S36 sweep** (QS, RFP, aspiratio
 | Path | Purpose |
 |------|---------|
 | `design/design.db` | Source of truth (binary; committed) |
-| `design/inbox/digital/nn-rater-plan.md` | NN-rater full scope (next session focus) |
-| `design/inbox/digital/alpha-beta-optimisation-catalogue.md` | AB catalogue + S37-retrospective (DB Session 36) |
-| `design/inbox/digital/search-speed-benchmark-plan.md` | Benchmark infrastructure plan |
-| `game/crates/core_engine/src/search/quiescence.rs` | QS module (shipped S36) |
-| `game/crates/core_engine/examples/qs_match.rs` | Head-to-head match harness |
-| `game/crates/core_engine/src/search/alpha_beta.rs` | Main search; carries `DISABLE_QS` kill-switch |
-| `game/crates/core_engine/src/search/evaluator.rs` | **The bottleneck.** Material/HP/armor/skills/money only — no positional terms |
+| `.github/workflows/release.yml` | Three-job release matrix (unproven) |
+| `game/crates/nn_trainer/src/backend.rs` | `BackendChoice` + type aliases |
+| `game/crates/nn_trainer/src/run.rs` | `run_training` dispatcher + `run_training_with::<B>` |
+| `game/crates/tauri_wrapper/src/lib.rs` | `list_backends` + `start_training_run` (with `backend` arg) |
+| `game/crates/tauri_wrapper/tauri.cuda.conf.json` | CUDA variant overlay |
+| `game/frontend/src/routes/training/+page.svelte` | Training Observatory shell (backend dropdown) |
+| `CONTRIBUTING.md` | Branch convention + pre-PR checks + release-cut steps |
 | `.claude/STATUS.md` | One-screen re-entry summary |
 | `CLAUDE.md` | Orientation (points at DB; does not restate facts) |
