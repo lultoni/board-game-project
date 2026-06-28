@@ -465,6 +465,63 @@ impl ChampionTracker {
 
         upd
     }
+
+    /// Reconstruct a tracker from an on-disk `RaterIndex`. Walks the entries
+    /// in acceptance order and replays each one as a synthetic
+    /// `AcceptanceReport` driven by the persisted `bracket_results`
+    /// aggregate. Pass flags are inferred per-bracket: a bracket is treated
+    /// as passed iff its persisted win-rate cleared the non-regression bar
+    /// (the same threshold Tier-2 uses live).
+    ///
+    /// **What's recovered**: the per-track win-rate floors (`best_*_score`)
+    /// and the leader-id placeholders. The leader ids are stamped from each
+    /// entry's *position* in the index — i.e. the first accepted entry gets
+    /// `RaterId = 1`, the second `2`, etc. The orchestrator uses
+    /// `generation as u64` for live `consider` calls, so the two id spaces
+    /// don't overlap; that's intentional — only the *score floor* matters
+    /// for resume correctness, the ids are diagnostic.
+    ///
+    /// **What's not recovered**: bracket-pass flags that didn't survive the
+    /// round-trip (the index only stores aggregate win-rates). The
+    /// non-regression-bar inference is an over-approximation: a candidate
+    /// that scraped 0.46 against the bar but failed Tier-2 acceptance for
+    /// another reason (impossible today, but the rule could shift) would
+    /// still raise the floor here. The downside is a slightly stricter
+    /// floor than strictly necessary — never a stale floor.
+    pub fn from_index(index: &crate::registry::RaterIndex) -> Self {
+        let mut tracker = Self::new();
+        for (i, entry) in index.entries.iter().enumerate() {
+            let synth_id: RaterId = (i as u64) + 1;
+            let agg = synth_bracket_results_from_entry(entry);
+            let bracket_pass = [
+                agg.fast.win_rate() >= NON_REGRESSION_BAR,
+                agg.medium.win_rate() >= NON_REGRESSION_BAR,
+                agg.slow.win_rate() >= NON_REGRESSION_BAR,
+            ];
+            let report = AcceptanceReport {
+                per_predecessor: vec![agg],
+                aggregate: agg,
+                bracket_pass,
+            };
+            tracker.consider(synth_id, &report);
+        }
+        tracker
+    }
+}
+
+/// Translate `IndexEntry.bracket_results` (a `BTreeMap<String, BracketWinRate>`)
+/// into a `BracketResults` triple. Missing brackets become zero tallies.
+fn synth_bracket_results_from_entry(entry: &crate::registry::IndexEntry) -> BracketResults {
+    let to_tally = |bw: &crate::persistence::BracketWinRate| SeriesTally {
+        candidate_wins: bw.candidate_wins,
+        baseline_wins: bw.baseline_wins,
+        indecisive: bw.indecisive,
+    };
+    BracketResults {
+        fast:   entry.bracket_results.get("fast")  .map(to_tally).unwrap_or_default(),
+        medium: entry.bracket_results.get("medium").map(to_tally).unwrap_or_default(),
+        slow:   entry.bracket_results.get("slow")  .map(to_tally).unwrap_or_default(),
+    }
 }
 
 #[cfg(test)]

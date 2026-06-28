@@ -37,6 +37,9 @@ use crate::gauntlet::{
     AcceptanceReport, Bracket, ChampionTracker, SeriesTally, TrackUpdate,
 };
 use crate::lineage::{Lineage, LineageConfig};
+use crate::lineage_checkpoint::{
+    clear_lineages, load_lineages, quarantine_stale, save_lineages, CheckpointError,
+};
 use crate::live::{is_subscribed, write_if_subscribed, EvalBars, LivePosition, LIVE_POSITION_VERSION};
 use crate::loadout::random_loadout_from_seed;
 use crate::matrix::{load_matrix, save_matrix, GauntletMatrix, MatrixError};
@@ -94,6 +97,24 @@ impl Default for RunConfig {
 }
 
 impl RunConfig {
+    /// Stable hex-encoded 64-bit hash of the JSON-serialised config. Used by
+    /// the lineage checkpoint to refuse a resume when the on-disk in-progress
+    /// pool was produced under a different `RunConfig`. FNV-1a 64-bit over
+    /// the canonical `serde_json` byte string — good enough for
+    /// equality-vs-not detection. Collisions aren't a safety concern: the
+    /// worst case is a successful resume that silently changed config, and
+    /// that requires an adversarial config crafted to hit a specific 64-bit
+    /// value.
+    pub fn digest(&self) -> String {
+        let bytes = serde_json::to_vec(self).unwrap_or_default();
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in bytes {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x100_0000_01b3);
+        }
+        format!("{:016x}", h)
+    }
+
     /// Smoke-test preset: 2 generations, depth-2 search, ~seconds total.
     /// Same shape as the previous `Default` impl; used by CI / unit tests.
     pub fn smoke() -> Self {
@@ -303,8 +324,12 @@ pub fn run_training(
     let device = Default::default();
     let mut index = RaterIndex::load(&raters_dir(run_dir))?;
     let mut matrix = load_matrix(run_dir)?;
-    let mut tracker = ChampionTracker::new();
+    // Seed the tracker from the on-disk index so a fresh process picks up the
+    // historical score floors. Without this, the first generation after a
+    // restart would accept *anything* that beats the heuristic.
+    let mut tracker = ChampionTracker::from_index(&index);
     let mut summary = RunSummary::default();
+    let run_digest = config.digest();
 
     // Initial idle snapshot — UI shows "starting" until phase advances.
     write_snapshot(run_dir, &StatusSnapshot::idle())?;
@@ -316,9 +341,49 @@ pub fn run_training(
         }
 
         let generation = (gen_idx + 1) as u32;
-        let gen_seed = config
+        let derived_gen_seed = config
             .seed_root
             .wrapping_add((gen_idx as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+
+        // Resume path: if a per-generation lineage checkpoint sits in the
+        // raters dir from a prior interrupted run, reuse it. The checkpoint
+        // is the gradient-descent output for *this* generation, written
+        // after `train_lineages` but before Tier-1. On resume we skip
+        // corpus + training and jump straight to Tier-1 with the saved
+        // pool. Calibration probes aren't checkpointed — eval_scale falls
+        // back to `DEFAULT_EVAL_SCALE` on the resume path.
+        //
+        // Digest / version mismatch → caller changed `RunConfig` since the
+        // kill; quarantine the stale checkpoint and rebuild from scratch.
+        let resumed = match load_lineages::<AutodiffB>(&raters_dir(run_dir), &run_digest, &device) {
+            Ok(Some(state)) if state.gen_idx == gen_idx => Some(state),
+            Ok(Some(_)) => {
+                let _ = quarantine_stale(&raters_dir(run_dir));
+                None
+            }
+            Ok(None) => None,
+            Err(CheckpointError::DigestMismatch { .. })
+            | Err(CheckpointError::FormatVersionMismatch { .. }) => {
+                let _ = quarantine_stale(&raters_dir(run_dir));
+                None
+            }
+            Err(e) => {
+                eprintln!("nn_trainer: lineage checkpoint load failed: {}", e);
+                let _ = quarantine_stale(&raters_dir(run_dir));
+                None
+            }
+        };
+
+        let lineages: Vec<Lineage<AutodiffB>>;
+        let gen_seed: u64;
+        let calibration_probes: Vec<core_engine::state::Position>;
+
+        if let Some(state) = resumed {
+            lineages = state.lineages;
+            gen_seed = state.gen_seed;
+            calibration_probes = Vec::new();
+        } else {
+            gen_seed = derived_gen_seed;
 
         // --- Phase: Training ---
         write_snapshot(
@@ -336,13 +401,12 @@ pub fn run_training(
         // systematically different from the rest. We pull `Position`s out
         // since `calibrate_rater` doesn't need the labels.
         let holdout_n = (corpus.len() / 10).max(1).min(corpus.len());
-        let calibration_probes: Vec<core_engine::state::Position> = corpus
-            [corpus.len().saturating_sub(holdout_n)..]
+        calibration_probes = corpus[corpus.len().saturating_sub(holdout_n)..]
             .iter()
             .map(|lp| lp.position.clone())
             .collect();
 
-        let lineages: Vec<Lineage<AutodiffB>> = {
+        lineages = {
             // Throttle heartbeats to ~1 Hz — train_lineages_with_progress
             // fires the callback after every (lineage, round) pair, which is
             // frequent enough to spam status writes but also frequent enough
@@ -387,6 +451,23 @@ pub fn run_training(
                 },
             )
         };
+
+            // Persist the gradient-descent output before any gauntlet work.
+            // A kill after this point can resume Tier-1 from disk without
+            // re-running corpus + training. Best-effort: a write failure
+            // logs but does not abort the run (we'd rather lose the
+            // resume affordance than the whole generation).
+            if let Err(e) = save_lineages::<AutodiffB>(
+                &lineages,
+                &raters_dir(run_dir),
+                gen_idx,
+                gen_seed,
+                &config.model,
+                &run_digest,
+            ) {
+                eprintln!("nn_trainer: lineage checkpoint save failed: {}", e);
+            }
+        }
 
         if should_stop.load(Ordering::Relaxed) {
             summary.stopped_early = true;
@@ -528,6 +609,13 @@ pub fn run_training(
             }
             index.save(&raters_dir(run_dir))?;
             summary.accepted_raters += 1;
+        }
+
+        // The generation's work is committed (or explicitly rejected) — the
+        // in-progress checkpoint has served its purpose. Idempotent: no-op
+        // when nothing was saved (e.g. resumed-then-cancelled mid-Tier-2).
+        if let Err(e) = clear_lineages(&raters_dir(run_dir)) {
+            eprintln!("nn_trainer: lineage checkpoint clear failed: {}", e);
         }
 
         summary.generations_completed += 1;

@@ -17,6 +17,7 @@ pub mod calibration;
 pub mod encoding;
 pub mod gauntlet;
 pub mod lineage;
+pub mod lineage_checkpoint;
 pub mod live;
 pub mod loadout;
 pub mod matrix;
