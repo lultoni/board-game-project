@@ -80,7 +80,7 @@ The `body` is full markdown. Required sections:
 
 ## Digital toggle
 
-[Once `game/` exists: how this stack maps to a feature flag / config switch in the Rust core. For paper-only stacks: "paper-only, see archive/paper-pipeline/test-scenarios/ for the rule sheet."]
+[Once `game/` exists: how this stack maps to a feature flag / config switch in the Rust core. For paper-only stacks: "paper-only, see design/raw/paper-pipeline-archive/test-scenarios/ for the rule sheet."]
 ```
 
 ## Step 4: Insert into DB

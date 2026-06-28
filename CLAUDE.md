@@ -17,18 +17,14 @@ design/
     playtest-photos/
     brainstorm-scans/
     skill-card-images/
+    paper-pipeline-archive/ ← Typst rule sheets + PDFs from the paper-prototype era (historical)
   inbox/                    ← Fast-write staging — promoted to DB by Claude
     brainstorm/             ← Raw idea dumps
     ai-chats/               ← Pasted chat transcripts (ChatGPT/Perplexity/etc)
     digital/                ← Architecture / UI / AI-opponent notes for game/
 
-game/                       ← Digital implementation (architecture TBD; empty as of S27)
+game/                       ← Digital implementation (Rust core + Tauri frontend)
   README.md                 ← Status + open architecture questions
-
-archive/
-  old-game-versions/        ← v1/v2/v3 + archived stacks
-  paper-pipeline/
-    test-scenarios/         ← Typst rule sheets + PDFs (paper-prototype era)
 
 .claude/
   STATUS.md                 ← One-screen re-entry doc (regenerated each session)

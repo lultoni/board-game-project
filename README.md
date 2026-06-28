@@ -23,7 +23,7 @@ The source of truth for all design knowledge is `design/design.db` (SQLite). Que
 | Read a specific essay / research artefact | `sqlite3 design/design.db "SELECT body FROM essays WHERE id='essay-<slug>';"` |
 | See cross-references for any row | `sqlite3 design/design.db "SELECT to_id, relation FROM links WHERE from_id='<id>';"` |
 | Read all architecture decisions | `sqlite3 design/design.db "SELECT body FROM adrs ORDER BY n;"` |
-| Read the paper-era rule sheets (historical) | [`archive/paper-pipeline/test-scenarios/`](archive/paper-pipeline/test-scenarios/) |
+| Read the paper-era rule sheets (historical) | [`design/raw/paper-pipeline-archive/test-scenarios/`](design/raw/paper-pipeline-archive/test-scenarios/) |
 
 More query patterns in [`CLAUDE.md`](CLAUDE.md).
 
@@ -44,23 +44,18 @@ board-game-project/
 │   ├── raw/                     ← binary artefacts (photos, scans, card images)
 │   │   ├── playtest-photos/
 │   │   ├── brainstorm-scans/
-│   │   └── skill-card-images/
+│   │   ├── skill-card-images/
+│   │   └── paper-pipeline-archive/  ← Typst rule sheets + PDFs (paper-prototype era; historical)
 │   └── inbox/                   ← fast-write staging — promoted into the DB
 │       ├── brainstorm/          ← raw game-design idea dumps
 │       ├── ai-chats/            ← pasted transcripts from other AI tools
 │       └── digital/             ← architecture / UI / AI-opponent notes for game/
 │
-├── game/                        ← digital implementation (Rust core + multi-platform; empty as of S27)
-│
-├── archive/
-│   ├── old-game-versions/       ← v1/v2/v3 + archived stacks
-│   └── paper-pipeline/
-│       └── test-scenarios/      ← Typst rule sheets + PDFs (paper-prototype era)
+├── game/                        ← digital implementation (Rust core + Tauri frontend)
 │
 └── .claude/
     ├── STATUS.md                ← one-screen re-entry doc (regenerated each session)
     ├── HANDOVER.md              ← session-to-session continuity prompt
-    ├── migrate_*.py             ← one-shot migrators (Session 27 — kept for audit)
     └── skills/                  ← slash-command definitions
 ```
 
@@ -127,6 +122,6 @@ I'll mine these into the DB (backpocket / essays / open_questions / adrs / next_
 
 ---
 
-## Archive
+## Historical archive
 
-`archive/old-game-versions/` — earlier iterations (2023–2025). `archive/paper-pipeline/` — Typst rule sheets and PDFs from the paper-prototype era; read-only history.
+`design/raw/paper-pipeline-archive/` — Typst rule sheets and PDFs from the paper-prototype era; read-only history. Earlier prototype versions (v1–v3) were removed in S38 cleanup; recoverable from git history if needed.
