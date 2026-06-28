@@ -184,7 +184,7 @@ impl<B: AutodiffBackend> Lineage<B> {
 
 /// Configuration for `train_lineages`. Conservative defaults; tuning happens
 /// once we see real loss curves.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct LineageConfig {
     /// How many parallel lineages.
     pub n_lineages: usize,

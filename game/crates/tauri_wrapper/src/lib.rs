@@ -34,7 +34,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Manager, State};
 
 use core_engine::wrapper_api as api;
 use core_engine::Match;
@@ -611,19 +611,20 @@ fn inspect_rater(
 #[tauri::command]
 fn start_training_run(
     run_dir: String,
+    preset: Option<String>,
     state: State<'_, TrainingState>,
 ) -> Result<(), String> {
     let mut inner = state.inner.lock().unwrap();
     if inner.handle.as_ref().map_or(false, |h| !h.is_finished()) {
         return Err("training already running".to_string());
     }
+    let preset_name = preset.as_deref().unwrap_or("smoke");
+    let cfg = nn_trainer::RunConfig::from_preset(preset_name)?;
+    cfg.validate()?;
     let stop = Arc::new(AtomicBool::new(false));
     let stop_clone = Arc::clone(&stop);
     let path = std::path::PathBuf::from(run_dir);
     let handle = std::thread::spawn(move || {
-        // Use defaults for now; a future revision wires the frontend's run
-        // config through this command's args.
-        let cfg = nn_trainer::RunConfig::default();
         let _ = nn_trainer::run_training(&cfg, &path, stop_clone);
     });
     inner.stop = Some(stop);
@@ -631,17 +632,27 @@ fn start_training_run(
     Ok(())
 }
 
-#[tauri::command]
-fn stop_training_run(state: State<'_, TrainingState>) -> Result<(), String> {
+/// Set the orchestrator's stop flag and forget the handle. Shared between the
+/// `stop_training_run` IPC command and the app's exit hook so Cmd+Q triggers
+/// the same wind-down path as clicking Stop.
+///
+/// No join: the run may take up to a full Tier-1 BO3 to wind down (the
+/// orchestrator only checks the flag at phase boundaries) and blocking either
+/// the IPC thread or the app-exit path on that would feel like a freeze. The
+/// orchestrator writes a final `phase=Idle` snapshot on the way out, and on
+/// exit the OS reaps the thread when the process tears down.
+fn signal_stop(state: &TrainingState) {
     let mut inner = state.inner.lock().unwrap();
     if let Some(flag) = inner.stop.as_ref() {
         flag.store(true, Ordering::Relaxed);
     }
-    // We don't join() here — the run may take a while to wind down and
-    // blocking the IPC thread is rude. The orchestrator writes a final
-    // phase=Idle snapshot on the way out, which is what the UI observes.
     inner.stop = None;
     inner.handle = None;
+}
+
+#[tauri::command]
+fn stop_training_run(state: State<'_, TrainingState>) -> Result<(), String> {
+    signal_stop(&state);
     Ok(())
 }
 
@@ -687,8 +698,23 @@ pub fn run() {
             start_training_run,
             stop_training_run,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // When the user quits the app (Cmd+Q, menu Quit, last-window-close
+            // on platforms that bind it), signal the orchestrator to stop. We
+            // do NOT call api.prevent_exit() — the runtime tears down and the
+            // OS reaps the worker thread. The stop flag still lets the
+            // orchestrator write a clean final snapshot before the process
+            // disappears, so the next launch sees `phase=Idle` instead of a
+            // stale "training" snapshot. WindowEvent::CloseRequested is the
+            // wrong hook on macOS — red-light only hides the window — so we
+            // use the app-level RunEvent::ExitRequested instead.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                let state = app_handle.state::<TrainingState>();
+                signal_stop(&state);
+            }
+        });
 }
 
 // ---------------------------------------------------------------------------
@@ -925,5 +951,39 @@ mod tests {
             .expect("present");
         assert_eq!(got.entries.len(), 1);
         assert_eq!(got.entries[0].result.candidate_wins, 2);
+    }
+
+    #[test]
+    fn signal_stop_sets_flag_and_clears_inner() {
+        // Populated state: signal_stop must flip the underlying AtomicBool
+        // (observable through a clone held outside the state) and clear both
+        // `stop` and `handle` so the next start_training_run sees a fresh slot.
+        let state = TrainingState::default();
+        let flag = Arc::new(AtomicBool::new(false));
+        let observer = Arc::clone(&flag);
+        let handle = std::thread::spawn(|| {});
+        {
+            let mut inner = state.inner.lock().unwrap();
+            inner.stop = Some(flag);
+            inner.handle = Some(handle);
+        }
+
+        signal_stop(&state);
+
+        assert!(observer.load(Ordering::Relaxed), "stop flag must be true");
+        let inner = state.inner.lock().unwrap();
+        assert!(inner.stop.is_none(), "stop slot must be cleared");
+        assert!(inner.handle.is_none(), "handle slot must be cleared");
+    }
+
+    #[test]
+    fn signal_stop_on_empty_state_is_noop() {
+        // No run in progress: signal_stop must not panic. Hit on every quit,
+        // including quits when nothing was training.
+        let state = TrainingState::default();
+        signal_stop(&state);
+        let inner = state.inner.lock().unwrap();
+        assert!(inner.stop.is_none());
+        assert!(inner.handle.is_none());
     }
 }

@@ -20,10 +20,12 @@
   import GauntletMatrix from "$lib/training/GauntletMatrix.svelte";
 
   type Tab = "live" | "standings" | "lineage" | "matrix";
+  type Preset = "smoke" | "medium" | "long";
 
   let runDir = $state<string>("");
   let runDirInput = $state<string>("");
   let activeTab = $state<Tab>("live");
+  let preset = $state<Preset>("smoke");
   let starting = $state<boolean>(false);
   let stopping = $state<boolean>(false);
   let startError = $state<string | null>(null);
@@ -91,7 +93,7 @@
     startError = null;
     runRequested = true;
     try {
-      await invoke("start_training_run", { runDir });
+      await invoke("start_training_run", { runDir, preset });
     } catch (e: unknown) {
       startError = e instanceof Error ? e.message : String(e);
       runRequested = false;
@@ -215,6 +217,36 @@
       <span class="val">{fmtEta(etaSeconds)}</span>
     </div>
 
+    <div class="presets">
+      <span class="lbl">Preset</span>
+      <div class="presetButtons" role="radiogroup" aria-label="Run preset">
+        <button
+          role="radio"
+          aria-checked={preset === "smoke"}
+          class:active={preset === "smoke"}
+          disabled={isRunning}
+          onclick={() => (preset = "smoke")}
+          title="2 gen × 4 lineage, depth-2 corpus, seconds"
+        >Smoke</button>
+        <button
+          role="radio"
+          aria-checked={preset === "medium"}
+          class:active={preset === "medium"}
+          disabled={isRunning}
+          onclick={() => (preset = "medium")}
+          title="5 gen × 4 lineage, depth-4 corpus"
+        >Medium</button>
+        <button
+          role="radio"
+          aria-checked={preset === "long"}
+          class:active={preset === "long"}
+          disabled={isRunning}
+          onclick={() => (preset = "long")}
+          title="10 gen × 8 lineage, depth-6 corpus (GPU)"
+        >Long</button>
+      </div>
+    </div>
+
     <div class="controls">
       <button onclick={start} disabled={starting || isRunning || !runDir}>
         {starting ? "Starting…" : isRunning ? "Running…" : "Start"}
@@ -291,7 +323,7 @@
   }
   .topbar {
     display: grid;
-    grid-template-columns: 2fr 1fr 2fr auto;
+    grid-template-columns: 2fr 1fr 2fr auto auto;
     gap: 1rem;
     align-items: center;
     border: 1.5px solid var(--paper-line-strong);
@@ -299,6 +331,33 @@
     padding: 0.6em 0.9em;
     background: var(--paper-bg);
     margin-bottom: 0.8rem;
+  }
+  .presets {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.4em;
+    align-items: center;
+  }
+  .presetButtons {
+    display: flex;
+    gap: 0.2em;
+  }
+  .presetButtons button {
+    padding: 0.3em 0.7em;
+    border: 1.5px solid var(--paper-line);
+    border-radius: 4px;
+    background: var(--paper-bg);
+    font: inherit;
+    cursor: pointer;
+  }
+  .presetButtons button.active {
+    background: white;
+    border-color: var(--paper-line-strong);
+    font-weight: 600;
+  }
+  .presetButtons button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .runDir {
     display: grid;

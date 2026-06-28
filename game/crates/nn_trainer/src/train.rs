@@ -25,7 +25,7 @@ use burn::tensor::backend::AutodiffBackend;
 use burn::tensor::{ElementConversion, Tensor, TensorData};
 
 /// Hyperparameters for one training run.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TrainingConfig {
     pub learning_rate: f64,
     pub batch_size: usize,

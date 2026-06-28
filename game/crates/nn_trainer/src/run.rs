@@ -53,6 +53,7 @@ use crate::snapshot::{
     TrainingPhase, STATUS_SNAPSHOT_VERSION,
 };
 use crate::train::into_inference;
+use crate::train::TrainingConfig;
 
 use burn::backend::{Autodiff, NdArray};
 use core_engine::search::evaluator::{Evaluator, HeuristicEvaluator};
@@ -66,7 +67,7 @@ type AutodiffB = Autodiff<NdArray<f32>>;
 /// Top-level configuration for one training run. Conservative defaults wire
 /// up a tiny run that completes in seconds — production callers crank
 /// `n_generations`, `corpus_games`, and `lineage.steps_per_burst`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RunConfig {
     /// How many generations to run before stopping.
     pub n_generations: usize,
@@ -79,11 +80,21 @@ pub struct RunConfig {
     /// Model topology.
     pub model: MlpConfig,
     /// Root seed; per-generation seeds are derived deterministically.
+    /// Stored as a hex string at the wire boundary (JS can't safely
+    /// round-trip integers > 2^53) — serde sees the literal u64 here.
     pub seed_root: u64,
 }
 
 impl Default for RunConfig {
     fn default() -> Self {
+        Self::smoke()
+    }
+}
+
+impl RunConfig {
+    /// Smoke-test preset: 2 generations, depth-2 search, ~seconds total.
+    /// Same shape as the previous `Default` impl; used by CI / unit tests.
+    pub fn smoke() -> Self {
         Self {
             n_generations: 2,
             corpus_games: 4,
@@ -92,6 +103,99 @@ impl Default for RunConfig {
             model: MlpConfig::new(),
             seed_root: 0xCAFE_F00D,
         }
+    }
+
+    /// Medium preset: ~5 generations, depth-4 search, depth-N gauntlet.
+    /// Useful for laptop iteration before committing to a long GPU run.
+    pub fn medium() -> Self {
+        Self {
+            n_generations: 5,
+            corpus_games: 32,
+            corpus_max_depth: 4,
+            lineage: LineageConfig {
+                n_lineages: 4,
+                n_rounds: 5,
+                steps_per_burst: 50,
+                steps_per_candidate: 25,
+                perturb_std: 0.04,
+                training: TrainingConfig {
+                    learning_rate: 1e-3,
+                    batch_size: 64,
+                    epochs: 3,
+                },
+            },
+            model: MlpConfig::new(),
+            seed_root: 0xCAFE_F00D,
+        }
+    }
+
+    /// Long-run preset: the recommended shape for the first real GPU
+    /// session (10 generations × 8 lineages × depth-6 corpus).
+    pub fn long_run() -> Self {
+        Self {
+            n_generations: 10,
+            corpus_games: 64,
+            corpus_max_depth: 6,
+            lineage: LineageConfig {
+                n_lineages: 8,
+                n_rounds: 10,
+                steps_per_burst: 100,
+                steps_per_candidate: 50,
+                perturb_std: 0.03,
+                training: TrainingConfig {
+                    learning_rate: 1e-3,
+                    batch_size: 128,
+                    epochs: 5,
+                },
+            },
+            model: MlpConfig::new(),
+            seed_root: 0xCAFE_F00D,
+        }
+    }
+
+    /// Resolve a preset name. `None` and unknown names fall back to smoke.
+    /// Returns `Err` only for unknown names so the IPC layer can surface
+    /// a typo to the user instead of silently downgrading.
+    pub fn from_preset(name: &str) -> Result<Self, String> {
+        match name {
+            "smoke" => Ok(Self::smoke()),
+            "medium" => Ok(Self::medium()),
+            "long" => Ok(Self::long_run()),
+            other => Err(format!("unknown preset: {}", other)),
+        }
+    }
+
+    /// Validate bounds. Returns the first violation; callers surface it via
+    /// the existing `startError` path. Cheap to call.
+    pub fn validate(&self) -> Result<(), String> {
+        if !(1..=1000).contains(&self.n_generations) {
+            return Err(format!("n_generations out of [1,1000]: {}", self.n_generations));
+        }
+        if !(1..=10_000).contains(&self.corpus_games) {
+            return Err(format!("corpus_games out of [1,10000]: {}", self.corpus_games));
+        }
+        if !(1..=8).contains(&self.corpus_max_depth) {
+            return Err(format!("corpus_max_depth out of [1,8]: {}", self.corpus_max_depth));
+        }
+        if !(1..=64).contains(&self.lineage.n_lineages) {
+            return Err(format!("n_lineages out of [1,64]: {}", self.lineage.n_lineages));
+        }
+        if self.lineage.n_rounds < 1 {
+            return Err("n_rounds must be >= 1".to_string());
+        }
+        if self.lineage.steps_per_burst < 1 {
+            return Err("steps_per_burst must be >= 1".to_string());
+        }
+        if !self.lineage.perturb_std.is_finite() || self.lineage.perturb_std <= 0.0 {
+            return Err(format!("perturb_std must be finite and > 0: {}", self.lineage.perturb_std));
+        }
+        if !self.lineage.training.learning_rate.is_finite() || self.lineage.training.learning_rate <= 0.0 {
+            return Err(format!("learning_rate must be finite and > 0: {}", self.lineage.training.learning_rate));
+        }
+        if self.lineage.training.batch_size < 1 {
+            return Err("batch_size must be >= 1".to_string());
+        }
+        Ok(())
     }
 }
 
@@ -143,6 +247,37 @@ fn raters_dir(run_dir: &Path) -> PathBuf {
     run_dir.join("raters")
 }
 
+/// Cap on how many accepted predecessors Tier-2 plays the new candidate
+/// against. Older raters fall off the back; the most recent `MAX_PREDECESSORS`
+/// stay in the gauntlet pool. This bounds Tier-2 cost as the index grows.
+const MAX_PREDECESSORS: usize = 16;
+
+/// Load up to `MAX_PREDECESSORS` of the most recently accepted raters from
+/// disk as `NnEvaluator`s for Tier-2 gauntlet play. Returns an empty vec if
+/// the index is empty; callers should bootstrap against the heuristic in that
+/// case. Corrupt or missing blobs are skipped with a stderr warning rather
+/// than aborting the run.
+fn load_predecessor_evaluators(
+    index: &RaterIndex,
+    raters_dir: &Path,
+) -> Vec<NnEvaluator> {
+    let device: burn::tensor::Device<InferenceBackend> = Default::default();
+    let take_from = index.entries.len().saturating_sub(MAX_PREDECESSORS);
+    let window = &index.entries[take_from..];
+    let mut owned = Vec::with_capacity(window.len());
+    for entry in window {
+        let stem = raters_dir.join(&entry.stem);
+        match crate::persistence::load_rater::<InferenceBackend>(&stem, &device) {
+            Ok((model, _meta)) => owned.push(NnEvaluator::new(model)),
+            Err(e) => eprintln!(
+                "nn_trainer: skipping predecessor {}: {}",
+                entry.id, e
+            ),
+        }
+    }
+    owned
+}
+
 /// Run one training session into `run_dir`. Creates the directory if missing.
 ///
 /// `should_stop` is checked at every generation boundary; setting it to
@@ -155,6 +290,13 @@ pub fn run_training(
 ) -> Result<RunSummary, RunError> {
     std::fs::create_dir_all(run_dir)?;
     std::fs::create_dir_all(raters_dir(run_dir))?;
+
+    // Persist the resolved config so future inspection (and the UI's "what
+    // was this run started with?" prefill in task 3b) has an audit trail.
+    // Best-effort: a failed write must not abort the run.
+    if let Ok(json) = serde_json::to_vec_pretty(config) {
+        let _ = std::fs::write(run_dir.join("config.json"), json);
+    }
 
     let device = Default::default();
     let mut index = RaterIndex::load(&raters_dir(run_dir))?;
@@ -293,13 +435,19 @@ pub fn run_training(
         // --- Tier-2 acceptance for the best candidate ---
         let champ = &candidate_evaluators[best_idx];
 
-        // Predecessors: every accepted rater so far. If the index is empty,
+        // Predecessors: the most recently accepted raters (capped at
+        // MAX_PREDECESSORS) loaded from disk. If the index is empty,
         // bootstrap against the heuristic so Tier-2 has someone to play.
-        // Loading rater blobs into evaluators here would be expensive — for
-        // the smoke-test scale we approximate by playing only against the
-        // heuristic baseline (the index-aware version arrives once we have
-        // accepted raters in flight).
-        let predecessors: Vec<&dyn Evaluator> = vec![&baseline];
+        let owned_predecessors: Vec<NnEvaluator> =
+            load_predecessor_evaluators(&index, &raters_dir(run_dir));
+        let predecessors: Vec<&dyn Evaluator> = if owned_predecessors.is_empty() {
+            vec![&baseline]
+        } else {
+            owned_predecessors
+                .iter()
+                .map(|e| e as &dyn Evaluator)
+                .collect()
+        };
         let acceptance_seed = gen_seed.wrapping_add(0xDEAD_BEEF);
 
         let live_dir = run_dir.to_path_buf();
@@ -758,5 +906,111 @@ mod tests {
         assert_eq!(approx_ymd(730), (1972, 1, 1));
         // 1972-03-01 → 730 + 31 + 29 = 790
         assert_eq!(approx_ymd(790), (1972, 3, 1));
+    }
+
+    // --- load_predecessor_evaluators ----------------------------------
+
+    fn write_dummy_rater(raters: &Path, id: &str) -> IndexEntry {
+        use crate::model::MlpConfig;
+        use crate::persistence::{
+            save_rater, RaterMetadata, TrainingConfigSnapshot, RATER_FORMAT_VERSION,
+        };
+        let device: burn::tensor::Device<InferenceBackend> = Default::default();
+        let cfg = MlpConfig::new();
+        let model: Mlp<InferenceBackend> = cfg.clone().init(&device);
+        let stem = raters.join(id);
+        let metadata = RaterMetadata {
+            format_version: RATER_FORMAT_VERSION,
+            model_config: cfg,
+            lineage_id: id.to_string(),
+            parent_id: None,
+            training_step_count: 0,
+            perturbation_history: vec![],
+            bracket_results: Default::default(),
+            training_config: TrainingConfigSnapshot {
+                learning_rate: 1e-3,
+                batch_size: 4,
+                epochs: 1,
+            },
+            git_sha: String::new(),
+            created_at: "2026-06-28T00:00:00Z".to_string(),
+        };
+        save_rater::<InferenceBackend>(&model, &stem, &metadata)
+            .expect("save dummy rater");
+        IndexEntry {
+            id: id.to_string(),
+            stem: PathBuf::from(id),
+            accepted_at: "2026-06-28T00:00:00Z".to_string(),
+            parent_id: None,
+            bracket_results: Default::default(),
+        }
+    }
+
+    #[test]
+    fn load_predecessor_evaluators_empty_index_returns_empty() {
+        let dir = tempdir();
+        let raters = dir.join("raters");
+        std::fs::create_dir_all(&raters).unwrap();
+        let index = RaterIndex::default();
+        let out = load_predecessor_evaluators(&index, &raters);
+        assert!(out.is_empty(), "empty index → no evaluators");
+    }
+
+    #[test]
+    fn load_predecessor_evaluators_round_trips_saved_raters() {
+        let dir = tempdir();
+        let raters = dir.join("raters");
+        std::fs::create_dir_all(&raters).unwrap();
+        let mut index = RaterIndex::default();
+        for id in ["v0001", "v0002", "v0003"] {
+            let entry = write_dummy_rater(&raters, id);
+            index.entries.push(entry);
+        }
+        let out = load_predecessor_evaluators(&index, &raters);
+        assert_eq!(out.len(), 3, "all three raters must load");
+    }
+
+    #[test]
+    fn load_predecessor_evaluators_caps_at_max_predecessors() {
+        let dir = tempdir();
+        let raters = dir.join("raters");
+        std::fs::create_dir_all(&raters).unwrap();
+        let mut index = RaterIndex::default();
+        // Write MAX_PREDECESSORS + 3 raters; only the most recent
+        // MAX_PREDECESSORS should be returned.
+        let total = MAX_PREDECESSORS + 3;
+        for i in 0..total {
+            let id = format!("v{:04}", i);
+            let entry = write_dummy_rater(&raters, &id);
+            index.entries.push(entry);
+        }
+        let out = load_predecessor_evaluators(&index, &raters);
+        assert_eq!(
+            out.len(),
+            MAX_PREDECESSORS,
+            "must cap at MAX_PREDECESSORS"
+        );
+    }
+
+    #[test]
+    fn load_predecessor_evaluators_skips_corrupt_entries() {
+        let dir = tempdir();
+        let raters = dir.join("raters");
+        std::fs::create_dir_all(&raters).unwrap();
+        let mut index = RaterIndex::default();
+        // One valid rater.
+        index.entries.push(write_dummy_rater(&raters, "v0001"));
+        // One bogus index entry whose blob doesn't exist.
+        index.entries.push(IndexEntry {
+            id: "v0002".to_string(),
+            stem: PathBuf::from("v0002"),
+            accepted_at: "2026-06-28T00:00:00Z".to_string(),
+            parent_id: None,
+            bracket_results: Default::default(),
+        });
+        // One more valid rater after the gap.
+        index.entries.push(write_dummy_rater(&raters, "v0003"));
+        let out = load_predecessor_evaluators(&index, &raters);
+        assert_eq!(out.len(), 2, "corrupt entry skipped, two survive");
     }
 }
