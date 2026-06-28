@@ -743,7 +743,7 @@ fn start_training_run(
     let stop_clone = Arc::clone(&stop);
     let path = std::path::PathBuf::from(run_dir);
     let handle = std::thread::spawn(move || {
-        let _ = nn_trainer::run_training(&cfg, &path, stop_clone);
+        let _ = nn_trainer::run_training(&cfg, &path, stop_clone, nn_trainer::BackendChoice::Cpu);
     });
     inner.stop = Some(stop);
     inner.handle = Some(handle);

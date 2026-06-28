@@ -64,7 +64,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::backend::TrainingBackend as AutodiffB;
+use crate::backend::{BackendChoice, TrainingBackend as CpuTrainingBackend};
+use burn::tensor::backend::AutodiffBackend;
 
 /// Top-level configuration for one training run. Conservative defaults wire
 /// up a tiny run that completes in seconds — production callers crank
@@ -241,6 +242,10 @@ pub enum RunError {
     Matrix(MatrixError),
     Live(crate::live::LiveError),
     Io(std::io::Error),
+    /// The caller asked for a backend whose Cargo feature wasn't enabled
+    /// at build time. The IPC layer surfaces this so the UI can grey out
+    /// the unavailable option rather than failing the run mid-flight.
+    BackendUnavailable(BackendChoice),
 }
 
 impl std::fmt::Display for RunError {
@@ -252,6 +257,9 @@ impl std::fmt::Display for RunError {
             Self::Matrix(e) => write!(f, "matrix error: {}", e),
             Self::Live(e) => write!(f, "live error: {}", e),
             Self::Io(e) => write!(f, "io error: {}", e),
+            Self::BackendUnavailable(b) => write!(
+                f, "backend `{}` not available in this build", b.as_str(),
+            ),
         }
     }
 }
@@ -301,16 +309,68 @@ fn load_predecessor_evaluators(
     owned
 }
 
-/// Run one training session into `run_dir`. Creates the directory if missing.
+/// Run one training session into `run_dir`. Top-level entry point —
+/// dispatches on `BackendChoice` and runs the generic
+/// `run_training_with::<B>` against the right monomorphisation. Returns
+/// `RunError::BackendUnavailable` when the requested backend wasn't
+/// compiled into this binary.
 ///
 /// `should_stop` is checked at every generation boundary; setting it to
-/// `true` from another thread causes the run to wind down at the next safe
-/// point and return a partial summary.
+/// `true` from another thread causes the run to wind down at the next
+/// safe point and return a partial summary.
 pub fn run_training(
     config: &RunConfig,
     run_dir: &Path,
     should_stop: Arc<AtomicBool>,
+    backend: BackendChoice,
 ) -> Result<RunSummary, RunError> {
+    match backend {
+        BackendChoice::Cpu => {
+            run_training_with::<CpuTrainingBackend>(
+                config,
+                run_dir,
+                should_stop,
+                &Default::default(),
+            )
+        }
+        #[cfg(feature = "backend-wgpu")]
+        BackendChoice::Wgpu => {
+            run_training_with::<crate::backend::WgpuTrainingBackend>(
+                config,
+                run_dir,
+                should_stop,
+                &Default::default(),
+            )
+        }
+        #[cfg(feature = "backend-cuda")]
+        BackendChoice::Cuda => {
+            run_training_with::<crate::backend::CudaTrainingBackend>(
+                config,
+                run_dir,
+                should_stop,
+                &Default::default(),
+            )
+        }
+        #[allow(unreachable_patterns)]
+        other => Err(RunError::BackendUnavailable(other)),
+    }
+}
+
+/// Generic training driver. The top-level `run_training` picks `B` based
+/// on `BackendChoice` and calls in here. Persistence is cross-backend:
+/// the trained weights are written as `B::InnerBackend` blobs (so wgpu /
+/// cuda trainees still roundtrip through the same `.mpk` shape as
+/// ndarray) and `NnEvaluator` re-loads them on the always-CPU
+/// `InferenceBackend` for the search-side hot path.
+pub fn run_training_with<B: AutodiffBackend>(
+    config: &RunConfig,
+    run_dir: &Path,
+    should_stop: Arc<AtomicBool>,
+    device: &B::Device,
+) -> Result<RunSummary, RunError>
+where
+    Mlp<B>: Clone,
+{
     std::fs::create_dir_all(run_dir)?;
     std::fs::create_dir_all(raters_dir(run_dir))?;
 
@@ -321,7 +381,6 @@ pub fn run_training(
         let _ = std::fs::write(run_dir.join("config.json"), json);
     }
 
-    let device = Default::default();
     let mut index = RaterIndex::load(&raters_dir(run_dir))?;
     let mut matrix = load_matrix(run_dir)?;
     // Seed the tracker from the on-disk index so a fresh process picks up the
@@ -355,7 +414,7 @@ pub fn run_training(
         //
         // Digest / version mismatch → caller changed `RunConfig` since the
         // kill; quarantine the stale checkpoint and rebuild from scratch.
-        let resumed = match load_lineages::<AutodiffB>(&raters_dir(run_dir), &run_digest, &device) {
+        let resumed = match load_lineages::<B>(&raters_dir(run_dir), &run_digest, &device) {
             Ok(Some(state)) if state.gen_idx == gen_idx => Some(state),
             Ok(Some(_)) => {
                 let _ = quarantine_stale(&raters_dir(run_dir));
@@ -374,7 +433,7 @@ pub fn run_training(
             }
         };
 
-        let lineages: Vec<Lineage<AutodiffB>>;
+        let lineages: Vec<Lineage<B>>;
         let gen_seed: u64;
         let calibration_probes: Vec<core_engine::state::Position>;
 
@@ -415,7 +474,7 @@ pub fn run_training(
             let mut last_write = std::time::Instant::now()
                 .checked_sub(std::time::Duration::from_secs(10))
                 .unwrap_or_else(std::time::Instant::now);
-            crate::lineage::train_lineages_with_progress::<AutodiffB, _>(
+            crate::lineage::train_lineages_with_progress::<B, _>(
                 &corpus,
                 gen_seed,
                 &config.lineage,
@@ -457,7 +516,7 @@ pub fn run_training(
             // re-running corpus + training. Best-effort: a write failure
             // logs but does not abort the run (we'd rather lose the
             // resume affordance than the whole generation).
-            if let Err(e) = save_lineages::<AutodiffB>(
+            if let Err(e) = save_lineages::<B>(
                 &lineages,
                 &raters_dir(run_dir),
                 gen_idx,
@@ -477,10 +536,24 @@ pub fn run_training(
         // --- Phase: Gauntlet ---
         // Each lineage becomes an NnEvaluator candidate; the strongest at the
         // fast bracket (per Tier 1) is the one we promote into Tier 2.
+        // Cross-backend hop: `into_inference` produces `Mlp<B::InnerBackend>`,
+        // but `NnEvaluator` always runs on CPU (`InferenceBackend`). On the
+        // CPU monomorphisation the round-trip is a redundant disk write; on
+        // wgpu/cuda it's the necessary bridge. `.mpk` is wire-compatible
+        // across backends — the trick we already use in `lineage_checkpoint`.
+        let cross_dir = run_dir.join("xfer-gen");
+        std::fs::create_dir_all(&cross_dir)?;
         let candidates_inference: Vec<Mlp<InferenceBackend>> = lineages
             .iter()
-            .map(|lin| into_inference::<AutodiffB>(lin.model.clone()))
-            .collect();
+            .enumerate()
+            .map(|(i, lin)| {
+                let inner = into_inference::<B>(lin.model.clone());
+                let stem = cross_dir.join(format!("cand-{}", i));
+                let cpu_device: burn::tensor::Device<InferenceBackend> =
+                    Default::default();
+                model_to_cpu::<B>(&inner, &stem, &config.model, &cpu_device)
+            })
+            .collect::<Result<Vec<_>, RunError>>()?;
         let candidate_evaluators: Vec<NnEvaluator> = candidates_inference
             .into_iter()
             .map(NnEvaluator::new)
@@ -574,11 +647,18 @@ pub fn run_training(
             let next_n = index.entries.len() + 1;
             let rater_id = format!("v{:04}", next_n);
             let stem = raters_dir(run_dir).join(&rater_id);
-            let blob_model = into_inference::<AutodiffB>(lineages[best_idx].model.clone());
-            // save_rater expects a model with autodiff stripped — the
-            // inference-mode model is exactly that.
+            let blob_model = into_inference::<B>(lineages[best_idx].model.clone());
+            // Calibration runs on CPU, so re-load the candidate as a CPU
+            // model first. On the CPU monomorphisation this is the
+            // already-CPU candidate; on wgpu/cuda it's a cross-backend hop
+            // through `.mpk`.
+            let cpu_device: burn::tensor::Device<InferenceBackend> =
+                Default::default();
+            let cpu_calibration_model = model_to_cpu::<B>(
+                &blob_model, &cross_dir.join("calib"), &config.model, &cpu_device,
+            )?;
             let parent_id_for_entry = index.latest().map(|e| e.id.clone());
-            let mut metadata = build_metadata(
+            let mut metadata = build_metadata::<B>(
                 &config,
                 &rater_id,
                 parent_id_for_entry.clone(),
@@ -589,11 +669,14 @@ pub fn run_training(
             // hold-out probes. `None` is the sentinel for "leave at 0.0 and
             // let NnEvaluator fall back to DEFAULT_EVAL_SCALE."
             if let Some(k) = crate::calibration::calibrate_rater(
-                &blob_model, &HeuristicEvaluator, &calibration_probes,
+                &cpu_calibration_model, &HeuristicEvaluator, &calibration_probes,
             ) {
                 metadata.eval_scale = k;
             }
-            save_rater::<InferenceBackend>(&blob_model, &stem, &metadata)?;
+            // Save as the inner (non-autodiff) backend the training ran on.
+            // `.mpk` is backend-agnostic at the wire level, so the search
+            // side loads via `load_rater::<InferenceBackend>` regardless.
+            save_rater::<B::InnerBackend>(&blob_model, &stem, &metadata)?;
             let entry = IndexEntry {
                 id: rater_id.clone(),
                 stem: PathBuf::from(&rater_id),
@@ -617,6 +700,9 @@ pub fn run_training(
         if let Err(e) = clear_lineages(&raters_dir(run_dir)) {
             eprintln!("nn_trainer: lineage checkpoint clear failed: {}", e);
         }
+        // Clean up the per-generation cross-backend transfer directory.
+        // Idempotent: missing dir is a no-op.
+        let _ = std::fs::remove_dir_all(&cross_dir);
 
         summary.generations_completed += 1;
     }
@@ -849,13 +935,54 @@ fn write_live(
     let _ = bracket; // bracket reserved for future header rendering
 }
 
+/// Cross-backend model hop: persist `Mlp<B::InnerBackend>` to `.mpk`,
+/// reload as `Mlp<InferenceBackend>` (CPU). Burn's `NamedMpkFileRecorder`
+/// is wire-compatible across backends, so any `Record` written from a
+/// GPU backend rehydrates correctly into the CPU skeleton. On the CPU
+/// monomorphisation (`B::InnerBackend == InferenceBackend`) this is a
+/// redundant disk write — but the per-generation cost (≤ N_lineages
+/// writes) is negligible next to gradient descent, and the alternative
+/// (specialisation) isn't available in stable Rust.
+fn model_to_cpu<B: AutodiffBackend>(
+    model: &Mlp<B::InnerBackend>,
+    stem: &Path,
+    model_config: &MlpConfig,
+    cpu_device: &burn::tensor::Device<InferenceBackend>,
+) -> Result<Mlp<InferenceBackend>, RunError> {
+    // Minimal metadata stub; load_rater needs only the format-version and
+    // model_config fields. Everything else is round-trip cruft.
+    let stub = RaterMetadata {
+        format_version: RATER_FORMAT_VERSION,
+        model_config: model_config.clone(),
+        lineage_id: String::new(),
+        parent_id: None,
+        training_step_count: 0,
+        perturbation_history: Vec::new(),
+        bracket_results: Default::default(),
+        training_config: TrainingConfigSnapshot {
+            learning_rate: 0.0,
+            batch_size: 0,
+            epochs: 0,
+        },
+        git_sha: String::new(),
+        created_at: String::new(),
+        eval_scale: 0.0,
+    };
+    if let Some(parent) = stem.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    save_rater::<B::InnerBackend>(model, stem, &stub)?;
+    let (cpu_model, _) = crate::persistence::load_rater::<InferenceBackend>(stem, cpu_device)?;
+    Ok(cpu_model)
+}
+
 /// Build metadata for a freshly-accepted rater.
-fn build_metadata(
+fn build_metadata<B: AutodiffBackend>(
     config: &RunConfig,
     rater_id: &str,
     parent_id: Option<String>,
     report: &AcceptanceReport,
-    lineage: &Lineage<AutodiffB>,
+    lineage: &Lineage<B>,
 ) -> RaterMetadata {
     let mut bracket_results = std::collections::BTreeMap::new();
     bracket_results.insert("fast".to_string(), to_win_rate(report.aggregate.fast));
@@ -973,7 +1100,7 @@ mod tests {
             seed_root: 1,
         };
         let stop = Arc::new(AtomicBool::new(false));
-        let summary = run_training(&cfg, &dir, stop).expect("orchestrator runs");
+        let summary = run_training(&cfg, &dir, stop, BackendChoice::Cpu).expect("orchestrator runs");
 
         // Status snapshot present + parses + final phase is Idle.
         let status = crate::snapshot::read_snapshot(&dir)
@@ -995,7 +1122,7 @@ mod tests {
         let dir = tempdir();
         let cfg = RunConfig::default();
         let stop = Arc::new(AtomicBool::new(true));
-        let summary = run_training(&cfg, &dir, stop).expect("orchestrator runs");
+        let summary = run_training(&cfg, &dir, stop, BackendChoice::Cpu).expect("orchestrator runs");
         assert!(summary.stopped_early, "should stop immediately");
         assert_eq!(summary.generations_completed, 0);
         // Even with no work done, a final idle snapshot must exist.

@@ -31,6 +31,7 @@ pub mod snapshot;
 pub mod train;
 
 pub use encoding::{encode_position, INPUT_DIM};
+pub use backend::BackendChoice;
 pub use gauntlet::{
     mirrored_bo3, play_match, play_match_with_callback, tier1_fitness, tier2_acceptance,
     AcceptanceReport, Bracket, BracketResults, ChampionTracker,
