@@ -10,10 +10,13 @@ description = "NN position-rater trainer for (GAME NAME). Native-only, rayon-par
 crate-type = ["rlib"]
 
 [features]
-# Exactly one backend feature must be enabled (enforced by compile_error!
-# guards in src/backend.rs). They are listed as Cargo features rather than
-# a runtime selector because burn pins the backend in its type system.
-default = ["backend-ndarray"]
+# Backend features are additive: enabling several gives the resulting
+# binary the runtime choice between them via `BackendChoice`. The default
+# release binary bundles ndarray (CPU) + wgpu (Metal / Vulkan / DX12).
+# `backend-cuda` is opt-in and produces a separate Linux-only artefact —
+# `burn-cuda` requires CUDA Toolkit 12.x at build time and won't compile
+# on Mac.
+default = ["backend-ndarray", "backend-wgpu"]
 backend-ndarray = ["burn/ndarray"]
 backend-wgpu    = ["burn/wgpu"]
 backend-cuda    = ["burn/cuda"]
