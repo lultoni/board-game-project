@@ -29,15 +29,16 @@
 use crate::encoding::{encode_position, INPUT_DIM};
 use crate::model::Mlp;
 
-use burn::backend::NdArray;
 use burn::tensor::{Device, Tensor, TensorData};
 use core_engine::search::evaluator::{EvalBreakdown, Evaluator, MATE_SCORE};
 use core_engine::state::Position;
 use core_engine::state::position::GameResult;
 
 /// Inference backend. No autograd — eval is read-only and burn's autograd
-/// wrapper carries a non-trivial cost per forward call.
-pub type InferenceBackend = NdArray<f32>;
+/// wrapper carries a non-trivial cost per forward call. The concrete type is
+/// selected at build time via the `backend-*` Cargo feature (see
+/// `crate::backend`).
+pub use crate::backend::InferenceBackend;
 
 /// Centipawn-scale magnitude for `forward_output == 1.0`. See module docs.
 pub const EVAL_SCALE: f32 = 3000.0;

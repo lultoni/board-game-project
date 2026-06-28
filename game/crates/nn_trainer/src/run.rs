@@ -55,14 +55,13 @@ use crate::snapshot::{
 use crate::train::into_inference;
 use crate::train::TrainingConfig;
 
-use burn::backend::{Autodiff, NdArray};
 use core_engine::search::evaluator::{Evaluator, HeuristicEvaluator};
 use core_engine::state::fen;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-type AutodiffB = Autodiff<NdArray<f32>>;
+use crate::backend::TrainingBackend as AutodiffB;
 
 /// Top-level configuration for one training run. Conservative defaults wire
 /// up a tiny run that completes in seconds — production callers crank
@@ -73,8 +72,11 @@ pub struct RunConfig {
     pub n_generations: usize,
     /// Games of self-play per generation for the corpus.
     pub corpus_games: usize,
-    /// Depth cap for the self-play search (corpus generation only).
-    pub corpus_max_depth: u8,
+    /// Search depth for self-play corpus generation. The two depth knobs
+    /// are kept separate: the corpus is *depth-bounded* so labels are
+    /// reproducible across hosts, while the gauntlet is *time-bounded* so
+    /// brackets compare like thinking budgets.
+    pub corpus_search_depth: u8,
     /// Lineage / training hyperparameters (delegated).
     pub lineage: LineageConfig,
     /// Model topology.
@@ -98,7 +100,7 @@ impl RunConfig {
         Self {
             n_generations: 2,
             corpus_games: 4,
-            corpus_max_depth: 2,
+            corpus_search_depth: 2,
             lineage: LineageConfig::default(),
             model: MlpConfig::new(),
             seed_root: 0xCAFE_F00D,
@@ -111,7 +113,7 @@ impl RunConfig {
         Self {
             n_generations: 5,
             corpus_games: 32,
-            corpus_max_depth: 4,
+            corpus_search_depth: 4,
             lineage: LineageConfig {
                 n_lineages: 4,
                 n_rounds: 5,
@@ -135,7 +137,7 @@ impl RunConfig {
         Self {
             n_generations: 10,
             corpus_games: 64,
-            corpus_max_depth: 6,
+            corpus_search_depth: 6,
             lineage: LineageConfig {
                 n_lineages: 8,
                 n_rounds: 10,
@@ -174,8 +176,8 @@ impl RunConfig {
         if !(1..=10_000).contains(&self.corpus_games) {
             return Err(format!("corpus_games out of [1,10000]: {}", self.corpus_games));
         }
-        if !(1..=8).contains(&self.corpus_max_depth) {
-            return Err(format!("corpus_max_depth out of [1,8]: {}", self.corpus_max_depth));
+        if !(1..=8).contains(&self.corpus_search_depth) {
+            return Err(format!("corpus_search_depth out of [1,8]: {}", self.corpus_search_depth));
         }
         if !(1..=64).contains(&self.lineage.n_lineages) {
             return Err(format!("n_lineages out of [1,64]: {}", self.lineage.n_lineages));
@@ -527,7 +529,7 @@ fn build_corpus(config: &RunConfig, gen_seed: u64) -> Vec<LabelledPosition> {
         gen_seed,
         &HeuristicEvaluator,
         &HeuristicEvaluator,
-        config.corpus_max_depth,
+        config.corpus_search_depth,
     )
 }
 
@@ -847,7 +849,7 @@ mod tests {
         let cfg = RunConfig {
             n_generations: 1,
             corpus_games: 2,
-            corpus_max_depth: 2,
+            corpus_search_depth: 2,
             lineage: LineageConfig {
                 n_lineages: 2,
                 n_rounds: 1,

@@ -11,6 +11,7 @@
 //! Current sub-slice 4a: input encoding + MLP topology + forward pass.
 //! Training loop, self-play, gauntlet are not yet implemented.
 
+pub mod backend;
 pub mod batch;
 pub mod encoding;
 pub mod gauntlet;
@@ -67,11 +68,9 @@ mod integration_tests {
     //! mismatches between the encoder and the topology default.
 
     use super::*;
-    use burn::backend::NdArray;
+    use crate::backend::InferenceBackend as B;
     use burn::tensor::{Tensor, TensorData};
     use core_engine::state::Position;
-
-    type B = NdArray<f32>;
 
     #[test]
     fn end_to_end_forward_on_stack_m_start_position() {

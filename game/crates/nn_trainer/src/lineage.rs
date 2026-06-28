@@ -322,11 +322,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::TrainingBackend as B;
     use crate::batch::generate_corpus;
-    use burn::backend::{Autodiff, NdArray};
     use core_engine::search::evaluator::HeuristicEvaluator;
-
-    type B = Autodiff<NdArray<f32>>;
 
     #[test]
     fn perturbation_changes_outputs_but_preserves_shape() {

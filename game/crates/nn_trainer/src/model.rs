@@ -160,10 +160,8 @@ impl LayerStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::NdArray;
+    use crate::backend::InferenceBackend as B;
     use burn::tensor::TensorData;
-
-    type B = NdArray<f32>;
 
     #[test]
     fn default_config_has_v1_shape() {

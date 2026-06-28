@@ -224,12 +224,10 @@ pub fn load_rater<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::InferenceBackend as B;
     use crate::encoding::{encode_position, INPUT_DIM};
-    use burn::backend::NdArray;
     use burn::tensor::{Tensor, TensorData};
     use core_engine::state::Position;
-
-    type B = NdArray<f32>;
 
     fn sample_metadata() -> RaterMetadata {
         RaterMetadata {

@@ -124,12 +124,10 @@ pub fn into_inference<B: AutodiffBackend>(model: Mlp<B>) -> Mlp<B::InnerBackend>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::{InferenceBackend as Inf, TrainingBackend as B};
     use crate::batch::generate_corpus;
     use crate::model::MlpConfig;
-    use burn::backend::{Autodiff, NdArray};
     use core_engine::search::evaluator::HeuristicEvaluator;
-
-    type B = Autodiff<NdArray<f32>>;
 
     #[test]
     fn batch_tensor_shapes() {
@@ -177,12 +175,12 @@ mod tests {
         let device = Default::default();
         let cfg = MlpConfig::new();
         let model: Mlp<B> = cfg.init(&device);
-        let inference_model: Mlp<NdArray<f32>> = into_inference(model);
+        let inference_model: Mlp<Inf> = into_inference(model);
 
         // Forward pass on the inference model must produce a finite scalar.
         let zeros = vec![0.0_f32; INPUT_DIM];
         let data = TensorData::new(zeros, [1, INPUT_DIM]);
-        let input: Tensor<NdArray<f32>, 2> = Tensor::from_data(data, &device);
+        let input: Tensor<Inf, 2> = Tensor::from_data(data, &device);
         let out = inference_model.forward(input);
         let v: Vec<f32> = out.into_data().to_vec().unwrap();
         assert_eq!(v.len(), 1);
