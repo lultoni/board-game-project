@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "(game-name) CUDA",
+  "identifier": "com.elias.gamename.cuda",
+  "bundle": {
+    "targets": ["appimage"]
+  }
+}
