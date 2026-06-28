@@ -72,6 +72,7 @@ class FakeEngine implements EngineClient {
   async latestPlyJson(): Promise<string | null> { return null; }
   async finaliseLog(): Promise<void> { /* noop */ }
   async dispose(): Promise<void> { /* noop */ }
+  async setAiEvaluator(): Promise<void> { /* noop */ }
 
   // Deterministic Zobrist from applied history: 1 + 31*sum of raws.
   private computeZobrist(): bigint {

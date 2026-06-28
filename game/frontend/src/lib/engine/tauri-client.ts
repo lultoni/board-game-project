@@ -221,4 +221,17 @@ export class TauriClient implements EngineClient {
     await invoke<boolean>("drop_engine", { handle: this.#handle });
     this.#handle = 0;
   }
+
+  async setAiEvaluator(
+    source: "heuristic" | "run" | "blessed",
+    id?: string | null,
+    runDir?: string | null,
+  ): Promise<void> {
+    await invoke<void>("set_ai_evaluator", {
+      handle: this.#requireHandle(),
+      source,
+      id: id ?? null,
+      runDir: runDir ?? null,
+    });
+  }
 }

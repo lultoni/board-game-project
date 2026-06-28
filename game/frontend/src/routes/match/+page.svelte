@@ -22,6 +22,7 @@
     modeFromSeats,
     resetMatchState,
     buildEngineConfigJson,
+    applyEvaluatorSettings,
     startTelemetrySession,
     recordPly,
     finalizeTelemetrySession,
@@ -518,6 +519,7 @@
       } else {
         await eng.createEngine();
       }
+      await applyEvaluatorSettings(eng);
       await renderer.resyncFromEngine();
       lastPhaseKey = phaseKey();
       match.mode = wasMultiplayer ? "multiplayer" : modeFromSeats(match.side);

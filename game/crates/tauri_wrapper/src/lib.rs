@@ -614,6 +614,118 @@ fn inspect_rater(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Rater discovery + per-seat evaluator selection.
+// ---------------------------------------------------------------------------
+
+/// `game/raters/blessed/` — the curated "good enough to play against" raters
+/// promoted out of one or more `runs/active/` directories. May not exist on
+/// fresh checkouts.
+fn blessed_raters_dir() -> std::path::PathBuf {
+    let crate_dir = env!("CARGO_MANIFEST_DIR");
+    let game_dir = std::path::Path::new(crate_dir)
+        .parent()
+        .and_then(|p| p.parent());
+    match game_dir {
+        Some(g) => g.join("raters").join("blessed"),
+        None => std::path::PathBuf::from("raters/blessed"),
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RaterListing {
+    /// `"run"` (from `<run_dir>/raters/`) or `"blessed"` (from `game/raters/
+    /// blessed/`). Used in `set_ai_evaluator` to disambiguate.
+    pub source: String,
+    pub id: String,
+    pub accepted_at: String,
+    pub parent_id: Option<String>,
+}
+
+/// Walks both the active run dir's `raters/` and `game/raters/blessed/`,
+/// returning the union as a single list. Empty directories produce an empty
+/// list rather than an error so the UI can render a friendly "no raters yet"
+/// state without distinguishing "missing dir" from "empty dir".
+#[tauri::command]
+fn list_available_raters(run_dir: Option<String>) -> Result<Vec<RaterListing>, String> {
+    let mut out: Vec<RaterListing> = Vec::new();
+    let run_path = run_dir
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(default_run_dir_path);
+    let run_raters = run_path.join("raters");
+    if run_raters.is_dir() {
+        match nn_trainer::RaterIndex::load(&run_raters) {
+            Ok(idx) => {
+                for e in &idx.entries {
+                    out.push(RaterListing {
+                        source: "run".to_string(),
+                        id: e.id.clone(),
+                        accepted_at: e.accepted_at.clone(),
+                        parent_id: e.parent_id.clone(),
+                    });
+                }
+            }
+            Err(e) => return Err(format!("run raters: {e}")),
+        }
+    }
+    let blessed = blessed_raters_dir();
+    if blessed.is_dir() {
+        match nn_trainer::RaterIndex::load(&blessed) {
+            Ok(idx) => {
+                for e in &idx.entries {
+                    out.push(RaterListing {
+                        source: "blessed".to_string(),
+                        id: e.id.clone(),
+                        accepted_at: e.accepted_at.clone(),
+                        parent_id: e.parent_id.clone(),
+                    });
+                }
+            }
+            Err(e) => return Err(format!("blessed raters: {e}")),
+        }
+    }
+    Ok(out)
+}
+
+/// Install a per-seat evaluator on an existing engine handle. `source` is one
+/// of `"heuristic"`, `"run"`, or `"blessed"`. For `"run"` / `"blessed"`, `id`
+/// names a rater under the appropriate index; the rater is loaded, wrapped in
+/// an `NnEvaluator` (with the sidecar's calibrated `eval_scale`), and
+/// installed via `Match::set_evaluator`. For `"heuristic"`, `id` is ignored.
+///
+/// Errors leave the match's existing evaluator untouched.
+#[tauri::command]
+fn set_ai_evaluator(
+    handle: u64,
+    source: String,
+    id: Option<String>,
+    run_dir: Option<String>,
+    registry: State<'_, EngineRegistry>,
+) -> Result<(), String> {
+    let evaluator: Box<dyn core_engine::search::evaluator::Evaluator + Send> = match source.as_str() {
+        "heuristic" => Box::new(core_engine::search::evaluator::HeuristicEvaluator),
+        "run" | "blessed" => {
+            let id = id.ok_or_else(|| "rater id required for non-heuristic source".to_string())?;
+            let dir = if source == "run" {
+                run_dir
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(default_run_dir_path)
+                    .join("raters")
+            } else {
+                blessed_raters_dir()
+            };
+            let stem = dir.join(&id);
+            let nn = nn_trainer::NnEvaluator::load_from_stem(&stem)
+                .map_err(|e| format!("load rater {id}: {e}"))?;
+            Box::new(nn)
+        }
+        other => return Err(format!("unknown evaluator source: {other}")),
+    };
+    registry.with(handle, |entry| entry.m.set_evaluator(evaluator))?;
+    Ok(())
+}
+
 #[tauri::command]
 fn start_training_run(
     run_dir: String,
@@ -701,6 +813,8 @@ pub fn run() {
             read_rater_index,
             read_gauntlet_matrix,
             inspect_rater,
+            list_available_raters,
+            set_ai_evaluator,
             start_training_run,
             stop_training_run,
         ])

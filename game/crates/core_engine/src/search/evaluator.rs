@@ -139,7 +139,13 @@ pub fn evaluate(pos: &Position) -> i32 {
 /// Two impls are planned: `HeuristicEvaluator` wraps today's hand-coded eval
 /// (zero-behaviour-change default); a future `NnEvaluator` will host the
 /// trained position rater (`design/inbox/digital/nn-rater-plan.md`).
-pub trait Evaluator: Sync {
+///
+/// **Send-only** bound: the search itself is single-threaded but evaluators
+/// are owned by `Match` (one per AI seat), which lives on a worker thread
+/// and gets moved between thread-pool tasks via `tauri::async_runtime`.
+/// Code that needs to share an evaluator across threads (e.g. the tier-2
+/// gauntlet's predecessor list) re-asserts `+ Sync` locally.
+pub trait Evaluator: Send {
     fn evaluate(&self, pos: &Position) -> i32;
     fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown;
 }

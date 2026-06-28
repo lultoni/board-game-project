@@ -13,7 +13,7 @@
     type PositionView,
     type EngineClient,
   } from "$lib/engine";
-  import { buildEngineConfigJson } from "$lib/state/match-store.svelte";
+  import { buildEngineConfigJson, applyEvaluatorSettings } from "$lib/state/match-store.svelte";
   import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
   import { t } from "$lib/state/i18n";
   import {
@@ -573,6 +573,7 @@
         parsed.config = newCfg;
         const newSnap = JSON.stringify(parsed);
         await e.restoreFromSnapshot(newSnap);
+        await applyEvaluatorSettings(e);
         // Probe phase: if the snapshot reflects a still-mid-draft state,
         // KEEP the engine and fall through to the normal draft mount path
         // (skipping createEngineWithDraft). This is the resume path from
@@ -633,6 +634,7 @@
       eng = await getEngine();
       const configJson = buildEngineConfigJson(match.side);
       await eng.createEngineWithDraft(configJson);
+      await applyEvaluatorSettings(eng);
       await refresh();
       booted = true;
       // Start a telemetry session so draft plies are recorded into the same

@@ -53,7 +53,8 @@ use serde::{Serialize, Deserialize};
 
 use crate::game_logic::action::{Action, Undo};
 use crate::game_logic::{generator, make_unmake};
-use crate::search::alpha_beta::{find_best, SearchResult};
+use crate::search::alpha_beta::{find_best_with_evaluator, SearchResult};
+use crate::search::evaluator::{Evaluator, HeuristicEvaluator};
 use crate::search::transposition::TranspositionTable;
 use crate::state::Position;
 use crate::state::position::{GameResult, Phase, Player};
@@ -214,6 +215,12 @@ pub struct Match {
     /// so we don't pay a branch on every constructor.
     #[allow(dead_code)]
     started_at_unix_ms: u64,
+    /// Position evaluator used by `request_ai_move*`. Defaults to
+    /// `HeuristicEvaluator`; callers (e.g. the Tauri layer wiring an
+    /// `NnEvaluator`) install a replacement via `set_evaluator`. Not
+    /// serialised in `Snapshot` — restoring from snapshot reverts to the
+    /// default heuristic.
+    evaluator: Box<dyn Evaluator + Send>,
 }
 
 impl Match {
@@ -241,6 +248,7 @@ impl Match {
             start_fen,
             log,
             started_at_unix_ms: now_unix_ms,
+            evaluator: Box::new(HeuristicEvaluator),
         }
     }
 
@@ -264,6 +272,7 @@ impl Match {
             start_fen,
             log,
             started_at_unix_ms: now_unix_ms,
+            evaluator: Box::new(HeuristicEvaluator),
         }
     }
 
@@ -292,6 +301,7 @@ impl Match {
             start_fen,
             log,
             started_at_unix_ms: now_unix_ms,
+            evaluator: Box::new(HeuristicEvaluator),
         }
     }
 
@@ -378,6 +388,7 @@ impl Match {
             start_fen: s.start_fen,
             log,
             started_at_unix_ms: now_unix_ms,
+            evaluator: Box::new(HeuristicEvaluator),
         })
     }
 
@@ -472,6 +483,13 @@ impl Match {
         Ok(())
     }
 
+    /// Install a new position evaluator. The replacement is consulted by
+    /// every subsequent `request_ai_move*` call until replaced again. Used
+    /// by the Tauri layer to swap in an `NnEvaluator` for an AI seat.
+    pub fn set_evaluator(&mut self, e: Box<dyn Evaluator + Send>) {
+        self.evaluator = e;
+    }
+
     /// Run the search for the current side WITHOUT applying the result.
     /// Useful for HvAI "show me the AI's pick before I commit it" flows.
     pub fn request_ai_move(&mut self) -> Result<SearchResult, AiError> {
@@ -488,8 +506,8 @@ impl Match {
             Player::P1 => self.config.p1_ai,
             Player::P2 => self.config.p2_ai,
         };
-        Ok(find_best(&mut self.position, &mut self.tt,
-                     budget.time_limit_ms, budget.max_depth))
+        Ok(find_best_with_evaluator(&mut self.position, &mut self.tt,
+                     budget.time_limit_ms, budget.max_depth, &*self.evaluator))
     }
 
     /// Wrap the preset-driven draft turn (if any) in a `SearchResult`. Score
@@ -527,8 +545,8 @@ impl Match {
         } else {
             budget
         };
-        Ok(find_best(&mut self.position, &mut self.tt,
-                     budget.time_limit_ms, budget.max_depth))
+        Ok(find_best_with_evaluator(&mut self.position, &mut self.tt,
+                     budget.time_limit_ms, budget.max_depth, &*self.evaluator))
     }
 
     /// Inspector variant for "infinite iterative deepening": runs the
@@ -540,7 +558,7 @@ impl Match {
         if self.position.current_phase == Phase::Draft {
             return Ok(self.draft_preset_search_result());
         }
-        Ok(find_best(&mut self.position, &mut self.tt, 0, max_depth.max(1)))
+        Ok(find_best_with_evaluator(&mut self.position, &mut self.tt, 0, max_depth.max(1), &*self.evaluator))
     }
 
     /// Convenience for AIvAI loops: run search and auto-apply the chosen

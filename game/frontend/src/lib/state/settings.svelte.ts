@@ -26,6 +26,19 @@ export interface Settings {
   /** Delay between AI plies in AIvAI mode (ms). Frontend-paced; engine does
    *  not sleep on its own. */
   aivaiStepDelayMs: number;
+  /** Per-seat evaluator pick. `source` distinguishes built-in heuristic vs
+   *  a trained rater from a run dir (`"run"`) or the curated `"blessed"`
+   *  collection. `id` names the rater within that source; ignored when
+   *  source is `"heuristic"`. */
+  p1Evaluator: EvaluatorChoice;
+  p2Evaluator: EvaluatorChoice;
+}
+
+export type EvaluatorSource = "heuristic" | "run" | "blessed";
+
+export interface EvaluatorChoice {
+  source: EvaluatorSource;
+  id: string | null;
 }
 
 const DEFAULTS: Settings = {
@@ -40,7 +53,11 @@ const DEFAULTS: Settings = {
   p1MaxDepth: 6,
   p2MaxDepth: 6,
   aivaiStepDelayMs: 300,
+  p1Evaluator: { source: "heuristic", id: null },
+  p2Evaluator: { source: "heuristic", id: null },
 };
+
+const EVAL_SOURCES: ReadonlyArray<EvaluatorSource> = ["heuristic", "run", "blessed"];
 
 const LOCALES: ReadonlyArray<Settings["locale"]> = ["en", "de"];
 
@@ -68,6 +85,19 @@ function pickLocale(v: unknown, fallback: Settings["locale"]): Settings["locale"
     ? (v as Settings["locale"])
     : fallback;
 }
+function pickEvaluator(v: unknown, fallback: EvaluatorChoice): EvaluatorChoice {
+  if (!v || typeof v !== "object") return { ...fallback };
+  const o = v as Record<string, unknown>;
+  const source: EvaluatorSource =
+    typeof o.source === "string" && (EVAL_SOURCES as readonly string[]).includes(o.source)
+      ? (o.source as EvaluatorSource)
+      : fallback.source;
+  const id = typeof o.id === "string" && o.id.length > 0 ? o.id : null;
+  // Heuristic ignores id; non-heuristic without an id falls back.
+  if (source === "heuristic") return { source: "heuristic", id: null };
+  if (id === null) return { ...fallback };
+  return { source, id };
+}
 
 function validate(raw: unknown): Settings {
   if (!raw || typeof raw !== "object") return { ...DEFAULTS };
@@ -84,6 +114,8 @@ function validate(raw: unknown): Settings {
     p1MaxDepth: pickPosInt(r.p1MaxDepth, DEFAULTS.p1MaxDepth),
     p2MaxDepth: pickPosInt(r.p2MaxDepth, DEFAULTS.p2MaxDepth),
     aivaiStepDelayMs: pickFiniteNonNeg(r.aivaiStepDelayMs, DEFAULTS.aivaiStepDelayMs),
+    p1Evaluator: pickEvaluator(r.p1Evaluator, DEFAULTS.p1Evaluator),
+    p2Evaluator: pickEvaluator(r.p2Evaluator, DEFAULTS.p2Evaluator),
   };
 }
 
@@ -127,6 +159,8 @@ export function initSettingsPersistence() {
     void settings.p1MaxDepth;
     void settings.p2MaxDepth;
     void settings.aivaiStepDelayMs;
+    void settings.p1Evaluator;
+    void settings.p2Evaluator;
     persist();
   });
 }

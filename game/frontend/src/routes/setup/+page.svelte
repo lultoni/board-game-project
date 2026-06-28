@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
+  import { invoke } from "@tauri-apps/api/core";
   import { t } from "$lib/state/i18n";
   import {
     match,
@@ -10,9 +11,10 @@
     type DraftMode,
     type PreMadeLoadoutId,
   } from "$lib/state/match-store.svelte";
-  import { settings } from "$lib/state/settings.svelte";
+  import { settings, type EvaluatorChoice, type EvaluatorSource } from "$lib/state/settings.svelte";
   import { isPreMadeLoadoutReady } from "$lib/state/draft";
   import { disconnect as mpDisconnect, mpState } from "$lib/multiplayer.svelte";
+  import { getEngine } from "$lib/engine";
 
   // /setup/ is reached two ways:
   //  1. Local-play entry from the main menu (no MP state should be live).
@@ -87,6 +89,58 @@
       await goto("../draft/");
     }
   }
+
+  // Per-seat evaluator picker. WASM build doesn't bundle burn, so the picker
+  // hides itself unless the running engine is the Tauri client. Raters get
+  // listed lazily: `default_run_dir` resolves the repo-relative active run,
+  // then `list_available_raters` walks both that dir and `raters/blessed/`.
+  interface RaterListing { source: EvaluatorSource; id: string; acceptedAt: number; parentId: string | null; }
+  let isTauri = $state(false);
+  let availableRaters = $state<RaterListing[]>([]);
+  let raterLoadError = $state<string | null>(null);
+  onMount(async () => {
+    try {
+      const eng = await getEngine();
+      isTauri = eng.constructor.name === "TauriClient";
+    } catch {
+      isTauri = false;
+    }
+    if (!isTauri) return;
+    try {
+      const runDir = await invoke<string>("default_run_dir");
+      const raw = await invoke<Array<{ source: string; id: string; accepted_at: number; parent_id: string | null }>>(
+        "list_available_raters",
+        { runDir },
+      );
+      availableRaters = raw.map((r) => ({
+        source: r.source as EvaluatorSource,
+        id: r.id,
+        acceptedAt: r.accepted_at,
+        parentId: r.parent_id,
+      }));
+    } catch (e) {
+      raterLoadError = String(e);
+    }
+  });
+
+  const ratersBySource = $derived<Record<EvaluatorSource, RaterListing[]>>({
+    heuristic: [],
+    run: availableRaters.filter((r) => r.source === "run"),
+    blessed: availableRaters.filter((r) => r.source === "blessed"),
+  });
+
+  function pickEval(seat: "p1" | "p2", choice: EvaluatorChoice) {
+    if (seat === "p1") settings.p1Evaluator = choice;
+    else                settings.p2Evaluator = choice;
+  }
+  function onSourceChange(seat: "p1" | "p2", source: EvaluatorSource) {
+    if (source === "heuristic") {
+      pickEval(seat, { source: "heuristic", id: null });
+    } else {
+      const first = ratersBySource[source][0]?.id ?? null;
+      pickEval(seat, { source, id: first });
+    }
+  }
 </script>
 
 <main>
@@ -154,6 +208,34 @@
             />
             <output>{settings.p1MaxDepth}</output>
           </label>
+          {#if isTauri}
+            <label class="row">
+              <span class="rowLabel">P1 · Evaluator</span>
+              <select
+                value={settings.p1Evaluator.source}
+                onchange={(e) =>
+                  onSourceChange("p1", (e.currentTarget as HTMLSelectElement).value as EvaluatorSource)}
+              >
+                <option value="heuristic">Heuristic</option>
+                <option value="run" disabled={ratersBySource.run.length === 0}>Run</option>
+                <option value="blessed" disabled={ratersBySource.blessed.length === 0}>Blessed</option>
+              </select>
+              {#if settings.p1Evaluator.source !== "heuristic"}
+                <select
+                  value={settings.p1Evaluator.id ?? ""}
+                  onchange={(e) =>
+                    pickEval("p1", {
+                      source: settings.p1Evaluator.source,
+                      id: (e.currentTarget as HTMLSelectElement).value || null,
+                    })}
+                >
+                  {#each ratersBySource[settings.p1Evaluator.source] as r}
+                    <option value={r.id}>{r.id}</option>
+                  {/each}
+                </select>
+              {/if}
+            </label>
+          {/if}
         {/if}
         {#if p2 === "ai"}
           <label class="row">
@@ -178,6 +260,34 @@
             />
             <output>{settings.p2MaxDepth}</output>
           </label>
+          {#if isTauri}
+            <label class="row">
+              <span class="rowLabel">P2 · Evaluator</span>
+              <select
+                value={settings.p2Evaluator.source}
+                onchange={(e) =>
+                  onSourceChange("p2", (e.currentTarget as HTMLSelectElement).value as EvaluatorSource)}
+              >
+                <option value="heuristic">Heuristic</option>
+                <option value="run" disabled={ratersBySource.run.length === 0}>Run</option>
+                <option value="blessed" disabled={ratersBySource.blessed.length === 0}>Blessed</option>
+              </select>
+              {#if settings.p2Evaluator.source !== "heuristic"}
+                <select
+                  value={settings.p2Evaluator.id ?? ""}
+                  onchange={(e) =>
+                    pickEval("p2", {
+                      source: settings.p2Evaluator.source,
+                      id: (e.currentTarget as HTMLSelectElement).value || null,
+                    })}
+                >
+                  {#each ratersBySource[settings.p2Evaluator.source] as r}
+                    <option value={r.id}>{r.id}</option>
+                  {/each}
+                </select>
+              {/if}
+            </label>
+          {/if}
         {/if}
         {#if isAivAi}
           <label class="row">

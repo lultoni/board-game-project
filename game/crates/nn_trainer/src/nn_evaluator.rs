@@ -92,6 +92,18 @@ impl NnEvaluator {
     /// surfaces that want to display the fitted value.
     pub fn scale(&self) -> f32 { self.scale }
 
+    /// Load a rater from disk and wrap it in an `NnEvaluator` with the
+    /// calibrated scale from its sidecar (or `DEFAULT_EVAL_SCALE` when the
+    /// sidecar's `eval_scale == 0.0`). Convenience for the Tauri layer so it
+    /// doesn't have to name burn's `Device` type directly.
+    pub fn load_from_stem(
+        stem: &std::path::Path,
+    ) -> Result<Self, crate::persistence::PersistenceError> {
+        let device: Device<InferenceBackend> = Default::default();
+        let (model, meta) = crate::persistence::load_rater::<InferenceBackend>(stem, &device)?;
+        Ok(Self::with_scale(model, meta.eval_scale))
+    }
+
     /// Single forward pass. Returns the raw scalar from the model — bench /
     /// debug only. Production callers go through `Evaluator::evaluate`.
     pub fn forward_raw(&self, pos: &Position) -> f32 {

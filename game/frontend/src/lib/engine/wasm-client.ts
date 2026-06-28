@@ -142,4 +142,7 @@ export class WasmClient implements EngineClient {
     this.#markDead("engine worker disposed");
     this.#worker.terminate();
   }
+  async setAiEvaluator(): Promise<void> {
+    // WASM build doesn't bundle burn; NN inference is Tauri-only.
+  }
 }

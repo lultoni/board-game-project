@@ -17,7 +17,7 @@
     runAiCall,
     AiCallError,
   } from "$lib/engine";
-  import { buildEngineConfigJson } from "$lib/state/match-store.svelte";
+  import { buildEngineConfigJson, applyEvaluatorSettings } from "$lib/state/match-store.svelte";
   import { match } from "$lib/state/match-store.svelte";
   import {
     moveTargetsFor,
@@ -154,6 +154,7 @@
       const cfgObj = JSON.parse(configJson);
       const snap = JSON.stringify({ start_fen: fen, actions: [], config: cfgObj });
       await eng.restoreFromSnapshot(snap);
+      await applyEvaluatorSettings(eng);
       const rootFen = await eng.positionFen();
       const t = initTree({ startFen: fen, configJson, rootFen });
       inspector.tree = t;
@@ -228,6 +229,7 @@
       await eng.restoreFromSnapshot(
         JSON.stringify({ start_fen: startFen, actions: [], config: configObj }),
       );
+      await applyEvaluatorSettings(eng);
       const rootFen = await eng.positionFen();
       const t = initTree({ startFen, configJson, rootFen });
 
@@ -285,6 +287,7 @@
       await eng.restoreFromSnapshot(
         JSON.stringify({ start_fen: startFen, actions: [], config: configObj }),
       );
+      await applyEvaluatorSettings(eng);
       const rootFen = await eng.positionFen();
       const t = initTree({ startFen, configJson, rootFen });
 

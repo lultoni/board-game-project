@@ -115,4 +115,13 @@ export interface EngineClient {
   finaliseLog(result: FinalResultByte): Promise<void>;
   /** Free engine resources (Tauri only; no-op on WASM). */
   dispose(): Promise<void>;
+  /** Install a position evaluator on an AI seat. `source = "heuristic"` is
+   *  the default; `"run"` and `"blessed"` load an `NnEvaluator` from the
+   *  respective rater directory. WASM-side: no-op (NN inference isn't
+   *  bundled into the web build). */
+  setAiEvaluator(
+    source: "heuristic" | "run" | "blessed",
+    id?: string | null,
+    runDir?: string | null,
+  ): Promise<void>;
 }

@@ -151,6 +151,23 @@ export function buildEngineConfigJson(side: { p1: SeatKind; p2: SeatKind }): str
   });
 }
 
+/** Apply the per-seat evaluator choice from `settings` to the engine. Routes
+ *  call this once after every `createEngine*` / `restoreFromSnapshot` so the
+ *  AI seats use the picked rater (heuristic / run / blessed). No-op on WASM
+ *  (the client stubs `setAiEvaluator`). Tauri-side, errors are swallowed
+ *  here: if a rater id has gone stale, falling back to heuristic is far
+ *  better than failing match boot. */
+export async function applyEvaluatorSettings(eng: EngineClient): Promise<void> {
+  const p1 = settings.p1Evaluator;
+  const p2 = settings.p2Evaluator;
+  try {
+    await eng.setAiEvaluator(p1.source, p1.id ?? null, null);
+  } catch { /* fall back to heuristic */ }
+  try {
+    await eng.setAiEvaluator(p2.source, p2.id ?? null, null);
+  } catch { /* fall back to heuristic */ }
+}
+
 // === Telemetry session lifecycle (bound to `match`) ========================
 // Routes call these without passing the carrier. The pure helpers live in
 // telemetry-session.ts and are tested there.
