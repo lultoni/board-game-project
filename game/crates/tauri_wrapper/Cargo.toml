@@ -11,11 +11,15 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 core_engine = { workspace = true }
-nn_trainer = { path = "../nn_trainer" }
+nn_trainer = { path = "../nn_trainer", default-features = false }
 tauri = { version = "2", features = [] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [features]
+default = ["backend-ndarray", "backend-wgpu"]
 custom-protocol = ["tauri/custom-protocol"]
+backend-ndarray = ["nn_trainer/backend-ndarray"]
+backend-wgpu    = ["nn_trainer/backend-wgpu"]
+backend-cuda    = ["nn_trainer/backend-cuda"]

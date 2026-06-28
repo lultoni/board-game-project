@@ -726,10 +726,58 @@ fn set_ai_evaluator(
     Ok(())
 }
 
+/// One entry in the `list_backends` response. `id` is the lowercase tag
+/// (`"cpu"`, `"wgpu"`, `"cuda"`) — same value the frontend should send back
+/// to `start_training_run`'s `backend` argument. `is_default` flags the
+/// recommended preselection (`BackendChoice::default_choice`).
+#[derive(serde::Serialize)]
+struct BackendInfo {
+    id: String,
+    label: String,
+    is_default: bool,
+}
+
+/// Parse a lowercase tag from the frontend into `BackendChoice`. `None`
+/// (omitted argument) picks the build's default. Returns an Err on an
+/// unknown tag or a tag whose feature is not compiled in.
+fn parse_backend_choice(raw: Option<&str>) -> Result<nn_trainer::BackendChoice, String> {
+    let Some(s) = raw else {
+        return Ok(nn_trainer::BackendChoice::default_choice());
+    };
+    let want = match s {
+        "cpu"  => nn_trainer::BackendChoice::Cpu,
+        "wgpu" => nn_trainer::BackendChoice::Wgpu,
+        "cuda" => nn_trainer::BackendChoice::Cuda,
+        other  => return Err(format!("unknown backend: {other}")),
+    };
+    if !nn_trainer::BackendChoice::available().contains(&want) {
+        return Err(format!("backend {s} not compiled into this build"));
+    }
+    Ok(want)
+}
+
+#[tauri::command]
+fn list_backends() -> Vec<BackendInfo> {
+    let default = nn_trainer::BackendChoice::default_choice();
+    nn_trainer::BackendChoice::available()
+        .into_iter()
+        .map(|c| BackendInfo {
+            id: c.as_str().to_string(),
+            label: match c {
+                nn_trainer::BackendChoice::Cpu  => "CPU (ndarray)".into(),
+                nn_trainer::BackendChoice::Wgpu => "GPU (Metal / Vulkan / DX12)".into(),
+                nn_trainer::BackendChoice::Cuda => "GPU (CUDA)".into(),
+            },
+            is_default: c == default,
+        })
+        .collect()
+}
+
 #[tauri::command]
 fn start_training_run(
     run_dir: String,
     preset: Option<String>,
+    backend: Option<String>,
     state: State<'_, TrainingState>,
 ) -> Result<(), String> {
     let mut inner = state.inner.lock().unwrap();
@@ -739,11 +787,12 @@ fn start_training_run(
     let preset_name = preset.as_deref().unwrap_or("smoke");
     let cfg = nn_trainer::RunConfig::from_preset(preset_name)?;
     cfg.validate()?;
+    let backend = parse_backend_choice(backend.as_deref())?;
     let stop = Arc::new(AtomicBool::new(false));
     let stop_clone = Arc::clone(&stop);
     let path = std::path::PathBuf::from(run_dir);
     let handle = std::thread::spawn(move || {
-        let _ = nn_trainer::run_training(&cfg, &path, stop_clone, nn_trainer::BackendChoice::Cpu);
+        let _ = nn_trainer::run_training(&cfg, &path, stop_clone, backend);
     });
     inner.stop = Some(stop);
     inner.handle = Some(handle);
@@ -815,6 +864,7 @@ pub fn run() {
             inspect_rater,
             list_available_raters,
             set_ai_evaluator,
+            list_backends,
             start_training_run,
             stop_training_run,
         ])
