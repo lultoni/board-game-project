@@ -8,6 +8,28 @@ As of Session 27 (2026-06-22) the project is **digital-first**: a complete digit
 
 ---
 
+## Download
+
+Pre-built desktop binaries are attached to each tagged release on the
+[Releases page](../../releases):
+
+| Platform                 | Artefact                  | Backends bundled       |
+|--------------------------|---------------------------|------------------------|
+| macOS (Apple Silicon)    | `.dmg`                    | CPU + GPU (Metal)      |
+| Linux x86_64             | `.AppImage`               | CPU + GPU (Vulkan)     |
+| Linux x86_64 + NVIDIA    | `.AppImage` (CUDA build)  | CPU + CUDA             |
+
+The macOS build is ad-hoc signed — on first launch, right-click the app
+→ **Open** to bypass Gatekeeper. Linux AppImages need `chmod +x` after
+download.
+
+Once running, open the Training Observatory and pick a backend from the
+dropdown.
+
+To build from source, see [`game/README.md`](game/README.md).
+
+---
+
 ## Quick Navigation
 
 The source of truth for all design knowledge is `design/design.db` (SQLite). Query it directly:

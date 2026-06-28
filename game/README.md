@@ -47,6 +47,32 @@ cd game/frontend && npm run build
 cd game/crates/tauri_wrapper && cargo tauri dev    # once @tauri-apps/cli is installed
 ```
 
+### Backend (CPU vs GPU)
+
+The NN-trainer compiles in one or more burn backends, selected at
+runtime from the `/training` UI:
+
+| Cargo feature      | Backend           | Platforms                       |
+|--------------------|-------------------|---------------------------------|
+| `backend-ndarray`  | CPU (always)      | All                             |
+| `backend-wgpu`     | GPU via wgpu      | Metal (Mac), Vulkan, DX12       |
+| `backend-cuda`     | NVIDIA CUDA       | Linux x86_64 (needs CUDA 12.x)  |
+
+Defaults are `backend-ndarray + backend-wgpu`. To build with CUDA
+support (Linux + NVIDIA only):
+
+```bash
+cd game
+cargo check --features backend-cuda                         # workspace check
+cd crates/tauri_wrapper
+cargo tauri build --features backend-ndarray,backend-cuda \
+                  --config ../tauri.cuda.conf.json
+```
+
+Search-time inference (the in-game AI evaluator) always runs on CPU
+ndarray regardless of the training backend — GPU dispatch overhead
+dominates at batch-1.
+
 ## Rules source of truth
 
 The rules are in the database, not in this folder:
