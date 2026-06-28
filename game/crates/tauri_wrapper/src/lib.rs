@@ -575,6 +575,11 @@ pub struct WeightStats {
 pub struct RaterInspection {
     pub rater_id: String,
     pub forward_output: f32,
+    /// Centipawn-scale conversion factor — either the calibrated value from
+    /// the sidecar (`RaterMetadata::eval_scale`) or `DEFAULT_EVAL_SCALE` when
+    /// the rater hasn't been calibrated yet. UI can display
+    /// `forward_output * eval_scale` to show the centipawn-scale score.
+    pub eval_scale: f32,
     pub weight_stats: Vec<WeightStats>,
 }
 
@@ -587,7 +592,7 @@ fn inspect_rater(
     use core_engine::state::fen::from_fen;
     let pos = from_fen(&fen).map_err(|e| format!("fen parse: {e:?}"))?;
     let stem = std::path::Path::new(&run_dir).join("raters").join(&rater_id);
-    let (forward_output, layer_stats) =
+    let (forward_output, eval_scale, layer_stats) =
         nn_trainer::NnEvaluator::inspect_fen_at_stem(&stem, &pos)
             .map_err(|e| format!("load rater: {e}"))?;
     let weight_stats = layer_stats
@@ -604,6 +609,7 @@ fn inspect_rater(
     Ok(RaterInspection {
         rater_id,
         forward_output,
+        eval_scale,
         weight_stats,
     })
 }

@@ -14,11 +14,13 @@
 //! ## Scale
 //!
 //! Training labels live in {−1, +1} (P1 wins / P2 wins). A converged rater
-//! will return values in roughly [-1, +1] for non-terminal positions; the
-//! `EVAL_SCALE` factor maps that to centipawn-scale.
-//! `EVAL_SCALE = 3 * CHAMPION_VALUE = 3000` is a starting heuristic: a
-//! "definitely winning" position (label +1) gets a score comparable to a
-//! 3-Champion material lead. Final tuning happens against the gauntlet.
+//! will return values in roughly [-1, +1] for non-terminal positions; a
+//! per-rater scale factor maps that to centipawn-scale. The factor is fitted
+//! by `crate::calibration` (slope-only OLS against the heuristic) and stored
+//! in the sidecar (`RaterMetadata::eval_scale`). Un-calibrated raters fall
+//! back to `DEFAULT_EVAL_SCALE = 3 * CHAMPION_VALUE = 3000`, a starting
+//! heuristic where a "definitely winning" position (label +1) gets a score
+//! comparable to a 3-Champion material lead.
 //!
 //! ## What this does NOT provide
 //!
@@ -40,8 +42,10 @@ use core_engine::state::position::GameResult;
 /// `crate::backend`).
 pub use crate::backend::InferenceBackend;
 
-/// Centipawn-scale magnitude for `forward_output == 1.0`. See module docs.
-pub const EVAL_SCALE: f32 = 3000.0;
+/// Fallback centipawn-scale magnitude for `forward_output == 1.0` when a
+/// rater has not yet been calibrated (sidecar `eval_scale == 0.0`). See
+/// module docs and `crate::calibration`.
+pub const DEFAULT_EVAL_SCALE: f32 = 3000.0;
 
 /// Maximum non-terminal score. The NN must never overrule a mate, so we
 /// clamp the scaled output strictly below `MATE_SCORE`. The gap leaves room
@@ -49,20 +53,44 @@ pub const EVAL_SCALE: f32 = 3000.0;
 /// scores.
 pub const MAX_NN_SCORE: i32 = MATE_SCORE - 1;
 
-/// MLP-backed evaluator. Holds the loaded model + the inference device.
+/// MLP-backed evaluator. Holds the loaded model + the inference device +
+/// the centipawn-scale conversion factor fitted by the calibration pass.
 /// Cheap to clone (model is `Module`-cloneable, device is `Copy`).
 pub struct NnEvaluator {
     model: Mlp<InferenceBackend>,
     device: Device<InferenceBackend>,
+    /// Multiplier applied to the raw NN output before clamping to the
+    /// centipawn range. `DEFAULT_EVAL_SCALE` for un-calibrated raters,
+    /// otherwise the slope-only OLS fit from `crate::calibration`.
+    scale: f32,
 }
 
 impl NnEvaluator {
     /// Wrap an inference-mode `Mlp` (no autograd). The caller is expected to
-    /// have stripped autograd via `into_inference` after training.
+    /// have stripped autograd via `into_inference` after training. Uses
+    /// `DEFAULT_EVAL_SCALE`; callers with a calibrated scale should use
+    /// `with_scale`.
     pub fn new(model: Mlp<InferenceBackend>) -> Self {
-        let device = Default::default();
-        Self { model, device }
+        Self::with_scale(model, DEFAULT_EVAL_SCALE)
     }
+
+    /// Wrap an inference-mode `Mlp` with an explicit centipawn-scale factor.
+    /// A `scale` of `0.0` (the sentinel meaning "not yet calibrated" in the
+    /// sidecar) falls back to `DEFAULT_EVAL_SCALE`. Non-finite values fall
+    /// back too — a poisoned scale shouldn't take the evaluator down with it.
+    pub fn with_scale(model: Mlp<InferenceBackend>, scale: f32) -> Self {
+        let device = Default::default();
+        let scale = if scale.is_finite() && scale != 0.0 {
+            scale
+        } else {
+            DEFAULT_EVAL_SCALE
+        };
+        Self { model, device, scale }
+    }
+
+    /// The active centipawn-scale factor. Exposed for telemetry / inspector
+    /// surfaces that want to display the fitted value.
+    pub fn scale(&self) -> f32 { self.scale }
 
     /// Single forward pass. Returns the raw scalar from the model — bench /
     /// debug only. Production callers go through `Evaluator::evaluate`.
@@ -78,37 +106,49 @@ impl NnEvaluator {
     /// Load a rater from `<dir>/raters/<rater_id>` and run a forward pass on
     /// `pos`. Convenience wrapper that hides the burn-side plumbing from
     /// callers (the Tauri command surface, primarily). Returns the raw NN
-    /// output scalar.
+    /// output scalar and the calibrated centipawn-scale factor from the
+    /// sidecar (or `DEFAULT_EVAL_SCALE` when un-calibrated).
     pub fn evaluate_fen_at_stem(
         stem: &std::path::Path,
         pos: &Position,
-    ) -> Result<f32, crate::persistence::PersistenceError> {
+    ) -> Result<(f32, f32), crate::persistence::PersistenceError> {
         let device = Default::default();
-        let (model, _meta) = crate::persistence::load_rater::<InferenceBackend>(stem, &device)?;
+        let (model, meta) = crate::persistence::load_rater::<InferenceBackend>(stem, &device)?;
         let features = encode_position(pos);
         let data = TensorData::new(features, [1, INPUT_DIM]);
         let input: Tensor<InferenceBackend, 2> = Tensor::from_data(data, &device);
         let out = model.forward(input);
-        Ok(out.into_data().to_vec::<f32>().unwrap()[0])
+        let raw = out.into_data().to_vec::<f32>().unwrap()[0];
+        let scale = if meta.eval_scale.is_finite() && meta.eval_scale != 0.0 {
+            meta.eval_scale
+        } else {
+            DEFAULT_EVAL_SCALE
+        };
+        Ok((raw, scale))
     }
 
     /// Inspect a rater: load from disk, run a forward pass on `pos`, and
     /// collect per-layer weight stats. Used by the Training Observatory's
     /// Network Inspector via a single Tauri call so the panel doesn't have
-    /// to round-trip twice.
+    /// to round-trip twice. Returns `(raw_output, scale, weight_stats)`.
     pub fn inspect_fen_at_stem(
         stem: &std::path::Path,
         pos: &Position,
-    ) -> Result<(f32, Vec<crate::model::LayerStats>), crate::persistence::PersistenceError> {
+    ) -> Result<(f32, f32, Vec<crate::model::LayerStats>), crate::persistence::PersistenceError> {
         let device = Default::default();
-        let (model, _meta) = crate::persistence::load_rater::<InferenceBackend>(stem, &device)?;
+        let (model, meta) = crate::persistence::load_rater::<InferenceBackend>(stem, &device)?;
         let features = encode_position(pos);
         let data = TensorData::new(features, [1, INPUT_DIM]);
         let input: Tensor<InferenceBackend, 2> = Tensor::from_data(data, &device);
         let out = model.forward(input);
         let scalar = out.into_data().to_vec::<f32>().unwrap()[0];
         let stats = model.weight_stats();
-        Ok((scalar, stats))
+        let scale = if meta.eval_scale.is_finite() && meta.eval_scale != 0.0 {
+            meta.eval_scale
+        } else {
+            DEFAULT_EVAL_SCALE
+        };
+        Ok((scalar, scale, stats))
     }
 }
 
@@ -120,11 +160,11 @@ impl NnEvaluator {
 /// to 0 — a "no information" signal that lets the search fall back on move
 /// ordering rather than propagating garbage scores.
 #[inline]
-fn nn_output_to_centipawns(raw: f32) -> i32 {
+fn nn_output_to_centipawns(raw: f32, scale: f32) -> i32 {
     if !raw.is_finite() {
         return 0;
     }
-    let scaled = raw * EVAL_SCALE;
+    let scaled = raw * scale;
     let clamped = scaled.clamp(-(MAX_NN_SCORE as f32), MAX_NN_SCORE as f32);
     clamped.round() as i32
 }
@@ -136,7 +176,7 @@ impl Evaluator for NnEvaluator {
             Some(GameResult::P2Wins) => return -MATE_SCORE,
             None => {}
         }
-        nn_output_to_centipawns(self.forward_raw(pos))
+        nn_output_to_centipawns(self.forward_raw(pos), self.scale)
     }
 
     fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown {
@@ -192,18 +232,41 @@ mod tests {
 
     #[test]
     fn output_to_centipawns_clamps_extreme_values() {
-        // EVAL_SCALE = 3000, MAX_NN_SCORE = MATE_SCORE - 1. Saturation
-        // requires roughly |raw| >= MAX_NN_SCORE / EVAL_SCALE.
-        let saturate = (MAX_NN_SCORE as f32 / EVAL_SCALE) + 1.0;
-        assert_eq!(nn_output_to_centipawns(saturate), MAX_NN_SCORE);
-        assert_eq!(nn_output_to_centipawns(-saturate), -MAX_NN_SCORE);
-        assert_eq!(nn_output_to_centipawns(f32::NAN), 0);
-        assert_eq!(nn_output_to_centipawns(f32::INFINITY), 0);
-        assert_eq!(nn_output_to_centipawns(f32::NEG_INFINITY), 0);
-        assert_eq!(nn_output_to_centipawns(0.0), 0);
+        // DEFAULT_EVAL_SCALE = 3000, MAX_NN_SCORE = MATE_SCORE - 1. Saturation
+        // requires roughly |raw| >= MAX_NN_SCORE / DEFAULT_EVAL_SCALE.
+        let scale = DEFAULT_EVAL_SCALE;
+        let saturate = (MAX_NN_SCORE as f32 / scale) + 1.0;
+        assert_eq!(nn_output_to_centipawns(saturate, scale), MAX_NN_SCORE);
+        assert_eq!(nn_output_to_centipawns(-saturate, scale), -MAX_NN_SCORE);
+        assert_eq!(nn_output_to_centipawns(f32::NAN, scale), 0);
+        assert_eq!(nn_output_to_centipawns(f32::INFINITY, scale), 0);
+        assert_eq!(nn_output_to_centipawns(f32::NEG_INFINITY, scale), 0);
+        assert_eq!(nn_output_to_centipawns(0.0, scale), 0);
         // Sub-saturation values scale linearly.
-        assert_eq!(nn_output_to_centipawns(1.0), EVAL_SCALE as i32);
-        assert_eq!(nn_output_to_centipawns(-1.0), -(EVAL_SCALE as i32));
+        assert_eq!(nn_output_to_centipawns(1.0, scale), scale as i32);
+        assert_eq!(nn_output_to_centipawns(-1.0, scale), -(scale as i32));
+    }
+
+    #[test]
+    fn with_scale_falls_back_on_zero_or_nonfinite() {
+        let device = Default::default();
+        let model: Mlp<InferenceBackend> = MlpConfig::new().init(&device);
+        // Cloning would require Mlp: Clone — instead just rebuild the model.
+        let mk = || -> Mlp<InferenceBackend> { MlpConfig::new().init(&device) };
+
+        let zero = NnEvaluator::with_scale(mk(), 0.0);
+        assert_eq!(zero.scale(), DEFAULT_EVAL_SCALE);
+
+        let nan = NnEvaluator::with_scale(mk(), f32::NAN);
+        assert_eq!(nan.scale(), DEFAULT_EVAL_SCALE);
+
+        let inf = NnEvaluator::with_scale(mk(), f32::INFINITY);
+        assert_eq!(inf.scale(), DEFAULT_EVAL_SCALE);
+
+        let custom = NnEvaluator::with_scale(mk(), 1234.5);
+        assert!((custom.scale() - 1234.5).abs() < 1e-6);
+
+        let _ = model;  // silence "unused" — we built mk() instead
     }
 
     #[test]

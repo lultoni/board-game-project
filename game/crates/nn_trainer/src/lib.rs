@@ -13,6 +13,7 @@
 
 pub mod backend;
 pub mod batch;
+pub mod calibration;
 pub mod encoding;
 pub mod gauntlet;
 pub mod lineage;
@@ -41,7 +42,7 @@ pub use live::{
     LIVE_STATE_FILENAME, LIVE_SUBSCRIBE_FILENAME,
 };
 pub use model::{LayerStats, Mlp, MlpConfig};
-pub use nn_evaluator::{InferenceBackend, NnEvaluator, EVAL_SCALE, MAX_NN_SCORE};
+pub use nn_evaluator::{InferenceBackend, NnEvaluator, DEFAULT_EVAL_SCALE, MAX_NN_SCORE};
 pub use persistence::{
     load_rater, paths_from_stem, save_rater, BracketWinRate, PerturbationEvent,
     PersistenceError, RaterMetadata, TrainingConfigSnapshot, RATER_FORMAT_VERSION,

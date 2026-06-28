@@ -109,5 +109,9 @@ export interface WeightStats {
 export interface RaterInspection {
   raterId: string;
   forwardOutput: number;
+  /** Centipawn-scale conversion factor. Calibrated value from sidecar, or
+   *  the DEFAULT_EVAL_SCALE fallback (3000) for un-calibrated raters.
+   *  Multiply `forwardOutput * evalScale` for the centipawn-scale score. */
+  evalScale: number;
   weightStats: WeightStats[];
 }

@@ -106,6 +106,13 @@ pub struct RaterMetadata {
 
     /// ISO-8601 UTC timestamp at the moment of save.
     pub created_at: String,
+
+    /// Centipawn-scale conversion factor fitted by the calibration pass
+    /// against the heuristic. `0.0` means "not yet calibrated" — callers
+    /// fall back to `DEFAULT_EVAL_SCALE`. `#[serde(default)]` so older
+    /// sidecars without the field deserialise cleanly.
+    #[serde(default)]
+    pub eval_scale: f32,
 }
 
 /// Serialisable mirror of `train::TrainingConfig`. We keep the field set
@@ -245,6 +252,7 @@ mod tests {
             },
             git_sha: String::new(),
             created_at: "2026-06-27T12:00:00Z".to_string(),
+            eval_scale: 0.0,
         }
     }
 

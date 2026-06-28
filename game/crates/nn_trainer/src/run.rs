@@ -331,6 +331,16 @@ pub fn run_training(
             // No usable data this generation — skip to the next.
             continue;
         }
+        // Hold out the last 10% as a calibration probe set. Cheap split — the
+        // training loop is depth-bounded so trailing positions aren't
+        // systematically different from the rest. We pull `Position`s out
+        // since `calibrate_rater` doesn't need the labels.
+        let holdout_n = (corpus.len() / 10).max(1).min(corpus.len());
+        let calibration_probes: Vec<core_engine::state::Position> = corpus
+            [corpus.len().saturating_sub(holdout_n)..]
+            .iter()
+            .map(|lp| lp.position.clone())
+            .collect();
 
         let lineages: Vec<Lineage<AutodiffB>> = {
             // Throttle heartbeats to ~1 Hz — train_lineages_with_progress
@@ -487,13 +497,21 @@ pub fn run_training(
             // save_rater expects a model with autodiff stripped — the
             // inference-mode model is exactly that.
             let parent_id_for_entry = index.latest().map(|e| e.id.clone());
-            let metadata = build_metadata(
+            let mut metadata = build_metadata(
                 &config,
                 &rater_id,
                 parent_id_for_entry.clone(),
                 &report,
                 &lineages[best_idx],
             );
+            // Fit the centipawn-scale factor against the heuristic over the
+            // hold-out probes. `None` is the sentinel for "leave at 0.0 and
+            // let NnEvaluator fall back to DEFAULT_EVAL_SCALE."
+            if let Some(k) = crate::calibration::calibrate_rater(
+                &blob_model, &HeuristicEvaluator, &calibration_probes,
+            ) {
+                metadata.eval_scale = k;
+            }
             save_rater::<InferenceBackend>(&blob_model, &stem, &metadata)?;
             let entry = IndexEntry {
                 id: rater_id.clone(),
@@ -772,6 +790,7 @@ fn build_metadata(
         training_config: TrainingConfigSnapshot::from(&config.lineage.training),
         git_sha: String::new(),
         created_at: iso8601_now(),
+        eval_scale: 0.0,
     }
 }
 
@@ -936,6 +955,7 @@ mod tests {
             },
             git_sha: String::new(),
             created_at: "2026-06-28T00:00:00Z".to_string(),
+            eval_scale: 0.0,
         };
         save_rater::<InferenceBackend>(&model, &stem, &metadata)
             .expect("save dummy rater");
