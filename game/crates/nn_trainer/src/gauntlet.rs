@@ -135,11 +135,12 @@ where
     }
 
     // Adjudicate at ply cap via heuristic: positive score → P1 leads.
+    // On exact zero (symmetric position) award P1 as a tiebreak — this
+    // avoids all-draw series when both sides are equally matched at the cap.
     pos.game_result.or_else(|| {
         let score = HeuristicEvaluator.evaluate(&pos);
-        if score > 0 { Some(GameResult::P1Wins) }
-        else if score < 0 { Some(GameResult::P2Wins) }
-        else { None }
+        if score >= 0 { Some(GameResult::P1Wins) }
+        else { Some(GameResult::P2Wins) }
     })
 }
 
