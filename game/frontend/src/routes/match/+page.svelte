@@ -68,6 +68,8 @@
   let busy = $state(false);
   /** True while a `stepAi` call is in flight. Drives the "AI is thinking…" overlay. */
   let aiThinking = $state(false);
+  /** Search depth reached by the last completed AI move. 0 = none yet. */
+  let aiLastDepth = $state(0);
 
   /** Role-aware ply renderer. Owns the effects/SFX pipeline, pieceIds,
    *  shakingSquares, effectQueue, and the deferred-skill-refresh state. Both
@@ -793,6 +795,7 @@
         : Promise.resolve();
       const [result] = await Promise.all([runAiCall(() => eng!.stepAi()), delayP]);
       const raw = result.appliedAction;
+      aiLastDepth = result.depth;
       if (raw === 0) {
         // AI returned no move. Two cases:
         //   - match.position.gameResult !== 0 → terminal (mate/stalemate),
@@ -1439,6 +1442,7 @@
           draggable={movable}
           usedSquares={usedThisPhase}
           shakingSquares={renderer?.shakingSquares ?? new Set()}
+          lungeSquares={renderer?.lungeSquares ?? new Map()}
           effectsActive={(renderer?.effectQueue.length ?? 0) > 0}
           approachChoices={pendingApproach?.approaches ?? []}
           bodyguardChoice={pendingBodyguard ? {
@@ -1480,6 +1484,9 @@
           <div class="thinking" role="status" aria-live="polite">
             <span class="spinner" aria-hidden="true"></span>
             <span class="thinking-label">{t("controls.aiThinking")}</span>
+            {#if settings.showAiDepth && aiLastDepth > 0}
+              <span class="depth-label">d{aiLastDepth}</span>
+            {/if}
           </div>
         {/if}
         {#if hoveredSlice && wheelOpen}
@@ -1879,6 +1886,11 @@
   }
   .thinking-label {
     color: var(--paper-ink, #1c1a17);
+  }
+  .depth-label {
+    font-size: 0.78rem;
+    color: var(--paper-ink-soft, rgba(58,47,31,0.55));
+    font-variant-numeric: tabular-nums;
   }
   .spinner {
     width: 0.9em;

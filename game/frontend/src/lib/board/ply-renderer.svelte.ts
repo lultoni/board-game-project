@@ -27,6 +27,7 @@ import {
 } from "$lib/engine";
 import type { Effect } from "$lib/viz/effects";
 import { sfx } from "$lib/audio/sfx";
+import { slideDurationMs } from "$lib/state/settings.svelte";
 
 // === Public types ==========================================================
 
@@ -105,6 +106,9 @@ export interface PlyRenderer {
   readonly legal: Uint32Array;
   readonly pieceIds: Map<number, number>;
   readonly shakingSquares: Set<number>;
+  /** Per-square lunge offsets (SVG px). Set during a non-kill attack so the
+   *  attacker piece plays a lunge-and-recoil CSS animation toward the target. */
+  readonly lungeSquares: Map<number, { dx: number; dy: number }>;
   readonly effectQueue: Effect[];
   readonly lastApplied: { src: number; target: number } | null;
 
@@ -349,6 +353,7 @@ export function createPlyRenderer(
   let nextPieceId = 1;
 
   let shakingSquares = $state<Set<number>>(new Set());
+  let lungeSquares = $state<Map<number, { dx: number; dy: number }>>(new Map());
 
   const effectQueue: Effect[] = $state([]);
 
@@ -420,6 +425,23 @@ export function createPlyRenderer(
     scheduleTimer(() => {
       shakingSquares = new Set([...shakingSquares].filter((s) => s !== sq));
     }, SHAKE_DURATION_MS);
+  }
+
+  /** Trigger a lunge-and-recoil animation on `sq` toward `targetSq`.
+   *  The CSS animation is driven by --lunge-dx/dy CSS vars on the Piece. */
+  function triggerLunge(sq: number, targetSq: number): void {
+    const dur = slideDurationMs();
+    if (dur === 0) return;
+    const SQUARE_PX = 100; // viewBox 800 / 8 squares
+    const sqFile = sq & 7, sqRank = (sq >> 3) & 7;
+    const tFile = targetSq & 7, tRank = (targetSq >> 3) & 7;
+    // SVG: rank 0 is at the bottom (y = (7 - rank) * size), so increasing rank = smaller y.
+    const dx = (tFile - sqFile) * SQUARE_PX;
+    const dy = (sqRank - tRank) * SQUARE_PX;
+    lungeSquares = new Map([[sq, { dx, dy }]]);
+    scheduleTimer(() => {
+      lungeSquares = new Map([...lungeSquares].filter(([s]) => s !== sq));
+    }, dur * 2);
   }
 
   function pushDamageEffect(targetSq: number, before: number, after: number): void {
@@ -636,6 +658,12 @@ export function createPlyRenderer(
         ? (killed ? decoded.target : decoded.auxSq)
         : decoded.target;
       opts.onMoveLanding?.(finalSq);
+      // Non-kill attack: attacker ends at auxSq (approach) but attacked target.
+      // Trigger a lunge-and-recoil animation so the attacker visually reaches
+      // toward the target square before snapping back to approach.
+      if (decoded.hasAux && !killed) {
+        triggerLunge(decoded.auxSq, decoded.target);
+      }
     }
 
     if (decoded.kind === ActionKind.Skill && preFull) {
@@ -829,6 +857,7 @@ export function createPlyRenderer(
     get legal() { return getLegal(); },
     get pieceIds() { return pieceIds; },
     get shakingSquares() { return shakingSquares; },
+    get lungeSquares() { return lungeSquares; },
     get effectQueue() { return effectQueue; },
     get lastApplied() { return lastApplied; },
     applyAndRender,

@@ -107,6 +107,9 @@
     } | null;
     onDirectionPick?: (raw: number) => void;
     onDirectionCancel?: () => void;
+    /** Per-square lunge offsets (SVG px). Drives the lunge-recoil CSS animation
+     *  on non-kill attacks: piece at `sq` lunges by (dx, dy) then recoils. */
+    lungeSquares?: Map<number, { dx: number; dy: number }>;
   }
 
   let {
@@ -147,6 +150,7 @@
     directionPicker = null,
     onDirectionPick,
     onDirectionCancel,
+    lungeSquares = new Map<number, { dx: number; dy: number }>(),
   }: Props = $props();
 
   const SIZE = $derived(viewBox / 8);
@@ -775,6 +779,7 @@
         used={usedSquares.has(piece.square)}
         overrideXY={overrideForPiece(piece.square)}
         shake={shakingSquares.has(piece.square)}
+        lunge={lungeSquares.get(piece.square) ?? null}
         {effectsActive}
         dormant={position
           ? (piece.owner === "p1" ? 0 : 1) !== position.toMove

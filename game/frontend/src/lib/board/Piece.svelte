@@ -22,6 +22,10 @@
     /** When true, this piece belongs to the side whose turn is NOT current —
      *  suppress idle breathing so the active side reads as "alive". */
     dormant?: boolean;
+    /** When set, play a lunge-and-recoil animation by (dx, dy) SVG pixels.
+     *  Used for non-kill attacks: attacker lives at auxSq but visually lunges
+     *  toward the target and bounces back. */
+    lunge?: { dx: number; dy: number } | null;
   }
 
   let {
@@ -33,6 +37,7 @@
     shake = false,
     effectsActive = false,
     dormant = false,
+    lunge = null,
   }: Props = $props();
 
   const file = $derived(piece.square & 7);
@@ -46,6 +51,13 @@
     overrideXY || !animate || slideDur === 0
       ? "none"
       : `transform ${slideDur}ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity ${Math.round(slideDur * 0.86)}ms ease, filter ${Math.round(slideDur * 0.86)}ms ease`,
+  );
+  // Lunge-recoil animation: piece at its resting square lunges toward the
+  // attacked square and snaps back. Duration = one full slide cycle.
+  const lungeStyle = $derived(
+    lunge && slideDur > 0
+      ? `--lunge-dx:${lunge.dx}px;--lunge-dy:${lunge.dy}px;animation:piece-lunge ${slideDur * 2}ms cubic-bezier(0.25,0.46,0.45,0.94) forwards`
+      : "",
   );
 
   const ownerColor = $derived(
@@ -148,6 +160,10 @@
       ? "\n" + skillNames.join(", ")
       : ""}
   </title>
+
+  <!-- Lunge wrapper: applies lunge-recoil animation independently of the
+       positional slide on the outer <g>. No-op when lungeStyle is empty. -->
+  <g class="lunge-wrap" style={lungeStyle}>
 
   <g
     class="body"
@@ -318,6 +334,7 @@
       >{piece.combo}</text>
     </g>
   {/if}
+  </g><!-- /lunge-wrap -->
 </g>
 
 <style>
@@ -367,5 +384,16 @@
     .piece .body {
       animation: none;
     }
+  }
+  /* Lunge-and-recoil: piece surges toward the attacked square then snaps back.
+     Driven by --lunge-dx / --lunge-dy set inline when lunge prop is active.
+     40% forward, 100% back — feels like a quick jab. */
+  .lunge-wrap {
+    /* default: no transform when not lunging */
+  }
+  @keyframes piece-lunge {
+    0%   { transform: translate(0, 0); }
+    35%  { transform: translate(var(--lunge-dx, 0px), var(--lunge-dy, 0px)); }
+    100% { transform: translate(0, 0); }
   }
 </style>
