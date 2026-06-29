@@ -4,7 +4,7 @@
 
 const STORAGE_KEY = "game-settings";
 
-export type AnimationSpeed = "off" | "normal" | "fast";
+export type AnimationSpeed = "off" | "normal" | "fast" | "cinematic";
 
 export interface Settings {
   /** Always-on: paint tiles where the skill can legally be cast. */
@@ -53,7 +53,7 @@ export interface EvaluatorChoice {
   id: string | null;
 }
 
-const ANIMATION_SPEEDS: ReadonlyArray<AnimationSpeed> = ["off", "normal", "fast"];
+const ANIMATION_SPEEDS: ReadonlyArray<AnimationSpeed> = ["off", "normal", "fast", "cinematic"];
 
 const DEFAULTS: Settings = {
   showLegalTargets: true,
@@ -173,7 +173,19 @@ function persist() {
   }
 }
 
-/** Call from a +layout.svelte $effect to start auto-persisting on changes. */
+/** ms for the piece slide transition at each speed tier. */
+export const SLIDE_DURATION_MS: Record<AnimationSpeed, number> = {
+  off: 0,
+  fast: 140,
+  normal: 280,
+  cinematic: 700,
+};
+
+/** ms to wait after renderApplied before the caller may advance (AIvAI / replay).
+ *  Gives the CSS transition time to complete. Zero when animations are off. */
+export function slideDurationMs(): number {
+  return SLIDE_DURATION_MS[settings.animationSpeed];
+}
 export function initSettingsPersistence() {
   $effect(() => {
     // Touch every key so $effect tracks them all.

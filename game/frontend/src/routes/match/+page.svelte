@@ -34,7 +34,7 @@
     multiplayerCode,
     claimWinByOpponentForfeit,
   } from "$lib/state/match-store.svelte";
-  import { settings } from "$lib/state/settings.svelte";
+  import { settings, slideDurationMs } from "$lib/state/settings.svelte";
   import {
     moveTargetsFor,
     movableSources,
@@ -75,6 +75,8 @@
   let renderer = $state<PlyRenderer | null>(null);
   /** AIvAI playback control. When true, the AI loop auto-chains turns. */
   let aiAutoPlay = $state(true);
+  /** When true, pause after the current move finishes instead of mid-animation. */
+  let pendingPause = $state(false);
   /** Transient toast for export / sandbox feedback. Cleared by a timer. */
   let toast = $state<string>("");
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -813,8 +815,22 @@
       // yet. snapshotPreState reads from there, so this is safe.
       const pre = renderer.snapshotPreState(raw);
       await renderer.renderApplied(raw, pre);
+      // Let the CSS slide transition finish before busy clears so the next AI
+      // step doesn't start (and repaint the board) while pieces are mid-flight.
+      // The delay is shared between the AI think-time floor and the animation —
+      // if think-time already consumed more ms than the slide, no extra wait.
+      const slideDur = slideDurationMs();
+      if (slideDur > 0) {
+        await new Promise<void>((r) => setTimeout(r, slideDur));
+      }
       match.lastApplied = raw;
       afterApplied();
+      // Honour deferred pause: user pressed pause during a move, flip now that
+      // the animation has finished so the board settles before going idle.
+      if (pendingPause) {
+        pendingPause = false;
+        aiAutoPlay = false;
+      }
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
@@ -1570,9 +1586,17 @@
         {#if match.mode === "aivai"}
           <button
             type="button"
-            disabled={busy || match.position?.gameResult !== 0}
-            onclick={() => (aiAutoPlay = !aiAutoPlay)}
-          >{aiAutoPlay ? t("controls.pause") : t("controls.play")}</button>
+            disabled={match.position?.gameResult !== 0}
+            onclick={() => {
+              if (busy && aiAutoPlay) {
+                // Mid-move: defer the pause until the animation settles.
+                pendingPause = !pendingPause;
+              } else {
+                pendingPause = false;
+                aiAutoPlay = !aiAutoPlay;
+              }
+            }}
+          >{pendingPause ? t("controls.pausing") : aiAutoPlay ? t("controls.pause") : t("controls.play")}</button>
           <button
             type="button"
             disabled={busy || aiAutoPlay || match.position?.gameResult !== 0}

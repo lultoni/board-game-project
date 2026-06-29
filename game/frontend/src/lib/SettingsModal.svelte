@@ -26,8 +26,9 @@
 
   const ANIMATION_LABELS: Record<AnimationSpeed, string> = {
     off: "Off",
-    normal: "Normal",
     fast: "Fast",
+    normal: "Normal",
+    cinematic: "Cinematic",
   };
 
   function clampInt(v: number, min: number, max: number): number {
@@ -85,7 +86,7 @@
     <label class="row">
       <span>Animation speed</span>
       <div class="segmented">
-        {#each (["off", "normal", "fast"] as AnimationSpeed[]) as speed}
+        {#each (["off", "fast", "normal", "cinematic"] as AnimationSpeed[]) as speed}
           <button
             class:active={settings.animationSpeed === speed}
             onclick={() => { settings.animationSpeed = speed; }}

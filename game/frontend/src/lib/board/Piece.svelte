@@ -1,5 +1,6 @@
 <script lang="ts">
   import { SKILLS, skillColor, type BoardPiece } from "$lib/engine";
+  import { settings, SLIDE_DURATION_MS } from "$lib/state/settings.svelte";
 
   interface Props {
     piece: BoardPiece;
@@ -40,10 +41,11 @@
   const baseY = $derived((7 - rank) * size);
   const x = $derived(overrideXY ? overrideXY.x : baseX);
   const y = $derived(overrideXY ? overrideXY.y : baseY);
+  const slideDur = $derived(SLIDE_DURATION_MS[settings.animationSpeed]);
   const transition = $derived(
-    overrideXY || !animate
+    overrideXY || !animate || slideDur === 0
       ? "none"
-      : "transform 280ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity 240ms ease, filter 240ms ease",
+      : `transform ${slideDur}ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity ${Math.round(slideDur * 0.86)}ms ease, filter ${Math.round(slideDur * 0.86)}ms ease`,
   );
 
   const ownerColor = $derived(

@@ -154,6 +154,7 @@
     "exitSandbox": "Exit sandbox",
     "play": "Play",
     "pause": "Pause",
+    "pausing": "Pausing…",
     "step": "Step",
     "aiThinking": "AI is thinking…",
     "copyFen": "Copy FEN",
