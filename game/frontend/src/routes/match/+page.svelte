@@ -60,6 +60,8 @@
   import { sfx } from "$lib/audio/sfx";
   import { getTelemetryStore } from "$lib/storage";
   import { createPlyRenderer, type PlyRenderer } from "$lib/board/ply-renderer.svelte";
+  import PlayerPanel from "$lib/match/PlayerPanel.svelte";
+  import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
 
   const mode = $derived(match.mode === "multiplayer" ? "multiplayer" : modeFromSeats(match.side));
 
@@ -114,6 +116,12 @@
     const seat = match.localSeat ?? (multiplayerRole() === "host" ? 0 : 1);
     return toMove === seat;
   });
+
+  const p1IsAi = $derived(match.side.p1 === "ai");
+  const p2IsAi = $derived(match.side.p2 === "ai");
+  // AI thinking indicator targets the seat that is currently thinking.
+  const p1Thinking = $derived(aiThinking && match.position?.toMove === 0);
+  const p2Thinking = $derived(aiThinking && match.position?.toMove === 1);
 
   // Track which squares used their Move action this phase. Stored as the
   // attacker's final square (target for plain Move, approach_sq for
@@ -466,6 +474,27 @@
       sfx.play("wheelOpen");
     }
     wheelWasOpen = open;
+  });
+
+  // Game-result SFX. Fires once when the game ends (gameResult transitions
+  // from 0 to a terminal value). P1 wins = 1, P2 wins = 2, draw = 3.
+  let lastGameResult = $state(0);
+  $effect(() => {
+    const result = match.position?.gameResult ?? 0;
+    if (result !== 0 && lastGameResult === 0 && ready) {
+      // Determine win/lose from the local player's perspective. In sandbox/aivai
+      // there's no "local" side — use gameEnd for draws, victory for any win.
+      if (result === 3) {
+        sfx.play("gameEnd");
+      } else if (match.mode === "aivai" || match.mode === "sandbox") {
+        sfx.play("gameEnd");
+      } else {
+        const localSeat = match.localSeat ?? (match.side.p1 === "human" ? 0 : 1);
+        const localWon = (result === 1 && localSeat === 0) || (result === 2 && localSeat === 1);
+        sfx.play(localWon ? "victory" : "defeat");
+      }
+    }
+    lastGameResult = result;
   });
 
   /** AI scheduler. Whenever it's an AI seat's turn and the loop is allowed
@@ -916,11 +945,13 @@
     // point — submitting any other raw would fail anti-cheat in MP.
     if (pendingBodyguard) {
       if (sq === pendingBodyguard.targetSq) {
+        sfx.play("click");
         applyRaw(encodeBodyguardChoice(0));
         return;
       }
       const k = pendingBodyguard.eligible.indexOf(sq);
       if (k >= 0) {
+        sfx.play("click");
         applyRaw(encodeBodyguardChoice(k + 1));
         return;
       }
@@ -930,6 +961,7 @@
 
     if (pendingApproach) {
       if (pendingApproach.approaches.includes(sq)) {
+        sfx.play("click");
         commitMoveTargetApproach(pendingApproach.target, sq);
         pendingApproach = null;
       } else {
@@ -1210,6 +1242,7 @@
 
   async function copyFen(): Promise<void> {
     if (!eng) return;
+    sfx.play("click");
     try {
       const fen = await eng.positionFen();
       await navigator.clipboard.writeText(fen);
@@ -1221,6 +1254,7 @@
 
   async function copyMatchLog(): Promise<void> {
     if (!eng) return;
+    sfx.play("click");
     try {
       const log = await eng.matchLogJson();
       if (log === null) { showToast(t("toast.logUnavailable")); return; }
@@ -1233,6 +1267,7 @@
 
   async function downloadMatchLog(): Promise<void> {
     if (!eng) return;
+    sfx.play("click");
     try {
       const log = await eng.matchLogJson();
       if (log === null) { showToast(t("toast.logUnavailable")); return; }
@@ -1279,6 +1314,7 @@
     if (!eng || busy || aiThinking) return;
     if (match.mode === "sandbox") return;
     busy = true;
+    sfx.play("sandboxEnter");
     try {
       // Capture pre-sandbox snapshot BEFORE flipping mode — otherwise an
       // in-flight AI scheduler tick could mutate state between capture and
@@ -1305,6 +1341,7 @@
       const msg = t("sandbox.confirmDiscard", { n: match.sandboxMovesApplied });
       if (!await sandboxConfirm(msg)) return;
     }
+    sfx.play("click");
     busy = true;
     try {
       validateSnapshot(match.trueSnapshotJson, {
@@ -1433,9 +1470,9 @@
 
 <svelte:window onkeydown={handleKeyDown} />
 
-<main class:sandbox-mode={match.mode === "sandbox"}>
+<main>
   <header>
-    <p class="back"><a href="../">← back</a></p>
+    <p class="back"><a href="../" onclick={() => sfx.play("click")}>← back</a></p>
     <h1>{t("match.title", { mode })}</h1>
     {#if match.mode === "multiplayer"}
       <ConnectivityPill />
@@ -1459,194 +1496,217 @@
       <button type="button" class="err-dismiss" onclick={() => (bootError = null)} aria-label="dismiss">×</button>
     </div>
   {/if}
+
   {#if !ready}
     <p>{t("app.loading")}</p>
   {:else}
-    <section class="board-wrap">
-      <div class="board-stack">
-        <Board
+    <div class="game-area">
+      <!-- Left column: P2 panel + board + P1 panel -->
+      <div class="board-column">
+        <PlayerPanel
+          player="p2"
           position={match.position}
-          pieceIds={renderer?.pieceIds ?? new Map()}
-          selection={match.selection}
-          moveTargets={armedSkill ? armedSkillTargets : moveTargets.squares}
-          {selectable}
-          draggable={movable}
-          usedSquares={usedThisPhase}
-          shakingSquares={renderer?.shakingSquares ?? new Set()}
-          lungeSquares={renderer?.lungeSquares ?? new Map()}
-          effectsActive={(renderer?.effectQueue.length ?? 0) > 0}
-          approachChoices={pendingApproach?.approaches ?? []}
-          bodyguardChoice={pendingBodyguard ? {
-            defender: pendingBodyguard.targetSq,
-            guards: pendingBodyguard.eligible.slice(),
-          } : null}
-          lastApplied={renderer?.lastApplied ?? null}
-          {interactive}
-          wheelOpen={wheelOpen}
-          armedSkillId={armedSkill?.skillId ?? null}
-          {focusActive}
-          {chargeActive}
-          {wheelLegality}
-          onWheelSliceClick={handleWheelSliceClick}
-          onWheelSliceHover={handleWheelSliceHover}
-          directionPicker={pendingDirection}
-          onDirectionPick={handleDirectionPick}
-          onDirectionCancel={handleDirectionCancel}
-          onSquareClick={handleSquareClick}
-          onPieceDrop={handlePieceDrop}
-          onPressStart={handlePressStart}
-          onDragMove={handleDragMove}
-          {dragTrail}
-          {dragHover}
-          {dragHoverLegal}
-          dragLanding={effectiveLanding}
-          onApproachChoice={(ap) => {
-            if (pendingApproach) {
-              const target = pendingApproach.target;
-              pendingApproach = null;
-              commitMoveTargetApproach(target, ap);
-            }
-          }}
+          aiThinking={p2Thinking}
+          aiLastDepth={aiLastDepth}
+          isAiSeat={p2IsAi}
         />
-        {#if renderer}
-          <EffectsLayer viewBox={800} wheelPad={60} bind:queue={renderer.effectQueue} />
-        {/if}
-        {#if aiThinking}
-          <div class="thinking" role="status" aria-live="polite">
-            <span class="spinner" aria-hidden="true"></span>
-            <span class="thinking-label">{t("controls.aiThinking")}</span>
-            {#if settings.showAiDepth && aiLastDepth > 0}
-              <span class="depth-label">d{aiLastDepth}</span>
-            {/if}
-          </div>
-        {/if}
-        {#if hoveredSlice && wheelOpen}
-          <div class="info-anchor">
-            <SkillInfoCard
-              slice={hoveredSlice}
-              {focusActive}
-              {chargeActive}
-              armed={hoveredSlice.kind === "skill"
-                && armedSkill?.skillId === hoveredSlice.skillId}
-            />
-          </div>
-        {/if}
-      </div>
-      {#if pendingApproach}
-        <p class="hint">choose the path the attacker takes — click a highlighted square, or press Esc to cancel</p>
-      {/if}
-      {#if pendingBodyguard}
-        <p class="hint">bodyguard: defender may redirect the hit — click the red defender to take the hit, or a blue guard to intercept</p>
-      {/if}
-      {#if armedNeedsAllyPick && focusAllyChosen === null}
-        <p class="hint">pick an adjacent ally to channel onto, then choose where they move</p>
-      {/if}
-      {#if armedNeedsAllyPick && focusAllyChosen !== null}
-        <p class="hint">choose the destination for the chosen ally — click another ally to switch</p>
-      {/if}
-      {#if pendingDirection}
-        <p class="hint">choose a push direction — click an arrow, or press Esc to cancel</p>
-      {/if}
-      {#if armedHasFocusModeChoice && !pendingDirection}
-        <div class="focus-mode">
-          <span class="focus-mode-label">Focus boosts:</span>
-          <div class="focus-mode-toggle" role="radiogroup" aria-label="focus mode">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={focusModePref === "activation"}
-              class:active={focusModePref === "activation"}
-              onclick={() => (focusModePref = "activation")}
-            >Range (+1 tile)</button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={focusModePref === "effect"}
-              class:active={focusModePref === "effect"}
-              onclick={() => (focusModePref = "effect")}
-            >Effect (push 2)</button>
-          </div>
-        </div>
-      {/if}
-      {#if armedHasRetargetChoice && !pendingDirection}
-        <div class="focus-mode">
-          <span class="focus-mode-label">Focus channels onto:</span>
-          <div class="focus-mode-toggle" role="radiogroup" aria-label="focus recipient">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={focusRetargetPref === "self"}
-              class:active={focusRetargetPref === "self"}
-              onclick={() => { focusRetargetPref = "self"; focusAllyChosen = null; }}
-            >Self</button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={focusRetargetPref === "ally"}
-              class:active={focusRetargetPref === "ally"}
-              onclick={() => { focusRetargetPref = "ally"; focusAllyChosen = null; }}
-            >Ally</button>
-          </div>
-        </div>
-      {/if}
-    </section>
 
-    <aside class="hud">
-      <div>
-        <span class="label">round</span>
-        <span class="value">{match.position?.roundNumber ?? "–"}</span>
-      </div>
-      <div>
-        <span class="label">to move</span>
-        <span class="value">{match.position?.toMove === 0 ? "P1" : "P2"}</span>
-      </div>
-      <div>
-        <span class="label">phase</span>
-        <span class="value">{inMovePhase ? "move" : "skill"}</span>
-      </div>
-      <div>
-        <span class="label">actions</span>
-        <span class="value">{match.position?.actionsRemaining ?? "–"}</span>
-      </div>
-      <div>
-        <span class="label">P1 $</span>
-        <span class="value">{match.position?.p1Money ?? "–"}</span>
-      </div>
-      <div>
-        <span class="label">P2 $</span>
-        <span class="value">{match.position?.p2Money ?? "–"}</span>
-      </div>
-      <div>
-        <span class="label">legal</span>
-        <span class="value">{match.legal.length}</span>
-      </div>
-      <div class="actions">
-        {#if match.mode === "aivai"}
-          <button
-            type="button"
-            disabled={match.position?.gameResult !== 0}
-            onclick={() => {
-              if (busy && aiAutoPlay) {
-                // Mid-move: defer the pause until the animation settles.
-                pendingPause = !pendingPause;
-              } else {
-                pendingPause = false;
-                aiAutoPlay = !aiAutoPlay;
+        <div class="board-stack" class:sandbox-mode={match.mode === "sandbox"}>
+          <Board
+            position={match.position}
+            pieceIds={renderer?.pieceIds ?? new Map()}
+            selection={match.selection}
+            moveTargets={armedSkill ? armedSkillTargets : moveTargets.squares}
+            {selectable}
+            draggable={movable}
+            usedSquares={usedThisPhase}
+            shakingSquares={renderer?.shakingSquares ?? new Set()}
+            lungeSquares={renderer?.lungeSquares ?? new Map()}
+            toMove={match.position?.gameResult === 0 ? (match.position?.toMove ?? null) : null}
+            effectsActive={(renderer?.effectQueue.length ?? 0) > 0}
+            approachChoices={pendingApproach?.approaches ?? []}
+            bodyguardChoice={pendingBodyguard ? {
+              defender: pendingBodyguard.targetSq,
+              guards: pendingBodyguard.eligible.slice(),
+            } : null}
+            lastApplied={renderer?.lastApplied ?? null}
+            {interactive}
+            wheelOpen={wheelOpen}
+            armedSkillId={armedSkill?.skillId ?? null}
+            {focusActive}
+            {chargeActive}
+            {wheelLegality}
+            onWheelSliceClick={handleWheelSliceClick}
+            onWheelSliceHover={handleWheelSliceHover}
+            directionPicker={pendingDirection}
+            onDirectionPick={handleDirectionPick}
+            onDirectionCancel={handleDirectionCancel}
+            onSquareClick={handleSquareClick}
+            onPieceDrop={handlePieceDrop}
+            onPressStart={handlePressStart}
+            onDragMove={handleDragMove}
+            {dragTrail}
+            {dragHover}
+            {dragHoverLegal}
+            dragLanding={effectiveLanding}
+            onApproachChoice={(ap) => {
+              if (pendingApproach) {
+                const target = pendingApproach.target;
+                pendingApproach = null;
+                commitMoveTargetApproach(target, ap);
               }
             }}
-          >{pendingPause ? t("controls.pausing") : aiAutoPlay ? t("controls.pause") : t("controls.play")}</button>
-          <button
-            type="button"
-            disabled={busy || aiAutoPlay || match.position?.gameResult !== 0}
-            onclick={() => void runAiStep()}
-          >{t("controls.step")}</button>
-        {:else}
-          <button
-            type="button"
-            disabled={!interactive || endPhaseAction === null}
-            onclick={endPhase}
-          >{t("controls.endPhase")}</button>
+          />
+          {#if renderer}
+            <EffectsLayer viewBox={800} wheelPad={60} bind:queue={renderer.effectQueue} />
+          {/if}
+          {#if hoveredSlice && wheelOpen}
+            <div class="info-anchor">
+              <SkillInfoCard
+                slice={hoveredSlice}
+                {focusActive}
+                {chargeActive}
+                armed={hoveredSlice.kind === "skill"
+                  && armedSkill?.skillId === hoveredSlice.skillId}
+              />
+            </div>
+          {/if}
+        </div>
+
+        <PlayerPanel
+          player="p1"
+          position={match.position}
+          aiThinking={p1Thinking}
+          aiLastDepth={aiLastDepth}
+          isAiSeat={p1IsAi}
+        />
+      </div>
+
+      <!-- Right column: status + controls + export + progression -->
+      <div class="right-column">
+      <aside class="right-panel">
+        <!-- Status -->
+        <div class="status-block">
+          <div class="stat-row">
+            <span class="stat-label">Round</span>
+            <span class="stat-value">{match.position?.roundNumber ?? "–"}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Phase</span>
+            <span class="phase-pill" class:move={inMovePhase} class:skill={!inMovePhase}>
+              {inMovePhase ? "Move" : "Skill"}
+            </span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Actions</span>
+            <span class="stat-value">{match.position?.actionsRemaining ?? "–"}</span>
+          </div>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <!-- Primary action -->
+        <div class="primary-actions">
+          {#if match.position?.gameResult !== 0}
+            <p class="result">
+              {match.position?.gameResult === 1
+                ? t("result.p1Wins")
+                : match.position?.gameResult === 2
+                  ? t("result.p2Wins")
+                  : t("result.draw")}
+            </p>
+          {:else if match.mode === "aivai"}
+            <button
+              type="button"
+              class="btn-primary"
+              disabled={match.position?.gameResult !== 0}
+              onclick={() => {
+                if (busy && aiAutoPlay) {
+                  pendingPause = !pendingPause;
+                } else {
+                  pendingPause = false;
+                  aiAutoPlay = !aiAutoPlay;
+                }
+              }}
+            >{pendingPause ? t("controls.pausing") : aiAutoPlay ? t("controls.pause") : t("controls.play")}</button>
+            <button
+              type="button"
+              class="btn-secondary"
+              disabled={busy || aiAutoPlay || match.position?.gameResult !== 0}
+              onclick={() => void runAiStep()}
+            >{t("controls.step")}</button>
+          {:else}
+            <button
+              type="button"
+              class="btn-primary"
+              disabled={!interactive || endPhaseAction === null}
+              onclick={endPhase}
+            >{t("controls.endPhase")}</button>
+          {/if}
+        </div>
+
+        <!-- Contextual hints + skill toggles -->
+        {#if pendingApproach}
+          <p class="hint">Choose the path the attacker takes — click a highlighted square, or press Esc to cancel</p>
         {/if}
+        {#if pendingBodyguard}
+          <p class="hint">Bodyguard: click the red defender to take the hit, or a blue guard to intercept</p>
+        {/if}
+        {#if armedNeedsAllyPick && focusAllyChosen === null}
+          <p class="hint">Pick an adjacent ally to channel onto, then choose where they move</p>
+        {/if}
+        {#if armedNeedsAllyPick && focusAllyChosen !== null}
+          <p class="hint">Choose the destination for the chosen ally — click another ally to switch</p>
+        {/if}
+        {#if pendingDirection}
+          <p class="hint">Choose a push direction — click an arrow, or press Esc to cancel</p>
+        {/if}
+        {#if armedHasFocusModeChoice && !pendingDirection}
+          <div class="focus-mode">
+            <span class="focus-mode-label">Focus boosts:</span>
+            <div class="focus-mode-toggle" role="radiogroup" aria-label="focus mode">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={focusModePref === "activation"}
+                class:active={focusModePref === "activation"}
+                onclick={() => (focusModePref = "activation")}
+              >Range (+1)</button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={focusModePref === "effect"}
+                class:active={focusModePref === "effect"}
+                onclick={() => (focusModePref = "effect")}
+              >Effect</button>
+            </div>
+          </div>
+        {/if}
+        {#if armedHasRetargetChoice && !pendingDirection}
+          <div class="focus-mode">
+            <span class="focus-mode-label">Focus onto:</span>
+            <div class="focus-mode-toggle" role="radiogroup" aria-label="focus recipient">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={focusRetargetPref === "self"}
+                class:active={focusRetargetPref === "self"}
+                onclick={() => { focusRetargetPref = "self"; focusAllyChosen = null; }}
+              >Self</button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={focusRetargetPref === "ally"}
+                class:active={focusRetargetPref === "ally"}
+                onclick={() => { focusRetargetPref = "ally"; focusAllyChosen = null; }}
+              >Ally</button>
+            </div>
+          </div>
+        {/if}
+
+        <div class="panel-divider"></div>
+
+        <!-- Export + sandbox -->
         <div class="export-group">
           <button
             type="button"
@@ -1670,27 +1730,24 @@
             onclick={() => void (match.mode === "sandbox" ? exitSandbox() : enterSandbox())}
           >{match.mode === "sandbox" ? t("controls.exitSandbox") : t("controls.sandbox")}</button>
         </div>
+      </aside>
+
+      <!-- Progression panel: income + skill actions over upcoming rounds -->
+      {#if match.position}
+        <ProgressionPanel roundNumber={match.position.roundNumber} />
+      {/if}
       </div>
-    </aside>
-
-    {#if toast}
-      <div class="toast" role="status" aria-live="polite">{toast}</div>
-    {/if}
-
-    {#if match.position?.gameResult !== 0}
-      <p class="result">
-        {match.position?.gameResult === 1
-          ? t("result.p1Wins")
-          : match.position?.gameResult === 2
-            ? t("result.p2Wins")
-            : t("result.draw")}
-      </p>
-    {/if}
+    </div>
   {/if}
 </main>
 
+{#if toast}
+  <div class="toast" role="status" aria-live="polite">{toast}</div>
+{/if}
+
 {#if sandboxConfirmMsg !== null}
-  <dialog open>
+  {@const openDialog = (el: HTMLDialogElement | null) => { if (el) el.showModal(); }}
+  <dialog use:openDialog>
     <p>{sandboxConfirmMsg}</p>
     <div class="confirm-actions">
       <button type="button" onclick={() => { sandboxConfirmMsg = null; sandboxConfirmResolve?.(false); sandboxConfirmResolve = null; }}>Cancel</button>
@@ -1701,40 +1758,305 @@
 
 <style>
   main {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 0.6rem 1rem 2rem;
+    padding: 0.5rem 0.8rem 1.5rem;
     position: relative;
   }
-  main.sandbox-mode {
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 0.6rem;
+  }
+  header h1 {
+    font-size: 1.2rem;
+    margin: 0;
+  }
+  .back a { text-decoration: none; }
+
+  /* ── Game area: board column + right panel ──────────────────────────────── */
+  .game-area {
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+  }
+
+  .board-column {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    /* Board fills available viewport height.
+       Deduct: main padding-top (8px) + header (~40px) + header margin (10px)
+               + 2 player panels (~36px each) + gaps (8px) + bottom padding (24px) = ~162px.
+       Use 170px to be safe; board is always a square so width = this height. */
+    width: min(calc(100vw - 240px - 2rem), calc(100dvh - 170px));
+    min-width: 280px;
+  }
+
+  .board-stack {
+    position: relative;
+    width: 100%;
+  }
+
+  /* Sandbox: glow on the board only, not the whole page */
+  .board-stack.sandbox-mode {
     box-shadow:
-      inset 0 0 0 4px rgba(56, 178, 255, 0.85),
-      inset 0 0 24px 8px rgba(56, 178, 255, 0.30);
+      0 0 0 3px rgba(56, 178, 255, 0.85),
+      0 0 20px 6px rgba(56, 178, 255, 0.30);
     animation: sandbox-pulse 2.4s ease-in-out infinite;
-    border-radius: 6px;
+    border-radius: 4px;
   }
   @keyframes sandbox-pulse {
     0%, 100% {
       box-shadow:
-        inset 0 0 0 4px rgba(56, 178, 255, 0.85),
-        inset 0 0 24px 8px rgba(56, 178, 255, 0.25);
+        0 0 0 3px rgba(56, 178, 255, 0.85),
+        0 0 20px 6px rgba(56, 178, 255, 0.25);
     }
     50% {
       box-shadow:
-        inset 0 0 0 4px rgba(56, 178, 255, 1.00),
-        inset 0 0 32px 12px rgba(56, 178, 255, 0.45);
+        0 0 0 3px rgba(56, 178, 255, 1.00),
+        0 0 28px 10px rgba(56, 178, 255, 0.45);
     }
   }
+
+  .info-anchor {
+    position: absolute;
+    top: 0;
+    left: calc(100% + 0.6rem);
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* ── Right panel ─────────────────────────────────────────────────────────── */
+  .right-column {
+    flex: 0 0 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .right-panel {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.6rem 0.7rem;
+    border: 1.5px solid var(--paper-line-strong, #8a7a4e);
+    border-radius: 6px;
+    background: var(--paper-bg, #f3ecd9);
+    min-height: 0;
+  }
+
+  .panel-divider {
+    height: 1px;
+    background: var(--paper-line, rgba(58,47,31,0.15));
+    margin: 0.1rem 0;
+  }
+
+  /* Status block */
+  .status-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+  .stat-label {
+    font-size: 0.72rem;
+    color: var(--paper-ink-soft, #6a6055);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat-value {
+    font-weight: 600;
+    font-size: 0.95rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .phase-pill {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.1em 0.5em;
+    border-radius: 3px;
+  }
+  .phase-pill.move {
+    background: rgba(75, 107, 138, 0.15);
+    color: var(--p1, #4b6b8a);
+  }
+  .phase-pill.skill {
+    background: rgba(138, 74, 189, 0.15);
+    color: #7a3aad;
+  }
+
+  /* Primary action buttons */
+  .primary-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .btn-primary {
+    font: inherit;
+    width: 100%;
+    padding: 0.5em 0.8em;
+    border: 1.5px solid var(--paper-line-strong, #8a7a4e);
+    border-radius: 5px;
+    background: var(--paper-ink, #3a2f1f);
+    color: var(--paper-bg, #f3ecd9);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .btn-primary:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+  }
+  .btn-primary:not(:disabled):hover {
+    background: #2a1f10;
+  }
+  .btn-secondary {
+    font: inherit;
+    width: 100%;
+    padding: 0.4em 0.8em;
+    border: 1.5px solid var(--paper-line-strong, #8a7a4e);
+    border-radius: 5px;
+    background: var(--paper-bg, #f3ecd9);
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.88rem;
+  }
+  .btn-secondary:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+  }
+  .btn-secondary:not(:disabled):hover {
+    background: var(--paper-square-light, #ece2c8);
+  }
+
+  /* Result message */
+  .result {
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 0.4em 0;
+    color: var(--accent, #c79b3a);
+  }
+
+  /* Hints */
+  .hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--paper-ink-soft, #6a6055);
+    line-height: 1.4;
+  }
+
+  /* Focus mode toggles */
+  .focus-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.82rem;
+  }
+  .focus-mode-label {
+    color: var(--paper-ink-soft, #6a6055);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.68rem;
+  }
+  .focus-mode-toggle {
+    display: inline-flex;
+    border: 1.5px solid #8a4abd;
+    border-radius: 4px;
+    overflow: hidden;
+    width: 100%;
+  }
+  .focus-mode-toggle button {
+    font: inherit;
+    flex: 1;
+    padding: 0.22em 0.4em;
+    border: none;
+    background: var(--paper-bg, #f3ecd9);
+    color: inherit;
+    cursor: pointer;
+    border-right: 1px solid #8a4abd;
+    font-size: 0.82rem;
+  }
+  .focus-mode-toggle button:last-child { border-right: none; }
+  .focus-mode-toggle button.active {
+    background: #8a4abd;
+    color: #f8f1de;
+    font-weight: 600;
+  }
+  .focus-mode-toggle button:not(.active):hover {
+    background: rgba(138, 74, 189, 0.15);
+  }
+
+  /* Export group */
   .export-group {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-top: 0.6rem;
-    padding-top: 0.6rem;
-    border-top: 1px solid rgba(127, 127, 127, 0.25);
+    flex-direction: column;
+    gap: 0.3rem;
   }
-  .export-group button { flex: 1 1 auto; }
-  .sandbox-toggle { flex-basis: 100% !important; }
+  .export-group button {
+    font: inherit;
+    width: 100%;
+    padding: 0.32em 0.6em;
+    border: 1.5px solid var(--paper-line-strong, #8a7a4e);
+    border-radius: 4px;
+    background: var(--paper-bg, #f3ecd9);
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.82rem;
+    text-align: left;
+  }
+  .export-group button:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+  }
+  .export-group button:not(:disabled):hover {
+    background: var(--paper-square-light, #ece2c8);
+  }
+  .sandbox-toggle {
+    border-color: rgba(56, 178, 255, 0.6) !important;
+    color: rgb(20, 120, 180);
+  }
+  .sandbox-toggle:not(:disabled):hover {
+    background: rgba(56, 178, 255, 0.08) !important;
+  }
+
+  /* Error banner */
+  .err {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    color: #a94b3b;
+    border: 1.5px dashed currentColor;
+    padding: 0.4em 0.6em;
+    margin: 0 0 0.5em;
+    border-radius: 6px;
+  }
+  .err > span { flex: 1 1 auto; }
+  .err-dismiss {
+    flex: 0 0 auto;
+    width: 1.5em;
+    height: 1.5em;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .err-dismiss:hover { background: rgba(169, 75, 59, 0.12); }
+
+  /* Toast */
   .toast {
     position: fixed;
     bottom: 1.2rem;
@@ -1749,204 +2071,8 @@
     z-index: 1000;
     pointer-events: none;
   }
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: 1rem;
-    margin-bottom: 0.8rem;
-  }
-  header h1 {
-    font-size: 1.4rem;
-    margin: 0;
-  }
-  .back a { text-decoration: none; }
-  .board-wrap {
-    max-width: 720px;
-    margin: 0 auto;
-  }
-  .board-stack {
-    position: relative;
-    /* No padding/margin hack here — the wheel's spillover area is now
-       baked into the SVG's own viewBox (see WHEEL_PAD in Board.svelte),
-       so the SVG element's hit-box naturally contains it without
-       shadowing sibling controls (e.g. HUD buttons below). */
-  }
-  .info-anchor {
-    position: absolute;
-    top: 0;
-    left: calc(100% + 1rem);
-    z-index: 5;
-    pointer-events: none;
-  }
-  @media (max-width: 980px) {
-    .info-anchor {
-      position: static;
-      margin-top: 0.6rem;
-    }
-  }
-  .hint {
-    margin: 0.4rem 0 0;
-    text-align: center;
-    font-size: 0.9rem;
-    color: var(--paper-ink-soft, #6a6055);
-  }
-  .focus-mode {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
-    margin: 0.5rem 0 0;
-    font-size: 0.85rem;
-  }
-  .focus-mode-label {
-    color: var(--paper-ink-soft, #6a6055);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 0.72rem;
-  }
-  .focus-mode-toggle {
-    display: inline-flex;
-    border: 1.5px solid #8a4abd;
-    border-radius: 5px;
-    overflow: hidden;
-  }
-  .focus-mode-toggle button {
-    font: inherit;
-    padding: 0.25em 0.65em;
-    border: none;
-    background: var(--paper-bg, #f3ecd9);
-    color: inherit;
-    cursor: pointer;
-    border-right: 1px solid #8a4abd;
-  }
-  .focus-mode-toggle button:last-child { border-right: none; }
-  .focus-mode-toggle button.active {
-    background: #8a4abd;
-    color: #f8f1de;
-    font-weight: 600;
-  }
-  .focus-mode-toggle button:not(.active):hover {
-    background: rgba(138, 74, 189, 0.15);
-  }
-  .hud {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.6rem 1.4rem;
-    margin: 1rem auto 0;
-    max-width: 720px;
-    padding: 0.6em 0.9em;
-    border: 1.5px solid var(--paper-line-strong, #8a7a4e);
-    border-radius: 6px;
-    background: var(--paper-bg, #f3ecd9);
-  }
-  .hud .label {
-    display: block;
-    font-size: 0.72rem;
-    color: var(--paper-ink-soft, #6a6055);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .hud .value {
-    font-weight: 600;
-    font-size: 1rem;
-  }
-  .hud .actions {
-    margin-left: auto;
-  }
-  .hud button {
-    font: inherit;
-    padding: 0.4em 0.9em;
-    border: 1.5px solid var(--paper-line-strong, #8a7a4e);
-    border-radius: 5px;
-    background: var(--paper-bg, #f3ecd9);
-    color: inherit;
-    cursor: pointer;
-  }
-  .hud button:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-  .hud button:not(:disabled):hover {
-    background: var(--paper-square-light, #ece2c8);
-  }
-  .result {
-    max-width: 720px;
-    margin: 1rem auto 0;
-    padding: 0.6em 0.9em;
-    border: 1.5px solid var(--accent, #c79b3a);
-    border-radius: 6px;
-    background: var(--paper-bg, #f3ecd9);
-    font-weight: 600;
-    text-align: center;
-  }
-  .err {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    color: #a94b3b;
-    border: 1.5px dashed currentColor;
-    padding: 0.4em 0.6em;
-    margin: 0 0 0.5em;
-    border-radius: 6px;
-  }
-  .err > span {
-    flex: 1 1 auto;
-  }
-  .err-dismiss {
-    flex: 0 0 auto;
-    width: 1.5em;
-    height: 1.5em;
-    padding: 0;
-    border: none;
-    border-radius: 3px;
-    background: transparent;
-    color: inherit;
-    font-size: 1.1rem;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .err-dismiss:hover {
-    background: rgba(169, 75, 59, 0.12);
-  }
-  .thinking {
-    position: absolute;
-    top: 0.6rem;
-    right: 0.6rem;
-    z-index: 6;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5em;
-    padding: 0.4em 0.7em;
-    border: 1.5px solid var(--paper-line-strong, #8a7a4e);
-    border-radius: 999px;
-    background: var(--paper-bg, #f3ecd9);
-    font-size: 0.85rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-    pointer-events: none;
-  }
-  .thinking-label {
-    color: var(--paper-ink, #1c1a17);
-  }
-  .depth-label {
-    font-size: 0.78rem;
-    color: var(--paper-ink-soft, rgba(58,47,31,0.55));
-    font-variant-numeric: tabular-nums;
-  }
-  .spinner {
-    width: 0.9em;
-    height: 0.9em;
-    border: 2px solid var(--paper-line, #c7b894);
-    border-top-color: var(--paper-ink, #1c1a17);
-    border-radius: 50%;
-    animation: spinner-rot 0.9s linear infinite;
-  }
-  @keyframes spinner-rot {
-    to { transform: rotate(1turn); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .spinner { animation-duration: 2.4s; }
-  }
+
+  /* Sandbox confirm dialog */
   dialog[open] {
     border: 1.5px solid var(--paper-line-strong);
     border-radius: 8px;
@@ -1956,9 +2082,10 @@
     min-width: min(320px, 90vw);
     box-shadow: 0 6px 24px rgba(0,0,0,0.18);
   }
-  dialog[open] p {
-    margin: 0 0 0.9rem;
+  dialog::backdrop {
+    background: rgba(0, 0, 0, 0.45);
   }
+  dialog[open] p { margin: 0 0 0.9rem; }
   .confirm-actions {
     display: flex;
     justify-content: flex-end;
@@ -1969,5 +2096,56 @@
     color: #fff;
     border-color: var(--p2, #a94b3b);
     font-weight: 600;
+  }
+
+  /* ── Narrow screen: stack vertically ────────────────────────────────────── */
+  @media (max-width: 820px) {
+    .game-area {
+      flex-direction: column;
+    }
+    .board-column {
+      width: 100%;
+    }
+    .right-column {
+      flex: unset;
+      width: 100%;
+    }
+    .right-panel {
+      flex: unset;
+      width: 100%;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 0.6rem 1.2rem;
+    }
+    .status-block {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 0.4rem 1.2rem;
+    }
+    .primary-actions {
+      flex-direction: row;
+    }
+    .btn-primary, .btn-secondary {
+      width: auto;
+    }
+    .export-group {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+    .export-group button {
+      width: auto;
+      flex: 1 1 auto;
+    }
+    .panel-divider {
+      display: none;
+    }
+    .info-anchor {
+      position: static;
+      margin-top: 0.4rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .board-stack.sandbox-mode { animation: none; }
   }
 </style>

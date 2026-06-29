@@ -107,9 +107,12 @@
     } | null;
     onDirectionPick?: (raw: number) => void;
     onDirectionCancel?: () => void;
-    /** Per-square lunge offsets (SVG px). Drives the lunge-recoil CSS animation
+    /** Per-square lunge offsets (SVG px) + dist. Drives the lunge-recoil CSS animation
      *  on non-kill attacks: piece at `sq` lunges by (dx, dy) then recoils. */
-    lungeSquares?: Map<number, { dx: number; dy: number }>;
+    lungeSquares?: Map<number, { dx: number; dy: number; dist: number }>;
+    /** Whose turn it is: 0 = P1, 1 = P2, null = game over / unknown.
+     *  Renders a coloured accent strip on the active player's board edge. */
+    toMove?: number | null;
   }
 
   let {
@@ -150,7 +153,8 @@
     directionPicker = null,
     onDirectionPick,
     onDirectionCancel,
-    lungeSquares = new Map<number, { dx: number; dy: number }>(),
+    lungeSquares = new Map<number, { dx: number; dy: number; dist: number }>(),
+    toMove = null,
   }: Props = $props();
 
   const SIZE = $derived(viewBox / 8);
@@ -514,6 +518,24 @@
       />
     {/each}
   </g>
+
+  <!-- Turn strip: coloured accent bar on the active player's board edge.
+       P1 (toMove=0) → bottom edge; P2 (toMove=1) → top edge.
+       Sits in the WHEEL_PAD gutter so it never overlaps the squares. -->
+  {#if toMove !== null}
+    {@const STRIP_H = Math.max(5, SIZE * 0.055)}
+    {@const stripColor = toMove === 0 ? "var(--p1, #4b6b8a)" : "var(--p2, #a94b3b)"}
+    {@const stripY = toMove === 0 ? viewBox + (WHEEL_PAD - STRIP_H) / 2 : -(WHEEL_PAD - STRIP_H) / 2 - STRIP_H}
+    <rect
+      x={0}
+      y={stripY}
+      width={viewBox}
+      height={STRIP_H}
+      fill={stripColor}
+      rx={STRIP_H * 0.4}
+      class="turn-strip"
+    />
+  {/if}
 
   <!-- Last-applied source + target hints (drawn under the pieces so the
        piece itself reads cleanly). -->
@@ -891,4 +913,9 @@
   .board.interactive .hits rect.hot { cursor: pointer; }
   .board.interactive .hits rect.grab { cursor: grab; }
   .board.interactive .hits rect.grab:active { cursor: grabbing; }
+
+  .turn-strip {
+    transition: y 300ms ease, fill 300ms ease;
+    pointer-events: none;
+  }
 </style>

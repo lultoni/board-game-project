@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import { t } from "$lib/state/i18n";
+  import { sfx } from "$lib/audio/sfx";
   import {
     host as mpHost,
     hostWithCode as mpHostWithCode,
@@ -108,6 +109,7 @@
   let urlCopied = $state(false);
   let codeCopied = $state(false);
   async function copyText(s: string, which: "url" | "code"): Promise<void> {
+    sfx.play("click");
     try {
       await navigator.clipboard.writeText(s);
       if (which === "url") {
@@ -121,6 +123,7 @@
   }
 
   async function startHost(): Promise<void> {
+    sfx.play("click");
     busy = true;
     codeError = null;
     try {
@@ -143,6 +146,7 @@
       codeError = t("multiplayer.invalidCode");
       return;
     }
+    sfx.play("click");
     busy = true;
     codeError = null;
     try {
@@ -300,6 +304,7 @@
    *  mode and reported "disconnected". */
   async function leaveLobby(ev: MouseEvent): Promise<void> {
     ev.preventDefault();
+    sfx.play("click");
     cancel();
     // Reset mode too — cancel() leaves match.mode alone because it's still
     // owned by the lobby flow until the user actually leaves.

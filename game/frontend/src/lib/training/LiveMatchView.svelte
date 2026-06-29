@@ -120,8 +120,8 @@
         <Board position={positionView} interactive={false} viewBox={640} />
       </div>
       <div class="bars">
-        <EvalBar label="Challenger NN" value={live.evals.challenger_nn} />
-        <EvalBar label="Defender NN" value={live.evals.defender_nn} />
+        <EvalBar label={live.challenger} value={live.evals.challenger_nn} color="p1" />
+        <EvalBar label={live.defender} value={live.evals.defender_nn} color="p2" />
         <EvalBar label="Heuristic" value={live.evals.heuristic} />
       </div>
     </div>

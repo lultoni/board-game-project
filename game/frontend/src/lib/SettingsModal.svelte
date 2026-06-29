@@ -1,5 +1,6 @@
 <script lang="ts">
   import { settings, type AnimationSpeed } from "$lib/state/settings.svelte";
+  import { sfx } from "$lib/audio/sfx";
 
   let { open, onClose }: { open: boolean; onClose: () => void } = $props();
 
@@ -34,7 +35,7 @@
 <dialog bind:this={dialogEl} oncancel={onDialogCancel}>
   <div class="header">
     <h2>Settings</h2>
-    <button class="close" onclick={onClose} aria-label="Close settings">✕</button>
+    <button class="close" onclick={() => { sfx.play("click"); onClose(); }} aria-label="Close settings">✕</button>
   </div>
 
   <section>
@@ -45,7 +46,7 @@
         {#each (["off", "fast", "normal", "cinematic"] as AnimationSpeed[]) as speed}
           <button
             class:active={settings.animationSpeed === speed}
-            onclick={() => { settings.animationSpeed = speed; }}
+            onclick={() => { sfx.play("click"); settings.animationSpeed = speed; }}
           >{ANIMATION_LABELS[speed]}</button>
         {/each}
       </div>
@@ -80,6 +81,7 @@
         max="1"
         step="0.05"
         bind:value={settings.audioVolume}
+        oninput={() => sfx.play("tick")}
         class="slider"
       />
     </label>

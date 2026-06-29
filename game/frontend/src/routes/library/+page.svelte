@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import { t } from "$lib/state/i18n";
   import { getTelemetryStore } from "$lib/storage";
+  import { sfx } from "$lib/audio/sfx";
   import { setPendingMatchLog } from "$lib/storage/library-handoff";
   import type { MatchMeta } from "$lib/storage/types";
   import type { MatchMode } from "$lib/state/match-store.svelte";
@@ -111,6 +112,7 @@
   }
 
   async function openInInspector(matchId: string): Promise<void> {
+    sfx.play("click");
     busy = true;
     try {
       const m = await getTelemetryStore().getMatch(matchId);
@@ -123,6 +125,7 @@
   }
 
   async function openInReplay(matchId: string): Promise<void> {
+    sfx.play("click");
     busy = true;
     try {
       const m = await getTelemetryStore().getMatch(matchId);
@@ -135,6 +138,7 @@
   }
 
   async function exportSingle(matchId: string): Promise<void> {
+    sfx.play("click");
     busy = true;
     exportSkipNotice = null;
     try {
@@ -166,6 +170,7 @@
   }
 
   async function deleteRow(matchId: string): Promise<void> {
+    sfx.play("click");
     busy = true;
     try {
       await getTelemetryStore().deleteMatch(matchId);
@@ -184,7 +189,7 @@
 
 <main>
   <header>
-    <p><a href="../">{t("library.back")}</a></p>
+    <p><a href="../" onclick={() => sfx.play("click")}>{t("library.back")}</a></p>
     <h1>{t("library.title")}</h1>
     <small>{countLabel(filtered.length)}</small>
   </header>
@@ -199,7 +204,7 @@
   <section class="filters">
     <label>
       <span>{t("library.filterMode")}</span>
-      <select bind:value={filterMode}>
+      <select bind:value={filterMode} onchange={() => sfx.play("tick")}>
         <option value="all">{t("library.modeAll")}</option>
         <option value="hvh">{t("library.modeHvh")}</option>
         <option value="hvai">{t("library.modeHvai")}</option>
@@ -209,7 +214,7 @@
     </label>
     <label>
       <span>{t("library.filterResult")}</span>
-      <select bind:value={filterResult}>
+      <select bind:value={filterResult} onchange={() => sfx.play("tick")}>
         <option value="all">{t("library.resultAll")}</option>
         <option value="p1win">{t("library.resultP1Win")}</option>
         <option value="p2win">{t("library.resultP2Win")}</option>

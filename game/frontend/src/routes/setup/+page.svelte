@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import { invoke } from "@tauri-apps/api/core";
   import { t } from "$lib/state/i18n";
+  import { sfx } from "$lib/audio/sfx";
   import {
     match,
     modeFromSeats,
@@ -68,6 +69,7 @@
   ];
 
   async function start(): Promise<void> {
+    sfx.play("wheelOpen");
     if (isMultiplayer) {
       // Seats are forced human in multiplayer; nothing to copy back.
       match.side = { p1: "human", p2: "human" };
@@ -145,7 +147,7 @@
 
 <main>
   <header>
-    <p class="back"><a href="../">{t("setup.back")}</a></p>
+    <p class="back"><a href="../" onclick={() => sfx.play("click")}>{t("setup.back")}</a></p>
     <h1>{t("setup.title")}</h1>
   </header>
 
@@ -162,7 +164,7 @@
               name={seat.id}
               value="human"
               checked={(seat.id === "p1" ? p1 : p2) === "human"}
-              onchange={() => (seat.id === "p1" ? (p1 = "human") : (p2 = "human"))}
+              onchange={() => { sfx.play("click"); (seat.id === "p1" ? (p1 = "human") : (p2 = "human")); }}
             />
             {t("setup.human")}
           </label>
@@ -172,7 +174,7 @@
               name={seat.id}
               value="ai"
               checked={(seat.id === "p1" ? p1 : p2) === "ai"}
-              onchange={() => (seat.id === "p1" ? (p1 = "ai") : (p2 = "ai"))}
+              onchange={() => { sfx.play("click"); (seat.id === "p1" ? (p1 = "ai") : (p2 = "ai")); }}
             />
             {t("setup.ai")}
           </label>
@@ -194,6 +196,7 @@
               max="5000"
               step="50"
               bind:value={settings.p1ThinkTimeMs}
+              oninput={() => sfx.play("tick")}
             />
             <output>{settings.p1ThinkTimeMs}</output>
           </label>
@@ -205,6 +208,7 @@
               max="12"
               step="1"
               bind:value={settings.p1MaxDepth}
+              oninput={() => sfx.play("tick")}
             />
             <output>{settings.p1MaxDepth}</output>
           </label>
@@ -213,8 +217,10 @@
               <span class="rowLabel">P1 · Evaluator</span>
               <select
                 value={settings.p1Evaluator.source}
-                onchange={(e) =>
-                  onSourceChange("p1", (e.currentTarget as HTMLSelectElement).value as EvaluatorSource)}
+                onchange={(e) => {
+                  sfx.play("tick");
+                  onSourceChange("p1", (e.currentTarget as HTMLSelectElement).value as EvaluatorSource);
+                }}
               >
                 <option value="heuristic">Heuristic</option>
                 <option value="run" disabled={ratersBySource.run.length === 0}>Run</option>
@@ -223,11 +229,13 @@
               {#if settings.p1Evaluator.source !== "heuristic"}
                 <select
                   value={settings.p1Evaluator.id ?? ""}
-                  onchange={(e) =>
+                  onchange={(e) => {
+                    sfx.play("tick");
                     pickEval("p1", {
                       source: settings.p1Evaluator.source,
                       id: (e.currentTarget as HTMLSelectElement).value || null,
-                    })}
+                    });
+                  }}
                 >
                   {#each ratersBySource[settings.p1Evaluator.source] as r}
                     <option value={r.id}>{r.id}</option>
@@ -246,6 +254,7 @@
               max="5000"
               step="50"
               bind:value={settings.p2ThinkTimeMs}
+              oninput={() => sfx.play("tick")}
             />
             <output>{settings.p2ThinkTimeMs}</output>
           </label>
@@ -257,6 +266,7 @@
               max="12"
               step="1"
               bind:value={settings.p2MaxDepth}
+              oninput={() => sfx.play("tick")}
             />
             <output>{settings.p2MaxDepth}</output>
           </label>
@@ -265,8 +275,10 @@
               <span class="rowLabel">P2 · Evaluator</span>
               <select
                 value={settings.p2Evaluator.source}
-                onchange={(e) =>
-                  onSourceChange("p2", (e.currentTarget as HTMLSelectElement).value as EvaluatorSource)}
+                onchange={(e) => {
+                  sfx.play("tick");
+                  onSourceChange("p2", (e.currentTarget as HTMLSelectElement).value as EvaluatorSource);
+                }}
               >
                 <option value="heuristic">Heuristic</option>
                 <option value="run" disabled={ratersBySource.run.length === 0}>Run</option>
@@ -275,11 +287,13 @@
               {#if settings.p2Evaluator.source !== "heuristic"}
                 <select
                   value={settings.p2Evaluator.id ?? ""}
-                  onchange={(e) =>
+                  onchange={(e) => {
+                    sfx.play("tick");
                     pickEval("p2", {
                       source: settings.p2Evaluator.source,
                       id: (e.currentTarget as HTMLSelectElement).value || null,
-                    })}
+                    });
+                  }}
                 >
                   {#each ratersBySource[settings.p2Evaluator.source] as r}
                     <option value={r.id}>{r.id}</option>
@@ -298,6 +312,7 @@
               max="2000"
               step="50"
               bind:value={settings.aivaiStepDelayMs}
+              oninput={() => sfx.play("tick")}
             />
             <output>{settings.aivaiStepDelayMs}</output>
           </label>
@@ -316,7 +331,7 @@
             name="draftMode"
             value="custom"
             checked={draftMode === "custom"}
-            onchange={() => (draftMode = "custom")}
+            onchange={() => { sfx.play("click"); draftMode = "custom"; }}
           />
           <span class="modeLabel">{t("setup.draftMode.custom")}</span>
           <span class="modeHint">{t("setup.draftMode.customHint")}</span>
@@ -327,7 +342,7 @@
             name="draftMode"
             value="preMade"
             checked={draftMode === "preMade"}
-            onchange={() => (draftMode = "preMade")}
+            onchange={() => { sfx.play("click"); draftMode = "preMade"; }}
           />
           <span class="modeLabel">{t("setup.draftMode.preMade")}</span>
           <span class="modeHint">{t("setup.draftMode.preMadeHint")}</span>
@@ -346,7 +361,7 @@
                 value={opt.id}
                 checked={preMadeId === opt.id}
                 disabled={!ready}
-                onchange={() => (preMadeId = opt.id)}
+                onchange={() => { sfx.play("click"); preMadeId = opt.id; }}
               />
               <span>{t(opt.labelKey)}</span>
               {#if !ready}

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { t } from "$lib/state/i18n";
   import { settings } from "$lib/state/settings.svelte";
+  import { sfx } from "$lib/audio/sfx";
   import {
     getEngine,
     decodeAction,
@@ -162,10 +163,12 @@
   function togglePlay(): void {
     if (plies.length === 0) return;
     if (currentPly >= plies.length) return;
+    sfx.play("click");
     playing = !playing;
   }
 
   function restart(): void {
+    sfx.play("click");
     void jumpTo(0);
   }
 
@@ -194,13 +197,14 @@
 
   function onPasteLoad(): void {
     if (!pastedRaw.trim()) return;
+    sfx.play("click");
     void loadFromJson(pastedRaw);
   }
 </script>
 
 <main>
   <header>
-    <p><a href="../">{t("replay.back")}</a></p>
+    <p><a href="../" onclick={() => sfx.play("click")}>{t("replay.back")}</a></p>
     <h1>{t("replay.title")}</h1>
   </header>
 
@@ -261,7 +265,7 @@
         <button
           type="button"
           disabled={busy || playing || currentPly >= plies.length}
-          onclick={() => void stepForward()}
+          onclick={() => { sfx.play("click"); void stepForward(); }}
         >
           {t("controls.step")}
         </button>
@@ -280,7 +284,7 @@
           min="0"
           max={plies.length}
           value={currentPly}
-          oninput={onScrubInput}
+          oninput={(ev) => { sfx.play("tick"); onScrubInput(ev); }}
         />
         <label class="jump">
           <span>{t("replay.jumpToPly")}</span>

@@ -3,6 +3,7 @@
   import { getEngine } from "$lib/engine";
   import { t } from "$lib/state/i18n";
   import { getTelemetryStore } from "$lib/storage";
+  import { sfx } from "$lib/audio/sfx";
 
   let engineVersion = $state<string>(t("app.loading"));
   let backend = $state<"wasm" | "tauri" | "unknown">("unknown");
@@ -52,7 +53,7 @@
   {/if}
 
   {#if resumeCount > 0}
-    <a class="resume-banner" href="./multiplayer/">
+    <a class="resume-banner" href="./multiplayer/" onclick={() => sfx.play("click")}>
       {resumeCount === 1
         ? t("menu.resumeBannerOne")
         : t("menu.resumeBannerMany", { n: resumeCount })}
@@ -62,13 +63,13 @@
   <section class="menu">
     <h2>{t("menu.newMatch")}</h2>
     <ul>
-      <li><a href="./setup/">{t("menu.localPlay")}</a></li>
-      <li><a href="./multiplayer/">{t("menu.openMultiplayer")}</a></li>
-      <li><a href="./inspector/">{t("menu.openInspector")}</a></li>
-      <li><a href="./replay/">{t("menu.openReplay")}</a></li>
-      <li><a href="./library/">{t("menu.openLibrary")}</a></li>
+      <li><a href="./setup/" onclick={() => sfx.play("click")}>{t("menu.localPlay")}</a></li>
+      <li><a href="./multiplayer/" onclick={() => sfx.play("click")}>{t("menu.openMultiplayer")}</a></li>
+      <li><a href="./inspector/" onclick={() => sfx.play("click")}>{t("menu.openInspector")}</a></li>
+      <li><a href="./replay/" onclick={() => sfx.play("click")}>{t("menu.openReplay")}</a></li>
+      <li><a href="./library/" onclick={() => sfx.play("click")}>{t("menu.openLibrary")}</a></li>
       {#if backend === "tauri"}
-        <li><a href="./training/">Training Observatory</a></li>
+        <li><a href="./training/" onclick={() => sfx.play("click")}>Training Observatory</a></li>
       {/if}
     </ul>
   </section>

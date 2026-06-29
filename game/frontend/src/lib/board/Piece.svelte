@@ -23,9 +23,10 @@
      *  suppress idle breathing so the active side reads as "alive". */
     dormant?: boolean;
     /** When set, play a lunge-and-recoil animation by (dx, dy) SVG pixels.
-     *  Used for non-kill attacks: attacker lives at auxSq but visually lunges
+     *  dist=1: jab-and-back (2 segments). dist=2: step, step, back (3 segments).
+     *  Used for non-kill attacks: attacker rests at auxSq but visually lunges
      *  toward the target and bounces back. */
-    lunge?: { dx: number; dy: number } | null;
+    lunge?: { dx: number; dy: number; dist: number } | null;
   }
 
   let {
@@ -52,11 +53,12 @@
       ? "none"
       : `transform ${slideDur}ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity ${Math.round(slideDur * 0.86)}ms ease, filter ${Math.round(slideDur * 0.86)}ms ease`,
   );
-  // Lunge-recoil animation: piece at its resting square lunges toward the
-  // attacked square and snaps back. Duration = one full slide cycle.
+  // Lunge-recoil animation: fires after the slide has settled.
+  // dist-1: piece-lunge-1 — jab toward target, snap back. 2× slide duration.
+  // dist-2: piece-lunge-2 — step, step, snap back. 3× slide duration.
   const lungeStyle = $derived(
     lunge && slideDur > 0
-      ? `--lunge-dx:${lunge.dx}px;--lunge-dy:${lunge.dy}px;animation:piece-lunge ${slideDur * 2}ms cubic-bezier(0.25,0.46,0.45,0.94) forwards`
+      ? `--lunge-dx:${lunge.dx}px;--lunge-dy:${lunge.dy}px;animation:${lunge.dist >= 2 ? "piece-lunge-2" : "piece-lunge-1"} ${slideDur * (lunge.dist >= 2 ? 3 : 2)}ms ease-in-out forwards`
       : "",
   );
 
@@ -385,15 +387,27 @@
       animation: none;
     }
   }
-  /* Lunge-and-recoil: piece surges toward the attacked square then snaps back.
-     Driven by --lunge-dx / --lunge-dy set inline when lunge prop is active.
-     40% forward, 100% back — feels like a quick jab. */
+  /* Lunge-and-recoil animations. Fired after the positional slide settles.
+     Both use --lunge-dx / --lunge-dy set inline when lunge prop is active.
+
+     dist-1: jab straight to the target square, snap back.
+       Timeline: 0% resting → 45% at target → 100% resting.
+
+     dist-2: step to approach square, step to target, snap all the way back.
+       Each "step" = 1/3 of the full dx/dy vector.
+       Timeline: 0% resting → 33% at halfway → 67% at target → 100% resting. */
   .lunge-wrap {
     /* default: no transform when not lunging */
   }
-  @keyframes piece-lunge {
+  @keyframes piece-lunge-1 {
     0%   { transform: translate(0, 0); }
-    35%  { transform: translate(var(--lunge-dx, 0px), var(--lunge-dy, 0px)); }
+    45%  { transform: translate(var(--lunge-dx, 0px), var(--lunge-dy, 0px)); }
+    100% { transform: translate(0, 0); }
+  }
+  @keyframes piece-lunge-2 {
+    0%   { transform: translate(0, 0); }
+    33%  { transform: translate(calc(var(--lunge-dx, 0px) / 2), calc(var(--lunge-dy, 0px) / 2)); }
+    67%  { transform: translate(var(--lunge-dx, 0px), var(--lunge-dy, 0px)); }
     100% { transform: translate(0, 0); }
   }
 </style>

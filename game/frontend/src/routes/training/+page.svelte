@@ -1,16 +1,7 @@
 <script lang="ts">
-  // Training Observatory route shell.
-  //
-  // Wires the top-bar (run-dir picker, Start/Stop, phase indicator) and a
-  // tabbed layout for panels 1/2/3/5 on the left + Panel 4 (Inspector)
-  // pinned on the right. Polls `read_training_status` at 1 Hz globally and
-  // shares the resulting store with child panels via Svelte context.
-  //
-  // Panels arrive in subsequent commits (C3..C7); this shell renders
-  // placeholder cards until they land so the layout itself can be reviewed.
-
   import { onMount, setContext } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { sfx } from "$lib/audio/sfx";
   import { createPollingStore } from "$lib/training/polling";
   import type { StatusSnapshot, TrainingPhase, BackendInfo } from "$lib/training/types";
   import LiveMatchView from "$lib/training/LiveMatchView.svelte";
@@ -31,23 +22,15 @@
   let starting = $state<boolean>(false);
   let stopping = $state<boolean>(false);
   let startError = $state<string | null>(null);
-  // Set to true the moment we issue start_training_run, cleared once the
-  // status file confirms the run is actually progressing. Decouples button
-  // state from the in-flight IPC, which returns instantly.
   let runRequested = $state<boolean>(false);
 
   let selectedRaterId = $state<string | null>(null);
 
-  // Status store is created once `runDir` is known. We expose the store via
-  // context under a fixed key; panels grab it on mount.
   type StatusStore = ReturnType<typeof createPollingStore<StatusSnapshot>>;
   type StatusValue = { data: StatusSnapshot | null; error: string | null; lastUpdated: number | null };
   let statusStore: StatusStore | null = $state(null);
   let statusValue: StatusValue | null = $state(null);
 
-  // Subscribe to whatever the current `statusStore` is. When the store
-  // reference changes (after a fresh run-dir is applied), Svelte's $effect
-  // re-runs and we resubscribe.
   $effect(() => {
     if (!statusStore) {
       statusValue = null;
@@ -88,6 +71,7 @@
 
   function applyRunDir(): void {
     if (!runDirInput.trim()) return;
+    sfx.play("click");
     runDir = runDirInput.trim();
     statusStore = createPollingStore<StatusSnapshot>({
       invokeCmd: "read_training_status",
@@ -98,6 +82,7 @@
 
   async function start(): Promise<void> {
     if (!runDir) return;
+    sfx.play("click");
     starting = true;
     startError = null;
     runRequested = true;
@@ -115,6 +100,7 @@
   }
 
   async function stop(): Promise<void> {
+    sfx.play("click");
     stopping = true;
     runRequested = false;
     try {
@@ -126,9 +112,6 @@
     }
   }
 
-  // The status file is considered "live" if it was written within the last
-  // few seconds — the orchestrator throttles writes to ~1 Hz, so anything
-  // older than ~5s means either nobody's running or the run died.
   const STALE_MS = 5000;
   const statusFresh = $derived.by(() => {
     const ts = statusValue?.data?.written_at_ms;
@@ -136,10 +119,6 @@
     return Date.now() - ts < STALE_MS;
   });
 
-  // The phase we display: only honour the file's `phase` field when the
-  // status is fresh AND we're not in pre-start state. Otherwise show "idle"
-  // (the orchestrator's idle-phase indicator does not need to round-trip via
-  // disk to be true).
   const phase = $derived<TrainingPhase>(
     statusFresh ? (statusValue?.data?.phase ?? "idle") : "idle",
   );
@@ -151,20 +130,14 @@
   const populationCount = $derived(statusValue?.data?.population?.length ?? 0);
   const activeMatch = $derived(statusValue?.data?.active_match ?? null);
 
-  // Once a fresh, non-idle snapshot lands, the run is observably progressing
-  // and we can clear the "we just clicked start" flag — from that moment on,
-  // button state is driven by `statusFresh && phase !== idle`.
   $effect(() => {
     if (runRequested && statusFresh && phase !== "idle") {
       runRequested = false;
     }
   });
 
-  // Human-readable activity sub-line — what is the orchestrator doing right
-  // now? Honours phase + active_match + population so the long, quiet
-  // training phase of generation 1 isn't invisible.
   const activityLine = $derived.by(() => {
-    if (!isRunning) return "Not running.";
+    if (!isRunning) return null;
     if (!statusFresh && runRequested) return "Starting up…";
     if (phase === "training") {
       const gen = generation ?? "?";
@@ -185,7 +158,7 @@
     if (phase === "bookkeeping") {
       return `Bookkeeping generation ${generation ?? "?"} — saving accepted raters`;
     }
-    return "";
+    return null;
   });
 
   function fmtEta(s: number | null | undefined): string {
@@ -198,91 +171,111 @@
     if (m > 0) return `${m}m ${sec}s`;
     return `${sec}s`;
   }
+
+  const PHASE_LABELS: Record<TrainingPhase, string> = {
+    idle: "Idle",
+    training: "Training",
+    gauntlet: "Gauntlet",
+    bookkeeping: "Bookkeeping",
+  };
 </script>
 
 <main>
   <header>
-    <p class="back"><a href="../">← Back</a></p>
+    <p class="back"><a href="../" onclick={() => sfx.play("click")}>← Back</a></p>
     <h1>Training Observatory</h1>
   </header>
 
-  <section class="topbar">
-    <label class="runDir">
+  <div class="controls-bar">
+    <label class="runDir-row">
       <span class="lbl">Run directory</span>
       <input type="text" bind:value={runDirInput} spellcheck="false" />
       <button onclick={applyRunDir}>Apply</button>
     </label>
 
-    <div class="phase">
-      <span class="lbl">Phase</span>
-      <span class="phaseBadge" data-phase={phase}>
-        {phase}
-      </span>
-    </div>
+    <div class="controls-row">
+      <div class="presets">
+        <span class="lbl">Preset</span>
+        <div class="presetButtons" role="radiogroup" aria-label="Run preset">
+          <button
+            role="radio"
+            aria-checked={preset === "smoke"}
+            class:active={preset === "smoke"}
+            disabled={isRunning}
+            onclick={() => { sfx.play("click"); preset = "smoke"; }}
+            title="2 gen × 4 lineage, depth-2 corpus, seconds"
+          >Smoke</button>
+          <button
+            role="radio"
+            aria-checked={preset === "medium"}
+            class:active={preset === "medium"}
+            disabled={isRunning}
+            onclick={() => { sfx.play("click"); preset = "medium"; }}
+            title="5 gen × 4 lineage, depth-4 corpus"
+          >Medium</button>
+          <button
+            role="radio"
+            aria-checked={preset === "long"}
+            class:active={preset === "long"}
+            disabled={isRunning}
+            onclick={() => { sfx.play("click"); preset = "long"; }}
+            title="10 gen × 8 lineage, depth-6 corpus (GPU)"
+          >Long</button>
+        </div>
+      </div>
 
-    <div class="genRound">
-      <span class="lbl">Generation</span>
-      <span class="val">{generation ?? "—"}</span>
-      <span class="lbl">Round</span>
-      <span class="val">{round ?? "—"}</span>
-      <span class="lbl">ETA</span>
-      <span class="val">{fmtEta(etaSeconds)}</span>
-    </div>
+      <div class="backend">
+        <span class="lbl">Backend</span>
+        <select
+          bind:value={backend}
+          disabled={isRunning || backends.length === 0}
+          title="GPU = training on GPU; inference (search-time evaluator) is always CPU."
+          onchange={() => sfx.play("tick")}
+        >
+          {#each backends as b}
+            <option value={b.id}>{b.label}{b.is_default ? " (default)" : ""}</option>
+          {/each}
+        </select>
+      </div>
 
-    <div class="presets">
-      <span class="lbl">Preset</span>
-      <div class="presetButtons" role="radiogroup" aria-label="Run preset">
+      <div class="run-controls">
         <button
-          role="radio"
-          aria-checked={preset === "smoke"}
-          class:active={preset === "smoke"}
-          disabled={isRunning}
-          onclick={() => (preset = "smoke")}
-          title="2 gen × 4 lineage, depth-2 corpus, seconds"
-        >Smoke</button>
+          class="btn-start"
+          onclick={start}
+          disabled={starting || isRunning || !runDir}
+        >
+          {starting ? "Starting…" : isRunning ? "Running…" : "▶ Start"}
+        </button>
         <button
-          role="radio"
-          aria-checked={preset === "medium"}
-          class:active={preset === "medium"}
-          disabled={isRunning}
-          onclick={() => (preset = "medium")}
-          title="5 gen × 4 lineage, depth-4 corpus"
-        >Medium</button>
-        <button
-          role="radio"
-          aria-checked={preset === "long"}
-          class:active={preset === "long"}
-          disabled={isRunning}
-          onclick={() => (preset = "long")}
-          title="10 gen × 8 lineage, depth-6 corpus (GPU)"
-        >Long</button>
+          class="btn-stop"
+          onclick={stop}
+          disabled={stopping || !isRunning}
+        >
+          {stopping ? "Stopping…" : "■ Stop"}
+        </button>
       </div>
     </div>
+  </div>
 
-    <div class="backend">
-      <span class="lbl">Backend</span>
-      <select
-        bind:value={backend}
-        disabled={isRunning || backends.length === 0}
-        title="GPU = training on GPU; inference (search-time evaluator) is always CPU."
-      >
-        {#each backends as b}
-          <option value={b.id}>{b.label}{b.is_default ? " (default)" : ""}</option>
-        {/each}
-      </select>
-    </div>
-
-    <div class="controls">
-      <button onclick={start} disabled={starting || isRunning || !runDir}>
-        {starting ? "Starting…" : isRunning ? "Running…" : "Start"}
-      </button>
-      <button onclick={stop} disabled={stopping || !isRunning}>
-        {stopping ? "Stopping…" : "Stop"}
-      </button>
-    </div>
-  </section>
-
-  <p class="activity" class:idle={!isRunning}>{activityLine}</p>
+  <div class="status-strip" data-phase={phase}>
+    <span class="phase-dot" aria-hidden="true">●</span>
+    <span class="phase-label">{PHASE_LABELS[phase]}</span>
+    {#if isRunning}
+      <span class="divider" aria-hidden="true">·</span>
+      <span class="stat-group">
+        <span class="lbl">Gen</span>
+        <span class="val">{generation ?? "—"}</span>
+        <span class="lbl">Round</span>
+        <span class="val">{round ?? "—"}</span>
+        <span class="lbl">ETA</span>
+        <span class="val">{fmtEta(etaSeconds)}</span>
+      </span>
+    {/if}
+    {#if activityLine}
+      <span class="divider" aria-hidden="true">·</span>
+      <span class="activity">{activityLine}</span>
+    {/if}
+  </div>
 
   {#if startError}
     <p class="error">{startError}</p>
@@ -293,16 +286,16 @@
       <div class="tabs" role="tablist">
         <button role="tab" aria-selected={activeTab === "live"}
           class:active={activeTab === "live"}
-          onclick={() => (activeTab = "live")}>Live Match</button>
+          onclick={() => { sfx.play("click"); activeTab = "live"; }}>Live Match</button>
         <button role="tab" aria-selected={activeTab === "standings"}
           class:active={activeTab === "standings"}
-          onclick={() => (activeTab = "standings")}>Standings</button>
+          onclick={() => { sfx.play("click"); activeTab = "standings"; }}>Standings</button>
         <button role="tab" aria-selected={activeTab === "lineage"}
           class:active={activeTab === "lineage"}
-          onclick={() => (activeTab = "lineage")}>Lineage</button>
+          onclick={() => { sfx.play("click"); activeTab = "lineage"; }}>Lineage</button>
         <button role="tab" aria-selected={activeTab === "matrix"}
           class:active={activeTab === "matrix"}
-          onclick={() => (activeTab = "matrix")}>Matrix</button>
+          onclick={() => { sfx.play("click"); activeTab = "matrix"; }}>Matrix</button>
       </div>
 
       <div class="panel" role="tabpanel">
@@ -346,39 +339,42 @@
     font-size: 2rem;
     margin: 0.2em 0 0;
   }
-  .topbar {
-    display: grid;
-    grid-template-columns: 2fr 1fr 2fr auto auto auto;
-    gap: 1rem;
-    align-items: center;
+
+  /* ── Controls bar ───────────────────────────────────── */
+  .controls-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.7em 0.9em;
     border: 1.5px solid var(--paper-line-strong);
     border-radius: 6px;
-    padding: 0.6em 0.9em;
     background: var(--paper-bg);
-    margin-bottom: 0.8rem;
+    margin-bottom: 0.6rem;
   }
-  .backend {
-    display: grid;
-    grid-template-columns: auto auto;
-    gap: 0.4em;
+  .runDir-row {
+    display: flex;
     align-items: center;
+    gap: 0.5em;
   }
-  .backend select {
+  .runDir-row input {
+    flex: 1;
     font: inherit;
     padding: 0.3em 0.5em;
-    border: 1.5px solid var(--paper-line);
+    border: 1px solid var(--paper-line);
     border-radius: 4px;
-    background: var(--paper-bg);
+    background: white;
+    min-width: 0;
   }
-  .backend select:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .controls-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
   }
   .presets {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.4em;
+    display: flex;
     align-items: center;
+    gap: 0.4em;
   }
   .presetButtons {
     display: flex;
@@ -401,82 +397,126 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-  .runDir {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 0.5em;
-    align-items: center;
-  }
-  .runDir input {
-    font: inherit;
-    padding: 0.3em 0.5em;
-    border: 1px solid var(--paper-line);
-    border-radius: 4px;
-    background: white;
-  }
-  .lbl {
-    color: var(--paper-ink-soft);
-    font-size: 0.92em;
-  }
-  .val {
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-  }
-  .phase {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.5em;
-    align-items: center;
-  }
-  .phaseBadge {
-    padding: 0.15em 0.55em;
-    border-radius: 4px;
-    border: 1px solid var(--paper-line);
-    text-transform: capitalize;
-    font-weight: 600;
-  }
-  .phaseBadge[data-phase="training"] {
-    background: #fff3cd;
-    border-color: #d4b94a;
-  }
-  .phaseBadge[data-phase="gauntlet"] {
-    background: #d1e7dd;
-    border-color: #5bb088;
-  }
-  .phaseBadge[data-phase="bookkeeping"] {
-    background: #cfe2ff;
-    border-color: #6c8fbf;
-  }
-  .phaseBadge[data-phase="idle"] {
-    background: var(--paper-bg);
-  }
-  .genRound {
-    display: grid;
-    grid-template-columns: repeat(6, auto);
-    gap: 0.4em 0.7em;
-    align-items: baseline;
-  }
-  .controls {
+  .backend {
     display: flex;
+    align-items: center;
     gap: 0.4em;
   }
-  .controls button,
-  .runDir button {
-    padding: 0.4em 0.9em;
+  .backend select {
+    font: inherit;
+    padding: 0.3em 0.5em;
+    border: 1.5px solid var(--paper-line);
+    border-radius: 4px;
+    background: var(--paper-bg);
+  }
+  .backend select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .run-controls {
+    display: flex;
+    gap: 0.4em;
+    margin-left: auto;
+  }
+  .run-controls button {
+    padding: 0.4em 1em;
+    border-radius: 5px;
+    font: inherit;
+    cursor: pointer;
+    border: 1.5px solid var(--paper-line-strong);
+    transition: box-shadow 80ms ease, transform 80ms ease;
+  }
+  .run-controls button:hover:not(:disabled) {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+  }
+  .run-controls button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn-start {
+    background: var(--paper-ink, #1a1a1a);
+    color: var(--paper-bg, #fff);
+    border-color: var(--paper-ink, #1a1a1a);
+    font-weight: 600;
+  }
+  .btn-stop {
+    background: var(--paper-bg);
+    color: inherit;
+  }
+  .runDir-row button {
+    padding: 0.3em 0.8em;
     border: 1.5px solid var(--paper-line-strong);
     border-radius: 4px;
     background: var(--paper-bg);
     font: inherit;
     cursor: pointer;
   }
-  .controls button:hover:not(:disabled),
-  .runDir button:hover:not(:disabled) {
+  .runDir-row button:hover {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   }
-  .controls button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+
+  /* ── Status strip ───────────────────────────────────── */
+  .status-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5em 0.9em;
+    border-radius: 6px;
+    border: 1.5px solid var(--paper-line);
+    background: var(--paper-bg);
+    margin-bottom: 0.8rem;
+    font-size: 0.95em;
+    flex-wrap: wrap;
   }
+  .phase-dot {
+    font-size: 0.7em;
+    line-height: 1;
+  }
+  .phase-label {
+    font-weight: 700;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .divider {
+    color: var(--paper-line-strong);
+  }
+  .stat-group {
+    display: flex;
+    gap: 0.4em;
+    align-items: baseline;
+  }
+  .stat-group .lbl {
+    color: var(--paper-ink-soft);
+    font-size: 0.88em;
+  }
+  .stat-group .val {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .activity {
+    color: var(--paper-ink-soft);
+    font-size: 0.92em;
+  }
+
+  /* Phase colours applied to dot + label */
+  .status-strip[data-phase="idle"] .phase-dot,
+  .status-strip[data-phase="idle"] .phase-label { color: var(--paper-ink-soft); }
+
+  .status-strip[data-phase="training"] .phase-dot,
+  .status-strip[data-phase="training"] .phase-label { color: #b07a10; }
+  .status-strip[data-phase="training"] { border-color: #d4b94a; background: #fffbf0; }
+
+  .status-strip[data-phase="gauntlet"] .phase-dot,
+  .status-strip[data-phase="gauntlet"] .phase-label { color: #2a7a52; }
+  .status-strip[data-phase="gauntlet"] { border-color: #5bb088; background: #f0faf5; }
+
+  .status-strip[data-phase="bookkeeping"] .phase-dot,
+  .status-strip[data-phase="bookkeeping"] .phase-label { color: #2a5a9a; }
+  .status-strip[data-phase="bookkeeping"] { border-color: #6c8fbf; background: #f0f5ff; }
+
+  /* ── Errors ─────────────────────────────────────────── */
   .error {
     border: 1.5px solid var(--p2, #a13a2a);
     border-radius: 6px;
@@ -485,14 +525,8 @@
     background: #fff5f3;
     margin-bottom: 0.8rem;
   }
-  .activity {
-    margin: -0.4rem 0 0.8rem;
-    font-size: 0.95em;
-    color: var(--paper-ink-soft);
-  }
-  .activity.idle {
-    font-style: italic;
-  }
+
+  /* ── Workspace ──────────────────────────────────────── */
   .workspace {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
@@ -537,5 +571,12 @@
     color: var(--paper-ink-soft);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  /* ── Misc ───────────────────────────────────────────── */
+  .lbl {
+    color: var(--paper-ink-soft);
+    font-size: 0.92em;
+    white-space: nowrap;
   }
 </style>

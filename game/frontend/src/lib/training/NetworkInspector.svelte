@@ -79,10 +79,10 @@
 
 <div class="inspector">
   {#if !selected}
-    <p class="hint">Select a rater from the Lineage panel to inspect.</p>
+    <p class="hint">No rater selected. Switch to the <strong>Lineage</strong> tab and click a node to inspect it here.</p>
   {:else if !live}
     <p class="hint">
-      Selected: <code>{selected}</code>. Waiting for a live position to evaluate.
+      Rater <code>{selected}</code> selected — waiting for a live match position to evaluate against.
     </p>
   {:else}
     <header>

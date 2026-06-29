@@ -165,7 +165,16 @@
         >
           <rect x="0" y="0" width="170" height="44" rx="6" />
           <text x="85" y="18" text-anchor="middle" class="title">{n.entry.id}</text>
-          <text x="85" y="34" text-anchor="middle" class="sub">{n.entry.stem.split("/").pop() ?? n.entry.stem}</text>
+          <text x="85" y="34" text-anchor="middle" class="sub">
+            {#if n.entry.bracket_results && Object.keys(n.entry.bracket_results).length > 0}
+              {@const br = Object.values(n.entry.bracket_results)[0]}
+              {@const g = br.games_played}
+              {@const wr = g > 0 ? ((br.candidate_wins + 0.5 * br.indecisive) / g * 100).toFixed(0) : "—"}
+              {wr}% · {g}g · {n.entry.accepted_at.slice(0, 10)}
+            {:else}
+              {n.entry.accepted_at.slice(0, 10)}
+            {/if}
+          </text>
         </g>
       {/each}
     </svg>

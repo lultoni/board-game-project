@@ -88,16 +88,29 @@
       <tbody>
         {#each sorted as p (p.rater_id)}
           {@const role = activeRow(p.rater_id)}
-          <tr class:active-c={role === "challenger"} class:active-d={role === "defender"}>
-            <td><code>{p.rater_id}</code></td>
+          {@const wr = winRate(p)}
+          <tr class:active-c={role === "challenger"} class:active-d={role === "defender"} class:eliminated={!p.alive}>
+            <td>
+              {#if role}<span class="playing-dot" title={role}>▶</span>{/if}
+              <code>{p.rater_id}</code>
+            </td>
             <td>{p.parent_id ?? "—"}</td>
             <td class="num">{p.lineage}</td>
             <td class="num">{p.generation}</td>
             <td class="num">{p.wins}</td>
             <td class="num">{p.losses}</td>
             <td class="num">{p.draws}</td>
-            <td class="num">{(winRate(p) * 100).toFixed(1)}</td>
-            <td>{p.alive ? "alive" : "eliminated"}</td>
+            <td class="num wr-cell">
+              <div class="wr-bar-wrap">
+                <div class="wr-bar" style:width="{wr * 100}%"></div>
+              </div>
+              <span>{(wr * 100).toFixed(1)}</span>
+            </td>
+            <td>
+              <span class="state-chip" class:alive={p.alive} class:dead={!p.alive}>
+                {p.alive ? "alive" : "out"}
+              </span>
+            </td>
           </tr>
         {/each}
       </tbody>
@@ -163,6 +176,43 @@
   tr.active-d {
     background: rgba(161, 58, 42, 0.08);
   }
+  tr.eliminated {
+    opacity: 0.45;
+  }
+  .playing-dot {
+    font-size: 0.7em;
+    color: var(--p1, #2b4a8a);
+    margin-right: 0.25em;
+  }
+  .wr-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    justify-content: flex-end;
+  }
+  .wr-bar-wrap {
+    width: 48px;
+    height: 8px;
+    background: var(--paper-bg);
+    border: 1px solid var(--paper-line);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .wr-bar {
+    height: 100%;
+    background: var(--p1, #2b4a8a);
+    opacity: 0.55;
+  }
+  .state-chip {
+    display: inline-block;
+    padding: 0.1em 0.45em;
+    border-radius: 999px;
+    font-size: 0.82em;
+    border: 1.5px solid currentColor;
+  }
+  .state-chip.alive { color: #2a7a52; }
+  .state-chip.dead  { color: var(--paper-ink-soft); }
   footer {
     display: flex;
     flex-wrap: wrap;

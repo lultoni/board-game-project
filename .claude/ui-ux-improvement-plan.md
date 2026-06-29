@@ -172,12 +172,14 @@ A structured improvement plan for the game's frontend. Built by auditing current
 ## Known broken / not yet done
 
 ### BUG: Move animations are instant (all cases)
-- Plain moves (including diagonal 1-tile) do not animate — piece teleports to destination.
-- Attack moves (non-kill) do not animate — no lunge, no recoil.
-- Kill attacks do not animate — attacker teleports onto captured square.
-- Root cause NOT yet identified. Attempted fix (CSS transition on `transform` in `Piece.svelte`) did not work. Needs proper investigation of why the CSS transition never fires: suspect the position reactive write and the pieceId update happen in the same Svelte microtask batch, so the browser never sees the piece at the old coordinates before painting the new ones.
-- Attack lunge-recoil (`triggerLunge` / `piece-lunge` keyframe) was wired up but also does not visually work.
-- **Must be fixed before any animation work is considered done.**
+- **Status: FIXED** (session 2026-06-29)
+- **Root cause:** `pieceIds` and `position` were both written in the same Svelte reactive flush. The CSS transition on `transform` needs a painted "before" state — but both writes batched together meant the DOM element was always created/updated at the new coordinates, giving the browser no opportunity to interpolate. Attack animations (lunge) also failed because the lunge timer was set after the position was already updated.
+- **Fix:** In `renderApplied` (ply-renderer.svelte.ts), for Move actions: wait one `requestAnimationFrame` (skipped when `animationSpeed = "off"`) before fetching fresh engine state. Then upfront-detect kills from the fresh position, and update `pieceIds` + `setPosition` synchronously in a single block — both land in one Svelte flush. The browser sees the DOM element at its old transform for one frame, then the new transform triggers the CSS transition. Test environment uses `setTimeout(0)` fallback since `requestAnimationFrame` is unavailable in Node/jsdom. All 229 tests pass.
 
-### Replay: draft phase rendered poorly
+### BUG: Lunge animation not playing on non-kill attacks
+- The lunge keyframes (`piece-lunge-1`, `piece-lunge-2`) and timing delay are wired up but the animation does not visually fire. The slide transition works; the lunge after it does not.
+- Infrastructure in place: `triggerLunge` delays by `slideDurationMs()`, fires inner `scheduleTimer` to add to `lungeSquares`, `dist` passed through to `Piece.svelte`, two keyframes defined in CSS. Something in the chain is still broken — needs a targeted debug session (check that `lungeSquares` actually gets populated in the browser, that the CSS `animation` property is being applied to `.lunge-wrap`, and that `forwards` fill-mode isn't interfering).
+
+### BUG: Sandbox discard confirmation dialog renders below content
+- The `<dialog open>` used for the sandbox exit confirmation appears at the bottom of the page rather than centred/overlaying the board. Needs `showModal()` pattern (like `PoiLabelDialog`) or CSS `position: fixed` centering, plus a backdrop. Low priority — it works, just looks bad.
 - Replay mode shows the draft phase in a raw/ugly way. Needs a dedicated view or better layout for the drafting portion of a replay. Not yet designed — needs discussion before implementation.

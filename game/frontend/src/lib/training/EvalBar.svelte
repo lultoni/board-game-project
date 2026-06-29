@@ -8,8 +8,9 @@
     label: string;
     value: number | null | undefined;
     barCap?: number;
+    color?: "p1" | "p2";
   }
-  let { label, value, barCap = 3000 }: Props = $props();
+  let { label, value, barCap = 3000, color }: Props = $props();
 
   const fraction = $derived.by(() => {
     if (value === null || value === undefined || !Number.isFinite(value)) return 0.5;
@@ -23,7 +24,7 @@
 </script>
 
 <div class="evalBar" title={`${label}: ${display}`}>
-  <span class="lbl">{label}</span>
+  <span class="lbl" class:p1={color === "p1"} class:p2={color === "p2"}>{label}</span>
   <div class="track">
     <div class="fill" style:width={`${fraction * 100}%`}></div>
     <div class="zero"></div>
@@ -41,7 +42,12 @@
   .lbl {
     color: var(--paper-ink-soft);
     font-size: 0.92em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
+  .lbl.p1 { color: var(--p1, #2b4a8a); font-weight: 600; }
+  .lbl.p2 { color: var(--p2, #a13a2a); font-weight: 600; }
   .val {
     font-variant-numeric: tabular-nums;
     text-align: right;

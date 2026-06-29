@@ -106,9 +106,10 @@ export interface PlyRenderer {
   readonly legal: Uint32Array;
   readonly pieceIds: Map<number, number>;
   readonly shakingSquares: Set<number>;
-  /** Per-square lunge offsets (SVG px). Set during a non-kill attack so the
-   *  attacker piece plays a lunge-and-recoil CSS animation toward the target. */
-  readonly lungeSquares: Map<number, { dx: number; dy: number }>;
+  /** Per-square lunge offsets (SVG px) with chebyshev distance. Set after a
+   *  non-kill attack's slide finishes: piece lunges toward the target and
+   *  recoils. dist-1 = jab-and-back; dist-2 = step, step, back. */
+  readonly lungeSquares: Map<number, { dx: number; dy: number; dist: number }>;
   readonly effectQueue: Effect[];
   readonly lastApplied: { src: number; target: number } | null;
 
@@ -190,6 +191,21 @@ const CHECKPOINT_STRIDE = 32;
 const CHECKPOINT_MIN_SAVING = 4;
 
 // === Internal helpers (module-private) =====================================
+
+/** Wait one animation frame so the browser can paint the current DOM state.
+ *  Used to split a pieceIds write (which repositions the stable DOM element
+ *  to its old square key) from the position write (which drives the new
+ *  coordinates), giving the CSS transition a visible "before" state to animate
+ *  from. Without this gap both writes land in the same Svelte flush and the
+ *  transition never fires.
+ *  In non-browser environments (tests) falls back to a zero-ms setTimeout so
+ *  the scheduler seam can intercept it. */
+function waitFrame(): Promise<void> {
+  if (typeof requestAnimationFrame !== "undefined") {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 function chebyshev(a: number, b: number): number {
   const dx = Math.abs((a & 7) - (b & 7));
@@ -353,7 +369,7 @@ export function createPlyRenderer(
   let nextPieceId = 1;
 
   let shakingSquares = $state<Set<number>>(new Set());
-  let lungeSquares = $state<Map<number, { dx: number; dy: number }>>(new Map());
+  let lungeSquares = $state<Map<number, { dx: number; dy: number; dist: number }>>(new Map());
 
   const effectQueue: Effect[] = $state([]);
 
@@ -428,7 +444,9 @@ export function createPlyRenderer(
   }
 
   /** Trigger a lunge-and-recoil animation on `sq` toward `targetSq`.
-   *  The CSS animation is driven by --lunge-dx/dy CSS vars on the Piece. */
+   *  The lunge fires AFTER the piece has finished sliding to its resting square
+   *  (delay = slideDurationMs). The `dist` drives which keyframe plays:
+   *  dist-1 = jab-and-recoil; dist-2 = step, step, recoil. */
   function triggerLunge(sq: number, targetSq: number): void {
     const dur = slideDurationMs();
     if (dur === 0) return;
@@ -438,10 +456,16 @@ export function createPlyRenderer(
     // SVG: rank 0 is at the bottom (y = (7 - rank) * size), so increasing rank = smaller y.
     const dx = (tFile - sqFile) * SQUARE_PX;
     const dy = (sqRank - tRank) * SQUARE_PX;
-    lungeSquares = new Map([[sq, { dx, dy }]]);
-    scheduleTimer(() => {
-      lungeSquares = new Map([...lungeSquares].filter(([s]) => s !== sq));
-    }, dur * 2);
+    const dist = Math.max(Math.abs(tFile - sqFile), Math.abs(tRank - sqRank));
+    // Lunge fires after the slide finishes so both animations don't overlap.
+    const lungeHandle = scheduleTimer(() => {
+      lungeSquares = new Map([[sq, { dx, dy, dist }]]);
+      // Lunge duration: dist-1 = 2× slide, dist-2 = 3× slide (step + step + recoil).
+      const lungeDur = dur * (dist >= 2 ? 3 : 2);
+      scheduleTimer(() => {
+        lungeSquares = new Map([...lungeSquares].filter(([s]) => s !== sq));
+      }, lungeDur);
+    }, dur);
   }
 
   function pushDamageEffect(targetSq: number, before: number, after: number): void {
@@ -585,18 +609,43 @@ export function createPlyRenderer(
       playSfx("phaseEnd");
     }
 
-    // Transfer piece ids along the move BEFORE refresh, so the new bitboards
-    // see a piece with stable identity at the destination.
+    // For Move actions we need the CSS slide transition to actually fire.
+    // The browser needs one painted frame with the DOM element at its OLD
+    // square before we reassign its transform to the new square. Strategy:
+    //   1. Wait one rAF (piece is still at old square, browser paints it).
+    //   2. Fetch the new engine state (async, but DOM hasn't changed yet).
+    //   3. Compute kill detection upfront from the fresh position.
+    //   4. In one synchronous block: update pieceIds AND position together —
+    //      both writes land in the same Svelte flush so the DOM element's
+    //      transform transitions from the old painted position to the new one.
     if (decoded.kind === ActionKind.Move) {
-      const approach = decoded.hasAux ? decoded.auxSq : decoded.target;
-      const srcId = pieceIds.get(decoded.src);
-      if (srcId !== undefined) {
-        pieceIds.delete(decoded.src);
-        pieceIds.set(approach, srcId);
+      if (slideDurationMs() > 0) await waitFrame();
+      const fresh = await fetchFreshState();
+      if (fresh) {
+        const approach = decoded.hasAux ? decoded.auxSq : decoded.target;
+        // Detect kill from fresh position before any state writes.
+        let movedKilled = false;
+        if (decoded.hasAux && preTarget) {
+          const postTarget = decodeMailbox(fresh.pos.mailbox[decoded.target]);
+          if (!postTarget.empty && approach !== decoded.target) {
+            movedKilled = decodeMailbox(fresh.pos.mailbox[approach]).empty;
+          } else if (!postTarget.empty && approach === decoded.target) {
+            movedKilled = true;
+          }
+        }
+        // Move attacker's stable DOM key to its final resting square.
+        const finalSrc = movedKilled ? decoded.target : approach;
+        const srcId = pieceIds.get(decoded.src);
+        if (srcId !== undefined) {
+          pieceIds.delete(decoded.src);
+          pieceIds.set(finalSrc, srcId);
+        }
+        // Flush position + pieceIds together so CSS transition fires.
+        pieceIds = new Map(pieceIds);
+        setPosition(fresh.pos);
+        setLegal(fresh.legal);
       }
-    }
-
-    if (decoded.kind !== ActionKind.Skill) {
+    } else if (decoded.kind !== ActionKind.Skill) {
       await refresh();
     }
 

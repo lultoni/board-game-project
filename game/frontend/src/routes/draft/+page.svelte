@@ -56,6 +56,7 @@
     STACK_M_LOADOUT_SQUARES,
   } from "$lib/state/draft";
   import { settings } from "$lib/state/settings.svelte";
+  import { sfx } from "$lib/audio/sfx";
 
   // === Boot / engine handle ==================================================
 
@@ -224,6 +225,7 @@
 
   function dragStartSkill(ev: DragEvent, id: number): void {
     if (!localCanDraft) { ev.preventDefault(); return; }
+    sfx.play("pickup");
     dragPayload = { kind: "skill", id };
     ev.dataTransfer?.setData("text/plain", `skill:${id}`);
     if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "copy";
@@ -231,6 +233,7 @@
 
   function dragStartPick(ev: DragEvent, sq: number, slot: number): void {
     if (!localCanDraft) { ev.preventDefault(); return; }
+    sfx.play("pickup");
     dragPayload = { kind: "pick", sq, slot };
     ev.dataTransfer?.setData("text/plain", `pick:${sq}:${slot}`);
     if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
@@ -243,8 +246,11 @@
     const p = dragPayload;
     dragPayload = null;
     if (!p) return;
-    if (p.kind === "skill") placePick(p.id, sq, slot);
-    else movePick(p.sq, p.slot, sq, slot);
+    if (p.kind === "skill") {
+      if (placePick(p.id, sq, slot)) sfx.play("draftPick");
+    } else {
+      if (movePick(p.sq, p.slot, sq, slot)) sfx.play("draftPick");
+    }
   }
 
   function dropOnTrash(ev: DragEvent): void {
@@ -252,6 +258,7 @@
     const p = dragPayload;
     dragPayload = null;
     if (!p || p.kind !== "pick") return;
+    sfx.play("drop");
     clearPickAt(p.sq, p.slot);
   }
 
@@ -297,6 +304,7 @@
     if (!position) return;
     // If the slot has a tentative pick, clicking clears it.
     if (tentativeAt(sq, slot)) {
+      sfx.play("drop");
       clearPickAt(sq, slot);
       return;
     }
@@ -307,6 +315,7 @@
 
   async function commitTurn(): Promise<void> {
     if (!eng || !commitReady || busy) return;
+    sfx.play("phaseEnd");
     busy = true;
     try {
       const raw = encodeDraftTurn(
@@ -392,6 +401,7 @@
         bootError = "AI returned no draft pick — drafting paused";
         return;
       }
+      sfx.play("draftPick");
       await refresh();
       // AI applies bypass the wrapper (no submitAction call), so the wrapper's
       // automatic phase-change detection doesn't fire. Solo-only path — drive
@@ -753,7 +763,7 @@
 
 <main>
   <header>
-    <p class="back"><a href="../">← back</a></p>
+    <p class="back"><a href="../" onclick={() => sfx.play("click")}>← back</a></p>
     <h1>{t("draft.title")}</h1>
     <small class="mode-tag">{mode}</small>
     {#if isMultiplayer}
