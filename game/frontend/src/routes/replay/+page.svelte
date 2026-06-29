@@ -175,9 +175,16 @@
     if (!playing) return;
     if (busy) return;
     if (currentPly >= plies.length) return;
-    const delay = Math.max(16, settings.aivaiStepDelayMs);
+    const delay = Math.max(16, settings.replayStepDelayMs);
     const id = setTimeout(() => void stepForward(), delay);
     return () => clearTimeout(id);
+  });
+
+  // Loop-on-end: when replay finishes and loopOnEnd is set, restart from ply 0.
+  $effect(() => {
+    if (!playing && loaded && currentPly >= plies.length && settings.replayLoopOnEnd && plies.length > 0) {
+      void jumpTo(0).then(() => { playing = true; });
+    }
   });
 
   function onScrubInput(ev: Event): void {

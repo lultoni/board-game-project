@@ -184,6 +184,14 @@
   // or, on the rare swap-like cases, an ally).
   const occupied = $derived(new Set(pieces.map((p) => p.square)));
 
+  // Hovered approach square — tracked while the approach chooser is active
+  // so moving the cursor highlights which path would be selected on click.
+  let approachHovered = $state<number | null>(null);
+  $effect(() => {
+    // Clear hover when the chooser is dismissed.
+    if (approachChoices.length === 0) approachHovered = null;
+  });
+
   // --- Drag state -----------------------------------------------------------
   // Pointerdown on a selectable piece starts a "press". The press only becomes
   // a drag once the pointer moves past DRAG_THRESHOLD_PX (in SVG coords) — this
@@ -702,23 +710,24 @@
         {@const rank = (ap >> 3) & 7}
         {@const x = file * SIZE}
         {@const y = (7 - rank) * SIZE}
+        {@const hovered = approachHovered === ap}
         <rect
           {x}
           {y}
           width={SIZE}
           height={SIZE}
           fill="var(--accent, #c79b3a)"
-          fill-opacity="0.22"
+          fill-opacity={hovered ? "0.42" : "0.22"}
           stroke="var(--accent, #c79b3a)"
-          stroke-width="3"
+          stroke-width={hovered ? "4" : "3"}
           pointer-events="none"
         />
         <circle
           cx={x + SIZE / 2}
           cy={y + SIZE / 2}
-          r={SIZE * 0.18}
+          r={SIZE * (hovered ? 0.24 : 0.18)}
           fill="var(--accent, #c79b3a)"
-          fill-opacity="0.55"
+          fill-opacity={hovered ? "0.8" : "0.55"}
           pointer-events="none"
         />
       {/each}
@@ -791,7 +800,7 @@
   <!-- Hit-test overlay — invisible rects on top to catch pointer events.
        Pointer-down on a selectable square begins a drag; up routes to drop
        (if the cursor crossed squares) or click (if it stayed put). -->
-  <g class="hits">
+  <g class="hits" onpointerleave={() => { approachHovered = null; }}>
     {#each squares as { sq, x, y } (sq)}
       {@const isMoveTarget = moveTargets.has(sq)}
       {@const isSelectable = selectable.has(sq)}
@@ -809,6 +818,7 @@
         aria-label={`square ${sq}`}
         class:hot={isHot}
         class:grab={interactive && draggable.has(sq) && !usedSquares.has(sq)}
+        onpointermove={() => { if (approachChoices.length > 0 && approachChoices.includes(sq)) approachHovered = sq; else if (approachChoices.length > 0) approachHovered = null; }}
         onpointerdown={(e) => handleSquarePointerDown(sq, e)}
         onkeydown={(e) => {
           if (e.key === "Enter" || e.key === " ") {

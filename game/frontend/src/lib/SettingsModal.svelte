@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { page } from "$app/stores";
   import { settings, type AnimationSpeed } from "$lib/state/settings.svelte";
 
   let { open, onClose }: { open: boolean; onClose: () => void } = $props();
@@ -20,10 +19,6 @@
     onClose();
   }
 
-  const route = $derived($page.url.pathname);
-  const isMatch = $derived(route.startsWith("/match"));
-  const isReplay = $derived(route.startsWith("/replay"));
-
   const ANIMATION_LABELS: Record<AnimationSpeed, string> = {
     off: "Off",
     fast: "Fast",
@@ -42,45 +37,6 @@
     <button class="close" onclick={onClose} aria-label="Close settings">✕</button>
   </div>
 
-  <!-- Contextual section -->
-  {#if isMatch || isReplay}
-    <section>
-      <h3>{isReplay ? "Replay" : "Match"}</h3>
-      {#if isReplay}
-        <label class="row">
-          <span>Step delay (ms)</span>
-          <input
-            type="number"
-            min="0"
-            max="5000"
-            step="50"
-            value={settings.replayStepDelayMs}
-            oninput={(e) => {
-              const v = parseInt((e.target as HTMLInputElement).value, 10);
-              if (!isNaN(v)) settings.replayStepDelayMs = clampInt(v, 0, 5000);
-            }}
-          />
-        </label>
-        <label class="row">
-          <span>Loop on end</span>
-          <input type="checkbox" bind:checked={settings.replayLoopOnEnd} />
-        </label>
-        <label class="row">
-          <span>Wait for animation</span>
-          <input type="checkbox" bind:checked={settings.replayRespectAnimation} />
-        </label>
-      {/if}
-      {#if isMatch}
-        <label class="row">
-          <span>Show AI depth</span>
-          <input type="checkbox" bind:checked={settings.showAiDepth} />
-        </label>
-      {/if}
-    </section>
-    <div class="divider"></div>
-  {/if}
-
-  <!-- Global -->
   <section>
     <h3>Visual</h3>
     <label class="row">
@@ -126,6 +82,58 @@
         bind:value={settings.audioVolume}
         class="slider"
       />
+    </label>
+  </section>
+
+  <div class="divider"></div>
+
+  <section>
+    <h3>Match</h3>
+    <label class="row">
+      <span>Show AI depth</span>
+      <input type="checkbox" bind:checked={settings.showAiDepth} />
+    </label>
+    <label class="row">
+      <span>AIvAI step delay (ms)</span>
+      <input
+        type="number"
+        min="0"
+        max="5000"
+        step="50"
+        value={settings.aivaiStepDelayMs}
+        oninput={(e) => {
+          const v = parseInt((e.target as HTMLInputElement).value, 10);
+          if (!isNaN(v)) settings.aivaiStepDelayMs = clampInt(v, 0, 5000);
+        }}
+      />
+    </label>
+  </section>
+
+  <div class="divider"></div>
+
+  <section>
+    <h3>Replay</h3>
+    <label class="row">
+      <span>Step delay (ms)</span>
+      <input
+        type="number"
+        min="0"
+        max="5000"
+        step="50"
+        value={settings.replayStepDelayMs}
+        oninput={(e) => {
+          const v = parseInt((e.target as HTMLInputElement).value, 10);
+          if (!isNaN(v)) settings.replayStepDelayMs = clampInt(v, 0, 5000);
+        }}
+      />
+    </label>
+    <label class="row">
+      <span>Loop on end</span>
+      <input type="checkbox" bind:checked={settings.replayLoopOnEnd} />
+    </label>
+    <label class="row">
+      <span>Wait for animation</span>
+      <input type="checkbox" bind:checked={settings.replayRespectAnimation} />
     </label>
   </section>
 
