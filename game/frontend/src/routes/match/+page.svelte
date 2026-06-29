@@ -82,6 +82,15 @@
   /** Transient toast for export / sandbox feedback. Cleared by a timer. */
   let toast = $state<string>("");
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Confirmation dialog state for sandbox discard. */
+  let sandboxConfirmMsg = $state<string | null>(null);
+  let sandboxConfirmResolve: ((ok: boolean) => void) | null = null;
+  function sandboxConfirm(msg: string): Promise<boolean> {
+    sandboxConfirmMsg = msg;
+    return new Promise((resolve) => {
+      sandboxConfirmResolve = resolve;
+    });
+  }
   /** Whether `eng.matchLogJson()` currently returns a log (config.auto_log on).
    *  Refreshed lazily on toast-bar interaction; cheap to recompute. */
   let matchLogAvailable = $state(false);
@@ -1294,7 +1303,7 @@
     if (match.mode !== "sandbox" || !match.trueSnapshotJson) return;
     if (match.sandboxMovesApplied > 0) {
       const msg = t("sandbox.confirmDiscard", { n: match.sandboxMovesApplied });
-      if (!window.confirm(msg)) return;
+      if (!await sandboxConfirm(msg)) return;
     }
     busy = true;
     try {
@@ -1680,6 +1689,16 @@
   {/if}
 </main>
 
+{#if sandboxConfirmMsg !== null}
+  <dialog open>
+    <p>{sandboxConfirmMsg}</p>
+    <div class="confirm-actions">
+      <button type="button" onclick={() => { sandboxConfirmMsg = null; sandboxConfirmResolve?.(false); sandboxConfirmResolve = null; }}>Cancel</button>
+      <button type="button" class="confirm-ok" onclick={() => { sandboxConfirmMsg = null; sandboxConfirmResolve?.(true); sandboxConfirmResolve = null; }}>Discard & exit</button>
+    </div>
+  </dialog>
+{/if}
+
 <style>
   main {
     max-width: 960px;
@@ -1927,5 +1946,28 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .spinner { animation-duration: 2.4s; }
+  }
+  dialog[open] {
+    border: 1.5px solid var(--paper-line-strong);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    background: var(--paper-bg);
+    color: inherit;
+    min-width: min(320px, 90vw);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+  }
+  dialog[open] p {
+    margin: 0 0 0.9rem;
+  }
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  .confirm-ok {
+    background: var(--p2, #a94b3b);
+    color: #fff;
+    border-color: var(--p2, #a94b3b);
+    font-weight: 600;
   }
 </style>
