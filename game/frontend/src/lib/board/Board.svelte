@@ -800,7 +800,7 @@
   <!-- Hit-test overlay — invisible rects on top to catch pointer events.
        Pointer-down on a selectable square begins a drag; up routes to drop
        (if the cursor crossed squares) or click (if it stayed put). -->
-  <g class="hits" onpointerleave={() => { approachHovered = null; }}>
+  <g class="hits" role="presentation" onpointerleave={() => { approachHovered = null; }}>
     {#each squares as { sq, x, y } (sq)}
       {@const isMoveTarget = moveTargets.has(sq)}
       {@const isSelectable = selectable.has(sq)}
