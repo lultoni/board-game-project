@@ -158,11 +158,26 @@ A structured improvement plan for the game's frontend. Built by auditing current
 
 ## Implementation order within Phase A
 
-1. **A0** — Guards bug (test + fix, self-verifiable)
-2. **A7** — Settings modal skeleton (needed by A5 and A2 for animation speed setting)
+1. **A0** — Guards bug (test + fix, self-verifiable) ✓
+2. **A7** — Settings modal skeleton ✓
 3. **A1** — Full-width layout (biggest structural change; do before visual polish)
 4. **A3** — Illegal click shake (small, independent)
 5. **A4** — Turn strip + breathing fade (visual, depends on A1 layout)
 6. **A5** — Per-player AI indicator (depends on A1 player panels)
 7. **A2** — Animation everywhere (depends on A0 fix propagating to replay/inspector)
 8. **A6** — Click-to-move approach + animation fix
+
+---
+
+## Known broken / not yet done
+
+### BUG: Move animations are instant (all cases)
+- Plain moves (including diagonal 1-tile) do not animate — piece teleports to destination.
+- Attack moves (non-kill) do not animate — no lunge, no recoil.
+- Kill attacks do not animate — attacker teleports onto captured square.
+- Root cause NOT yet identified. Attempted fix (CSS transition on `transform` in `Piece.svelte`) did not work. Needs proper investigation of why the CSS transition never fires: suspect the position reactive write and the pieceId update happen in the same Svelte microtask batch, so the browser never sees the piece at the old coordinates before painting the new ones.
+- Attack lunge-recoil (`triggerLunge` / `piece-lunge` keyframe) was wired up but also does not visually work.
+- **Must be fixed before any animation work is considered done.**
+
+### Replay: draft phase rendered poorly
+- Replay mode shows the draft phase in a raw/ugly way. Needs a dedicated view or better layout for the drafting portion of a replay. Not yet designed — needs discussion before implementation.
