@@ -75,7 +75,7 @@ impl GameRecord {
 /// We abort and assign a default outcome based on material at the cap; in
 /// practice this cap is only hit when the engine is broken (eval bug,
 /// generator regression).
-const MAX_PLIES: usize = 1000;
+const MAX_PLIES: usize = 250;
 
 /// Play one game from `setup_stack_m_with_loadouts(loadout_p1, loadout_p2)`.
 /// `rater_p1` evaluates positions while P1 is to move; `rater_p2` does so

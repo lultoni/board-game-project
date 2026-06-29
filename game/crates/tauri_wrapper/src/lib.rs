@@ -784,15 +784,35 @@ fn start_training_run(
     if inner.handle.as_ref().map_or(false, |h| !h.is_finished()) {
         return Err("training already running".to_string());
     }
-    let preset_name = preset.as_deref().unwrap_or("smoke");
-    let cfg = nn_trainer::RunConfig::from_preset(preset_name)?;
+    let preset_name = preset.as_deref().unwrap_or("smoke").to_owned();
+    let cfg = nn_trainer::RunConfig::from_preset(&preset_name)?;
     cfg.validate()?;
     let backend = parse_backend_choice(backend.as_deref())?;
     let stop = Arc::new(AtomicBool::new(false));
     let stop_clone = Arc::clone(&stop);
     let path = std::path::PathBuf::from(run_dir);
     let handle = std::thread::spawn(move || {
-        let _ = nn_trainer::run_training(&cfg, &path, stop_clone, backend);
+        eprintln!("[training] thread started — preset={preset_name} backend={backend:?} run_dir={path:?}");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            nn_trainer::run_training(&cfg, &path, stop_clone, backend)
+        }));
+        match result {
+            Ok(Ok(summary)) => eprintln!(
+                "[training] run finished — generations_completed={} accepted_raters={} stopped_early={}",
+                summary.generations_completed,
+                summary.accepted_raters,
+                summary.stopped_early,
+            ),
+            Ok(Err(e)) => eprintln!("[training] run FAILED: {e}"),
+            Err(panic_val) => {
+                let msg = panic_val
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .or_else(|| panic_val.downcast_ref::<String>().map(String::as_str))
+                    .unwrap_or("(non-string panic)");
+                eprintln!("[training] run PANICKED: {msg}");
+            }
+        }
     });
     inner.stop = Some(stop);
     inner.handle = Some(handle);

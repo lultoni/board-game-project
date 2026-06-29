@@ -112,7 +112,7 @@
     }
   }
 
-  const STALE_MS = 5000;
+  const STALE_MS = 30_000;
   const statusFresh = $derived.by(() => {
     const ts = statusValue?.data?.written_at_ms;
     if (!ts) return false;

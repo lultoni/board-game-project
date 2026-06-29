@@ -39,7 +39,7 @@ use core_engine::game_logic::action::Action;
 use core_engine::game_logic::make_unmake;
 use core_engine::game_logic::skills::SideLoadout;
 use core_engine::search::alpha_beta::find_best_with_evaluator;
-use core_engine::search::evaluator::Evaluator;
+use core_engine::search::evaluator::{Evaluator, HeuristicEvaluator};
 use core_engine::search::transposition::TranspositionTable;
 use core_engine::state::position::{GameResult, Player};
 use core_engine::state::Position;
@@ -73,8 +73,8 @@ impl Bracket {
 /// (we treat it as a non-result in BO3 tallies).
 pub type MatchOutcome = Option<GameResult>;
 
-/// Same ply cap as `selfplay::MAX_PLIES`. Stack M is short by design.
-const MAX_PLIES: usize = 1000;
+/// Same ply cap as `selfplay::MAX_PLIES`.
+const MAX_PLIES: usize = 250;
 
 /// Generous depth cap for time-bounded search. The deadline does the work;
 /// this just prevents runaway depth on simple positions.
@@ -134,7 +134,13 @@ where
         on_ply(&pos, ply as u32, &action);
     }
 
-    pos.game_result
+    // Adjudicate at ply cap via heuristic: positive score → P1 leads.
+    pos.game_result.or_else(|| {
+        let score = HeuristicEvaluator.evaluate(&pos);
+        if score > 0 { Some(GameResult::P1Wins) }
+        else if score < 0 { Some(GameResult::P2Wins) }
+        else { None }
+    })
 }
 
 /// Tally for a series of games. P1/P2 wins are recorded for the *candidate*

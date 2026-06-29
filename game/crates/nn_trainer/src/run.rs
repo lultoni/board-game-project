@@ -395,11 +395,13 @@ where
 
     for gen_idx in 0..config.n_generations {
         if should_stop.load(Ordering::Relaxed) {
+            eprintln!("[training] stop flag set before generation {}, winding down", gen_idx + 1);
             summary.stopped_early = true;
             break;
         }
 
         let generation = (gen_idx + 1) as u32;
+        eprintln!("[training] === generation {generation}/{} ===", config.n_generations);
         let derived_gen_seed = config
             .seed_root
             .wrapping_add((gen_idx as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
@@ -451,8 +453,10 @@ where
         )?;
 
         let corpus = build_corpus(config, gen_seed);
+        eprintln!("[training] gen {generation}: corpus built — {} positions", corpus.len());
         if corpus.is_empty() {
             // No usable data this generation — skip to the next.
+            eprintln!("[training] gen {generation}: corpus EMPTY, skipping generation");
             continue;
         }
         // Hold out the last 10% as a calibration probe set. Cheap split — the
@@ -474,6 +478,7 @@ where
             let mut last_write = std::time::Instant::now()
                 .checked_sub(std::time::Duration::from_secs(10))
                 .unwrap_or_else(std::time::Instant::now);
+            eprintln!("[training] gen {generation}: calling train_lineages_with_progress — lineages={} rounds={} steps_per_burst={}", config.lineage.n_lineages, config.lineage.n_rounds, config.lineage.steps_per_burst);
             crate::lineage::train_lineages_with_progress::<B, _>(
                 &corpus,
                 gen_seed,
@@ -505,11 +510,11 @@ where
                             None,
                         ),
                     );
-                    // Capture n_rounds in a way the compiler doesn't warn about
                     let _ = n_rounds;
                 },
             )
         };
+        eprintln!("[training] gen {generation}: train_lineages_with_progress done — {} lineages returned", lineages.len());
 
             // Persist the gradient-descent output before any gauntlet work.
             // A kill after this point can resume Tier-1 from disk without
@@ -529,6 +534,7 @@ where
         }
 
         if should_stop.load(Ordering::Relaxed) {
+            eprintln!("[training] gen {generation}: stop flag set after training phase, winding down");
             summary.stopped_early = true;
             break;
         }
@@ -536,6 +542,11 @@ where
         // --- Phase: Gauntlet ---
         // Each lineage becomes an NnEvaluator candidate; the strongest at the
         // fast bracket (per Tier 1) is the one we promote into Tier 2.
+        eprintln!("[training] gen {generation}: gauntlet phase — {} lineages entering", lineages.len());
+        write_snapshot(
+            run_dir,
+            &snapshot_for(TrainingPhase::Gauntlet, generation, 0, &[], None),
+        )?;
         // Cross-backend hop: `into_inference` produces `Mlp<B::InnerBackend>`,
         // but `NnEvaluator` always runs on CPU (`InferenceBackend`). On the
         // CPU monomorphisation the round-trip is a redundant disk write; on
@@ -573,6 +584,20 @@ where
                 break;
             }
             let tier1_seed = gen_seed.wrapping_add((i as u64).wrapping_mul(101));
+            let cand_id = format!("g{:04}-l{}", generation, i);
+            let active = ActiveMatch {
+                challenger: cand_id.clone(),
+                defender: "heuristic".to_string(),
+                game_index: 0,
+                games_total: 3,
+                ply: 0,
+                bracket: "fast".to_string(),
+                think_ms: Bracket::Fast.time_limit_ms() as u32,
+            };
+            write_snapshot(
+                run_dir,
+                &snapshot_for(TrainingPhase::Gauntlet, generation, 1, &population, Some(active)),
+            )?;
             let tally = tier1_fitness(cand, &baselines, tier1_seed);
             let losses = tally.baseline_wins;
             let wins = tally.candidate_wins;
@@ -597,6 +622,8 @@ where
         }
 
         if summary.stopped_early { break; }
+
+        eprintln!("[training] gen {generation}: tier-1 done — best_idx={best_idx} best_wins={best_wins}");
 
         // --- Tier-2 acceptance for the best candidate ---
         let champ = &candidate_evaluators[best_idx];
@@ -631,6 +658,7 @@ where
         save_matrix(run_dir, &matrix)?;
 
         if report.is_none() {
+            eprintln!("[training] gen {generation}: tier-2 interrupted by stop flag, winding down");
             summary.stopped_early = true;
             break;
         }
@@ -643,6 +671,10 @@ where
         )?;
 
         let upd: TrackUpdate = tracker.consider(generation as u64, &report);
+        eprintln!(
+            "[training] gen {generation}: bookkeeping — accepted={} (fast={} slow={} overall={})",
+            upd.any_track(), upd.fast, upd.slow, upd.overall,
+        );
         if upd.any_track() {
             let next_n = index.entries.len() + 1;
             let rater_id = format!("v{:04}", next_n);
@@ -705,6 +737,7 @@ where
         let _ = std::fs::remove_dir_all(&cross_dir);
 
         summary.generations_completed += 1;
+        eprintln!("[training] gen {generation}: complete — total accepted so far: {}", summary.accepted_raters);
     }
 
     // Final idle snapshot — the UI sees the run wrap up cleanly.
