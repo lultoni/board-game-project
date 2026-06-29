@@ -53,3 +53,24 @@ h1, h2, h3 {
   margin: 0 0 0.4em;
   font-weight: 600;
 }
+
+.gear-btn {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 100;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.15rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.55;
+  transition: opacity 150ms;
+}
+.gear-btn:hover {
+  opacity: 1;
+}

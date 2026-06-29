@@ -4,6 +4,8 @@
 
 const STORAGE_KEY = "game-settings";
 
+export type AnimationSpeed = "off" | "normal" | "fast";
+
 export interface Settings {
   /** Always-on: paint tiles where the skill can legally be cast. */
   showLegalTargets: boolean;
@@ -32,6 +34,16 @@ export interface Settings {
    *  source is `"heuristic"`. */
   p1Evaluator: EvaluatorChoice;
   p2Evaluator: EvaluatorChoice;
+  /** Piece slide animation speed. "off" disables transitions entirely. */
+  animationSpeed: AnimationSpeed;
+  /** Replay step delay, independent of aivaiStepDelayMs. */
+  replayStepDelayMs: number;
+  /** Loop replay to start when it reaches the end. */
+  replayLoopOnEnd: boolean;
+  /** Wait for piece slide to finish before advancing to next replay step. */
+  replayRespectAnimation: boolean;
+  /** Show depth counter alongside AI spinner. */
+  showAiDepth: boolean;
 }
 
 export type EvaluatorSource = "heuristic" | "run" | "blessed";
@@ -40,6 +52,8 @@ export interface EvaluatorChoice {
   source: EvaluatorSource;
   id: string | null;
 }
+
+const ANIMATION_SPEEDS: ReadonlyArray<AnimationSpeed> = ["off", "normal", "fast"];
 
 const DEFAULTS: Settings = {
   showLegalTargets: true,
@@ -55,6 +69,11 @@ const DEFAULTS: Settings = {
   aivaiStepDelayMs: 300,
   p1Evaluator: { source: "heuristic", id: null },
   p2Evaluator: { source: "heuristic", id: null },
+  animationSpeed: "normal",
+  replayStepDelayMs: 600,
+  replayLoopOnEnd: false,
+  replayRespectAnimation: true,
+  showAiDepth: true,
 };
 
 const EVAL_SOURCES: ReadonlyArray<EvaluatorSource> = ["heuristic", "run", "blessed"];
@@ -83,6 +102,11 @@ function pickPosInt(v: unknown, fallback: number): number {
 function pickLocale(v: unknown, fallback: Settings["locale"]): Settings["locale"] {
   return typeof v === "string" && (LOCALES as readonly string[]).includes(v)
     ? (v as Settings["locale"])
+    : fallback;
+}
+function pickAnimationSpeed(v: unknown, fallback: AnimationSpeed): AnimationSpeed {
+  return typeof v === "string" && (ANIMATION_SPEEDS as readonly string[]).includes(v)
+    ? (v as AnimationSpeed)
     : fallback;
 }
 function pickEvaluator(v: unknown, fallback: EvaluatorChoice): EvaluatorChoice {
@@ -116,6 +140,11 @@ function validate(raw: unknown): Settings {
     aivaiStepDelayMs: pickFiniteNonNeg(r.aivaiStepDelayMs, DEFAULTS.aivaiStepDelayMs),
     p1Evaluator: pickEvaluator(r.p1Evaluator, DEFAULTS.p1Evaluator),
     p2Evaluator: pickEvaluator(r.p2Evaluator, DEFAULTS.p2Evaluator),
+    animationSpeed: pickAnimationSpeed(r.animationSpeed, DEFAULTS.animationSpeed),
+    replayStepDelayMs: pickFiniteNonNeg(r.replayStepDelayMs, DEFAULTS.replayStepDelayMs),
+    replayLoopOnEnd: pickBool(r.replayLoopOnEnd, DEFAULTS.replayLoopOnEnd),
+    replayRespectAnimation: pickBool(r.replayRespectAnimation, DEFAULTS.replayRespectAnimation),
+    showAiDepth: pickBool(r.showAiDepth, DEFAULTS.showAiDepth),
   };
 }
 
@@ -161,6 +190,11 @@ export function initSettingsPersistence() {
     void settings.aivaiStepDelayMs;
     void settings.p1Evaluator;
     void settings.p2Evaluator;
+    void settings.animationSpeed;
+    void settings.replayStepDelayMs;
+    void settings.replayLoopOnEnd;
+    void settings.replayRespectAnimation;
+    void settings.showAiDepth;
     persist();
   });
 }
