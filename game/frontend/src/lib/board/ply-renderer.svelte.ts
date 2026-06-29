@@ -391,6 +391,14 @@ export function createPlyRenderer(
   function reconcilePieceIds(): void {
     const pos = getPosition();
     if (!pos) return;
+    reconcilePieceIdsAgainst(pos);
+  }
+
+  // Reconcile against an explicit position rather than the current sink value.
+  // Used by resyncFromEngine so pieceIds is consistent before the position
+  // write lands on the reactive sink — preventing a Svelte flush from
+  // observing an empty pieceIds map between setPosition and reconcile.
+  function reconcilePieceIdsAgainst(pos: PositionView): void {
     const occupied = new Set<number>();
     const p1 = pos.bitboards[0];
     const p2 = pos.bitboards[1];
@@ -709,9 +717,14 @@ export function createPlyRenderer(
     lastApplied = null;
     const fresh = await fetchFreshState();
     if (!fresh) return;
+    // Reconcile pieceIds against the fresh position BEFORE writing to the
+    // reactive sink. This ensures no Svelte flush can observe an empty
+    // pieceIds map between setPosition and reconcile (the Tauri first-render
+    // Guards bug: piece DOM nodes got fallback "sq-N" keys on first paint,
+    // then remounted with numeric keys when reconcile ran, resetting CSS state).
+    reconcilePieceIdsAgainst(fresh.pos);
     setPosition(fresh.pos);
     setLegal(fresh.legal);
-    reconcilePieceIds();
   }
 
   function reset(): void {

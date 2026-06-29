@@ -627,4 +627,58 @@ describe("createPlyRenderer", () => {
     // Saved plies: restored at 32, so plies 32..34 silent (3) + plies[35] landing (1) = 4 tryApply.
     expect(eng.tryApplyCalls.length).toBeLessThanOrEqual(4);
   });
+
+  // === A0 regression: pieceIds must be populated after resyncFromEngine ====
+  //
+  // Bug: resyncFromEngine() cleared pieceIds, fetched fresh state, wrote
+  // position to the sink, THEN called reconcilePieceIds(). A Svelte reactive
+  // flush between setPosition and reconcilePieceIds could observe an empty
+  // pieceIds map, causing Board's {#each} to use fallback "sq-N" string keys.
+  // When reconcilePieceIds then assigned numeric ids, Svelte destroyed and
+  // remounted all piece nodes — resetting CSS state and (on Tauri) causing
+  // King/Champion pieces to render as Guards until a Move action re-reconciled.
+  //
+  // Fix: reconcile pieceIds against the fresh position BEFORE writing to the
+  // sink, so both updates land in the same synchronous block and no
+  // intermediate state is observable.
+
+  it("resyncFromEngine: pieceIds is non-empty immediately after call (no race window)", async () => {
+    // A fresh renderer has empty pieceIds until resyncFromEngine runs.
+    // After the call, every occupied square must have a numeric id.
+    expect(renderer.pieceIds.size).toBe(2); // set by beforeEach's resync
+
+    // Simulate a second resync with a different position (e.g. after match restart).
+    const newPos = makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "king" },
+      7: { cell: cell({ hp: 2 }), owner: "p1", kind: "champion" },
+      56: { cell: cell({ hp: 2 }), owner: "p2", kind: "king" },
+      63: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+    });
+    eng.setNextView(newPos);
+
+    await renderer.resyncFromEngine();
+
+    // All four squares must have numeric ids — no undefined, no "sq-N" strings.
+    expect(renderer.pieceIds.get(0)).toBeTypeOf("number");
+    expect(renderer.pieceIds.get(7)).toBeTypeOf("number");
+    expect(renderer.pieceIds.get(56)).toBeTypeOf("number");
+    expect(renderer.pieceIds.get(63)).toBeTypeOf("number");
+    expect(renderer.pieceIds.size).toBe(4);
+  });
+
+  it("resyncFromEngine: pieceIds stable ids are preserved for squares that stay occupied", async () => {
+    // Squares 0 and 16 are occupied after beforeEach resync.
+    const idSq0 = renderer.pieceIds.get(0);
+    const idSq16 = renderer.pieceIds.get(16);
+    expect(idSq0).toBeTypeOf("number");
+    expect(idSq16).toBeTypeOf("number");
+
+    // Resync with same squares still occupied (same position).
+    await renderer.resyncFromEngine();
+
+    // Ids must be stable — same square keeps the same numeric id so that
+    // Svelte's {#each} key doesn't change and no DOM remount occurs.
+    expect(renderer.pieceIds.get(0)).toBe(idSq0);
+    expect(renderer.pieceIds.get(16)).toBe(idSq16);
+  });
 });
