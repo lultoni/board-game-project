@@ -88,7 +88,7 @@ impl EngineRegistry {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PositionViewDto {
-    pub bitboards:         [u64; 5],
+    pub bitboards:         [String; 5],
     pub mailbox:           Vec<u16>,
     pub to_move:           u8,
     pub current_phase:     u8,
@@ -98,7 +98,7 @@ pub struct PositionViewDto {
     pub p2_money:          u16,
     pub pending_modifiers: u8,
     pub game_result:       u8,
-    pub zobrist:           u64,
+    pub zobrist:           String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -269,7 +269,7 @@ fn position_view(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Pos
         let v  = api::position_view(&e.m);
         let mb = api::position_mailbox(&e.m);
         PositionViewDto {
-            bitboards:         v.bitboards,
+            bitboards:         v.bitboards.map(|b| b.to_string()),
             mailbox:           mb.to_vec(),
             to_move:           v.to_move,
             current_phase:     v.current_phase,
@@ -279,7 +279,7 @@ fn position_view(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Pos
             p2_money:          v.p2_money,
             pending_modifiers: v.pending_modifiers,
             game_result:       v.game_result,
-            zobrist:           v.zobrist,
+            zobrist:           v.zobrist.to_string(),
         }
     })
 }
@@ -480,11 +480,11 @@ fn fen_to_position_view(fen: String) -> Result<PositionViewDto, String> {
     };
     Ok(PositionViewDto {
         bitboards: [
-            pos.p1_pieces.0,
-            pos.p2_pieces.0,
-            pos.kings.0,
-            pos.champions.0,
-            pos.guards.0,
+            pos.p1_pieces.0.to_string(),
+            pos.p2_pieces.0.to_string(),
+            pos.kings.0.to_string(),
+            pos.champions.0.to_string(),
+            pos.guards.0.to_string(),
         ],
         mailbox,
         to_move: match pos.to_move { Player::P1 => 0, Player::P2 => 1 },
@@ -499,7 +499,7 @@ fn fen_to_position_view(fen: String) -> Result<PositionViewDto, String> {
         p2_money: pos.p2_money,
         pending_modifiers: pos.pending_modifiers,
         game_result,
-        zobrist: pos.zobrist,
+        zobrist: pos.zobrist.to_string(),
     })
 }
 
@@ -1064,7 +1064,7 @@ mod tests {
         assert_eq!(dto.current_phase, 0, "Move phase");
         assert_eq!(dto.game_result, 0, "ongoing");
         assert_eq!(dto.mailbox.len(), 64);
-        assert_ne!(dto.bitboards[0], 0, "P1 occupancy non-empty at start");
+        assert_ne!(dto.bitboards[0], "0", "P1 occupancy non-empty at start");
     }
 
     #[test]
