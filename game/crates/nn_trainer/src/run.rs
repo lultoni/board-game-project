@@ -81,6 +81,10 @@ pub struct RunConfig {
     /// reproducible across hosts, while the gauntlet is *time-bounded* so
     /// brackets compare like thinking budgets.
     pub corpus_search_depth: u8,
+    /// Base think time (ms/ply) for the Fast gauntlet bracket.
+    /// Medium = 3×, Slow = 5×. Smoke uses a low value so the gauntlet
+    /// completes in seconds; medium/long use higher values for signal quality.
+    pub gauntlet_think_ms: u64,
     /// Lineage / training hyperparameters (delegated).
     pub lineage: LineageConfig,
     /// Model topology.
@@ -123,6 +127,7 @@ impl RunConfig {
             n_generations: 2,
             corpus_games: 4,
             corpus_search_depth: 2,
+            gauntlet_think_ms: 10,
             lineage: LineageConfig::default(),
             model: MlpConfig::new(),
             seed_root: 0xCAFE_F00D,
@@ -136,6 +141,7 @@ impl RunConfig {
             n_generations: 5,
             corpus_games: 32,
             corpus_search_depth: 4,
+            gauntlet_think_ms: 100,
             lineage: LineageConfig {
                 n_lineages: 4,
                 n_rounds: 5,
@@ -160,6 +166,7 @@ impl RunConfig {
             n_generations: 10,
             corpus_games: 64,
             corpus_search_depth: 6,
+            gauntlet_think_ms: 100,
             lineage: LineageConfig {
                 n_lineages: 8,
                 n_rounds: 10,
@@ -592,13 +599,13 @@ where
                 games_total: 3,
                 ply: 0,
                 bracket: "fast".to_string(),
-                think_ms: Bracket::Fast.time_limit_ms() as u32,
+                think_ms: config.gauntlet_think_ms as u32,
             };
             write_snapshot(
                 run_dir,
                 &snapshot_for(TrainingPhase::Gauntlet, generation, 1, &population, Some(active)),
             )?;
-            let tally = tier1_fitness(cand, &baselines, tier1_seed);
+            let tally = tier1_fitness(cand, &baselines, tier1_seed, config.gauntlet_think_ms);
             let losses = tally.baseline_wins;
             let wins = tally.candidate_wins;
             if wins > best_wins {
@@ -652,6 +659,7 @@ where
             generation,
             best_idx as u32,
             &mut matrix,
+            config.gauntlet_think_ms,
         );
 
         // Update the matrix from Tier-2 series, save it.
@@ -794,6 +802,7 @@ fn run_tier2_with_live(
     generation: u32,
     lineage: u32,
     matrix: &mut GauntletMatrix,
+    base_ms: u64,
 ) -> Option<AcceptanceReport> {
     // Bracket-by-bracket loop inlined here so we can thread the per-ply
     // callback through `play_match_with_callback`. The non-live path
@@ -807,7 +816,7 @@ fn run_tier2_with_live(
         for b in Bracket::all() {
             let tally = mirrored_bo3_live(
                 candidate, *pred, pred_seed, b,
-                run_dir, generation, lineage, pi as u32,
+                run_dir, generation, lineage, pi as u32, base_ms,
             );
             match b {
                 Bracket::Fast => br.fast = tally,
@@ -875,6 +884,7 @@ fn mirrored_bo3_live(
     generation: u32,
     lineage: u32,
     pred_idx: u32,
+    base_ms: u64,
 ) -> SeriesTally {
     use core_engine::state::position::GameResult;
 
@@ -888,10 +898,11 @@ fn mirrored_bo3_live(
         Bracket::Medium => "medium",
         Bracket::Slow => "slow",
     };
+    let time = bracket.scaled_time_limit_ms(base_ms);
 
     // Game 1: candidate as P1.
     let g1 = play_match_with_callback(
-        candidate, baseline, &loadout_a, &loadout_a, bracket,
+        candidate, baseline, &loadout_a, &loadout_a, time,
         |pos, ply, action| {
             write_live(run_dir, pos, ply, action, &challenger, &defender, 1, 3, bracket_name);
         },
@@ -904,7 +915,7 @@ fn mirrored_bo3_live(
 
     // Game 2: candidate as P2.
     let g2 = play_match_with_callback(
-        baseline, candidate, &loadout_a, &loadout_a, bracket,
+        baseline, candidate, &loadout_a, &loadout_a, time,
         |pos, ply, action| {
             write_live(run_dir, pos, ply, action, &challenger, &defender, 2, 3, bracket_name);
         },
@@ -922,7 +933,7 @@ fn mirrored_bo3_live(
     // Game 3 (tiebreaker, fresh loadout, candidate as P1).
     let loadout_b = random_loadout_from_seed(loadout_seed.wrapping_add(0xA5A5_A5A5_A5A5_A5A5));
     let g3 = play_match_with_callback(
-        candidate, baseline, &loadout_b, &loadout_b, bracket,
+        candidate, baseline, &loadout_b, &loadout_b, time,
         |pos, ply, action| {
             write_live(run_dir, pos, ply, action, &challenger, &defender, 3, 3, bracket_name);
         },

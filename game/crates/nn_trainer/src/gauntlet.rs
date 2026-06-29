@@ -55,11 +55,22 @@ pub enum Bracket {
 }
 
 impl Bracket {
+    /// Default think time (ms/ply) for this bracket.
     pub fn time_limit_ms(self) -> u64 {
         match self {
             Bracket::Fast => 100,
             Bracket::Medium => 300,
             Bracket::Slow => 500,
+        }
+    }
+
+    /// Think time scaled by a base multiplier. `base_ms` overrides the Fast
+    /// bracket; Medium = 3×, Slow = 5× (same ratios as the defaults).
+    pub fn scaled_time_limit_ms(self, base_ms: u64) -> u64 {
+        match self {
+            Bracket::Fast => base_ms,
+            Bracket::Medium => base_ms * 3,
+            Bracket::Slow => base_ms * 5,
         }
     }
 
@@ -93,7 +104,7 @@ pub fn play_match(
     bracket: Bracket,
 ) -> MatchOutcome {
     play_match_with_callback(
-        eval_p1, eval_p2, loadout_p1, loadout_p2, bracket,
+        eval_p1, eval_p2, loadout_p1, loadout_p2, bracket.time_limit_ms(),
         |_, _, _| {},
     )
 }
@@ -109,7 +120,7 @@ pub fn play_match_with_callback<F>(
     eval_p2: &dyn Evaluator,
     loadout_p1: &SideLoadout,
     loadout_p2: &SideLoadout,
-    bracket: Bracket,
+    time_ms: u64,
     mut on_ply: F,
 ) -> MatchOutcome
 where
@@ -118,7 +129,7 @@ where
     let mut pos = Position::setup_stack_m_with_loadouts(loadout_p1, loadout_p2);
     let mut tt_p1 = TranspositionTable::with_capacity_pow2(16);
     let mut tt_p2 = TranspositionTable::with_capacity_pow2(16);
-    let time = bracket.time_limit_ms();
+    let time = time_ms;
 
     for ply in 0..MAX_PLIES {
         if pos.game_result.is_some() { break; }
@@ -178,17 +189,19 @@ fn mirror_pair(
     baseline: &dyn Evaluator,
     loadout: &SideLoadout,
     bracket: Bracket,
+    base_ms: u64,
 ) -> SeriesTally {
     let mut tally = SeriesTally::default();
+    let time = bracket.scaled_time_limit_ms(base_ms);
 
     // Game 1: candidate as P1, baseline as P2.
-    match play_match(candidate, baseline, loadout, loadout, bracket) {
+    match play_match_with_callback(candidate, baseline, loadout, loadout, time, |_, _, _| {}) {
         Some(GameResult::P1Wins) => tally.candidate_wins += 1,
         Some(GameResult::P2Wins) => tally.baseline_wins += 1,
         None => tally.indecisive += 1,
     }
     // Game 2: candidate as P2, baseline as P1.
-    match play_match(baseline, candidate, loadout, loadout, bracket) {
+    match play_match_with_callback(baseline, candidate, loadout, loadout, time, |_, _, _| {}) {
         Some(GameResult::P2Wins) => tally.candidate_wins += 1,
         Some(GameResult::P1Wins) => tally.baseline_wins += 1,
         None => tally.indecisive += 1,
@@ -209,21 +222,18 @@ pub fn mirrored_bo3(
     baseline: &dyn Evaluator,
     loadout_seed: u64,
     bracket: Bracket,
+    base_ms: u64,
 ) -> SeriesTally {
     let loadout_a = random_loadout_from_seed(loadout_seed);
-    let mut tally = mirror_pair(candidate, baseline, &loadout_a, bracket);
+    let mut tally = mirror_pair(candidate, baseline, &loadout_a, bracket, base_ms);
 
-    // Already decided after the mirror pair?
     if tally.candidate_wins >= 2 || tally.baseline_wins >= 2 {
         return tally;
     }
 
-    // Tiebreaker on a fresh loadout. We play one more game (candidate as P1)
-    // — that's enough to push the decisive count from 1–1 to 2–1 or 1–2 in
-    // the dominant case. If the tiebreaker is also indecisive, the tally
-    // reflects that and downstream logic handles it via `candidate_leads`.
     let loadout_b = random_loadout_from_seed(loadout_seed.wrapping_add(0xA5A5_A5A5_A5A5_A5A5));
-    match play_match(candidate, baseline, &loadout_b, &loadout_b, bracket) {
+    let time = bracket.scaled_time_limit_ms(base_ms);
+    match play_match_with_callback(candidate, baseline, &loadout_b, &loadout_b, time, |_, _, _| {}) {
         Some(GameResult::P1Wins) => tally.candidate_wins += 1,
         Some(GameResult::P2Wins) => tally.baseline_wins += 1,
         None => tally.indecisive += 1,
@@ -243,11 +253,12 @@ pub fn tier1_fitness(
     candidate: &dyn Evaluator,
     top_k: &[&dyn Evaluator],
     loadout_seed: u64,
+    base_ms: u64,
 ) -> SeriesTally {
     let mut tally = SeriesTally::default();
     for (i, baseline) in top_k.iter().enumerate() {
         let seed = loadout_seed.wrapping_add((i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        let r = mirrored_bo3(candidate, *baseline, seed, Bracket::Fast);
+        let r = mirrored_bo3(candidate, *baseline, seed, Bracket::Fast, base_ms);
         tally.candidate_wins += r.candidate_wins;
         tally.baseline_wins  += r.baseline_wins;
         tally.indecisive     += r.indecisive;
@@ -322,6 +333,7 @@ pub fn tier2_acceptance(
     candidate: &dyn Evaluator,
     predecessors: &[&dyn Evaluator],
     loadout_seed: u64,
+    base_ms: u64,
 ) -> AcceptanceReport {
     assert!(!predecessors.is_empty(),
         "tier2_acceptance needs at least one predecessor");
@@ -329,7 +341,7 @@ pub fn tier2_acceptance(
     let mut per_predecessor: Vec<BracketResults> = Vec::with_capacity(predecessors.len());
     for (i, pred) in predecessors.iter().enumerate() {
         let seed = loadout_seed.wrapping_add((i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        let br = BracketResults::from_runner(|b| mirrored_bo3(candidate, *pred, seed, b));
+        let br = BracketResults::from_runner(|b| mirrored_bo3(candidate, *pred, seed, b, base_ms));
         per_predecessor.push(br);
     }
 
@@ -573,7 +585,7 @@ mod tests {
         let mut seen_plies: Vec<u32> = Vec::new();
         let mut final_pos_was_terminal = false;
         let outcome = play_match_with_callback(
-            &HeuristicEvaluator, &HeuristicEvaluator, &l, &l, Bracket::Fast,
+            &HeuristicEvaluator, &HeuristicEvaluator, &l, &l, Bracket::Fast.time_limit_ms(),
             |pos, ply, _action| {
                 seen_plies.push(ply);
                 final_pos_was_terminal = pos.game_result.is_some();
@@ -595,7 +607,7 @@ mod tests {
         // Two identical evaluators on the same loadout — outcome depends on
         // colour-symmetry of the position; we don't predict the winner,
         // only that the tally totals at least 2 games.
-        let tally = mirrored_bo3(&HeuristicEvaluator, &HeuristicEvaluator, 7, Bracket::Fast);
+        let tally = mirrored_bo3(&HeuristicEvaluator, &HeuristicEvaluator, 7, Bracket::Fast, 10);
         assert!(tally.games_played() >= 2,
             "mirrored_bo3 must play at least the mirror pair; tally = {:?}", tally);
     }
@@ -609,7 +621,7 @@ mod tests {
         let const_eval = ConstEval(0);
         let candidate: &dyn Evaluator = &HeuristicEvaluator;
         let top_k: [&dyn Evaluator; 2] = [&const_eval, &const_eval];
-        let tally = tier1_fitness(candidate, &top_k, 13);
+        let tally = tier1_fitness(candidate, &top_k, 13, 10);
         assert!(tally.candidate_wins > tally.baseline_wins,
             "heuristic must out-score const-0 in tier1; tally = {:?}", tally);
     }
@@ -620,7 +632,7 @@ mod tests {
         // candidate shouldn't pass the BO3-win-vs-immediate-predecessor
         // requirement (it can't beat its own clone systematically). Test
         // the negative path.
-        let report = tier2_acceptance(&HeuristicEvaluator, &[&HeuristicEvaluator], 21);
+        let report = tier2_acceptance(&HeuristicEvaluator, &[&HeuristicEvaluator], 21, 10);
         assert_eq!(report.per_predecessor.len(), 1);
         // Pass flags may or may not be true depending on the deterministic
         // outcome of self-play (whoever moves first might always win, in
