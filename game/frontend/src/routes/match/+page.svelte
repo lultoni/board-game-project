@@ -116,6 +116,9 @@
   // pushes updates here so we can render path trail + hover ring.
   let dragSrc = $state<number | null>(null);
   let dragTrail = $state<number[]>([]);
+  /** Square currently under the pointer (drag or hover). Used for click-mode
+   *  landing preview: shows where the attacker would land before clicking. */
+  let hoverSq = $state<number | null>(null);
   let dragHover = $state<number | null>(null);
   /** Live cursor position in SVG coords (viewBox = 800), used to pick the
    * sub-tile approach for multi-path Move-Attacks. (0,0) when idle. */
@@ -253,6 +256,23 @@
     return pickApproachByCursor(dragHover, cursorX, cursorY, approaches);
   });
 
+  // Click-mode landing preview: when a piece is selected (no drag) and the
+  // cursor is over a legal target, show where the attacker would land — same
+  // visual as drag-and-drop hover, but driven by mouse-over without press.
+  const clickLanding = $derived.by(() => {
+    if (dragSrc !== null) return null; // drag is active, dragLanding takes over
+    if (match.selection === null || hoverSq === null) return null;
+    if (pendingApproach !== null) return null; // chooser already open
+    const targets = moveTargets;
+    if (!targets.squares.has(hoverSq)) return null;
+    const approaches = targets.byTarget.get(hoverSq);
+    if (!approaches || approaches.size === 0) return null;
+    if (approaches.size === 1) return approaches.keys().next().value as number;
+    return pickApproachByCursor(hoverSq, cursorX, cursorY, approaches);
+  });
+
+  const effectiveLanding = $derived(dragSrc !== null ? dragLanding : clickLanding);
+
   function handlePressStart(src: number) {
     sfx.unlock();
     sfx.play("pickup");
@@ -270,6 +290,7 @@
     y: number,
   ) {
     dragHover = overSq;
+    hoverSq = overSq;
     dragTrail = path;
     cursorX = x;
     cursorY = y;
@@ -302,12 +323,13 @@
   // Bodyguard no longer needs a special-case override — when the engine sets
   // `pending_bodyguard` it also flips STM to the defender, so the defender's
   // seat naturally becomes `currentSeatIsLocal`.
+  // In sandbox mode: always interactive regardless of whose turn it is,
+  // so the user can freely move pieces for both sides.
   const interactive = $derived(
     ready
     && !busy
     && match.position?.gameResult === 0
-    && !currentSeatIsAi
-    && currentSeatIsLocal
+    && (match.mode === "sandbox" || (!currentSeatIsAi && currentSeatIsLocal))
   );
 
   // Wheel state. Open whenever a piece is selected in the Skill Phase
@@ -1268,7 +1290,7 @@
   }
 
   async function exitSandbox(): Promise<void> {
-    if (!eng || busy || aiThinking) return;
+    if (!eng || busy) return;
     if (match.mode !== "sandbox" || !match.trueSnapshotJson) return;
     if (match.sandboxMovesApplied > 0) {
       const msg = t("sandbox.confirmDiscard", { n: match.sandboxMovesApplied });
@@ -1468,7 +1490,7 @@
           {dragTrail}
           {dragHover}
           {dragHoverLegal}
-          {dragLanding}
+          dragLanding={effectiveLanding}
           onApproachChoice={(ap) => {
             if (pendingApproach) {
               const target = pendingApproach.target;
@@ -1635,7 +1657,7 @@
           <button
             type="button"
             class="sandbox-toggle"
-            disabled={busy || aiThinking}
+            disabled={busy || (match.mode !== "sandbox" && aiThinking)}
             onclick={() => void (match.mode === "sandbox" ? exitSandbox() : enterSandbox())}
           >{match.mode === "sandbox" ? t("controls.exitSandbox") : t("controls.sandbox")}</button>
         </div>
