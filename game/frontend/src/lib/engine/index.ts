@@ -1,6 +1,7 @@
 // Runtime-detected engine client. Components import `engine` from here and
 // never branch on backend.
 
+import { isTauri } from "@tauri-apps/api/core";
 import type { EngineClient } from "./types";
 
 export type {
@@ -35,35 +36,9 @@ export type { AiCallOpts, AiCallReason } from "./ai-hooks";
 
 let cached: EngineClient | null = null;
 
-function detectTauri(): boolean {
-  if (typeof window === "undefined") return false;
-  const w = window as unknown as {
-    isTauri?: boolean;
-    __TAURI__?: unknown;
-    __TAURI_INTERNALS__?: unknown;
-  };
-  return (
-    w.isTauri === true ||
-    typeof w.__TAURI_INTERNALS__ !== "undefined" ||
-    typeof w.__TAURI__ !== "undefined"
-  );
-}
-
-/**
- * Returns the singleton EngineClient for this session. Lazily constructed on
- * first call so SSR-safe imports don't fire the Worker/IPC during build.
- *
- * For the WASM backend, subscribes to `onDead` so a wedged worker (uncaught
- * exception inside the engine, OOM, etc.) invalidates the cache automatically
- * — the next caller gets a fresh worker rather than a permanently-pending
- * promise. Callers that hold a stale reference will see their next `#call`
- * reject with "engine worker is dead"; they should fall back to `getEngine()`
- * and re-issue the request (typically through `resetEngine()` for state
- * cleanup, then restore from snapshot).
- */
 export async function getEngine(): Promise<EngineClient> {
   if (cached) return cached;
-  if (detectTauri()) {
+  if (isTauri()) {
     const { TauriClient } = await import("./tauri-client");
     cached = new TauriClient();
   } else {

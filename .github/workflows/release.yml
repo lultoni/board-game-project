@@ -95,14 +95,14 @@ jobs:
 
       - name: Install CUDA Toolkit (Linux)
         if: matrix.name == 'linux-cuda'
-        uses: Jimver/cuda-toolkit@v0.2.16
+        uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: "12.5.0"
           method: "network"
 
       - name: Install CUDA Toolkit (Windows)
         if: matrix.name == 'windows-cuda'
-        uses: Jimver/cuda-toolkit@v0.2.16
+        uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: "12.5.0"
           method: "network"
