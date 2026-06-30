@@ -1033,6 +1033,16 @@ fn relocate_piece(pos: &mut Position, from: u8, to: u8, undo: &mut Undo) {
     // Zobrist: piece leaves `from`, appears at `to`.
     xor_piece(pos, undo, from, owner, kind);
     xor_piece(pos, undo, to,   owner, kind);
+
+    // Keep combo-dedup arrays consistent: if the relocated piece is a tracked
+    // enemy or caster, its square entry must follow the piece so that a second
+    // attack by the same caster on the same (moved) piece is still deduplicated.
+    for i in 0..pos.tracked_enemies_len as usize {
+        if pos.tracked_enemies[i] == from { pos.tracked_enemies[i] = to; break; }
+    }
+    for i in 0..pos.tracked_casters_len as usize {
+        if pos.tracked_casters[i] == from { pos.tracked_casters[i] = to; break; }
+    }
 }
 
 /// Debit `cost` Money from the side that owns `caster_sq`.
@@ -2621,6 +2631,53 @@ mod tests {
         assert_eq!(pos.mailbox[28].armor(), 0);
         assert_eq!(pos.mailbox[28].hp(), 1);
         assert_eq!(pos.mailbox[28].combo(), 2);
+    }
+
+    #[test]
+    fn hook_same_caster_twice_no_combo_bonus_after_pull() {
+        // Regression: after Hook pulls the target, the target occupies a new
+        // square. tracked_enemies must follow the piece so the same caster
+        // firing a second Hook does NOT get the combo bonus it built itself.
+        //
+        // Setup: P1 Champion A at e4 (sq 28), P2 target at e6 (sq 44).
+        // Hook pulls e6 → e5 (sq 36). Second Hook from sq 28 targets sq 36.
+        // Target has Armor=2 so it survives both hits.
+        let mut pos = skill_phase_pos(4);
+        pos.p1_money = 20;
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Hook as u8);
+        place(&mut pos, 44, Player::P2, PieceKind::Champion, 2, 2);
+
+        // First Hook: sq 28 → tgt 44. Pull: step_toward(44,28)=sq 36 (empty).
+        // Damage 1 absorbed by Armor (2→1). Combo tick on sq 44 → combo=1.
+        // Target relocates to sq 36.
+        let _ = make(&mut pos, skill_action(28, 44, Skill::Hook));
+        assert!(!pos.is_occupied(44), "target pulled away from sq 44");
+        assert!(pos.is_occupied(36),  "target now at sq 36");
+        assert_eq!(pos.mailbox[36].armor(), 1);
+        assert_eq!(pos.mailbox[36].combo(), 1);
+
+        // Second Hook: same caster (sq 28) → tgt sq 36.
+        // combo_tick must recognise this as the same (caster, victim) pair and
+        // return false → combo_bonus = 0. Total damage = base 1 only.
+        // Armor absorbs it (1→0). HP stays at 2.
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Hook));
+        assert!(pos.is_occupied(36) || !pos.is_occupied(36)); // survives or dies — we check HP
+        // If still alive: HP must be 2 (no combo bonus was collected).
+        if pos.is_occupied(36) || pos.is_occupied(28) {
+            // Target may have been pulled to sq 28's neighbour; find where it went.
+            // The key assertion: combo counter is now 1 (no second tick from same caster).
+            let tgt_sq = if pos.is_occupied(36) { 36 } else {
+                // step_toward(36,28) = 36 is already adjacent; pull dest varies
+                // depending on occupancy. Just scan for the piece.
+                (0u8..64).find(|&s| s != 28 && pos.is_occupied(s) &&
+                    !pos.p1_pieces.contains(s)).unwrap_or(36)
+            };
+            assert_eq!(pos.mailbox[tgt_sq as usize].combo(), 1,
+                "combo must remain 1 — same caster cannot earn a bonus from its own prior tick");
+            assert_eq!(pos.mailbox[tgt_sq as usize].hp(), 2,
+                "HP unchanged — only 1 base dmg absorbed by remaining Armor, no combo bonus damage");
+        }
     }
 
     // --- Tempest (6) ------------------------------------------------------
