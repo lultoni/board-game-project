@@ -87,6 +87,15 @@ impl EngineRegistry {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct PendingBodyguardDto {
+    pub attacker_src: u8,
+    pub attacker_now: u8,
+    pub target_sq:    u8,
+    pub eligible:     Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct PositionViewDto {
     pub bitboards:         [String; 5],
     pub mailbox:           Vec<u16>,
@@ -99,6 +108,7 @@ pub struct PositionViewDto {
     pub pending_modifiers: u8,
     pub game_result:       u8,
     pub zobrist:           String,
+    pub pending_bodyguard: Option<PendingBodyguardDto>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -268,6 +278,12 @@ fn position_view(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Pos
     registry.with(handle, |e| {
         let v  = api::position_view(&e.m);
         let mb = api::position_mailbox(&e.m);
+        let pbg = api::pending_bodyguard(&e.m).map(|p| PendingBodyguardDto {
+            attacker_src: p.attacker_src,
+            attacker_now: p.attacker_now,
+            target_sq:    p.target_sq,
+            eligible:     p.eligible[..p.eligible_len as usize].to_vec(),
+        });
         PositionViewDto {
             bitboards:         v.bitboards.map(|b| b.to_string()),
             mailbox:           mb.to_vec(),
@@ -280,6 +296,7 @@ fn position_view(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Pos
             pending_modifiers: v.pending_modifiers,
             game_result:       v.game_result,
             zobrist:           v.zobrist.to_string(),
+            pending_bodyguard: pbg,
         }
     })
 }
@@ -500,6 +517,7 @@ fn fen_to_position_view(fen: String) -> Result<PositionViewDto, String> {
         pending_modifiers: pos.pending_modifiers,
         game_result,
         zobrist: pos.zobrist.to_string(),
+        pending_bodyguard: None,
     })
 }
 
