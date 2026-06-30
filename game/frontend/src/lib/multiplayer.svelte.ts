@@ -326,3 +326,16 @@ export function isActive(): boolean {
 export function probeHost(code: string, timeoutMs = 2_000): Promise<boolean> {
   return transport.probeHost(code, timeoutMs);
 }
+
+/** Returns true if WebRTC is expected to work in this environment.
+ *  webkit2gtk (used by Tauri on Linux) has no functional WebRTC backend —
+ *  wry#85 is open since 2020 with no ETA. Detect it via the user-agent so
+ *  we can show a clear "not supported" message rather than letting PeerJS
+ *  throw a cryptic BrowserIncompatible error. */
+export function isWebRtcSupported(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  // webkit2gtk identifies itself with "WebKitGTK" in the UA string.
+  if (ua.includes("WebKitGTK")) return false;
+  return true;
+}

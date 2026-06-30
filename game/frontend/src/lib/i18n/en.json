@@ -232,6 +232,7 @@
     "resumeFailedHost": "Resume failed — the other player is no longer in this match.",
     "resumeFailedNoSession": "Resume failed — no matching session at that code.",
     "redialLadder": "Reconnecting (attempt {attempt}, next try in {time})…",
-    "redialLongtail": "Still trying — waiting for host to return (retry in {time})…"
+    "redialLongtail": "Still trying — waiting for host to return (retry in {time})…",
+    "webrtcUnsupported": "Multiplayer is not available on Linux. The system WebView (webkit2gtk) does not support WebRTC, which is required for peer-to-peer connections. This is a known upstream limitation with no ETA for a fix."
   }
 }

@@ -11,6 +11,7 @@
     mpState,
     onRawData as mpOnRawData,
     probeHost,
+    isWebRtcSupported,
   } from "$lib/multiplayer.svelte";
   import { isValidCode } from "$lib/multiplayer-protocol";
   import { decodeMessageV2, type WireMessageV2 } from "$lib/multiplayer-protocol-v2";
@@ -123,6 +124,7 @@
   }
 
   async function startHost(): Promise<void> {
+    if (!isWebRtcSupported()) return;
     sfx.play("click");
     busy = true;
     codeError = null;
@@ -141,6 +143,7 @@
   }
 
   async function startJoin(): Promise<void> {
+    if (!isWebRtcSupported()) return;
     const code = codeInput.trim();
     if (!isValidCode(code)) {
       codeError = t("multiplayer.invalidCode");
@@ -461,6 +464,11 @@
     {/if}
 
     <section class="cards">
+      {#if !isWebRtcSupported()}
+        <div class="webrtc-unsupported">
+          <p>{t("multiplayer.webrtcUnsupported")}</p>
+        </div>
+      {:else}
       <article class="card host">
         <h2>{t("multiplayer.hostTitle")}</h2>
         <p class="hint">{t("multiplayer.hostHint")}</p>
@@ -488,6 +496,7 @@
           {t("multiplayer.joinButton")}
         </button>
       </article>
+      {/if}
     </section>
 
     {#if codeError}
@@ -724,4 +733,14 @@
     border-radius: 6px;
     margin-top: 1rem;
   }
+
+  .webrtc-unsupported {
+    grid-column: 1 / -1;
+    padding: 1.2em 1.4em;
+    background: color-mix(in srgb, #a94b3b 8%, transparent);
+    border: 1.5px solid #a94b3b55;
+    border-radius: 8px;
+    color: #c97060;
+  }
+  .webrtc-unsupported p { margin: 0; line-height: 1.5; }
 </style>
