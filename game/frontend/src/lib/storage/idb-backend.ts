@@ -242,6 +242,17 @@ export class IdbTelemetryStore implements TelemetryStore {
     await awaitTx(tx);
   }
 
+  async updateMultiplayerRole(matchId: string, role: "host" | "joiner"): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_MATCHES, "readwrite");
+    const store = tx.objectStore(STORE_MATCHES);
+    const existing = await awaitReq<MatchRow | undefined>(store.get(matchId));
+    if (!existing) return;
+    if (existing.multiplayerRole === role) return;
+    store.put({ ...existing, multiplayerRole: role });
+    await awaitTx(tx);
+  }
+
   async dismissNetworkLost(matchId: string): Promise<void> {
     const db = await this.#dbPromise;
     const tx = db.transaction(STORE_MATCHES, "readwrite");

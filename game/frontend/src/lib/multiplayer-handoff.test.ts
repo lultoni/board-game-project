@@ -47,6 +47,7 @@ function buildHooks(log: CallLog, overrides: {
   startTelemetryReturns?: string | null;
   startTelemetryRejects?: boolean;
   checkpointRejects?: boolean;
+  updateRoleRejects?: boolean;
 } = {}): Parameters<typeof takeoverAsHost>[1] {
   return {
     destroyPeerKeepState: () => { log.events.push("destroyPeer"); },
@@ -68,6 +69,10 @@ function buildHooks(log: CallLog, overrides: {
       log.events.push("checkpoint");
       if (overrides.checkpointRejects) throw new Error("checkpoint-failed");
     },
+    updateMultiplayerRole: async (id, role) => {
+      log.events.push(`updateRole:${id}:${role}`);
+      if (overrides.updateRoleRejects) throw new Error("update-failed");
+    },
   };
 }
 
@@ -81,8 +86,32 @@ describe("takeoverAsHost", () => {
     mpState.code = "424242";
   });
 
-  it("happy path: events fire in correct order, returns ok", async () => {
-    const carrier = makeCarrier();
+  it("row-reuse happy path: updates existing joiner row's role in place", async () => {
+    const carrier = makeCarrier({ telemetryMatchId: "existing-joiner-row" });
+    const eng = makeEng();
+    const mpEngine = makeMpEngine();
+    const log: CallLog = { events: [] };
+    const hooks = buildHooks(log);
+
+    const r = await takeoverAsHost(
+      { eng, mpEngine, code: "424242" },
+      { ...hooks, carrier },
+    );
+
+    expect(r.ok).toBe(true);
+    // No fresh mint / checkpoint — the existing row is reused.
+    expect(log.events).toEqual([
+      "destroyPeer",
+      "updateRole:existing-joiner-row:host",
+      "hostWithCode:424242",
+    ]);
+    expect(mpEngine.promoteCalls).toEqual([{ matchId: "existing-joiner-row" }]);
+    expect(mpState.role).toBe("host");
+    expect(mpState.code).toBe("424242");
+  });
+
+  it("defensive fallback: mints a fresh row when carrier has no telemetryMatchId", async () => {
+    const carrier = makeCarrier(); // telemetryMatchId: null
     const eng = makeEng();
     const mpEngine = makeMpEngine();
     const log: CallLog = { events: [] };
@@ -101,10 +130,7 @@ describe("takeoverAsHost", () => {
       "hostWithCode:424242",
     ]);
     expect(mpEngine.promoteCalls).toEqual([{ matchId: "new-match-id-001" }]);
-    // mpState flipped to host AFTER promoteToHost; promoteToHost was called
-    // BEFORE hostWithCode (verified via log ordering above).
     expect(mpState.role).toBe("host");
-    expect(mpState.code).toBe("424242");
   });
 
   it("rejects with no-code when called with empty code", async () => {
@@ -117,7 +143,22 @@ describe("takeoverAsHost", () => {
     expect(log.events).toEqual([]);
   });
 
-  it("returns telemetry-failed when startTelemetrySession returns null", async () => {
+  it("returns telemetry-failed when updateMultiplayerRole rejects", async () => {
+    const carrier = makeCarrier({ telemetryMatchId: "row-1" });
+    const mpEngine = makeMpEngine();
+    const log: CallLog = { events: [] };
+    const r = await takeoverAsHost(
+      { eng: makeEng(), mpEngine, code: "424242" },
+      { ...buildHooks(log, { updateRoleRejects: true }), carrier },
+    );
+    expect(r.ok).toBe(false);
+    expect((r as { reason?: string }).reason).toBe("telemetry-failed");
+    expect(log.events).toEqual(["destroyPeer", "updateRole:row-1:host"]);
+    expect(mpEngine.promoteCalls).toEqual([]);
+    expect(mpState.role).toBe("joiner");
+  });
+
+  it("returns telemetry-failed when startTelemetrySession returns null (fallback path)", async () => {
     const carrier = makeCarrier();
     const mpEngine = makeMpEngine();
     const log: CallLog = { events: [] };
@@ -131,7 +172,7 @@ describe("takeoverAsHost", () => {
     expect(mpState.role).toBe("joiner"); // unchanged
   });
 
-  it("returns engine-failed when matchLogJson rejects, does NOT call hostWithCode or promoteToHost", async () => {
+  it("returns engine-failed when matchLogJson rejects on the fallback path", async () => {
     const carrier = makeCarrier();
     const mpEngine = makeMpEngine();
     const log: CallLog = { events: [] };
@@ -150,7 +191,7 @@ describe("takeoverAsHost", () => {
   });
 
   it("returns rehost-failed when hostWithCode rejects; promotion already happened", async () => {
-    const carrier = makeCarrier();
+    const carrier = makeCarrier({ telemetryMatchId: "row-1" });
     const mpEngine = makeMpEngine();
     const log: CallLog = { events: [] };
 
@@ -163,12 +204,11 @@ describe("takeoverAsHost", () => {
     expect((r as { reason?: string }).reason).toBe("rehost-failed");
     // Promotion DID happen — mpState is host now, wrapper was flipped.
     // The user must navigate to lobby or click again to recover.
-    expect(mpEngine.promoteCalls).toEqual([{ matchId: "new-match-id-001" }]);
+    expect(mpEngine.promoteCalls).toEqual([{ matchId: "row-1" }]);
     expect(mpState.role).toBe("host");
     expect(log.events).toEqual([
       "destroyPeer",
-      "startTelemetry",
-      "checkpoint",
+      "updateRole:row-1:host",
       "hostWithCode:424242",
     ]);
   });

@@ -10,32 +10,30 @@
 //      Preserves `mpState.code`/`role`/`peerEverPaired` so the banner stays
 //      mounted and `hostWithCode` has the same id to reclaim.
 //
-//   2. startTelemetrySession() with role=host — mint a fresh `matches` row
-//      under the new host's ownership. Joiner had no IDB row.
+//   2. Update the existing matches row to `multiplayerRole: "host"` in place.
+//      Both peers now maintain their own row via symmetric telemetry, so the
+//      joiner already owns a row with the live matchLogJson — only the role
+//      changes. As a defensive fallback (row missing), mint a fresh one and
+//      baseline it from the engine's current MatchLog.
 //
-//   3. checkpointMatchLog(newMatchId, engine.matchLogJson()) — baseline the
-//      new row with the engine state we already have. Without this, a
-//      subsequent tab close before the next ply would leave an empty row.
-//
-//   4. mpEngine.promoteToHost({matchId}) — flip wrapper-internal state
+//   3. mpEngine.promoteToHost({matchId}) — flip wrapper-internal state
 //      (matchId, paused, pending intents). The wrapper's `getRole()` /
 //      `getCode()` deps read live `mpState`, so the role/code flip happens in
-//      step 5 below and the wrapper picks it up without a local mutation.
-//      MUST run BEFORE step 5's role flip: `promoteToHost` early-outs unless
+//      step 4 below and the wrapper picks it up without a local mutation.
+//      MUST run BEFORE step 4's role flip: `promoteToHost` early-outs unless
 //      it still sees "joiner".
 //
-//   5. mpState.role = "host"; mpState.code = code; — single-source flip.
+//   4. mpState.role = "host"; mpState.code = code; — single-source flip.
 //      After this, `multiplayerRole` / `multiplayerCode` (the $derived
 //      constants in match-store) read "host" / code reactively across the UI.
 //
-//   6. await hostWithCode(code) — register the new peer with the broker.
+//   5. await hostWithCode(code) — register the new peer with the broker.
 //      Retries 4× on transient transport errors for broker eviction.
 //      Idempotent w.r.t. mpState.role/code (it re-writes the same values).
 //
 // If any step fails after (1), the carrier is partially mutated and the user
-// must either retry (which is idempotent for steps 2–5 thanks to the
-// `multiplayerRole === "host"` skip in startTelemetrySession) or navigate
-// to the lobby and start a fresh session.
+// must either retry (which is idempotent for steps 2–4) or navigate to the
+// lobby and start a fresh session.
 
 import type { EngineClient } from "./engine";
 import type { MpEngineHandle } from "./multiplayer-engine";
@@ -77,6 +75,7 @@ export interface TakeoverHooks {
   hostWithCode?: (code: string) => Promise<string>;
   startTelemetrySession?: TelemetrySession["startTelemetrySession"];
   checkpointMatchLog?: (matchId: string, logJson: string) => Promise<void>;
+  updateMultiplayerRole?: (matchId: string, role: "host" | "joiner") => Promise<void>;
   /** Carrier override — runtime passes the live $state, tests pass a stub. */
   carrier?: HandoffCarrier;
 }
@@ -90,6 +89,8 @@ export async function takeoverAsHost(
   const startTelemetry = hooks.startTelemetrySession ?? _telemetrySession.startTelemetrySession;
   const checkpoint = hooks.checkpointMatchLog
     ?? ((id: string, log: string) => getTelemetryStore().checkpointMatchLog(id, log));
+  const updateRole = hooks.updateMultiplayerRole
+    ?? ((id: string, role: "host" | "joiner") => getTelemetryStore().updateMultiplayerRole(id, role));
   const carrier: HandoffCarrier = hooks.carrier ?? match;
 
   if (!deps.code) {
@@ -99,43 +100,54 @@ export async function takeoverAsHost(
   // 1 — Kill the inbound socket synchronously.
   destroyPeer();
 
-  // 2 — Mint the new matches row under the new host.
-  let newMatchId: string | null;
-  try {
-    newMatchId = await startTelemetry(carrier, carrier.mode, {
-      multiplayerCode: deps.code,
-      multiplayerRole: "host",
-    });
-  } catch (e) {
-    return { ok: false, reason: "telemetry-failed", error: e as Error };
-  }
-  if (!newMatchId) {
-    return { ok: false, reason: "telemetry-failed" };
-  }
-
-  // 3 — Baseline the new row with the engine state we already have.
-  try {
-    const logJson = await deps.eng.matchLogJson();
-    if (logJson) {
-      await checkpoint(newMatchId, logJson);
+  // 2 — Promote the row's role. With symmetric telemetry the joiner already
+  // owns a row; flip its `multiplayerRole` in place. If the row is somehow
+  // missing (defensive — telemetry disabled, or IDB failure earlier in the
+  // session), mint a fresh one and baseline it from the engine's MatchLog.
+  let matchId = carrier.telemetryMatchId;
+  if (matchId) {
+    try {
+      await updateRole(matchId, "host");
+    } catch (e) {
+      return { ok: false, reason: "telemetry-failed", error: e as Error };
     }
-  } catch (e) {
-    return { ok: false, reason: "engine-failed", error: e as Error };
+  } else {
+    let minted: string | null;
+    try {
+      minted = await startTelemetry(carrier, carrier.mode, {
+        multiplayerCode: deps.code,
+        multiplayerRole: "host",
+      });
+    } catch (e) {
+      return { ok: false, reason: "telemetry-failed", error: e as Error };
+    }
+    if (!minted) {
+      return { ok: false, reason: "telemetry-failed" };
+    }
+    try {
+      const logJson = await deps.eng.matchLogJson();
+      if (logJson) {
+        await checkpoint(minted, logJson);
+      }
+    } catch (e) {
+      return { ok: false, reason: "engine-failed", error: e as Error };
+    }
+    matchId = minted;
   }
 
-  // 4 — Flip wrapper-internal state (matchId, paused, pending intents) BEFORE
+  // 3 — Flip wrapper-internal state (matchId, paused, pending intents) BEFORE
   // mpState.role is mutated. The wrapper's `getRole()` early-out inside
   // `promoteToHost` needs to still see "joiner".
-  deps.mpEngine.promoteToHost({ matchId: newMatchId });
+  deps.mpEngine.promoteToHost({ matchId });
 
-  // 5 — Single-source role/code flip. After this point, `multiplayerRole` and
+  // 4 — Single-source role/code flip. After this point, `multiplayerRole` and
   // `multiplayerCode` (the $derived constants in match-store) read "host" /
   // code reactively across the UI, and the wrapper's `getRole()`/`getCode()`
   // deps pick the new values up on every send/decide-branch.
   mpState.role = "host";
   mpState.code = deps.code;
 
-  // 6 — Bring up the new peer. Retries on broker eviction happen inside.
+  // 5 — Bring up the new peer. Retries on broker eviction happen inside.
   try {
     await rehost(deps.code);
   } catch (e) {

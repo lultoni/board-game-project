@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import { invoke } from "@tauri-apps/api/core";
   import { t } from "$lib/state/i18n";
@@ -14,8 +14,18 @@
   } from "$lib/state/match-store.svelte";
   import { settings, type EvaluatorChoice, type EvaluatorSource } from "$lib/state/settings.svelte";
   import { isPreMadeLoadoutReady } from "$lib/state/draft";
-  import { disconnect as mpDisconnect, mpState } from "$lib/multiplayer.svelte";
+  import {
+    disconnect as mpDisconnect,
+    mpState,
+    onRawData as mpOnRawData,
+    sendRaw as mpSendRaw,
+    claimRouteOwnership,
+  } from "$lib/multiplayer.svelte";
+  import { decodeMessageV2, encodeMessageV2, type WireMessageV2 } from "$lib/multiplayer-protocol-v2";
+  import { tearDownMultiplayerOnLeave } from "$lib/multiplayer/route-lifecycle";
+  import MultiplayerStatusStrip from "$lib/multiplayer/MultiplayerStatusStrip.svelte";
   import { getEngine } from "$lib/engine";
+  import { getTelemetryStore } from "$lib/storage";
 
   // /setup/ is reached two ways:
   //  1. Local-play entry from the main menu (no MP state should be live).
@@ -46,7 +56,62 @@
     }
   });
 
+  // MP joiner: wait for the host's `game-config` and follow the same route
+  // the host picks. The host generates + owns the draft-mode decision here on
+  // /setup/; the joiner has no picker (see template gate below). Any other
+  // v2 envelope (session-hello, committed, snapshot, …) is left in the
+  // wrapper's rawInbox and drained by the destination route's mpEngine.
+  //
+  // navigatingForward gates the onDestroy teardown: when we intentionally
+  // hand off to /draft/ or /match/, the next route inherits the live MP
+  // connection and we skip the soft teardown.
+  let mpRawUnsub: (() => void) | null = null;
+  let navigatingForward = false;
+  /** Route-ownership token; gates onDestroy's teardown against stale unmounts
+   *  that fire after a newer route has claimed ownership. */
+  let ownershipToken = 0;
+  onMount(() => {
+    ownershipToken = claimRouteOwnership();
+    if (multiplayerRole() !== "joiner") return;
+    // Record this code as recently-joined so the lobby's list shows it if
+    // the peer drops before a match row exists (setup-phase drop).
+    const code = mpState.code;
+    if (code) {
+      void getTelemetryStore().recordJoinedCode({ code }).catch(() => { /* telemetry never blocks */ });
+    }
+    mpRawUnsub = mpOnRawData((raw) => {
+      const msg = decodeMessageV2(raw);
+      if (!msg || msg.kind !== "game-config") return;
+      match.draftMode = msg.mode;
+      match.preMadeLoadoutId = msg.mode === "preMade"
+        ? (msg.preMadeId as PreMadeLoadoutId | null)
+        : null;
+      match.side = { p1: "human", p2: "human" };
+      navigatingForward = true;
+      if (msg.mode === "preMade") {
+        void goto("../match/");
+      } else {
+        void goto("../draft/");
+      }
+    });
+  });
+
+  onDestroy(() => {
+    mpRawUnsub?.();
+    mpRawUnsub = null;
+    // /setup/ never finalises telemetry (no game has been played). The
+    // decision is just "did we hand off forward?" — if not, keep state so
+    // the peer can rejoin.
+    tearDownMultiplayerOnLeave({
+      navigatingForward,
+      telemetryFinalised: false,
+      ownershipToken,
+    });
+  });
+
   const isMultiplayer = $derived(multiplayerRole() !== null);
+  const isMpHost = $derived(multiplayerRole() === "host");
+  const isMpJoiner = $derived(multiplayerRole() === "joiner");
 
   let p1: SeatKind = $state(match.side.p1);
   let p2: SeatKind = $state(match.side.p2);
@@ -83,11 +148,27 @@
     }
     match.draftMode = draftMode;
     match.preMadeLoadoutId = draftMode === "preMade" ? preMadeId : null;
+    // MP host coordinates navigation with the joiner via `game-config`. The
+    // matchId slot here is a nav-only placeholder — the real authoritative
+    // matchId is anchored later by the wrapper's `session-hello` from
+    // /draft/ or /match/. We reuse the mp code so the decoder's non-empty
+    // check passes without pretending an IDB row exists.
+    if (isMpHost) {
+      const msg: WireMessageV2 = {
+        kind: "game-config",
+        mode: draftMode,
+        preMadeId: draftMode === "preMade" ? preMadeId : null,
+        matchId: mpState.code ?? "pending",
+      };
+      mpSendRaw(encodeMessageV2(msg));
+    }
     if (draftMode === "preMade") {
       // Skip the /draft/ route entirely — /match/ reads preMadeLoadoutId and
       // builds the engine with both sides preloaded.
+      navigatingForward = true;
       await goto("../match/");
     } else {
+      navigatingForward = true;
       await goto("../draft/");
     }
   }
@@ -152,7 +233,10 @@
   </header>
 
   {#if isMultiplayer}
-    <p class="banner">{t("multiplayer.sessionFor", { n: 1 })}</p>
+    <MultiplayerStatusStrip
+      waitingReason={isMpJoiner ? t("multiplayer.waitingForHostConfig") : null}
+    />
+    <p class="banner">{t("multiplayer.sessionFor", { n: (match.localSeat ?? 0) + 1 })}</p>
   {:else}
     <section class="seats">
       {#each [{ id: "p1", label: t("setup.p1Label") }, { id: "p2", label: t("setup.p2Label") }] as seat}
@@ -377,13 +461,15 @@
     </section>
   {/if}
 
-  <div class="actions">
-    <button
-      class="primary"
-      onclick={start}
-      disabled={draftMode === "preMade" && !preMadeReady}
-    >{t("setup.continue")}</button>
-  </div>
+  {#if !isMpJoiner}
+    <div class="actions">
+      <button
+        class="primary"
+        onclick={start}
+        disabled={draftMode === "preMade" && !preMadeReady}
+      >{t("setup.continue")}</button>
+    </div>
+  {/if}
 </main>
 
 <style>

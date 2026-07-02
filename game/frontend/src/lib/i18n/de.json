@@ -217,7 +217,13 @@
     "resumeFailedHost": "Fortsetzen fehlgeschlagen — der andere Spieler ist nicht mehr in dieser Partie.",
     "resumeFailedNoSession": "Fortsetzen fehlgeschlagen — keine passende Sitzung unter diesem Code.",
     "redialLadder": "Verbinde erneut (Versuch {attempt}, nächster in {time})…",
-    "redialLongtail": "Warte auf Rückkehr des Hosts (nächster Versuch in {time})…"
+    "redialLongtail": "Warte auf Rückkehr des Hosts (nächster Versuch in {time})…",
+    "reconnecting": "Verbinde erneut…",
+    "connectionLostBrief": "Verbindung verloren. Erneuter Versuch…",
+    "paused": "Warte auf Rückkehr des Gegners. Aktionen sind pausiert.",
+    "unstable": "Verbindung langsam.",
+    "waitingForHostConfig": "Warte auf Host zur Konfiguration der Partie.",
+    "waitingForPeerMove": "Warte auf Spieler {n}…"
   },
   "hud": {
     "phaseMove": "Zug",

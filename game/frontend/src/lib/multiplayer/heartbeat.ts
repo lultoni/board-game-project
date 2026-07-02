@@ -9,7 +9,7 @@
 // `setInterval` ids; this module makes the lifecycle a single concern.
 
 export interface HeartbeatCallbacks {
-  /** Called once per 1s while the heartbeat is running. Wrapper sends a
+  /** Called once per 5s while the heartbeat is running. Wrapper sends a
    *  V1 ping frame here. The module never references the wire format. */
   onPing(): void;
   /** Called once per 500ms while the now-tick is running, with the current
@@ -53,9 +53,14 @@ export function createHeartbeat(cbs: HeartbeatCallbacks): Heartbeat {
   function startPings(): void {
     if (pingTimer) clearInterval(pingTimer);
     ensureTicking();
+    // Fire the first ping immediately so the pong roundtrip confirms
+    // liveness right away — waiting 5s means the pill sits yellow after
+    // every (re)connect even though the relay already told us both peers
+    // are paired.
+    try { cbs.onPing(); } catch { /* subscriber crash must not stop the loop */ }
     pingTimer = setInterval(() => {
       cbs.onPing();
-    }, 1_000);
+    }, 5_000);
   }
 
   function stopPings(): void {

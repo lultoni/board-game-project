@@ -20,10 +20,10 @@ describe("derivePillStateWithAnchor — pill branch coverage", () => {
     expect(out.nextDisconnectedSince).toBeNull();
   });
 
-  it("status='connected' with pong in 2–10s window → unstable, no anchor", () => {
+  it("status='connected' with pong in 6–15s window → unstable, no anchor", () => {
     const out = derivePillStateWithAnchor({
       status: "connected",
-      lastPongAt: T_NOW - 5_000,
+      lastPongAt: T_NOW - 8_000,
       now: T_NOW,
       peerEverPaired: true,
       disconnectedSince: null,

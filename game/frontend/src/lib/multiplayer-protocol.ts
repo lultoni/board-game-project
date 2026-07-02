@@ -74,8 +74,11 @@ export type MpStatus =
  */
 export type PillState = "live" | "unstable" | "disconnected" | "forfeit";
 
-const PILL_UNSTABLE_MS = 2_000;
-export const PILL_DISCONNECTED_MS = 10_000;
+const PILL_UNSTABLE_MS = 6_000;
+// 30s (was 15s). JS timer throttling on backgrounded tabs and Tauri webview
+// suspension can stall the tick + queue pongs for 15–25s at a time; a shorter
+// window flags healthy connections as dead. See PROTOCOL_TRACE.md Part 1.
+export const PILL_DISCONNECTED_MS = 30_000;
 const PILL_FORFEIT_MS = 5 * 60_000;
 
 /** How long the player has to wait before they can claim a win by opponent

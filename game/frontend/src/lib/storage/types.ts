@@ -86,10 +86,12 @@ export interface MatchFilter {
   startedBeforeUnixMs?: number;
 }
 
-/** A multiplayer code the user has joined as the non-host peer. Stored
- *  separately from `MatchMeta` because joiners do NOT own a `matches` row in
- *  the v2 authoritative-host model — host writes the single record. The
- *  joiner-side resume-card list reads from this store instead. */
+/** A multiplayer code the user has joined as the non-host peer. Kept
+ *  separately from `MatchMeta` so a peer who entered a code but never
+ *  started a match (setup-phase drop) still shows up in the lobby's
+ *  "recently joined" list — those sessions have no `matches` row yet.
+ *  Once a match row exists for the code, the lobby prefers the row (it
+ *  has phase + status info); this table is the pre-match fallback. */
 export interface JoinedCodeEntry {
   code: string;
   lastJoinedAtUnixMs: number;
@@ -164,6 +166,12 @@ export interface TelemetryStore {
   /** Remove a code from the joiner's resume-card list. Used by the "Dismiss"
    *  affordance on a recent-codes card. No-op if the code isn't recorded. */
   forgetJoinedCode(code: string): Promise<void>;
+
+  /** Update the `multiplayerRole` on an existing matches row in place. Used
+   *  when a joiner is promoted to host (in-tab takeover or lobby re-entry
+   *  with an empty host slot): the row's log is authoritative, only the
+   *  role changes. No-op if the row is missing. */
+  updateMultiplayerRole(matchId: string, role: "host" | "joiner"): Promise<void>;
 }
 
 // --- ULID generation -------------------------------------------------------

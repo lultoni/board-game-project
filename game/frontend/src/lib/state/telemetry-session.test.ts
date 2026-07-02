@@ -85,14 +85,14 @@ describe("telemetry-session helpers", () => {
     expect(carrier.telemetryMatchId).toBeNull();
   });
 
-  it("startTelemetrySession skips multiplayer joiner role (authoritative-host model)", async () => {
+  it("startTelemetrySession assigns a matchId for multiplayer joiner (symmetric telemetry)", async () => {
     const carrier = newCarrier();
     const id = await session.startTelemetrySession(carrier, "multiplayer", {
       multiplayerCode: "281947",
       multiplayerRole: "joiner",
     });
-    expect(id).toBeNull();
-    expect(carrier.telemetryMatchId).toBeNull();
+    expect(id).not.toBeNull();
+    expect(carrier.telemetryMatchId).toBe(id);
   });
 
   it("recordPly appends each ply from latestPlyJson into IDB", async () => {

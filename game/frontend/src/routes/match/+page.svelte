@@ -48,12 +48,17 @@
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
   import ConnectivityPill from "$lib/multiplayer/ConnectivityPill.svelte";
   import GraceBanner from "$lib/multiplayer/GraceBanner.svelte";
+  import MultiplayerStatusStrip from "$lib/multiplayer/MultiplayerStatusStrip.svelte";
+  import { tearDownMultiplayerOnLeave } from "$lib/multiplayer/route-lifecycle";
   import { takeoverAsHost } from "$lib/multiplayer-handoff";
   import {
     mpState,
     onRawData as mpOnRawData,
+    onConnected as mpOnConnected,
+    onDisconnected as mpOnDisconnected,
     sendRaw as mpSendRaw,
-    disconnect as mpDisconnect,
+    claimRouteOwnership,
+    getRouteOwnershipToken,
   } from "$lib/multiplayer.svelte";
   import { decodeMessageV2, encodeMessageV2, type WireMessageV2 } from "$lib/multiplayer-protocol-v2";
   import { createMpEngine, type MpEngineHandle, type Role, type SubmitResult } from "$lib/multiplayer-engine";
@@ -77,6 +82,11 @@
    *  shakingSquares, effectQueue, and the deferred-skill-refresh state. Both
    *  /match/ and /replay/ create one of these. */
   let renderer = $state<PlyRenderer | null>(null);
+  /** Route-ownership token claimed at mount. Passed back to
+   *  `tearDownMultiplayerOnLeave` so a stale onDestroy (from a route we
+   *  navigated away from before a newer route claimed ownership) can't tear
+   *  down the newer session. See route-lifecycle.ts for rationale. */
+  let ownershipToken = 0;
   /** AIvAI playback control. When true, the AI loop auto-chains turns. */
   let aiAutoPlay = $state(true);
   /** When true, pause after the current move finishes instead of mid-animation. */
@@ -527,6 +537,9 @@
   });
 
   onMount(async () => {
+    ownershipToken = claimRouteOwnership();
+    // eslint-disable-next-line no-console
+    console.log("[match] onMount", { mode: match.mode, role: mpState.role, status: mpState.status, lastPongAt: mpState.lastPongAt, code: mpState.code, ownershipToken });
     try {
       eng = await getEngine();
       renderer = createPlyRenderer(eng, {
@@ -643,13 +656,11 @@
             await renderer.renderApplied(raw, pre);
             match.lastApplied = raw;
             afterApplied();
-            // Telemetry: host owns the row for both local and joiner-driven
-            // plies (authoritative-host model). Solo records its own. Joiner
-            // writes nothing. `isLocalEcho` is intentionally NOT gating here
-            // — the role check is what determines who owns the telemetry.
-            if (role === "host" || role === "solo") {
-              await recordPly(eng!);
-            }
+            // Both peers persist every applied ply into their own matches
+            // row. Joiner's onApplied fires on mirror-apply, so this covers
+            // remote plies too. The joiner's row is the ground truth when
+            // the relay promotes it to host.
+            await recordPly(eng!);
             // `meta.isLocalEcho` is observed but currently unused in /match/.
             // It is the future hook for local-only side effects (sounds,
             // haptic feedback) that should NOT fire for remote actions on
@@ -674,13 +685,19 @@
           onHostCommitted: async () => { /* recordPly fires via onApplied */ },
         },
       );
-      // Re-announce session on every PeerJS open while we're mounted.
-      mpConnectedUnsub = $effect.root(() => {
-        $effect(() => {
-          if (mpState.status === "connected") mpEngine?.notifyConnectionOpen();
-          else if (mpState.status === "disconnected") mpEngine?.notifyConnectionLost();
-        });
-      });
+      // Re-announce session on every transport-open while we're mounted.
+      // Direct callbacks — no $effect. Protocol sequencing shouldn't be
+      // scheduled through Svelte's reactive graph; effects fire on the
+      // next microtask, and network state machines don't tolerate that
+      // window. See PROTOCOL_TRACE.md Part 2 §6.
+      const unsubOpen = mpOnConnected(() => mpEngine?.notifyConnectionOpen());
+      const unsubClose = mpOnDisconnected(() => mpEngine?.notifyConnectionLost());
+      mpConnectedUnsub = () => { unsubOpen(); unsubClose(); };
+      // If the transport is already open by the time /match/ mounts (the
+      // usual case — pairing happened in the lobby), the onConnected event
+      // has already fired and we missed it. Fire once synchronously so the
+      // engine emits its `session-hello`.
+      if (mpState.status === "connected") mpEngine.notifyConnectionOpen();
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
@@ -696,6 +713,18 @@
   let mpPaused = $state(false);
   /** Disposer for the $effect.root that bridges mpState → wrapper lifecycle. */
   let mpConnectedUnsub: (() => void) | null = null;
+
+  // MP HUD: is it the peer's turn? Used by MultiplayerStatusStrip to render
+  // "Waiting for Player N…" whenever the local player has no agency. Local +
+  // hotseat games don't render the strip at all (gated on match.mode).
+  const isPeerTurn = $derived.by(() => {
+    if (match.mode !== "multiplayer") return false;
+    if (!match.position) return false;
+    if (match.position.gameResult !== 0) return false;
+    if (match.localSeat === null) return false;
+    return match.position.toMove !== match.localSeat;
+  });
+  const peerSeatNumber = $derived((match.localSeat ?? 0) === 0 ? 2 : 1);
 
   // === Host-side peer-drop detection ========================================
   //
@@ -1429,6 +1458,8 @@
   });
 
   onDestroy(() => {
+    // eslint-disable-next-line no-console
+    console.log("[match] onDestroy", { mode: match.mode, finalised: match.telemetryFinalised, ownershipToken, currentToken: getRouteOwnershipToken(), stack: new Error().stack?.split("\n").slice(1,5).join(" | ") });
     if (typeof window !== "undefined") {
       window.removeEventListener("beforeunload", beforeUnloadGuard);
       window.removeEventListener("pagehide", pageHideHandler);
@@ -1455,15 +1486,16 @@
       mpConnectedUnsub = null;
     }
     // Leaving /match/ before a natural end means we're going back to the
-    // lobby (or home). Tear down the PeerJS connection so the OTHER peer
-    // sees us drop immediately — otherwise the joiner-side `mpState` keeps
-    // pinging the host from a stale page, and the host's heartbeat never
-    // ages out (we observed the host pill staying "live" indefinitely while
-    // the joiner sat on the home screen). Skip when telemetry has finalised
-    // (natural game-end) — in that case both peers leave together and
-    // resume isn't needed. Mirror's /draft/'s onDestroy teardown.
-    if (match.mode === "multiplayer" && !match.telemetryFinalised) {
-      mpDisconnect();
+    // lobby (or home). Soft-tear the transport so the peer sees the drop but
+    // our carrier state (code, peerEverPaired, disconnectedSince) survives —
+    // GraceBanner then stays visible when the user clicks Rejoin from the
+    // lobby. On a natural end, hard disconnect together.
+    if (match.mode === "multiplayer") {
+      tearDownMultiplayerOnLeave({
+        navigatingForward: false,
+        telemetryFinalised: match.telemetryFinalised ?? false,
+        ownershipToken,
+      });
     }
   });
 </script>
@@ -1480,6 +1512,10 @@
   </header>
 
   {#if match.mode === "multiplayer"}
+    <MultiplayerStatusStrip
+      waitingReason={isPeerTurn ? t("multiplayer.waitingForPeerMove", { n: peerSeatNumber }) : null}
+      paused={mpPaused}
+    />
     <GraceBanner
       {eng}
       {mpEngine}
@@ -1558,7 +1594,7 @@
             }}
           />
           {#if renderer}
-            <EffectsLayer viewBox={800} wheelPad={60} bind:queue={renderer.effectQueue} />
+            <EffectsLayer viewBox={800} wheelPad={60} queue={renderer.effectQueue} />
           {/if}
           {#if hoveredSlice && wheelOpen}
             <div class="info-anchor">

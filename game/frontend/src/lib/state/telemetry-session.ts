@@ -75,13 +75,6 @@ export function createTelemetrySession(): TelemetrySession {
     opts: { multiplayerCode?: string | null; multiplayerRole?: "host" | "joiner" | null } = {},
   ): Promise<string | null> {
     if (mode === "sandbox" || mode === "replay" || mode === "idle") return null;
-    // L7c authoritative-host model: only the host owns an IDB row per match.
-    // Joiner uses the `joined_codes` store instead (in lobby) — no `matches`
-    // row, so the duplicate-recent-sessions-card bug can't recur.
-    if (opts.multiplayerRole === "joiner") {
-      carrier.telemetryMatchId = null;
-      return null;
-    }
     disabled = false;
     try {
       const store = getTelemetryStore();

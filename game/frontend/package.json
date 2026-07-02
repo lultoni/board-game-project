@@ -31,7 +31,6 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "howler": "^2.2.4",
-    "peerjs": "^1.5.0"
+    "howler": "^2.2.4"
   }
 }

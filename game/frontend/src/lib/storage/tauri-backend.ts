@@ -70,6 +70,9 @@ export class TauriTelemetryStore implements TelemetryStore {
   async forgetJoinedCode(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");
   }
+  async updateMultiplayerRole(): Promise<void> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
   // Silence unused warnings on the placeholder fields.
   _endReason?: EndReason;
 }

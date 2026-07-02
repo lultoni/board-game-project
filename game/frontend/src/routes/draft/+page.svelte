@@ -34,7 +34,7 @@
     mpState,
     onRawData as mpOnRawData,
     sendRaw as mpSendRaw,
-    disconnect as mpDisconnect,
+    claimRouteOwnership,
   } from "$lib/multiplayer.svelte";
   import {
     decodeMessageV2,
@@ -50,6 +50,8 @@
   import { takeoverAsHost } from "$lib/multiplayer-handoff";
   import ConnectivityPill from "$lib/multiplayer/ConnectivityPill.svelte";
   import GraceBanner from "$lib/multiplayer/GraceBanner.svelte";
+  import MultiplayerStatusStrip from "$lib/multiplayer/MultiplayerStatusStrip.svelte";
+  import { tearDownMultiplayerOnLeave } from "$lib/multiplayer/route-lifecycle";
   import { getTelemetryStore } from "$lib/storage";
   import {
     squareName,
@@ -68,6 +70,9 @@
   let booted = $state(false);
   let busy = $state(false);
   let starting = $state(false);
+  /** Route-ownership token; gates onDestroy's teardown against stale unmounts
+   *  that fire after a newer route has claimed ownership. */
+  let ownershipToken = 0;
 
   let position = $state<PositionView | null>(null);
   let draftState = $state<DraftStateView | null>(null);
@@ -564,6 +569,7 @@
   }
 
   onMount(async () => {
+    ownershipToken = claimRouteOwnership();
     try {
       // Use multiplayerRole (not match.mode) as the multiplayer indicator —
       // resetMatchState() doesn't clear multiplayerRole, but it does flip mode
@@ -595,6 +601,7 @@
         if (probeView.currentPhase !== 2) {
           match.pendingSnapshotJson = newSnap;
           match.mode = wasMultiplayer ? "multiplayer" : modeFromSeats(match.side);
+          navigatingForward = true;
           await goto("../match/");
           return;
         }
@@ -685,9 +692,10 @@
     mpEngine?.dispose();
     mpEngine = null;
     // Forward-nav into /match/ keeps the engine/peer alive. Any other exit
-    // (back-button to /, route change, hot reload) finalises telemetry and,
-    // for back-nav, tears down the PeerJS connection so the peer's pill
-    // flips immediately rather than waiting for the heartbeat to time out.
+    // (back-button to /, route change, hot reload) finalises telemetry and
+    // soft-tears the transport (peer sees the drop, but code + peerEverPaired
+    // survive so a later Rejoin can resume with the GraceBanner visible on
+    // both sides).
     if (!navigatingForward) {
       if (match.telemetryMatchId && !match.telemetryFinalised) {
         if (match.mode === "multiplayer") {
@@ -697,7 +705,11 @@
         }
       }
       if (match.mode === "multiplayer") {
-        mpDisconnect();
+        tearDownMultiplayerOnLeave({
+          navigatingForward: false,
+          telemetryFinalised: match.telemetryFinalised ?? false,
+          ownershipToken,
+        });
       }
     }
   });
@@ -772,6 +784,12 @@
   </header>
 
   {#if isMultiplayer}
+    <MultiplayerStatusStrip
+      waitingReason={!localCanDraft && !currentSeatIsAi
+        ? t("draft.waitingForPeer", { n: isP1Turn ? 1 : 2 })
+        : null}
+      paused={mpPaused}
+    />
     <GraceBanner
       {eng}
       {mpEngine}
@@ -816,12 +834,10 @@
       </div>
     </section>
 
-    {#if !localCanDraft}
+    {#if !localCanDraft && !isMultiplayer}
       <p class="waiting">
         {#if currentSeatIsAi}
           {t("draft.aiDrafting")}
-        {:else if isMultiplayer}
-          {t("draft.waitingForPeer", { n: isP1Turn ? 1 : 2 })}
         {:else}
           {t("draft.waitingForPlayer", { n: isP1Turn ? 1 : 2 })}
         {/if}

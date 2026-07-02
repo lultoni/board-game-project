@@ -132,6 +132,9 @@ jobs:
       - name: Build desktop bundle
         working-directory: game/crates/tauri_wrapper
         shell: bash
+        env:
+          VITE_RELAY_URL: ${{ secrets.VITE_RELAY_URL }}
+          VITE_RELAY_HTTP_URL: ${{ secrets.VITE_RELAY_HTTP_URL }}
         run: |
           cargo tauri build ${{ matrix.config != '' && format('--config {0}', matrix.config) || '' }} -- --no-default-features --features "${{ matrix.features }}"
 

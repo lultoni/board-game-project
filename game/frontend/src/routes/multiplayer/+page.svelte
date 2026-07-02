@@ -5,11 +5,12 @@
   import { sfx } from "$lib/audio/sfx";
   import {
     host as mpHost,
-    hostWithCode as mpHostWithCode,
     join as mpJoin,
+    joinKeepState as mpJoinKeepState,
     disconnect as mpDisconnect,
     mpState,
     onRawData as mpOnRawData,
+    onConnected as mpOnConnected,
     probeHost,
     isWebRtcSupported,
   } from "$lib/multiplayer.svelte";
@@ -19,7 +20,7 @@
   import { match, resetMatchState } from "$lib/state/match-store.svelte";
   import { getTelemetryStore, type MatchMeta, type JoinedCodeEntry } from "$lib/storage";
 
-  type LobbyView = "choose" | "hosting" | "joining" | "joined";
+  type LobbyView = "choose" | "hosting" | "joining";
 
   let view = $state<LobbyView>("choose");
   let codeInput = $state("");
@@ -29,9 +30,10 @@
   // re-fire after a rejoin/host that already navigated.
   let hostNavigated = $state(false);
 
-  // Network-lost host rows from the last 24h. The joiner's recent list is
-  // separate (joinedCodes below) because in the L7c authoritative-host model
-  // joiners don't own a `matches` row.
+  // Network-lost sessions from the last 24h. Both host and joiner peers now
+  // own their own `matches` row; each machine sees its own local rows here.
+  // `recentJoinedCodes` remains for setup-phase drops where no `matches`
+  // row exists yet.
   const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
   let recentLostSessions = $state<MatchMeta[]>([]);
   let recentJoinedCodes = $state<JoinedCodeEntry[]>([]);
@@ -43,11 +45,20 @@
   const LIVENESS_REFRESH_MS = 5_000;
 
   function refreshLiveness(): void {
-    // Re-probe joined-code cards (joiner-only by construction). Host-role
-    // network-lost cards probe their OWN code, which always resolves dead
-    // from the same machine — skip those entirely.
-    for (const entry of recentJoinedCodes.slice(0, PROBE_LIMIT)) {
-      const code = entry.code;
+    // Both matches-row cards and joined-code cards represent "you have a
+    // session under this code, click to resume". Probe both uniformly.
+    // Skip codes we're currently hosting from THIS machine — the probe would
+    // report `live=true` off our own relay session, which is not useful info
+    // to the user.
+    const own = mpState.code;
+    const codes = new Set<string>();
+    for (const m of recentLostSessions.slice(0, PROBE_LIMIT)) {
+      if (m.multiplayerCode && m.multiplayerCode !== own) codes.add(m.multiplayerCode);
+    }
+    for (const e of recentJoinedCodes.slice(0, PROBE_LIMIT)) {
+      if (e.code !== own) codes.add(e.code);
+    }
+    for (const code of codes) {
       if (!(code in recentLiveness)) recentLiveness[code] = "probing";
       probeHost(code).then((alive) => {
         recentLiveness[code] = alive ? "live" : "dead";
@@ -64,11 +75,7 @@
       });
       const cutoff = Date.now() - RECENT_WINDOW_MS;
       recentLostSessions = rows
-        .filter((r) =>
-          r.startedAtUnixMs >= cutoff
-          && !!r.multiplayerCode
-          && r.multiplayerRole === "host"
-        )
+        .filter((r) => r.startedAtUnixMs >= cutoff && !!r.multiplayerCode)
         .sort((a, b) => b.startedAtUnixMs - a.startedAtUnixMs);
     } catch (e) {
       recentError = (e as Error)?.message ?? String(e);
@@ -80,7 +87,14 @@
       const store = getTelemetryStore();
       const all = await store.listJoinedCodes();
       const cutoff = Date.now() - RECENT_WINDOW_MS;
-      recentJoinedCodes = all.filter((e) => e.lastJoinedAtUnixMs >= cutoff);
+      // Filter out codes for which we already own a matches row — the row is
+      // the source of truth (has phase + status), the joined-code entry is
+      // for pre-match sessions only.
+      const rows = await store.listMatches({ mode: "multiplayer" });
+      const codesWithRow = new Set(rows.map((r) => r.multiplayerCode).filter((c): c is string => !!c));
+      recentJoinedCodes = all.filter((e) =>
+        e.lastJoinedAtUnixMs >= cutoff && !codesWithRow.has(e.code),
+      );
     } catch (e) {
       recentError = (e as Error)?.message ?? String(e);
     }
@@ -142,7 +156,35 @@
     }
   }
 
-  async function startJoin(): Promise<void> {
+  // Look up this peer's own matches row for a code, regardless of role, and
+  // derive the resume route + snapshot from its matchLogJson. Used by both
+  // the promoted-host branch and the fresh-joiner path so the routing logic
+  // is identical no matter which role the relay ends up assigning.
+  async function resumeFromOwnRow(code: string): Promise<{ route: string; matchId: string | null }> {
+    let route = "../setup/";
+    let matchId: string | null = null;
+    try {
+      const store = getTelemetryStore();
+      const rows = await store.listMatches({ mode: "multiplayer" });
+      const own = rows
+        .filter((r) => r.multiplayerCode === code && r.status !== "ended")
+        .sort((a, b) => b.startedAtUnixMs - a.startedAtUnixMs)[0] ?? null;
+      if (own) {
+        matchId = own.matchId;
+        match.telemetryMatchId = own.matchId;
+        const persisted = await store.getMatch(own.matchId);
+        const matchLogJson = persisted?.matchLogJson ?? null;
+        if (matchLogJson) {
+          const snap = snapshotJsonFromMatchLog(matchLogJson);
+          if (snap) match.pendingSnapshotJson = snap;
+          route = logIsMidDraftCheap(matchLogJson) ? "../draft/" : "../match/";
+        }
+      }
+    } catch { /* IDB failure — fall back to /setup/ */ }
+    return { route, matchId };
+  }
+
+  async function startJoin(opts: { keepState?: boolean; pinSeat?: 0 | 1 } = {}): Promise<void> {
     if (!isWebRtcSupported()) return;
     const code = codeInput.trim();
     if (!isValidCode(code)) {
@@ -154,21 +196,52 @@
     codeError = null;
     try {
       resetMatchState();
+      // Restore any explicitly pinned seat AFTER reset. Rejoining an ex-host
+      // whose ex-joiner has since promoted, or an ex-joiner whose ex-host is
+      // gone, requires the seat to survive the relay's role assignment —
+      // otherwise identities swap. Seat is a game-identity, role is a
+      // network concept; they must not be inferred from each other on rejoin.
+      if (opts.pinSeat !== undefined) match.localSeat = opts.pinSeat;
       view = "joining";
-      await mpJoin(code);
+      if (opts.keepState) {
+        await mpJoinKeepState(code);
+      } else {
+        await mpJoin(code);
+      }
       match.mode = "multiplayer";
       match.side = { p1: "human", p2: "human" };
-      // Fresh-joiner default seat. rejoinHost's probe-fall-through path
-      // overrides this BEFORE calling startJoin when the rejoining peer
-      // was originally the host (seat 0).
+
+      // The relay may have promoted us to host (host slot was empty when we
+      // joined). If we do have a matches row, flip its multiplayerRole so the
+      // authoritative record reflects the new state. Do NOT overwrite
+      // match.localSeat — a pinned seat from rejoinFromRow must survive
+      // promotion (an ex-joiner promoted to host still plays seat 1).
+      if (mpState.role === "host") {
+        if (match.localSeat === null) match.localSeat = 0;
+        const { route, matchId } = await resumeFromOwnRow(code);
+        if (matchId) {
+          try {
+            await getTelemetryStore().updateMultiplayerRole(matchId, "host");
+          } catch { /* best-effort — the row is still usable */ }
+        }
+        hostNavigated = true;
+        void goto(route);
+        return;
+      }
+
+      // Fresh-joiner default seat (only if no pin was applied above).
       if (match.localSeat === null) match.localSeat = 1;
-      // Remember this code so it shows up under "Resume a recent session"
-      // next time the user opens the lobby.
-      try {
-        const store = getTelemetryStore();
-        await store.recordJoinedCode({ code });
-      } catch { /* telemetry never blocks gameplay */ }
-      view = "joined";
+      // Prefer our own matches row for phase derivation (has plies +
+      // matchLogJson). If none exists yet (setup-phase drop), fall through
+      // to `joined_codes` + /setup/ so the code shows up in the lobby.
+      const { route: joinerRoute, matchId: joinerMatchId } = await resumeFromOwnRow(code);
+      if (!joinerMatchId) {
+        try {
+          await getTelemetryStore().recordJoinedCode({ code });
+        } catch { /* telemetry never blocks gameplay */ }
+      }
+      void goto(joinerRoute);
+      return;
     } catch (e) {
       const msg = (e as Error)?.message ?? String(e);
       codeError = /peer-unavailable/i.test(msg)
@@ -187,82 +260,45 @@
   // who has navigated back to the lobby has effectively abandoned the session
   // and should Rejoin (which restores from IDB) rather than take over.
 
-  // Host-side Rejoin. Reclaims the same 6-digit code, restores the engine
-  // from the persisted MatchLog via a snapshot stuffed into
-  // match.pendingSnapshotJson, and navigates immediately (without waiting
-  // for the joiner to dial back in). The wrapper in /match/ or /draft/
-  // sends `session-hello` once the joiner reconnects; the joiner's wrapper
-  // then asks for a snapshot if its mirror seq lags.
-  async function rejoinHost(meta: MatchMeta): Promise<void> {
+  // Unified rejoin handler for a `matches` row (both host- and joiner-role
+  // rows land here — the split into two handlers was a legacy of L7c when
+  // only hosts persisted a row). The row's `multiplayerRole` pins the peer's
+  // board seat (host → seat 0, joiner → seat 1) so identities can't swap
+  // even if the relay assigns a different role on rebind — e.g. an ex-joiner
+  // whose ex-host is gone gets promoted to host role but must stay seat 1.
+  //
+  // Everything else — WS bind, role promotion, IDB role flip, snapshot
+  // hydration, phase routing — is already handled by startJoin({keepState:
+  // true}) + resumeFromOwnRow(code). No probeHost, no hostWithCode retry
+  // ladder: bindJoiner is role-agnostic and the relay decides whether we
+  // attach as joiner or get promoted to host.
+  async function rejoinFromRow(meta: MatchMeta): Promise<void> {
     const code = meta.multiplayerCode!;
-    busy = true;
-    codeError = null;
+    // Pin seat from the row's role. Passed through startJoin so it survives
+    // the `resetMatchState()` at the top of that function. Even if the relay
+    // re-issues us the OTHER role on rebind (promoted joiner, or displaced
+    // host), we keep the same board seat — role is a network concept, seat
+    // is a game-identity concept.
+    const seat: 0 | 1 = meta.multiplayerRole === "joiner" ? 1 : 0;
+    // Best-effort: clear the network-lost status now so a subsequent takeover
+    // can't accumulate a second row for the same code (two lobby cards for
+    // one game). startJoin's resumeFromOwnRow re-selects the newest row and
+    // updateMultiplayerRole flips its role in place — the same matchId
+    // continues to own the log.
     try {
-      // Displaced-host check: if another peer already holds this code, the
-      // joiner has promoted themselves to host during our absence. Falling
-      // through to `hostWithCode` here would conflict with the new authority
-      // (broker rejects the re-claim; both sides briefly think they're host).
-      // Probe first; if the code is taken, rejoin as joiner — the new host's
-      // session-hello + snapshot will re-anchor us on the next bind.
-      const codeTaken = await probeHost(code).catch(() => false);
-      if (codeTaken) {
-        // This peer was originally the host (seat 0), even though the new
-        // authority forces them into the "joiner" role for this connection.
-        // Pin localSeat now so startJoin's fresh-joiner default doesn't put
-        // them on seat 1 — that would swap player identities mid-game.
-        match.localSeat = 0;
-        // The old matches row stays "mid-match-network-lost" forever otherwise,
-        // and after a subsequent takeover we'd accumulate a second row for the
-        // same code — two lobby cards offering to resume the same session.
-        // Marking it abandoned now keeps the resume list clean. Best-effort.
-        try {
-          const store = getTelemetryStore();
-          await store.dismissNetworkLost(meta.matchId);
-        } catch { /* lobby cleanup is best-effort */ }
-        codeInput = code;
-        await startJoin();
-        return;
-      }
-
-      const store = getTelemetryStore();
-      let matchLogJson: string | null = null;
-      try {
-        const persisted = await store.getMatch(meta.matchId);
-        matchLogJson = persisted?.matchLogJson ?? null;
-      } catch { /* fall through with null */ }
-      const midDraft = matchLogJson ? logIsMidDraftCheap(matchLogJson) : false;
-      const targetRoute = midDraft ? "../draft/" : "../match/";
-
-      resetMatchState();
-      hostNavigated = false;
-      match.telemetryMatchId = meta.matchId;
-      if (matchLogJson) {
-        const snap = snapshotJsonFromMatchLog(matchLogJson);
-        if (snap) match.pendingSnapshotJson = snap;
-      }
-      view = "hosting";
-      await mpHostWithCode(code);
-      match.mode = "multiplayer";
-      match.side = { p1: "human", p2: "human" };
-      match.localSeat = 0;
-      hostNavigated = true;
-      void goto(targetRoute);
-    } catch (e) {
-      const msg = (e as Error)?.message ?? String(e);
-      codeError = /taken|unavailable-id/i.test(msg)
-        ? t("multiplayer.rejoinFailedCodeTaken")
-        : t("multiplayer.connectionError", { msg });
-      view = "choose";
-    } finally {
-      busy = false;
-    }
+      await getTelemetryStore().dismissNetworkLost(meta.matchId);
+    } catch { /* lobby cleanup is best-effort */ }
+    codeInput = code;
+    await startJoin({ keepState: true, pinSeat: seat });
   }
 
-  // Joiner-side Rejoin. Same as startJoin, but driven from a card click and
-  // refreshes the joined-codes list afterwards.
-  async function rejoinJoiner(entry: JoinedCodeEntry): Promise<void> {
+  // Rejoin from a `joined_codes` entry — a setup-phase drop where no
+  // matches row exists yet. Defaults to seat 1 (joiners are player 2 at
+  // setup); if we get promoted to host on rebind, startJoin's promoted-host
+  // branch handles the role flip but keeps seat 1.
+  async function rejoinFromJoinedCode(entry: JoinedCodeEntry): Promise<void> {
     codeInput = entry.code;
-    await startJoin();
+    await startJoin({ keepState: true, pinSeat: 1 });
     await loadRecentJoinedCodes();
   }
 
@@ -315,40 +351,31 @@
     await goto("../");
   }
 
-  // Host: once a joiner connects, advance to /setup/ so the host can pick
-  // draft mode (custom vs preMade). The wrapper in /setup/'s destination
-  // route (/draft/ or /match/) will send `session-hello` and the joiner's
-  // V2 peek subscription below will follow.
-  $effect(() => {
+  // Host: once a joiner connects (transport onOpen fires with `peer-connected`
+  // from the relay), advance to /setup/. Direct callback, not a $effect —
+  // navigation is a protocol event, not a UI concern. See PROTOCOL_TRACE.md
+  // Part 2 §2. Registered in onMount and disposed in onDestroy.
+  let unsubConnected: (() => void) | null = null;
+  function handleHostConnected(): void {
     if (view !== "hosting") return;
-    if (busy) return;
     if (hostNavigated) return;
-    if (mpState.status !== "connected") return;
     match.side = { p1: "human", p2: "human" };
     match.mode = "multiplayer";
     if (match.localSeat === null) match.localSeat = 0;
     hostNavigated = true;
-    busy = true;
     void goto("../setup/");
-  });
+  }
 
-  // Joiner: subscribe to V2 raw and route on `session-hello`. The wrapper
-  // will own this subscription once we land in /draft/ or /match/, but the
-  // lobby needs first dibs to know WHICH route to navigate to. The
-  // multiplayer transport's raw inbox buffers any messages that arrive
-  // between this unsubscribe and the destination route's wrapper mounting.
+  // Joiner: raw-message subscription. session-hello is no longer used for
+  // navigation (host and joiner navigate together on transport.onOpen — see
+  // startJoin's post-await goto). This subscription now only surfaces the
+  // relay's session-full kick so the lobby can show the right error state.
+  // Anything else (session-hello, committed, snapshot, …) is left buffered
+  // in the transport's raw inbox for the destination route's wrapper.
   let unsubRaw: (() => void) | null = null;
-  function handleSessionHelloPeek(raw: string): void {
+  function handleLobbyRawPeek(raw: string): void {
     const msg: WireMessageV2 | null = decodeMessageV2(raw);
     if (!msg) return;
-    if (msg.kind === "session-hello") {
-      match.side = { p1: "human", p2: "human" };
-      match.mode = "multiplayer";
-      if (match.localSeat === null) match.localSeat = 1;
-      match.telemetryMatchId = msg.matchId;
-      void goto(msg.phase === "draft" ? "../draft/" : "../match/");
-      return;
-    }
     if (msg.kind === "error" && msg.reason === "session-full") {
       codeError = t("multiplayer.sessionFull");
       mpDisconnect();
@@ -356,9 +383,6 @@
       view = "choose";
       return;
     }
-    // Anything else (committed, snapshot, …) is for the wrapper. Buffered by
-    // the transport's rawInbox once we unsubscribe, replayed when the
-    // destination route's wrapper subscribes.
   }
 
   onMount(async () => {
@@ -368,7 +392,8 @@
     refreshLiveness();
     livenessRefreshTimer = setInterval(refreshLiveness, LIVENESS_REFRESH_MS);
 
-    unsubRaw = mpOnRawData(handleSessionHelloPeek);
+    unsubRaw = mpOnRawData(handleLobbyRawPeek);
+    unsubConnected = mpOnConnected(handleHostConnected);
 
     // Auto-attempt connect from `?join=XXXXXX` query param.
     const params = typeof window !== "undefined"
@@ -376,6 +401,9 @@
       : null;
     const auto = params?.get("join")?.trim() ?? "";
     if (auto && isValidCode(auto)) {
+      // Strip the ?join= param immediately so back-navigation doesn't
+      // re-trigger startJoin (which would disconnect the active session).
+      history.replaceState(null, "", window.location.pathname);
       codeInput = auto;
       await startJoin();
     }
@@ -385,6 +413,10 @@
     if (unsubRaw) {
       unsubRaw();
       unsubRaw = null;
+    }
+    if (unsubConnected) {
+      unsubConnected();
+      unsubConnected = null;
     }
     if (livenessRefreshTimer) {
       clearInterval(livenessRefreshTimer);
@@ -407,19 +439,25 @@
         <h2>{t("multiplayer.recentSessionsTitle")}</h2>
         <ul class="recent-list">
           {#each recentLostSessions as meta (meta.matchId)}
+            {@const liveness = meta.multiplayerCode === mpState.code
+              ? "self"
+              : (recentLiveness[meta.multiplayerCode!] ?? "probing")}
             <li class="recent-card">
               <div class="recent-meta">
+                <span class="liveness" data-state={liveness} aria-hidden="true">
+                  {liveness === "live" ? "🟢" : liveness === "dead" ? "⚫" : "·"}
+                </span>
                 <span class="recent-time">
                   {t("multiplayer.startedAt", { time: formatStartedAt(meta.startedAtUnixMs) })}
                 </span>
                 <span class="recent-role">
-                  {t("multiplayer.youWerePlayer", { n: 1 })}
+                  {t("multiplayer.youWerePlayer", { n: meta.multiplayerRole === "joiner" ? 2 : 1 })}
                 </span>
                 <span class="recent-code">{meta.multiplayerCode}</span>
               </div>
               <div class="recent-actions">
                 <button class="primary" type="button" disabled={busy}
-                  onclick={() => rejoinHost(meta)}>
+                  onclick={() => rejoinFromRow(meta)}>
                   {t("multiplayer.rejoin")}
                 </button>
                 <button class="ghost" type="button" disabled={busy}
@@ -430,7 +468,9 @@
             </li>
           {/each}
           {#each recentJoinedCodes as entry (entry.code)}
-            {@const liveness = recentLiveness[entry.code] ?? "probing"}
+            {@const liveness = entry.code === mpState.code
+              ? "self"
+              : (recentLiveness[entry.code] ?? "probing")}
             <li class="recent-card">
               <div class="recent-meta">
                 <span class="liveness" data-state={liveness} aria-hidden="true">
@@ -446,7 +486,7 @@
               </div>
               <div class="recent-actions">
                 <button class="primary" type="button" disabled={busy}
-                  onclick={() => rejoinJoiner(entry)}>
+                  onclick={() => rejoinFromJoinedCode(entry)}>
                   {t("multiplayer.rejoin")}
                 </button>
                 <button class="ghost" type="button" disabled={busy}
@@ -464,11 +504,6 @@
     {/if}
 
     <section class="cards">
-      {#if !isWebRtcSupported()}
-        <div class="webrtc-unsupported">
-          <p>{t("multiplayer.webrtcUnsupported")}</p>
-        </div>
-      {:else}
       <article class="card host">
         <h2>{t("multiplayer.hostTitle")}</h2>
         <p class="hint">{t("multiplayer.hostHint")}</p>
@@ -492,11 +527,10 @@
             placeholder="123456"
           />
         </label>
-        <button class="primary" type="button" disabled={busy} onclick={startJoin}>
+        <button class="primary" type="button" disabled={busy} onclick={() => startJoin()}>
           {t("multiplayer.joinButton")}
         </button>
       </article>
-      {/if}
     </section>
 
     {#if codeError}
@@ -538,12 +572,6 @@
   {:else if view === "joining"}
     <section class="status">
       <p class="waiting">{t("multiplayer.connecting")}</p>
-      <button class="ghost" type="button" onclick={cancel}>{t("multiplayer.back")}</button>
-    </section>
-  {:else if view === "joined"}
-    <section class="status">
-      <p class="connected">{t("multiplayer.connected")}</p>
-      <p class="waiting">{t("multiplayer.waitingForHost")}</p>
       <button class="ghost" type="button" onclick={cancel}>{t("multiplayer.back")}</button>
     </section>
   {/if}
@@ -618,7 +646,8 @@
     font-size: 0.85rem;
     line-height: 1;
   }
-  .liveness[data-state="probing"] {
+  .liveness[data-state="probing"],
+  .liveness[data-state="self"] {
     color: var(--paper-ink-soft);
     opacity: 0.5;
   }
@@ -725,7 +754,6 @@
     font-size: 0.85rem;
   }
   .waiting { color: var(--paper-ink-soft); margin: 0; }
-  .connected { color: #2a6b3a; font-weight: 600; margin: 0; }
   .err {
     color: #a94b3b;
     border: 1.5px dashed currentColor;
@@ -733,14 +761,4 @@
     border-radius: 6px;
     margin-top: 1rem;
   }
-
-  .webrtc-unsupported {
-    grid-column: 1 / -1;
-    padding: 1.2em 1.4em;
-    background: color-mix(in srgb, #a94b3b 8%, transparent);
-    border: 1.5px solid #a94b3b55;
-    border-radius: 8px;
-    color: #c97060;
-  }
-  .webrtc-unsupported p { margin: 0; line-height: 1.5; }
 </style>

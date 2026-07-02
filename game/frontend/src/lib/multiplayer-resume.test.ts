@@ -38,23 +38,63 @@ describe("snapshotJsonFromMatchLog", () => {
 });
 
 describe("logIsMidDraftCheap", () => {
-  it("returns true for fewer than 12 plies", () => {
-    for (let n = 0; n < 12; n++) {
-      const log = JSON.stringify({
-        start_fen: "8/8",
-        config: {},
-        plies: Array.from({ length: n }, (_, i) => ({ action: { raw: i } })),
-      });
-      expect(logIsMidDraftCheap(log)).toBe(true);
-    }
+  // Minimal FEN stubs — only the phase field (3rd token) matters here.
+  const draftFen = "8/8 w D 0 0 1 0x0";
+  const moveFen  = "8/8 w M 0 0 1 0x0";
+
+  it("returns true for drafted mode with all DraftTurn plies", () => {
+    const log = JSON.stringify({
+      start_fen: draftFen,
+      config: {},
+      plies: Array.from({ length: 6 }, () => ({ action: { kind: "DraftTurn" } })),
+    });
+    expect(logIsMidDraftCheap(log)).toBe(true);
   });
 
-  it("returns false at exactly 12 plies (draft complete)", () => {
+  it("returns true for drafted mode with an empty ply list (draft not yet started)", () => {
+    const log = JSON.stringify({ start_fen: draftFen, config: {}, plies: [] });
+    expect(logIsMidDraftCheap(log)).toBe(true);
+  });
+
+  it("returns false for preMade with an empty ply list — start_fen phase is M, not D", () => {
+    // Regression: kind-only inspection returned true for empty plies, so a
+    // preMade match right after setup (no game plies yet) got routed to
+    // /draft/. start_fen's phase field distinguishes: preMade opens in phase
+    // M via new_with_loadouts.
+    const log = JSON.stringify({ start_fen: moveFen, config: {}, plies: [] });
+    expect(logIsMidDraftCheap(log)).toBe(false);
+  });
+
+  it("returns false for preMade with 2 Move plies", () => {
+    // Regression for the plies.length<12 heuristic: preMade skips /draft/
+    // entirely and can be in play with <12 plies. Route was `../draft/` →
+    // draft's stale-entry guard bounced back to /match/, running mp teardown
+    // and killing the fresh rejoin WS.
     const log = JSON.stringify({
-      start_fen: "8/8",
+      start_fen: moveFen,
       config: {},
-      plies: Array.from({ length: 12 }, (_, i) => ({ action: { raw: i } })),
+      plies: [
+        { action: { kind: "Move" } },
+        { action: { kind: "Move" } },
+      ],
     });
+    expect(logIsMidDraftCheap(log)).toBe(false);
+  });
+
+  it("returns false for a full 12-ply draft followed by game plies", () => {
+    const log = JSON.stringify({
+      start_fen: draftFen,
+      config: {},
+      plies: [
+        ...Array.from({ length: 12 }, () => ({ action: { kind: "DraftTurn" } })),
+        { action: { kind: "Skill" } },
+      ],
+    });
+    expect(logIsMidDraftCheap(log)).toBe(false);
+  });
+
+  it("returns false when start_fen is missing", () => {
+    const log = JSON.stringify({ config: {}, plies: [] });
     expect(logIsMidDraftCheap(log)).toBe(false);
   });
 

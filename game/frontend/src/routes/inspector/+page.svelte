@@ -780,7 +780,7 @@
             onApproachChoice={handleApproachChoice}
           />
           {#if renderer}
-            <EffectsLayer viewBox={800} wheelPad={60} bind:queue={renderer.effectQueue} />
+            <EffectsLayer viewBox={800} wheelPad={60} queue={renderer.effectQueue} />
           {/if}
         </div>
 

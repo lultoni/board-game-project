@@ -111,7 +111,20 @@ export type WireMessageV2 =
 
   // Reserved for the broker's third-peer kick path (kept compatible with v1
   // so the host can still send `session-full` to a fourth tab dialling in).
-  | { kind: "error"; reason: string };
+  | { kind: "error"; reason: string }
+
+  // Host → joiner while both peers are on /setup/. Carries the host's
+  // draft-mode choice + preMade loadout id (when mode="preMade"), plus the
+  // authoritative matchId adopted by the host. Both peers navigate onward
+  // (draft or match) when the host sends this and the joiner receives it.
+  // Lives at the setup layer only — the wrapper in /draft/ or /match/ still
+  // sends its own `session-hello` afterward to anchor seq.
+  | {
+      kind: "game-config";
+      mode: "custom" | "preMade";
+      preMadeId: string | null;
+      matchId: string;
+    };
 
 /** JSON-encode a wire message. */
 export function encodeMessageV2(m: WireMessageV2): string {
@@ -279,6 +292,25 @@ export function decodeMessageV2(s: string): WireMessageV2 | null {
       return typeof (m as { reason?: unknown }).reason === "string"
         ? (m as WireMessageV2)
         : null;
+
+    case "game-config": {
+      const r = m as {
+        mode?: unknown;
+        preMadeId?: unknown;
+        matchId?: unknown;
+      };
+      const modeOk = r.mode === "custom" || r.mode === "preMade";
+      const preOk = r.preMadeId === null || (typeof r.preMadeId === "string" && r.preMadeId.length > 0);
+      if (
+        modeOk
+        && preOk
+        && typeof r.matchId === "string"
+        && r.matchId.length > 0
+      ) {
+        return m as WireMessageV2;
+      }
+      return null;
+    }
 
     default:
       return null;

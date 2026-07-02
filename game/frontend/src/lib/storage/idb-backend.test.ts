@@ -270,6 +270,33 @@ describe("IdbTelemetryStore", () => {
     expect(skipped).toEqual([b]);
   });
 
+  describe("updateMultiplayerRole", () => {
+    it("flips joiner → host in place", async () => {
+      const id = await store.startMatch({
+        mode: "multiplayer",
+        multiplayerCode: "555555",
+        multiplayerRole: "joiner",
+      });
+      await store.updateMultiplayerRole(id, "host");
+      const meta = await store.getMatchMeta(id);
+      expect(meta!.multiplayerRole).toBe("host");
+      // Other fields untouched.
+      expect(meta!.multiplayerCode).toBe("555555");
+      expect(meta!.status).toBe("in-progress");
+    });
+
+    it("is a no-op when the row is missing", async () => {
+      await expect(store.updateMultiplayerRole("does-not-exist", "host")).resolves.toBeUndefined();
+    });
+
+    it("is idempotent — same role is a no-op", async () => {
+      const id = await store.startMatch({ mode: "multiplayer", multiplayerRole: "host" });
+      await store.updateMultiplayerRole(id, "host");
+      const meta = await store.getMatchMeta(id);
+      expect(meta!.multiplayerRole).toBe("host");
+    });
+  });
+
   describe("joined_codes", () => {
     it("recordJoinedCode → listJoinedCodes returns the entry, most-recent first", async () => {
       await store.recordJoinedCode({ code: "281947", hostPeerId: "peer-a" });

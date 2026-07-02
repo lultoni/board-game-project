@@ -235,7 +235,7 @@
           lastApplied={lastAppliedDisplay}
           interactive={false}
         />
-        <EffectsLayer viewBox={800} wheelPad={60} bind:queue={renderer.effectQueue} />
+        <EffectsLayer viewBox={800} wheelPad={60} queue={renderer.effectQueue} />
       </div>
 
       <div class="meta">

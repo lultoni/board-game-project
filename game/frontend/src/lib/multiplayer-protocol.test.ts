@@ -71,12 +71,16 @@ describe("derivePillState", () => {
     expect(derivePillState("connected", NOW - 500, NOW)).toBe("live");
   });
 
-  it("connected + 5s stale → unstable", () => {
-    expect(derivePillState("connected", NOW - 5_000, NOW)).toBe("unstable");
+  it("connected + 8s stale → unstable", () => {
+    expect(derivePillState("connected", NOW - 8_000, NOW)).toBe("unstable");
   });
 
-  it("connected + 15s stale → disconnected (still in grace)", () => {
-    expect(derivePillState("connected", NOW - 15_000, NOW)).toBe("disconnected");
+  it("connected + 15s stale → still unstable (raised threshold accommodates JS throttling)", () => {
+    expect(derivePillState("connected", NOW - 15_000, NOW)).toBe("unstable");
+  });
+
+  it("connected + 30s stale → disconnected (still in grace)", () => {
+    expect(derivePillState("connected", NOW - 30_000, NOW)).toBe("disconnected");
   });
 
   it("connected but no pong yet → unstable", () => {
