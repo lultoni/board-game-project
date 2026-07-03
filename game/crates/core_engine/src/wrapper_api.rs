@@ -163,8 +163,18 @@ pub fn try_apply(
 /// `applied_at_unix_ms`. Wall time is measured here via `crate::time::now_ms`
 /// (which on wasm imports `engine_now_ms` from the host).
 pub fn step_ai(m: &mut Match, applied_at_unix_ms: u64) -> Result<StepResult, AiError> {
+    step_ai_with_cb(m, applied_at_unix_ms, None)
+}
+
+/// Like `step_ai` but calls `on_depth(depth, score)` after each completed
+/// iterative-deepening iteration so callers can stream progress.
+pub fn step_ai_with_cb(
+    m: &mut Match,
+    applied_at_unix_ms: u64,
+    on_depth: Option<&dyn Fn(u8, i32)>,
+) -> Result<StepResult, AiError> {
     let t0 = crate::time::now_ms();
-    let r: SearchResult = m.request_ai_move()?;
+    let r: SearchResult = m.request_ai_move_with_cb(on_depth)?;
     let thought_ms = crate::time::now_ms()
         .saturating_sub(t0)
         .min(u32::MAX as u64) as u32;
@@ -329,6 +339,10 @@ pub fn parse_side_loadout_json(s: &str) -> Result<SideLoadout, serde_json::Error
 #[inline]
 pub fn current_draft_state(m: &Match) -> DraftState {
     draft_state(m.position())
+}
+
+pub fn heuristic_eval(m: &Match) -> crate::search::evaluator::EvalBreakdown {
+    crate::search::evaluator::evaluate_breakdown(m.position())
 }
 
 impl core::fmt::Display for SnapshotErrorOrParse {

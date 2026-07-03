@@ -7,13 +7,17 @@
     position: PositionView | null;
     /** True when the AI is currently thinking for this player's seat. */
     aiThinking: boolean;
-    /** Depth reached by the last completed AI search (0 = none yet). */
+    /** Depth reached by the last completed or in-progress AI search (0 = none yet). */
     aiLastDepth: number;
+    /** Score from the last depth iteration (P1 POV). */
+    aiLastScore: number;
+    /** Configured max depth limit (0 = ∞). */
+    aiMaxDepth: number;
     /** Whether this seat is controlled by an AI (drives indicator visibility). */
     isAiSeat: boolean;
   }
 
-  let { player, position, aiThinking, aiLastDepth, isAiSeat }: Props = $props();
+  let { player, position, aiThinking, aiLastDepth, aiLastScore, aiMaxDepth, isAiSeat }: Props = $props();
 
   function popcount(bb: bigint): number {
     let n = 0;
@@ -58,7 +62,7 @@
         <span class="spinner" aria-hidden="true"></span>
         <span class="thinking-text">thinking</span>
         {#if settings.showAiDepth && aiLastDepth > 0}
-          <span class="depth">d{aiLastDepth}</span>
+          <span class="depth">d{aiLastDepth}{aiMaxDepth === 0 ? '/∞' : `/${aiMaxDepth}`} {aiLastScore > 0 ? '+' : ''}{aiLastScore}</span>
         {/if}
       </span>
     {/if}

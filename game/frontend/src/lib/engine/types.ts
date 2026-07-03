@@ -1,5 +1,4 @@
-// Unified TS types for the engine-bridge boundary. Both WasmClient and
-// TauriClient normalise to these shapes so components never branch on backend.
+// Unified TS types for the engine-bridge boundary (Tauri IPC).
 
 export interface PositionView {
   /** [p1, p2, kings, champions, guards] as 5 × u64. */
@@ -94,7 +93,10 @@ export interface EngineClient {
   positionView(): Promise<PositionView>;
   legalActions(): Promise<Uint32Array>;
   tryApply(action: number): Promise<StepResult>;
-  stepAi(): Promise<StepResult>;
+  stepAi(onDepth?: (depth: number, score: number) => void): Promise<StepResult>;
+  /** Compute the static heuristic evaluation of the current board position.
+   *  Returns a P1-POV total score (positive = P1 ahead). */
+  heuristicEval(): Promise<number>;
   /** Inspector variant: runs the search regardless of seat kind so HvH
    *  positions can also ask "what would the AI play here?". The seat-
    *  restricted variant was removed as dead surface — match uses `stepAi`. */

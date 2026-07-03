@@ -34,7 +34,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use core_engine::wrapper_api as api;
 use core_engine::Match;
@@ -325,6 +325,14 @@ fn position_fen(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Stri
 }
 
 #[tauri::command]
+fn heuristic_eval(
+    handle:   u64,
+    registry: State<'_, EngineRegistry>,
+) -> Result<core_engine::search::evaluator::EvalBreakdown, String> {
+    registry.with(handle, |e| api::heuristic_eval(&e.m))
+}
+
+#[tauri::command]
 fn legal_actions(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Vec<u32>, String> {
     registry.with(handle, |e| {
         api::legal_actions_into(&e.m, &mut e.legal_buf);
@@ -351,13 +359,16 @@ fn try_apply(
 #[tauri::command]
 async fn step_ai(
     handle:   u64,
+    app:      tauri::AppHandle,
     registry: State<'_, EngineRegistry>,
 ) -> Result<StepResultDto, String> {
     let now = unix_ms_now();
     let res: Result<Result<StepResultDto, String>, String> =
         tokio::task::block_in_place(|| {
             registry.with(handle, |e| {
-                api::step_ai(&mut e.m, now)
+                api::step_ai_with_cb(&mut e.m, now, Some(&|depth, score| {
+                    let _ = app.emit("ai-depth-update", serde_json::json!({ "depth": depth, "score": score }));
+                }))
                     .map(StepResultDto::from)
                     .map_err(|err| format!("{err:?}"))
             })
@@ -884,6 +895,7 @@ pub fn run() {
             legal_actions,
             try_apply,
             step_ai,
+            heuristic_eval,
             request_ai_move_forced,
             request_ai_move_at_depth,
             match_log_json,

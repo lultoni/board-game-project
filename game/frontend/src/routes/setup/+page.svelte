@@ -173,22 +173,13 @@
     }
   }
 
-  // Per-seat evaluator picker. WASM build doesn't bundle burn, so the picker
-  // hides itself unless the running engine is the Tauri client. Raters get
-  // listed lazily: `default_run_dir` resolves the repo-relative active run,
-  // then `list_available_raters` walks both that dir and `raters/blessed/`.
+  // Per-seat evaluator picker. Raters get listed lazily: `default_run_dir`
+  // resolves the repo-relative active run, then `list_available_raters` walks
+  // both that dir and `raters/blessed/`.
   interface RaterListing { source: EvaluatorSource; id: string; acceptedAt: number; parentId: string | null; }
-  let isTauri = $state(false);
   let availableRaters = $state<RaterListing[]>([]);
   let raterLoadError = $state<string | null>(null);
   onMount(async () => {
-    try {
-      const eng = await getEngine();
-      isTauri = eng.constructor.name === "TauriClient";
-    } catch {
-      isTauri = false;
-    }
-    if (!isTauri) return;
     try {
       const runDir = await invoke<string>("default_run_dir");
       const raw = await invoke<Array<{ source: string; id: string; accepted_at: number; parent_id: string | null }>>(
@@ -296,8 +287,7 @@
             />
             <output>{settings.p1MaxDepth}</output>
           </label>
-          {#if isTauri}
-            <label class="row">
+          <label class="row">
               <span class="rowLabel">P1 · Evaluator</span>
               <select
                 value={settings.p1Evaluator.source}
@@ -327,7 +317,6 @@
                 </select>
               {/if}
             </label>
-          {/if}
         {/if}
         {#if p2 === "ai"}
           <label class="row">
@@ -354,8 +343,7 @@
             />
             <output>{settings.p2MaxDepth}</output>
           </label>
-          {#if isTauri}
-            <label class="row">
+          <label class="row">
               <span class="rowLabel">P2 · Evaluator</span>
               <select
                 value={settings.p2Evaluator.source}
@@ -385,7 +373,6 @@
                 </select>
               {/if}
             </label>
-          {/if}
         {/if}
         {#if isAivAi}
           <label class="row">

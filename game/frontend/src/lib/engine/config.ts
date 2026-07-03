@@ -33,16 +33,19 @@ function durationFromMs(ms: number): { secs: number; nanos: number } {
 }
 
 export function buildEngineConfigJson(input: EngineConfigInput): string {
+  // 0 in the UI means "no depth limit"; map to 64 (Rust coerces > actual tree depth to effective ∞).
+  const p1MaxDepth = input.p1Ai.maxDepth === 0 ? 64 : input.p1Ai.maxDepth;
+  const p2MaxDepth = input.p2Ai.maxDepth === 0 ? 64 : input.p2Ai.maxDepth;
   return JSON.stringify({
     p1: input.p1,
     p2: input.p2,
     p1_ai: {
       time_limit_ms: input.p1Ai.timeLimitMs,
-      max_depth: input.p1Ai.maxDepth,
+      max_depth: p1MaxDepth,
     },
     p2_ai: {
       time_limit_ms: input.p2Ai.timeLimitMs,
-      max_depth: input.p2Ai.maxDepth,
+      max_depth: p2MaxDepth,
     },
     aivai_step_delay: durationFromMs(input.aivaiStepDelayMs),
     allow_undo: true,

@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import "../app.css";
   import { initSettingsPersistence, settings } from "$lib/state/settings.svelte";
   import Settings from "$lib/SettingsModal.svelte";
-  import { applyMasterVolume } from "$lib/audio/sfx";
+  import { applyMasterVolume, sfx } from "$lib/audio/sfx";
   import { resetEngine } from "$lib/engine";
   import MpErrorBanner from "$lib/multiplayer/MpErrorBanner.svelte";
   let { children } = $props();
@@ -13,6 +14,12 @@
   $effect(() => {
     void settings.audioVolume;
     applyMasterVolume();
+  });
+
+  onMount(() => {
+    const onVisibility = () => { if (!document.hidden) sfx.unlock(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   });
 
   if (import.meta.hot) {

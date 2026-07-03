@@ -96,6 +96,10 @@
       <input type="checkbox" bind:checked={settings.showAiDepth} />
     </label>
     <label class="row">
+      <span>Show heuristic eval</span>
+      <input type="checkbox" bind:checked={settings.showHeuristicEval} />
+    </label>
+    <label class="row">
       <span>AIvAI step delay (ms)</span>
       <input
         type="number"
@@ -159,17 +163,17 @@
     </label>
     <label class="row">
       <span>Max depth</span>
-      <input
-        type="number"
-        min="1"
-        max="20"
-        step="1"
+      <select
         value={settings.p1MaxDepth}
-        oninput={(e) => {
-          const v = parseInt((e.target as HTMLInputElement).value, 10);
-          if (!isNaN(v)) settings.p1MaxDepth = clampInt(v, 1, 20);
+        onchange={(e) => {
+          settings.p1MaxDepth = parseInt((e.target as HTMLSelectElement).value, 10);
         }}
-      />
+      >
+        {#each [1,2,3,4,5,6,7,8,9,10,12,15,20] as d}
+          <option value={d}>{d}</option>
+        {/each}
+        <option value={0}>∞</option>
+      </select>
     </label>
   </section>
 
@@ -191,17 +195,17 @@
     </label>
     <label class="row">
       <span>Max depth</span>
-      <input
-        type="number"
-        min="1"
-        max="20"
-        step="1"
+      <select
         value={settings.p2MaxDepth}
-        oninput={(e) => {
-          const v = parseInt((e.target as HTMLInputElement).value, 10);
-          if (!isNaN(v)) settings.p2MaxDepth = clampInt(v, 1, 20);
+        onchange={(e) => {
+          settings.p2MaxDepth = parseInt((e.target as HTMLSelectElement).value, 10);
         }}
-      />
+      >
+        {#each [1,2,3,4,5,6,7,8,9,10,12,15,20] as d}
+          <option value={d}>{d}</option>
+        {/each}
+        <option value={0}>∞</option>
+      </select>
     </label>
   </section>
 </dialog>

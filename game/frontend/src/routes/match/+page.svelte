@@ -28,8 +28,6 @@
     finalizeTelemetrySession,
     abandonTelemetrySession,
     networkLostTelemetrySession,
-    abandonTelemetrySessionSync,
-    networkLostTelemetrySessionSync,
     multiplayerRole,
     multiplayerCode,
     claimWinByOpponentForfeit,
@@ -77,6 +75,12 @@
   let aiThinking = $state(false);
   /** Search depth reached by the last completed AI move. 0 = none yet. */
   let aiLastDepth = $state(0);
+  /** Score (centipawns, P1 POV) from the last completed or in-progress AI depth iteration. */
+  let aiLastScore = $state(0);
+  /** Timestamp of last depth-update UI flush — used to throttle reactive writes to 100ms. */
+  let lastDepthUpdateMs = 0;
+  /** Static heuristic eval of the current board (P1 POV). null = not yet polled. */
+  let heuristicEvalScore = $state<number | null>(null);
 
   /** Role-aware ply renderer. Owns the effects/SFX pipeline, pieceIds,
    *  shakingSquares, effectQueue, and the deferred-skill-refresh state. Both
@@ -97,6 +101,7 @@
   /** Confirmation dialog state for sandbox discard. */
   let sandboxConfirmMsg = $state<string | null>(null);
   let sandboxConfirmResolve: ((ok: boolean) => void) | null = null;
+  let sandboxUndoStack = $state<string[]>([]);
   function sandboxConfirm(msg: string): Promise<boolean> {
     sandboxConfirmMsg = msg;
     return new Promise((resolve) => {
@@ -796,9 +801,11 @@
       // Sandbox bypasses the wrapper — the user is exploring locally and
       // sandbox moves must NOT echo to a peer or get logged as match plies.
       if (match.mode === "sandbox") {
+        const snap = await eng!.snapshotJson();
         await renderer.applyAndRender(raw, async () => {
           await eng!.tryApply(raw);
         });
+        sandboxUndoStack = [...sandboxUndoStack.slice(-49), snap];
         match.sandboxMovesApplied += 1;
         match.lastApplied = raw;
         afterApplied();
@@ -856,6 +863,9 @@
       usedThisPhase = new Set();
       lastPhaseKey = k;
     }
+    if (settings.showHeuristicEval && eng && match.mode !== "multiplayer") {
+      void eng.heuristicEval().then((v) => { heuristicEvalScore = v; }).catch(() => {});
+    }
   }
 
   /** Run one AI step for the side-to-move, then render the result. The engine
@@ -875,6 +885,7 @@
     if (match.position.gameResult !== 0) return;
     busy = true;
     aiThinking = true;
+    aiLastScore = 0;
     try {
       // Drain any deferred Skill refresh before snapshotting pre-state — see
       // applyRaw for rationale.
@@ -882,7 +893,14 @@
       const delayP = minDelayMs > 0
         ? new Promise<void>((r) => setTimeout(r, minDelayMs))
         : Promise.resolve();
-      const [result] = await Promise.all([runAiCall(() => eng!.stepAi()), delayP]);
+      const [result] = await Promise.all([runAiCall(() => eng!.stepAi((d, s) => {
+        const now = Date.now();
+        if (now - lastDepthUpdateMs >= 100) {
+          lastDepthUpdateMs = now;
+          aiLastDepth = d;
+          aiLastScore = s;
+        }
+      })), delayP]);
       const raw = result.appliedAction;
       aiLastDepth = result.depth;
       if (raw === 0) {
@@ -1357,7 +1375,23 @@
       await abandonTelemetrySession(eng);
       match.trueSnapshotJson = snap;
       match.sandboxMovesApplied = 0;
+      sandboxUndoStack = [];
       match.mode = "sandbox";
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function undoSandbox(): Promise<void> {
+    if (!eng || busy || sandboxUndoStack.length === 0) return;
+    busy = true;
+    try {
+      const snap = sandboxUndoStack[sandboxUndoStack.length - 1];
+      sandboxUndoStack = sandboxUndoStack.slice(0, -1);
+      await eng.restoreFromSnapshot(snap);
+      match.sandboxMovesApplied = Math.max(0, match.sandboxMovesApplied - 1);
+      clearAllPickers();
+      await syncFromEngine();
     } finally {
       busy = false;
     }
@@ -1382,6 +1416,7 @@
       await eng.restoreFromSnapshot(match.trueSnapshotJson);
       match.trueSnapshotJson = null;
       match.sandboxMovesApplied = 0;
+      sandboxUndoStack = [];
       match.mode = modeFromSeats(match.side);
       clearAllPickers();
       await syncFromEngine();
@@ -1431,29 +1466,11 @@
     return msg;
   }
 
-  // Page-hide handler: fires when the tab is hidden, navigated away, or closed.
-  // Unlike `beforeunload`, this is the last hook the page gets — but ANY async
-  // work started here may be discarded before the IDB transaction commits.
-  // We use the sync-entry telemetry variants (which fire-and-forget the IDB
-  // write without awaiting `eng.matchLogJson()`) and accept the loss: the
-  // matches row's `matchLogJson` is already kept current by `recordPly`'s
-  // checkpoint, so even if the markNetworkLost write is discarded, the row
-  // retains its last-known state and is sweepable on next boot. `onDestroy`
-  // keeps the full async path for client-side nav (awaits resolve normally).
-  function pageHideHandler(): void {
-    if (match.telemetryMatchId && !match.telemetryFinalised) {
-      if (match.mode === "multiplayer") {
-        networkLostTelemetrySessionSync();
-      } else {
-        abandonTelemetrySessionSync();
-      }
-    }
-  }
+
 
   onMount(() => {
     if (typeof window !== "undefined") {
       window.addEventListener("beforeunload", beforeUnloadGuard);
-      window.addEventListener("pagehide", pageHideHandler);
     }
   });
 
@@ -1462,20 +1479,6 @@
     console.log("[match] onDestroy", { mode: match.mode, finalised: match.telemetryFinalised, ownershipToken, currentToken: getRouteOwnershipToken(), stack: new Error().stack?.split("\n").slice(1,5).join(" | ") });
     if (typeof window !== "undefined") {
       window.removeEventListener("beforeunload", beforeUnloadGuard);
-      window.removeEventListener("pagehide", pageHideHandler);
-    }
-    // If the user leaves /match/ before a natural end, mark the session
-    // abandoned. Per-ply records on disk remain — replay still works.
-    // In multiplayer mode the row is marked `mid-match-network-lost` so the
-    // lobby's recent-sessions card list can pick it up for resume.
-    // (On tab-close paths, pagehide already kicked these off — the helpers
-    // are idempotent via the `telemetryMatchId` null-out at entry.)
-    if (match.telemetryMatchId && !match.telemetryFinalised) {
-      if (match.mode === "multiplayer") {
-        void networkLostTelemetrySession(eng ?? undefined);
-      } else {
-        void abandonTelemetrySession(eng ?? undefined);
-      }
     }
     if (mpEngine) {
       mpEngine.dispose();
@@ -1544,6 +1547,8 @@
           position={match.position}
           aiThinking={p2Thinking}
           aiLastDepth={aiLastDepth}
+          aiLastScore={aiLastScore}
+          aiMaxDepth={settings.p2MaxDepth}
           isAiSeat={p2IsAi}
         />
 
@@ -1614,6 +1619,8 @@
           position={match.position}
           aiThinking={p1Thinking}
           aiLastDepth={aiLastDepth}
+          aiLastScore={aiLastScore}
+          aiMaxDepth={settings.p1MaxDepth}
           isAiSeat={p1IsAi}
         />
       </div>
@@ -1765,7 +1772,22 @@
             disabled={busy || (match.mode !== "sandbox" && aiThinking)}
             onclick={() => void (match.mode === "sandbox" ? exitSandbox() : enterSandbox())}
           >{match.mode === "sandbox" ? t("controls.exitSandbox") : t("controls.sandbox")}</button>
+          {#if match.mode === "sandbox"}
+            <button
+              type="button"
+              disabled={busy || sandboxUndoStack.length === 0}
+              onclick={() => void undoSandbox()}
+            >{t("controls.undo")}</button>
+          {/if}
         </div>
+        {#if settings.showHeuristicEval && heuristicEvalScore !== null && match.mode !== "multiplayer"}
+          <div class="eval-bar-row">
+            <span class="eval-label">Eval</span>
+            <span class="eval-score" class:positive={heuristicEvalScore > 0} class:negative={heuristicEvalScore < 0}>
+              {heuristicEvalScore > 0 ? '+' : ''}{heuristicEvalScore}
+            </span>
+          </div>
+        {/if}
       </aside>
 
       <!-- Progression panel: income + skill actions over upcoming rounds -->
@@ -2038,6 +2060,19 @@
     flex-direction: column;
     gap: 0.3rem;
   }
+  .eval-bar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3em 0.5em;
+    background: var(--paper-square-light, #ece2c8);
+    border-radius: 4px;
+    font-size: 0.82rem;
+  }
+  .eval-label { color: var(--paper-ink-soft, #6a6055); }
+  .eval-score { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .eval-score.positive { color: #3a7a3a; }
+  .eval-score.negative { color: #a03030; }
   .export-group button {
     font: inherit;
     width: 100%;

@@ -113,18 +113,9 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
-        with:
-          version: "v0.15.0"
-
       - name: Frontend deps
         working-directory: game/frontend
         run: npm ci
-
-      - name: Build WASM engine
-        working-directory: game/frontend
-        run: npm run build:wasm
 
       - name: Install tauri-cli
         run: cargo install tauri-cli --version "^2" --locked

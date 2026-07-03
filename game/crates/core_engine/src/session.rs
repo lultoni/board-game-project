@@ -493,6 +493,10 @@ impl Match {
     /// Run the search for the current side WITHOUT applying the result.
     /// Useful for HvAI "show me the AI's pick before I commit it" flows.
     pub fn request_ai_move(&mut self) -> Result<SearchResult, AiError> {
+        self.request_ai_move_with_cb(None)
+    }
+
+    pub fn request_ai_move_with_cb(&mut self, on_depth: Option<&dyn Fn(u8, i32)>) -> Result<SearchResult, AiError> {
         if self.position.game_result.is_some() { return Err(AiError::GameOver); }
         if self.to_move_kind() != SeatKind::Ai { return Err(AiError::NotAiTurn); }
         // Draft phase short-circuits search — see `oq-83` for the real-AI-
@@ -507,7 +511,7 @@ impl Match {
             Player::P2 => self.config.p2_ai,
         };
         Ok(find_best_with_evaluator(&mut self.position, &mut self.tt,
-                     budget.time_limit_ms, budget.max_depth, &*self.evaluator))
+                     budget.time_limit_ms, budget.max_depth, &*self.evaluator, on_depth))
     }
 
     /// Wrap the preset-driven draft turn (if any) in a `SearchResult`. Score
@@ -546,7 +550,7 @@ impl Match {
             budget
         };
         Ok(find_best_with_evaluator(&mut self.position, &mut self.tt,
-                     budget.time_limit_ms, budget.max_depth, &*self.evaluator))
+                     budget.time_limit_ms, budget.max_depth, &*self.evaluator, None))
     }
 
     /// Inspector variant for "infinite iterative deepening": runs the
@@ -558,7 +562,7 @@ impl Match {
         if self.position.current_phase == Phase::Draft {
             return Ok(self.draft_preset_search_result());
         }
-        Ok(find_best_with_evaluator(&mut self.position, &mut self.tt, 0, max_depth.max(1), &*self.evaluator))
+        Ok(find_best_with_evaluator(&mut self.position, &mut self.tt, 0, max_depth.max(1), &*self.evaluator, None))
     }
 
     /// Convenience for AIvAI loops: run search and auto-apply the chosen

@@ -472,56 +472,59 @@ fn emit_focus_retreat_retargets(
 fn reachable(src: u8, speed: u8, occ: Bitboard, opp_bb: Bitboard)
     -> (Bitboard, Bitboard, [u8; 64])
 {
-    // dist[sq] = minimum Chebyshev steps from src, or 255 if unreached.
-    let mut dist = [255u8; 64];
-    dist[src as usize] = 0;
+    let reach_empty = match speed {
+        1 => magic::movement_targets_speed1(src) & !occ,
+        2 => magic::movement_targets_speed2(src, occ.0),
+        _ => panic!("unsupported speed {speed}"),
+    };
 
-    // BFS frontier — stays small (max 25 squares within Chebyshev radius 2,
-    // 9 within radius 1). A simple Vec is fine.
-    let mut frontier: Vec<u8> = Vec::with_capacity(16);
-    frontier.push(src);
-
-    let mut reach_empty = Bitboard::EMPTY;
-
-    for step in 1..=speed {
-        let mut next_frontier: Vec<u8> = Vec::with_capacity(16);
-        for &sq in &frontier {
-            for n in eight_neighbours(sq) {
-                if dist[n as usize] != 255 {
-                    continue; // already seen via shorter/equal path
-                }
-                if occ.contains(n) {
-                    continue; // blocked — cannot enter or pass through
-                }
-                dist[n as usize] = step;
-                reach_empty = reach_empty | Bitboard::from_square(n);
-                next_frontier.push(n);
-            }
+    // Move-Attack targets: enemies adjacent to any square reachable in <= speed-1
+    // steps from src (src itself is always at dist 0).
+    //
+    // "Reachable in <= speed-1 steps" mask:
+    //   speed-1 → only src itself (dist 0 only)
+    //   speed-2 → src + empty squares adjacent to src (dist 0 or 1)
+    let approach_mask: u64 = {
+        let src_bit = 1u64 << src;
+        if speed >= 2 {
+            // Direct neighbours of src that are empty (dist=1) plus src (dist=0).
+            let step1 = (magic::movement_targets_speed1(src) & !occ).0;
+            src_bit | step1
+        } else {
+            src_bit
         }
-        frontier = next_frontier;
-        if frontier.is_empty() { break; }
-    }
+    };
 
-    // Move-Attack targets: enemy squares adjacent to any square `s` where
-    // `dist[s] ≤ speed - 1` (so stepping from `s` onto the enemy counts as
-    // the final move-step). Equivalently: any enemy at Chebyshev distance
-    // ≤ speed from src whose neighbour-set intersects `reach_empty ∪ {src}`
-    // for squares with `dist ≤ speed - 1`.
     let mut reach_attack = Bitboard::EMPTY;
     for enemy in iter_squares(opp_bb) {
-        // Quick reject by Chebyshev distance from src.
-        if chebyshev_distance(src, enemy) > speed {
-            continue;
-        }
-        // Find any neighbour `n` of `enemy` that is reachable in <= speed-1 steps.
-        // Note: src itself counts (dist=0).
+        if chebyshev_distance(src, enemy) > speed { continue; }
         for n in eight_neighbours(enemy) {
-            let d = dist[n as usize];
-            if d != 255 && d as u32 + 1 <= speed as u32 {
+            if approach_mask & (1u64 << n) != 0 {
                 reach_attack = reach_attack | Bitboard::from_square(enemy);
                 break;
             }
         }
+    }
+
+    // Reconstruct dist array for approach-square filtering in the caller
+    // (generate_move_phase line ~134). For speed-2, approach squares are those
+    // with dist <= 1: src (dist=0) and empty direct neighbours (dist=1).
+    // Squares reachable only at step 2 have dist=2 and are NOT valid approaches.
+    let mut dist = [255u8; 64];
+    dist[src as usize] = 0;
+    // Step-1 squares (valid approaches for speed-2 attacks)
+    let mut m = approach_mask & !(1u64 << src);
+    while m != 0 {
+        let sq = m.trailing_zeros() as u8;
+        dist[sq as usize] = 1;
+        m &= m - 1;
+    }
+    // Step-2 squares (in reach_empty but NOT valid approaches)
+    let mut m2 = reach_empty.0 & !approach_mask;
+    while m2 != 0 {
+        let sq = m2.trailing_zeros() as u8;
+        dist[sq as usize] = 2;
+        m2 &= m2 - 1;
     }
 
     (reach_empty, reach_attack, dist)

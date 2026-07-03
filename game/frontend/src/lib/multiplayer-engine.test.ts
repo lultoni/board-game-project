@@ -63,6 +63,7 @@ class FakeEngine implements EngineClient {
   async stepAi(): Promise<StepResult> { throw new Error("not used"); }
   async requestAiMoveForced(): Promise<StepResult> { throw new Error("not used"); }
   async requestAiMoveAtDepth(): Promise<StepResult> { throw new Error("not used"); }
+  async heuristicEval(): Promise<number> { return 0; }
   async positionFen(): Promise<string> { return ""; }
   async snapshotJson(): Promise<string> { return this.snapshotBlob; }
   async restoreFromSnapshot(json: string): Promise<void> {

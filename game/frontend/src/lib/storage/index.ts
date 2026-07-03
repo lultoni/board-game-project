@@ -1,7 +1,5 @@
-// Telemetry store boot — picks IDB (web) or Tauri FS (desktop) and caches
-// the singleton. Mirrors how `lib/engine/index.ts` picks WasmClient vs
-// TauriClient. For now both targets resolve to IDB (see tauri-backend.ts
-// header comment).
+// Telemetry store boot — resolves to IDB (both dev and Tauri desktop).
+// See tauri-backend.ts header for why the Tauri FS backend is stubbed.
 
 import type { TelemetryStore } from "./types";
 import { IdbTelemetryStore } from "./idb-backend";

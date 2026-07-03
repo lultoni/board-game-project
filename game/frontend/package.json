@@ -10,8 +10,7 @@
     "prepare": "svelte-kit sync",
     "check": "svelte-kit sync && svelte-check --tsconfig ./.svelte-kit/tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "build:wasm": "cd ../crates/wasm_wrapper && wasm-pack build --target web --release"
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",

@@ -113,7 +113,7 @@ pub fn play_game(
             core_engine::state::position::Player::P1 => (rater_p1, &mut tt_p1),
             core_engine::state::position::Player::P2 => (rater_p2, &mut tt_p2),
         };
-        let sr = find_best_with_evaluator(&mut pos, tt, /*time_limit_ms=*/0, max_depth, evaluator);
+        let sr = find_best_with_evaluator(&mut pos, tt, /*time_limit_ms=*/0, max_depth, evaluator, None);
         let Some(action) = sr.best else {
             // Search returned no move on a non-terminal position. Generator
             // always emits at least EndPhase; this means an internal bug.

@@ -312,15 +312,19 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 /// complete at least one ply unless the position is already terminal).
 pub fn find_best(pos: &mut Position, tt: &mut TranspositionTable,
                  time_limit_ms: u64, max_depth: u8) -> SearchResult {
-    find_best_with_evaluator(pos, tt, time_limit_ms, max_depth, &HeuristicEvaluator)
+    find_best_with_evaluator(pos, tt, time_limit_ms, max_depth, &HeuristicEvaluator, None)
 }
 
 /// `find_best` with an explicit evaluator. Intended for the NN-rater training
 /// loop and for A/B experiments comparing rater versions. Production callers
 /// use `find_best` and get the hand-coded heuristic.
+///
+/// `on_depth` is called after each completed iterative-deepening iteration
+/// with `(depth, score)`. Pass `None` for the default (no-op) behaviour.
 pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
                                 time_limit_ms: u64, max_depth: u8,
-                                evaluator: &dyn Evaluator) -> SearchResult {
+                                evaluator: &dyn Evaluator,
+                                on_depth: Option<&dyn Fn(u8, i32)>) -> SearchResult {
     tt.new_search();
     let deadline = if time_limit_ms == 0 {
         None
@@ -349,6 +353,8 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
             depth: d,
             nodes: total_nodes,
         };
+
+        if let Some(cb) = on_depth { cb(d, score); }
 
         if is_mate(score) { break; }
         if let Some(d_) = deadline { if now_ms() >= d_ { break; } }

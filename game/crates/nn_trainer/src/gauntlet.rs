@@ -138,7 +138,7 @@ where
             Player::P2 => (eval_p2, &mut tt_p2),
         };
         let sr = find_best_with_evaluator(
-            &mut pos, tt, time, TIME_BOUNDED_MAX_DEPTH, eval,
+            &mut pos, tt, time, TIME_BOUNDED_MAX_DEPTH, eval, None,
         );
         let Some(action) = sr.best else { return None; };
         let _undo = make_unmake::make(&mut pos, action);

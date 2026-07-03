@@ -44,6 +44,8 @@ export interface Settings {
   replayRespectAnimation: boolean;
   /** Show depth counter alongside AI spinner. */
   showAiDepth: boolean;
+  /** Show heuristic eval bar + score in the match UI. */
+  showHeuristicEval: boolean;
 }
 
 export type EvaluatorSource = "heuristic" | "run" | "blessed";
@@ -74,6 +76,7 @@ const DEFAULTS: Settings = {
   replayLoopOnEnd: false,
   replayRespectAnimation: true,
   showAiDepth: true,
+  showHeuristicEval: false,
 };
 
 const EVAL_SOURCES: ReadonlyArray<EvaluatorSource> = ["heuristic", "run", "blessed"];
@@ -98,6 +101,9 @@ function pickClamped01(v: unknown, fallback: number): number {
 }
 function pickPosInt(v: unknown, fallback: number): number {
   return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : fallback;
+}
+function pickNonNegInt(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : fallback;
 }
 function pickLocale(v: unknown, fallback: Settings["locale"]): Settings["locale"] {
   return typeof v === "string" && (LOCALES as readonly string[]).includes(v)
@@ -135,8 +141,8 @@ function validate(raw: unknown): Settings {
     locale: pickLocale(r.locale, DEFAULTS.locale),
     p1ThinkTimeMs: pickFiniteNonNeg(r.p1ThinkTimeMs, DEFAULTS.p1ThinkTimeMs),
     p2ThinkTimeMs: pickFiniteNonNeg(r.p2ThinkTimeMs, DEFAULTS.p2ThinkTimeMs),
-    p1MaxDepth: pickPosInt(r.p1MaxDepth, DEFAULTS.p1MaxDepth),
-    p2MaxDepth: pickPosInt(r.p2MaxDepth, DEFAULTS.p2MaxDepth),
+    p1MaxDepth: pickNonNegInt(r.p1MaxDepth, DEFAULTS.p1MaxDepth),
+    p2MaxDepth: pickNonNegInt(r.p2MaxDepth, DEFAULTS.p2MaxDepth),
     aivaiStepDelayMs: pickFiniteNonNeg(r.aivaiStepDelayMs, DEFAULTS.aivaiStepDelayMs),
     p1Evaluator: pickEvaluator(r.p1Evaluator, DEFAULTS.p1Evaluator),
     p2Evaluator: pickEvaluator(r.p2Evaluator, DEFAULTS.p2Evaluator),
@@ -145,6 +151,7 @@ function validate(raw: unknown): Settings {
     replayLoopOnEnd: pickBool(r.replayLoopOnEnd, DEFAULTS.replayLoopOnEnd),
     replayRespectAnimation: pickBool(r.replayRespectAnimation, DEFAULTS.replayRespectAnimation),
     showAiDepth: pickBool(r.showAiDepth, DEFAULTS.showAiDepth),
+    showHeuristicEval: pickBool(r.showHeuristicEval, DEFAULTS.showHeuristicEval),
   };
 }
 
@@ -207,6 +214,7 @@ export function initSettingsPersistence() {
     void settings.replayLoopOnEnd;
     void settings.replayRespectAnimation;
     void settings.showAiDepth;
+    void settings.showHeuristicEval;
     persist();
   });
 }

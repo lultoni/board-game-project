@@ -64,6 +64,7 @@
 
 use crate::state::Position;
 use crate::state::position::GameResult;
+use crate::state::magic;
 use crate::game_logic::skills::{
     Skill, SkillCategory, skill_from_id, skill_cost, skill_category, skill_default_range,
 };
@@ -85,6 +86,14 @@ const GUARD_VALUE:     i32 = 600;
 const HP_PER_POINT:    i32 = 150;
 const ARMOR_PER_POINT: i32 = 120;
 const MONEY_PER_UNIT:  i32 = 25;
+
+// Mobility scoring: reward pieces for having reachable squares.
+// Guards use BFS-2 (speed=2) discounting occupied squares; Champions/Kings
+// use the 8-adjacent mask discounting own pieces.  Weights are small relative
+// to material so positional advantage doesn't overshadow piece count.
+const GUARD_MOB_PER_SQ:   i32 = 8;   // centre Guard (20 reachable) ≈ 160 pts
+const CHAMP_MOB_PER_SQ:   i32 = 12;  // centre Champ (8 free) ≈ 96 pts
+const ADVANCE_BONUS:       i32 = 15;  // per rank advanced toward enemy
 
 // PLACEHOLDER. A balance-slice will replace this with a tuned table once we
 // have playtest data. The current scheme — cost × 40 + range bonus + category
@@ -115,17 +124,19 @@ fn skill_value(s: Skill) -> i32 {
 /// short-circuit aside).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EvalBreakdown {
-    pub material_p1: i32,
-    pub material_p2: i32,
-    pub hp_p1:       i32,
-    pub hp_p2:       i32,
-    pub armor_p1:    i32,
-    pub armor_p2:    i32,
-    pub skills_p1:   i32,
-    pub skills_p2:   i32,
-    pub money_p1:    i32,
-    pub money_p2:    i32,
-    pub total:       i32,
+    pub material_p1:  i32,
+    pub material_p2:  i32,
+    pub hp_p1:        i32,
+    pub hp_p2:        i32,
+    pub armor_p1:     i32,
+    pub armor_p2:     i32,
+    pub skills_p1:    i32,
+    pub skills_p2:    i32,
+    pub money_p1:     i32,
+    pub money_p2:     i32,
+    pub mobility_p1:  i32,
+    pub mobility_p2:  i32,
+    pub total:        i32,
 }
 
 pub fn evaluate(pos: &Position) -> i32 {
@@ -173,14 +184,19 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
 
     let mut b = EvalBreakdown::default();
 
+    let all_occ = (pos.p1_pieces | pos.p2_pieces).0;
+
     // (b) Single pass over occupied bits.
-    let mut bits = (pos.p1_pieces | pos.p2_pieces).0;
+    let mut bits = all_occ;
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
         bits &= bits - 1;
         let mask = 1u64 << sq;
         let m = pos.mailbox[sq as usize];
         let is_p1 = pos.p1_pieces.0 & mask != 0;
+
+        let is_guard    = pos.guards.0    & mask != 0;
+        let _is_champion = pos.champions.0 & mask != 0;
 
         let material =
             if      pos.kings.0     & mask != 0 { KING_MATERIAL }
@@ -192,16 +208,37 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
         if let Some(sk) = skill_from_id(m.skill1()) { skill_term += skill_value(sk); }
         if let Some(sk) = skill_from_id(m.skill2()) { skill_term += skill_value(sk); }
 
-        if is_p1 {
-            b.material_p1 += material;
-            b.hp_p1       += hp_term;
-            b.armor_p1    += armor_term;
-            b.skills_p1   += skill_term;
+        // Mobility: count squares the piece can actually reach given board state.
+        // Guards: BFS-2 discounting all occupied squares.
+        // Champions/Kings: 8-adjacent discounting own pieces.
+        let own_bb = if is_p1 { pos.p1_pieces.0 } else { pos.p2_pieces.0 };
+        let mob_score = if is_guard {
+            magic::movement_targets_speed2(sq, all_occ).0.count_ones() as i32
+                * GUARD_MOB_PER_SQ
         } else {
-            b.material_p2 += material;
-            b.hp_p2       += hp_term;
-            b.armor_p2    += armor_term;
-            b.skills_p2   += skill_term;
+            // Champion and King: 8-adjacent minus own pieces
+            (magic::movement_targets_speed1(sq).0 & !own_bb).count_ones() as i32
+                * CHAMP_MOB_PER_SQ
+        };
+
+        // Rank advancement bonus: encourage pushing toward the enemy.
+        // P1 advances toward rank 7 (high index); P2 toward rank 0 (low index).
+        let rank = (sq / 8) as i32;
+        let advance = if is_p1 { rank } else { 7 - rank };
+        let advance_score = advance * ADVANCE_BONUS;
+
+        if is_p1 {
+            b.material_p1  += material;
+            b.hp_p1        += hp_term;
+            b.armor_p1     += armor_term;
+            b.skills_p1    += skill_term;
+            b.mobility_p1  += mob_score + advance_score;
+        } else {
+            b.material_p2  += material;
+            b.hp_p2        += hp_term;
+            b.armor_p2     += armor_term;
+            b.skills_p2    += skill_term;
+            b.mobility_p2  += mob_score + advance_score;
         }
     }
 
@@ -214,7 +251,8 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
         (b.hp_p1       - b.hp_p2)       +
         (b.armor_p1    - b.armor_p2)    +
         (b.skills_p1   - b.skills_p2)   +
-        (b.money_p1    - b.money_p2);
+        (b.money_p1    - b.money_p2)    +
+        (b.mobility_p1 - b.mobility_p2);
     b
 }
 
@@ -372,11 +410,15 @@ mod tests {
                 .with_armor(2)
                 .with_skill1(Skill::Tempest as u8)
                 .with_skill2(Skill::Charge as u8));
+        // Mobility: Champion at sq 28 (rank 3), 8 neighbours all free.
+        // CHAMP_MOB_PER_SQ=12, 8 squares = 96; ADVANCE_BONUS=15, rank=3 → 45.
+        let mob = 8 * CHAMP_MOB_PER_SQ + 3 * ADVANCE_BONUS;
         let expected = CHAMPION_VALUE
             + 2 * HP_PER_POINT
             + 2 * ARMOR_PER_POINT
             + skill_value(Skill::Tempest)
-            + skill_value(Skill::Charge);
+            + skill_value(Skill::Charge)
+            + mob;
         assert_eq!(evaluate(&pos), expected);
     }
 

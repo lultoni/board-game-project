@@ -2,6 +2,7 @@
 // Holds a u64 handle returned by `create_engine`.
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type {
   DraftStateView,
   EngineClient,
@@ -173,14 +174,29 @@ export class TauriClient implements EngineClient {
     return normaliseStepResult(dto);
   }
 
-  async stepAi(): Promise<StepResult> {
-    const dto = await invoke<StepResultDto>("step_ai", { handle: this.#requireHandle() });
-    return normaliseStepResult(dto);
+  async stepAi(onDepth?: (depth: number, score: number) => void): Promise<StepResult> {
+    let unlisten: (() => void) | null = null;
+    if (onDepth) {
+      unlisten = await listen<{ depth: number; score: number }>("ai-depth-update", (ev) => {
+        onDepth(ev.payload.depth, ev.payload.score);
+      });
+    }
+    try {
+      const dto = await invoke<StepResultDto>("step_ai", { handle: this.#requireHandle() });
+      return normaliseStepResult(dto);
+    } finally {
+      unlisten?.();
+    }
   }
 
   async requestAiMoveForced(): Promise<StepResult> {
     const dto = await invoke<StepResultDto>("request_ai_move_forced", { handle: this.#requireHandle() });
     return normaliseStepResult(dto);
+  }
+
+  async heuristicEval(): Promise<number> {
+    const bd = await invoke<{ total: number }>("heuristic_eval", { handle: this.#requireHandle() });
+    return bd.total;
   }
 
   async requestAiMoveAtDepth(maxDepth: number): Promise<StepResult> {

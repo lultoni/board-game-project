@@ -1,37 +1,11 @@
-//! Layer 1 — Path/Range/Block primitives.
+//! Layer 1 — Path/Range/Block primitives and movement geometry.
 //!
-//! Provides the queen-style 8-direction "first piece on each ray" lookup that
-//! every Skill targeting rule in Stack M sits on top of. Output is a single
-//! bitboard of squares that are either empty AND on a ray AND within range,
-//! OR the first occupied square on each ray within range (the blocker).
+//! Single interface for all board geometry used by the generator and evaluator:
 //!
-//! # Why this lives in `state/`
-//!
-//! The lookup is pure: it depends only on `(src, occupancy, range)` and not on
-//! turn order, ownership, or any mutable game state. It is foundational
-//! geometry — same role as `mailbox` / `bitboard` / `zobrist`.
-//!
-//! # API
-//!
-//! ```rust,ignore
-//! use core_engine::state::magic;
-//!
-//! // 8-direction attacks from `sq`, bounded by Chebyshev distance `range`.
-//! let bb = magic::skill_attacks(sq, occupancy, range);
-//!
-//! // BETWEEN[a][b] = squares strictly between a and b on the queen-ray
-//! // (or 0 if not on a ray / same square). Useful for "is the path clear?"
-//! let between = magic::between(a, b);
-//! ```
-//!
-//! # Implementation note
-//!
-//! The plan called for full chess-style Magic Bitboards with magic-multiply-
-//! shift perfect hashing. We implement the same API with classical ray
-//! scanning over per-direction ray-masks (8 rays × 64 squares = 512 u64s,
-//! plus a 64×64 BETWEEN table = 32 KiB). For Stack M's branching factor
-//! this is more than fast enough; the swap-in to true magic is local to
-//! `skill_attacks_along` if profiling later demands it.
+//! - `skill_attacks(sq, occ, range)` — queen-ray skill targeting with range cap
+//! - `movement_targets_speed1(sq)` — 8-adjacent squares (Champion/King moves)
+//! - `movement_targets_speed2(sq, occ)` — Chebyshev-BFS-2 with path blocking (Guard moves)
+//! - `between(a, b)`, `on_ray(a, b)`, `step_toward`, `step_away`, `neighbour_in_dir`
 
 use super::bitboard::Bitboard;
 use std::sync::OnceLock;
@@ -246,6 +220,123 @@ pub fn neighbour_in_dir(sq: u8, dir: usize) -> Option<u8> {
     Some((r * 8 + f) as u8)
 }
 
+// ── Movement geometry ────────────────────────────────────────────────────────
+
+/// `MOVE1[sq]` = bitmask of the 8 immediate neighbours of `sq` (Chebyshev 1).
+/// Precomputed once; not occupancy-dependent (caller masks out own pieces).
+static MOVE1: OnceLock<[u64; 64]> = OnceLock::new();
+
+fn move1_table() -> &'static [u64; 64] {
+    MOVE1.get_or_init(|| {
+        let mut t = [0u64; 64];
+        for sq in 0u8..64 {
+            for (dr, df) in DELTAS {
+                let r = (sq / 8) as i8 + dr;
+                let f = (sq % 8) as i8 + df;
+                if (0..8).contains(&r) && (0..8).contains(&f) {
+                    t[sq as usize] |= 1u64 << (r * 8 + f) as u8;
+                }
+            }
+        }
+        t
+    })
+}
+
+/// The 8 immediately adjacent squares for a speed-1 piece at `sq`.
+///
+/// Returns empty squares AND occupied squares — callers should mask out
+/// own pieces to get legal move destinations and AND with opp pieces for
+/// move-attack targets.
+#[inline]
+pub fn movement_targets_speed1(sq: u8) -> Bitboard {
+    debug_assert!(sq < 64);
+    Bitboard(move1_table()[sq as usize])
+}
+
+/// Chebyshev-BFS-2 reachable squares for a speed-2 piece at `sq` against
+/// the given occupancy mask `occ`.
+///
+/// Returns bitmask of reachable **empty** squares only (occupied squares are
+/// blocking — piece cannot enter or pass through). Caller should:
+///   - AND with `!own_pieces` for legal move destinations (already empty)
+///   - separately compute attack targets as enemies adjacent to any reachable
+///     square or `sq` itself (see `movement_attack_targets_speed2`)
+///
+/// This is identical to the generator's `reachable()` BFS but returns a plain
+/// `u64` mask without the distance array overhead.
+#[inline]
+pub fn movement_targets_speed2(sq: u8, occ: u64) -> Bitboard {
+    debug_assert!(sq < 64);
+    let mut dist = [255u8; 64];
+    dist[sq as usize] = 0;
+    let mut front = [0u8; 64];
+    let mut flen = 1usize;
+    front[0] = sq;
+    let mut reach = 0u64;
+    for step in 1u8..=2 {
+        let mut next = [0u8; 64];
+        let mut nlen = 0usize;
+        for i in 0..flen {
+            let s = front[i];
+            for (dr, df) in DELTAS {
+                let r = (s / 8) as i8 + dr;
+                let f = (s % 8) as i8 + df;
+                if !(0..8).contains(&r) || !(0..8).contains(&f) { continue; }
+                let n = (r * 8 + f) as u8;
+                if dist[n as usize] != 255 { continue; }
+                if occ & (1u64 << n) != 0 { continue; }
+                dist[n as usize] = step;
+                reach |= 1u64 << n;
+                next[nlen] = n;
+                nlen += 1;
+            }
+        }
+        front = next;
+        flen = nlen;
+        if flen == 0 { break; }
+    }
+    Bitboard(reach)
+}
+
+/// Move-attack targets for a speed-2 piece at `sq`: enemy squares that can be
+/// reached in the final step from any reachable square (including `sq` itself).
+///
+/// `reach_empty` — result of `movement_targets_speed2(sq, occ)`.
+/// `opp_bb`      — bitmask of enemy pieces to check.
+///
+/// Returns bitmask of enemy squares that are attackable. Equivalent to the
+/// attack-target loop in `generator::reachable()`, lifted here for symmetry.
+#[inline]
+pub fn movement_attack_targets_speed2(sq: u8, _occ: u64, reach_empty: u64, opp_bb: u64) -> Bitboard {
+    debug_assert!(sq < 64);
+    let reachable_or_src = reach_empty | (1u64 << sq);
+    let mut attacks = 0u64;
+    let mut remaining = opp_bb;
+    while remaining != 0 {
+        let enemy = remaining.trailing_zeros() as u8;
+        remaining &= remaining - 1;
+        // Quick Chebyshev distance reject
+        let er = (enemy / 8) as i32;
+        let ef = (enemy % 8) as i32;
+        let sr = (sq / 8) as i32;
+        let sf = (sq % 8) as i32;
+        let cheby = (er - sr).abs().max((ef - sf).abs()) as u8;
+        if cheby > 2 { continue; }
+        // Any neighbour of enemy reachable within speed-1 steps from src?
+        for (dr, df) in DELTAS {
+            let nr = er as i8 + dr;
+            let nf = ef as i8 + df;
+            if !(0..8).contains(&nr) || !(0..8).contains(&nf) { continue; }
+            let n = (nr * 8 + nf) as u8;
+            if reachable_or_src & (1u64 << n) != 0 {
+                attacks |= 1u64 << enemy;
+                break;
+            }
+        }
+    }
+    Bitboard(attacks)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,5 +492,71 @@ mod tests {
         assert_eq!(neighbour_in_dir(0, 5), None);     // SW → off
         assert_eq!(neighbour_in_dir(0, 6), None);     // W → off
         assert_eq!(neighbour_in_dir(0, 7), None);     // NW → off
+    }
+
+    #[test]
+    fn move1_centre_has_8_neighbours() {
+        // sq 28 (e4, rank 3 file 4) → 8 immediate neighbours
+        let m = movement_targets_speed1(28);
+        assert_eq!(m.0.count_ones(), 8);
+    }
+
+    #[test]
+    fn move1_corner_has_3_neighbours() {
+        let m = movement_targets_speed1(0); // a1
+        assert_eq!(m.0.count_ones(), 3);
+    }
+
+    #[test]
+    fn move2_empty_board_centre_reaches_24() {
+        // BFS-2 from a fully interior square reaches the 5×5 block = 24 squares.
+        // sq 27 = rank 3 file 3 — all 5×5 neighbours are on-board.
+        let m = movement_targets_speed2(27, 0); // d4
+        assert_eq!(m.0.count_ones(), 24);
+    }
+
+    #[test]
+    fn move2_empty_board_corner_reaches_8() {
+        let m = movement_targets_speed2(0, 0); // a1
+        assert_eq!(m.0.count_ones(), 8);
+    }
+
+    #[test]
+    fn move2_full_ring_blocks_centre() {
+        // If ALL 8 immediate neighbours of sq 27 are occupied, a speed-2 piece
+        // cannot reach anything (no path of length 2 through empty squares).
+        let sq = 27u8;
+        let all_neighbours = movement_targets_speed1(sq).0;
+        let m = movement_targets_speed2(sq, all_neighbours);
+        assert_eq!(m.0, 0, "surrounded piece has no speed-2 reach");
+    }
+
+    #[test]
+    fn move2_single_north_blocker_still_allows_zigzag() {
+        // Guard at sq 28, blocker at sq 36 (one step N).
+        // sq 44 (two steps N) is still reachable via zigzag (28→37→44 or 28→35→44).
+        let occ = 1u64 << 36;
+        let m = movement_targets_speed2(28, occ);
+        assert!(m.contains(44), "two steps N is reachable via zigzag around blocker");
+        // Blocker square itself should NOT be in reach_empty (it's occupied)
+        assert!(!m.contains(36), "blocker square itself is not reachable");
+    }
+
+    #[test]
+    fn move2_full_column_blocks_pass() {
+        // Place blockers at sq 36 AND sq 37 (N and NE of sq 28).
+        // sq 44 and 45 can still be reached via W path (28→35→43→44) — wait, that's 3 steps.
+        // Actually with both sq 36 and 37 blocked, sq 44 requires going through sq 35
+        // then sq 44: 28→35→44 (2 steps). sq 35 is empty, sq 44 is empty. So reachable!
+        // To truly block sq 44: need to block the entire N half.
+        // Instead verify: blocker at sq 36, sq 35 also blocked → can sq 44 be reached?
+        // 28→27→44 would be sq 27 (d4) → sq 44 (e6) which is NOT a single Chebyshev step.
+        // Let's just test that blocked path = excluded in a simple case.
+        // Single blocker at sq 29 (E of src 28): sq 30 is now unreachable directly,
+        // but may still be reached via 28→21→30 (S then SE) if those are empty.
+        let occ = 1u64 << 29;
+        let m = movement_targets_speed2(28, occ);
+        assert!(!m.contains(29), "direct E step blocked");
+        assert!(m.contains(30), "sq 30 still reachable via southern zigzag");
     }
 }

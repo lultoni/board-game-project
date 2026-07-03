@@ -14,11 +14,12 @@ Run `git pull` to fetch any changes pushed from another device. If there are con
 
 ## Step 1: Read Orientation Files
 
-Read these two files (in parallel):
+Read these files (in parallel):
 
 1. `CLAUDE.md` — orientation map
 2. `.claude/STATUS.md` — one-screen re-entry doc
 3. `.claude/HANDOVER.md` — last session's wrap-up + immediate next action
+4. `design/raw/paper-pipeline-archive/test-scenarios/stack-m-game-length-cut/stack-m-game-length-cut.typ` — **current active ruleset (Stack M)**. Read this before any session involving game rules, piece behaviour, skill descriptions, or engine work. Key facts: Guards speed=2 zigzag BFS (blocked, NOT ray-sliding); Champions/King speed=1; **only Champions and King have skill slots — Guards have none**; armor cap=2; no injured penalties; combo bonus triggers on Strike OR movement-causing skills by a new Champion.
 
 ## Step 2: Query the DB for Live State
 

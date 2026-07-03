@@ -258,6 +258,25 @@
     }
   }
 
+  function dropOnPiecesCol(ev: DragEvent): void {
+    if (!dragPayload) return;
+    const slots = (ev.currentTarget as HTMLElement).querySelectorAll<HTMLElement>(".slot");
+    let best: HTMLElement | null = null;
+    let bestDist = Infinity;
+    for (const el of slots) {
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const d = Math.hypot(ev.clientX - cx, ev.clientY - cy);
+      if (d < bestDist) { bestDist = d; best = el; }
+    }
+    if (!best) return;
+    const sq = Number(best.dataset.sq);
+    const slot = Number(best.dataset.slot);
+    if (isNaN(sq) || isNaN(slot)) return;
+    dropOnSlot(ev, sq, slot);
+  }
+
   function dropOnTrash(ev: DragEvent): void {
     ev.preventDefault();
     const p = dragPayload;
@@ -888,7 +907,11 @@
 
       <!-- Pieces (P1 above P2, active side highlighted). Slots are drop
            targets and visually communicate empty / tentative / committed. -->
-      <section class="pieces-col">
+      <section class="pieces-col"
+        aria-label="piece skill slots"
+        ondragover={(ev) => ev.preventDefault()}
+        ondrop={dropOnPiecesCol}
+      >
         {#each [["p1", P1_SQUARES] as const, ["p2", P2_SQUARES] as const] as [side, squares]}
           {@const isActive = (side === "p1") === isP1Turn}
           <section class="side" class:p1={side === "p1"} class:p2={side === "p2"} class:active={isActive}>
@@ -911,6 +934,8 @@
                       <button
                         type="button"
                         class="slot"
+                        data-sq={sq}
+                        data-slot={slot}
                         class:committed={committed !== 0}
                         class:tentative={tent !== null}
                         class:empty={showId === 0}
