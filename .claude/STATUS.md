@@ -2,39 +2,40 @@
 
 *One-screen re-entry doc. Read first after a gap. Regenerated from the DB at session end.*
 
-*Last updated: 2026-06-29 — Session 38 end (NN Trainer Debug + Gauntlet Speed).*
+*Last updated: 2026-07-03 — Session 40 end (WS relay + v0.1.0 release).*
 
 ---
 
 ## Current focus
 
-**NN trainer smoke test.** The Training Observatory UX is complete and committed. The trainer compiles and runs but a full smoke run has not completed cleanly — the gauntlet phase takes too long on CPU even at 10ms/ply (time-bounded search at any budget is slower than depth-bounded).
+**Testing the v0.1.0 release artefacts.** The GH Actions release workflow ran successfully (all 5 matrix jobs). Draft release at GitHub Releases has macOS .dmg, Linux .AppImage (CPU+CUDA), Windows .msi/.exe (CPU+CUDA). Need to test the prebuilt binaries on actual hardware across platforms and verify multiplayer (WS relay, Fly.io) end-to-end in the shipped builds.
 
 ## Active stack
 
 **Stack M — Game Length Cut.** Engine + UI are Stack M-shaped. `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"`.
 
-## What changed this session
+## What changed since session 38
 
-- **Training Observatory UX** fully shipped: controls bar (2-row), status strip with coloured phase dot, EvalBar `color` prop, Standings win-rate bars + state chips + active-row icon, Lineage node sub-line WR%/games/date, NetworkInspector idle copy. Sound effects on all buttons/sliders/selects/back links/drag handles across all pages. Click pitch lowered (580Hz); tick voice added.
-- **NN trainer reliability**: `catch_unwind` around `run_training` (panics now print to terminal); phase boundary `eprintln!` logging throughout `run.rs`.
-- **Gauntlet speed**: `MAX_PLIES` 1000→250; heuristic adjudication at ply cap (P1 wins on score ≥0); `gauntlet_think_ms` per preset (smoke=10ms, medium/long=100ms); `play_match_with_callback` takes `time_ms: u64` directly; `Bracket::scaled_time_limit_ms(base)` for ratios.
-- **UI staleness fix**: `STALE_MS` 5000→600000ms; Gauntlet snapshot written before each Tier-1 series + pre-series `ActiveMatch` populated.
+- **Session 39 (2026-06-30):** Stabilisation. Cargo.lock pinned (CI time-crate breakage). Engine bug fixed: combo bonus self-grant when same piece hooks twice (`relocate_piece` now updates dedup arrays). Linux fixes: AudioContext sandbox workaround, animation lag (DMABUF), "not available on Linux" notice for MP. Bodyguard DTO fix: `pending_bodyguard` now projected into `PositionViewDto`. RC2 release workflow succeeded.
+- **Session 40 (2026-07-02):** PeerJS/WebRTC replaced with custom WS relay (`game/relay/`) hosted on Fly.io. New frontend transport layer: `websocket-transport.ts`, `transport-config.ts`, `route-lifecycle.ts`, `MultiplayerStatusStrip.svelte`. Protocol documented in `game/PROTOCOL_TRACE.md`. Release workflow now injects relay secrets. `v0.1.0` tag pushed — all 5 matrix artefacts produced (draft release).
 
 ## Immediate next action
 
-Delete `game/runs/active`, restart `cargo tauri dev`, run smoke preset. Verify `[training] run finished` appears in <2 minutes. If still too slow: switch smoke gauntlet to depth-1 fixed-depth (0ms time limit, `max_depth=1`) rather than time-bounded — that removes the search budget entirely.
+Test the v0.1.0 release artefacts:
+1. Download and run each platform's build (macOS .dmg, Linux .AppImage, Windows .msi).
+2. Verify multiplayer over the WS relay works end-to-end in the prebuilt versions (not just in dev).
+3. If all good, publish the draft release.
 
 ## Live critical / high-priority open questions
 
-`sqlite3 design/design.db "SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high') ORDER BY priority, id;"` — unchanged this session.
+`sqlite3 design/design.db "SELECT id, title, priority FROM open_questions WHERE status IN ('critical','high') ORDER BY priority, id;"` — unchanged this session (design OQs, not digital implementation).
 
 ## Open loose ends
 
 - A5: Replay page parity (PlayerPanels, turn strip) — logged, not started
 - ETA field in status snapshot always null — not yet computed
-- Release workflow (`v0.1.0-rc1`) — drafted in S37, never run
+- v0.1.0 is a draft release — needs publish after testing
 
 ## DB sanity
 
-Session 38 row inserted. `PRAGMA integrity_check` → ok.
+Sessions 39 + 40 rows inserted. `PRAGMA integrity_check` → ok.

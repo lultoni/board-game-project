@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-06-29 — Session 38 end (NN Trainer Debug + Gauntlet Speed).*
+*Last updated: 2026-07-03 — Session 40 end (WS relay + v0.1.0 release).*
 
 ---
 
@@ -30,38 +30,42 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 38 end, 2026-06-29)
+### Where We Are (Session 40 end, 2026-07-02)
 
-- **Training Observatory UX is complete.** Controls bar, status strip, eval bar colours, standings bars, lineage nodes, inspector copy, sound effects on everything — all committed and clean.
-- **NN trainer is more robust.** Panic catching, phase-boundary logging, ply cap 250, heuristic adjudication, per-preset `gauntlet_think_ms` (smoke=10ms). All committed.
-- **Smoke run has not completed cleanly.** Time-bounded search at 10ms/ply is still slow on CPU. The engine is doing real search work even at tiny budgets. Suspected fix: switch smoke to depth-1 fixed-depth (pass `time_ms=0`, `max_depth=1` to `find_best_with_evaluator`).
-- Release workflow (`v0.1.0-rc1`) from S37 still unrun.
+- **v0.1.0 is built and waiting.** GH Actions Release workflow ran successfully on the `v0.1.0` tag. All 5 matrix artefacts exist: macOS .dmg, Linux .AppImage (CPU + CUDA), Windows .msi/.exe (CPU + CUDA). It is a draft release — not yet published.
+- **Multiplayer now uses a WS relay.** PeerJS/WebRTC replaced with a custom WS relay hosted on Fly.io (`boardgame-relay.fly.dev`). Works on all platforms including Linux. Protocol documented in `game/PROTOCOL_TRACE.md`.
+- **Engine is stable.** Combo bonus self-grant bug fixed (session 39). Bodyguard DTO projected into position snapshots. Linux audio/animation workarounds in place.
 
 ### Immediate Next Action
 
-**Make the smoke gauntlet use depth-1 fixed-depth search** so it completes in seconds. In `gauntlet.rs`: when `time_ms == 0`, pass `max_depth=1` to `find_best_with_evaluator` instead of `TIME_BOUNDED_MAX_DEPTH=64`. Set `smoke.gauntlet_think_ms = 0`. Verify smoke completes in <30s and prints `[training] run finished`.
+**Test the v0.1.0 release artefacts on actual hardware.** Download from the GitHub draft release, install/run on each target platform, and verify:
+1. App launches and plays a normal game.
+2. Multiplayer via WS relay works end-to-end (host create → guest join → move relay → game completion).
+3. If all platforms pass: publish the draft release.
 
 ### Open methodological loose ends
 
 - A5: Replay page parity (PlayerPanels, turn strip) — deferred
 - ETA field in status snapshot always null — not computed yet
-- Release workflow — drafted S37, never run
+- v0.1.0 draft release — needs publish after cross-platform testing
 
 ### Key DB Queries
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM sessions WHERE id='session-38';` | This session — trainer debug + gauntlet speed |
-| `SELECT body FROM sessions WHERE id='session-37';` | Backend flexibility + release pipeline |
+| `SELECT body FROM sessions WHERE id='session-40';` | WS relay + v0.1.0 release |
+| `SELECT body FROM sessions WHERE id='session-39';` | Stabilisation (engine bugs, Linux, RC2) |
+| `SELECT body FROM sessions WHERE id='session-38';` | NN Trainer Debug + Gauntlet Speed |
 | `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance |
 
 ### Key Files
 
 | Path | Purpose |
 |------|---------|
-| `game/crates/nn_trainer/src/gauntlet.rs` | `play_match_with_callback`, `tier1_fitness`, `mirrored_bo3`, ply cap |
-| `game/crates/nn_trainer/src/run.rs` | `RunConfig` presets, `gauntlet_think_ms`, orchestrator loop |
-| `game/crates/tauri_wrapper/src/lib.rs` | `start_training_run` with `catch_unwind` |
-| `game/frontend/src/routes/training/+page.svelte` | Training Observatory shell, `STALE_MS` |
+| `game/relay/` | WS relay server (hosted on Fly.io) |
+| `game/PROTOCOL_TRACE.md` | Full WS relay protocol documentation |
+| `game/frontend/src/lib/multiplayer/websocket-transport.ts` | New WS transport (replaces transport.ts) |
+| `game/frontend/src/lib/multiplayer/route-lifecycle.ts` | Route connect/disconnect lifecycle |
+| `.github/workflows/release.yml` | Release matrix (injects relay secrets) |
 | `design/design.db` | Source of truth (binary; committed) |
 | `.claude/STATUS.md` | One-screen re-entry summary |
