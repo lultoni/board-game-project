@@ -619,17 +619,12 @@ fn apply_tempest(pos: &mut Position, action: Action, undo: &mut Undo) {
     apply_strike_damage(pos, src, tgt, /*base=*/ 1, undo);
 
     // AOE push: target square is the pivot. Iterate neighbours in ascending
-    // square index for deterministic resolution.
-    let mut neighbours: [u8; 8] = [0; 8];
-    let mut n_count = 0usize;
-    for n in super::generator::eight_neighbours(tgt) {
-        neighbours[n_count] = n;
-        n_count += 1;
-    }
-    let slice = &mut neighbours[..n_count];
-    slice.sort_unstable();
-
-    for &n in slice.iter() {
+    // square index for deterministic resolution. The LSB-first bit walk over
+    // the neighbour mask is already ascending.
+    let mut neighbours = magic::movement_targets_speed1(tgt).0;
+    while neighbours != 0 {
+        let n = neighbours.trailing_zeros() as u8;
+        neighbours &= neighbours - 1;
         if n == src { continue; }                       // Caster not affected.
         if !pos.is_occupied(n) { continue; }
         let Some(push_dest) = magic::step_away(tgt, n) else { continue }; // off-board
@@ -1223,7 +1218,7 @@ fn draft_complete(pos: &Position) -> bool {
 /// This is acceptable for L8 — the AI uses a random heuristic, not a search.
 /// A future slice can replace this with a smaller move list (pick-set + slot
 /// assignment) if draft-tree search becomes desirable.
-pub fn legal_draft_turns(pos: &Position) -> Vec<Action> {
+pub(crate) fn legal_draft_turns(pos: &Position) -> Vec<Action> {
     if pos.current_phase != Phase::Draft { return Vec::new(); }
 
     // Enumerate individual legal picks: (skill_id, sq, slot) tuples where
@@ -1466,9 +1461,6 @@ fn game_result_from_tag(t: u8) -> Option<GameResult> {
         _ => None,
     }
 }
-
-#[allow(dead_code)]
-fn _unused_player(_p: Player) {} // keep Player in-scope without unused-import warning
 
 // === Tests =================================================================
 

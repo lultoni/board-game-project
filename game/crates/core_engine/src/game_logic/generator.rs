@@ -128,7 +128,7 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
         // a *tentative* apply (relocate attacker, set `pending_bodyguard`,
         // flip STM) and the defender's next ply is a BodyguardChoice.
         for tgt in iter_squares(reach_attack) {
-            for approach in eight_neighbours(tgt) {
+            for approach in iter_bits(magic::movement_targets_speed1(tgt).0) {
                 // approach must be reachable via empties in <= speed-1 steps
                 // (src itself counts, dist[src]=0).
                 let d = dist[approach as usize];
@@ -276,8 +276,9 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                             let ally_guards = stm_bb.0 & pos.guards.0;
                             if ally_guards != 0 {
                                 for dest in iter_squares(Bitboard(empties)) {
-                                    let adj_to_ally_guard = eight_neighbours(dest)
-                                        .any(|n| ally_guards & (1u64 << n) != 0);
+                                    let adj_to_ally_guard =
+                                        magic::movement_targets_speed1(dest).0
+                                            & ally_guards != 0;
                                     if !adj_to_ally_guard { continue; }
                                     out.push(Action::encode(
                                         src, dest, ActionKind::Skill, skill as u8, 0,
@@ -389,8 +390,8 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
 fn emit_focus_shield_retargets(
     pos: &Position, src: u8, skill: Skill, stm_bb: Bitboard, out: &mut Vec<Action>,
 ) {
-    for n in eight_neighbours(src) {
-        if !stm_bb.contains(n) { continue; }
+    let allies = magic::movement_targets_speed1(src).0 & stm_bb.0;
+    for n in iter_bits(allies) {
         if pos.mailbox[n as usize].armor() >= ARMOR_CAP { continue; }
         out.push(Action::encode_with_aux(
             src, n, ActionKind::Skill, skill as u8, 0, n,
@@ -405,8 +406,8 @@ fn emit_focus_dash_retargets(
     pos: &Position, src: u8, skill: Skill, stm_bb: Bitboard, out: &mut Vec<Action>,
 ) {
     let occ = (pos.p1_pieces | pos.p2_pieces).0;
-    for n in eight_neighbours(src) {
-        if !stm_bb.contains(n) { continue; }
+    let allies = magic::movement_targets_speed1(src).0 & stm_bb.0;
+    for n in iter_bits(allies) {
         // Range 2 from the ally, queen-rays.
         let attacks = magic::skill_attacks(n, occ, 2).0;
         let empties = attacks & !occ;
@@ -430,14 +431,14 @@ fn emit_focus_retreat_retargets(
 ) {
     let occ = (pos.p1_pieces | pos.p2_pieces).0;
     let base_range = skills::skill_default_range(skill);
-    for n in eight_neighbours(src) {
-        if !stm_bb.contains(n) { continue; }
+    let allies = magic::movement_targets_speed1(src).0 & stm_bb.0;
+    for n in iter_bits(allies) {
         let attacks = magic::skill_attacks(n, occ, base_range).0;
         let empties = attacks & !occ;
         for dest in iter_squares(Bitboard(empties)) {
             if dest == src { continue; }
-            let adj_to_ally_guard = eight_neighbours(dest)
-                .any(|g| ally_guards & (1u64 << g) != 0);
+            let adj_to_ally_guard =
+                magic::movement_targets_speed1(dest).0 & ally_guards != 0;
             if !adj_to_ally_guard { continue; }
             out.push(Action::encode_with_aux(
                 src, dest, ActionKind::Skill, skill as u8, 0, n,
@@ -495,16 +496,15 @@ fn reachable(src: u8, speed: u8, occ: Bitboard, opp_bb: Bitboard)
         }
     };
 
-    let mut reach_attack = Bitboard::EMPTY;
-    for enemy in iter_squares(opp_bb) {
-        if chebyshev_distance(src, enemy) > speed { continue; }
-        for n in eight_neighbours(enemy) {
-            if approach_mask & (1u64 << n) != 0 {
-                reach_attack = reach_attack | Bitboard::from_square(enemy);
-                break;
-            }
-        }
-    }
+    // `approach_mask` — squares from which the final step onto an enemy counts
+    // as a Move-Attack. For speed 1 that's just `src`; for speed 2 it's `src`
+    // plus its empty neighbours (dist ≤ 1). We hand this to
+    // `movement_attack_targets_speed2` as `reach_empty` (it unions in `src` on
+    // its own), which returns the set of enemies attackable from any square
+    // in that set — exactly the semantics we want for both speeds.
+    let reach_attack = magic::movement_attack_targets_speed2(
+        src, occ.0, approach_mask & !(1u64 << src), opp_bb.0,
+    );
 
     // Reconstruct dist array for approach-square filtering in the caller
     // (generate_move_phase line ~134). For speed-2, approach squares are those
@@ -565,19 +565,13 @@ pub(super) fn bodyguard_guards_for(pos: &Position, target_sq: u8, approach_sq: u
     } else {
         pos.p2_pieces
     };
-    // Build a bitmask of approach_sq's neighbours for cheap dual-adjacency check.
-    let approach_neighbours: u64 = {
-        let mut m = 0u64;
-        for n in eight_neighbours(approach_sq) {
-            m |= 1u64 << n;
-        }
-        m
-    };
+    // Neighbours of approach_sq (for cheap dual-adjacency check).
+    let approach_neighbours: u64 = magic::movement_targets_speed1(approach_sq).0;
     let mut out = Vec::with_capacity(8);
-    for n in eight_neighbours(target_sq) {
-        if !defender_bb.contains(n) || !pos.guards.contains(n) {
-            continue;
-        }
+    // Candidate Guards: neighbours of target that are defender-side Guards.
+    let candidates =
+        magic::movement_targets_speed1(target_sq).0 & defender_bb.0 & pos.guards.0;
+    for n in iter_bits(candidates) {
         // Dual-adjacency: Guard must also be adjacent to approach_sq.
         if approach_neighbours & (1u64 << n) == 0 {
             continue;
@@ -613,7 +607,14 @@ fn piece_speed(pos: &Position, sq: u8) -> u8 {
 
 #[inline]
 fn iter_squares(bb: Bitboard) -> impl Iterator<Item = u8> {
-    let mut bits = bb.0;
+    iter_bits(bb.0)
+}
+
+/// Iterate set-bit positions of a raw u64 as square indices (0..64).
+/// Same LSB-first order as `iter_squares` but takes the raw mask so callers
+/// don't have to wrap intermediate bitboards.
+#[inline]
+fn iter_bits(mut bits: u64) -> impl Iterator<Item = u8> {
     std::iter::from_fn(move || {
         if bits == 0 {
             None
@@ -623,35 +624,6 @@ fn iter_squares(bb: Bitboard) -> impl Iterator<Item = u8> {
             Some(sq)
         }
     })
-}
-
-/// 8-neighbour squares of `sq`, edge-clipped. Returns 3..=8 squares.
-pub(super) fn eight_neighbours(sq: u8) -> impl Iterator<Item = u8> {
-    let rank = (sq / 8) as i8;
-    let file = (sq % 8) as i8;
-    const DELTAS: [(i8, i8); 8] = [
-        (-1, -1), (-1, 0), (-1, 1),
-        ( 0, -1),          ( 0, 1),
-        ( 1, -1), ( 1, 0), ( 1, 1),
-    ];
-    DELTAS.iter().filter_map(move |&(dr, df)| {
-        let r = rank + dr;
-        let f = file + df;
-        if (0..8).contains(&r) && (0..8).contains(&f) {
-            Some((r * 8 + f) as u8)
-        } else {
-            None
-        }
-    })
-}
-
-#[inline]
-fn chebyshev_distance(a: u8, b: u8) -> u8 {
-    let ar = (a / 8) as i8; let af = (a % 8) as i8;
-    let br = (b / 8) as i8; let bf = (b % 8) as i8;
-    let dr = (ar - br).unsigned_abs();
-    let df = (af - bf).unsigned_abs();
-    dr.max(df)
 }
 
 // === Tests ==================================================================

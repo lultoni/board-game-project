@@ -210,11 +210,6 @@ pub struct Match {
     /// L5 telemetry. `Some` iff `config.auto_log`. Caller-driven clock:
     /// `Match` doesn't read system time itself.
     log: Option<MatchLog>,
-    /// Unix-ms snapshot captured at match construction. Used to compute
-    /// total wall time on `finalise_log`. Held even when `auto_log` is off
-    /// so we don't pay a branch on every constructor.
-    #[allow(dead_code)]
-    started_at_unix_ms: u64,
     /// Position evaluator used by `request_ai_move*`. Defaults to
     /// `HeuristicEvaluator`; callers (e.g. the Tauri layer wiring an
     /// `NnEvaluator`) install a replacement via `set_evaluator`. Not
@@ -247,7 +242,6 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            started_at_unix_ms: now_unix_ms,
             evaluator: Box::new(HeuristicEvaluator),
         }
     }
@@ -271,7 +265,6 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            started_at_unix_ms: now_unix_ms,
             evaluator: Box::new(HeuristicEvaluator),
         }
     }
@@ -300,7 +293,6 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            started_at_unix_ms: now_unix_ms,
             evaluator: Box::new(HeuristicEvaluator),
         }
     }
@@ -387,7 +379,6 @@ impl Match {
             tt:        TranspositionTable::with_capacity_mb(16),
             start_fen: s.start_fen,
             log,
-            started_at_unix_ms: now_unix_ms,
             evaluator: Box::new(HeuristicEvaluator),
         })
     }

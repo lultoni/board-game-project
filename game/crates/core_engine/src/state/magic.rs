@@ -5,6 +5,8 @@
 //! - `skill_attacks(sq, occ, range)` — queen-ray skill targeting with range cap
 //! - `movement_targets_speed1(sq)` — 8-adjacent squares (Champion/King moves)
 //! - `movement_targets_speed2(sq, occ)` — Chebyshev-BFS-2 with path blocking (Guard moves)
+//! - `movement_attack_targets_speed2(sq, occ, reach_empty, opp_bb)` — enemies attackable in a Guard move
+//! - `cheby_dist(a, b)` — precomputed Chebyshev distance (0..=7)
 //! - `between(a, b)`, `on_ray(a, b)`, `step_toward`, `step_away`, `neighbour_in_dir`
 
 use super::bitboard::Bitboard;
@@ -225,6 +227,35 @@ pub fn neighbour_in_dir(sq: u8, dir: usize) -> Option<u8> {
 /// `MOVE1[sq]` = bitmask of the 8 immediate neighbours of `sq` (Chebyshev 1).
 /// Precomputed once; not occupancy-dependent (caller masks out own pieces).
 static MOVE1: OnceLock<[u64; 64]> = OnceLock::new();
+
+/// `CHEBY[a][b]` = Chebyshev distance between squares `a` and `b` (0..=7).
+static CHEBY: OnceLock<[[u8; 64]; 64]> = OnceLock::new();
+
+fn cheby_table() -> &'static [[u8; 64]; 64] {
+    CHEBY.get_or_init(|| {
+        let mut t = [[0u8; 64]; 64];
+        for a in 0u8..64 {
+            let ar = (a / 8) as i8;
+            let af = (a % 8) as i8;
+            for b in 0u8..64 {
+                let br = (b / 8) as i8;
+                let bf = (b % 8) as i8;
+                let dr = (ar - br).unsigned_abs();
+                let df = (af - bf).unsigned_abs();
+                t[a as usize][b as usize] = dr.max(df);
+            }
+        }
+        t
+    })
+}
+
+/// Chebyshev (king-move) distance between two squares. 0 iff `a == b`, 1 for
+/// orthogonal or diagonal neighbours, up to 7 (a1↔h8). O(1) table lookup.
+#[inline]
+pub fn cheby_dist(a: u8, b: u8) -> u8 {
+    debug_assert!(a < 64 && b < 64);
+    cheby_table()[a as usize][b as usize]
+}
 
 fn move1_table() -> &'static [u64; 64] {
     MOVE1.get_or_init(|| {
@@ -558,5 +589,42 @@ mod tests {
         let m = movement_targets_speed2(28, occ);
         assert!(!m.contains(29), "direct E step blocked");
         assert!(m.contains(30), "sq 30 still reachable via southern zigzag");
+    }
+
+    #[test]
+    fn cheby_dist_self_is_zero() {
+        for sq in 0u8..64 { assert_eq!(cheby_dist(sq, sq), 0); }
+    }
+
+    #[test]
+    fn cheby_dist_neighbours_are_one() {
+        // sq 28 (e4) all 8 neighbours have distance 1.
+        let neighbours = movement_targets_speed1(28).0;
+        let mut bits = neighbours;
+        while bits != 0 {
+            let n = bits.trailing_zeros() as u8;
+            assert_eq!(cheby_dist(28, n), 1);
+            bits &= bits - 1;
+        }
+    }
+
+    #[test]
+    fn cheby_dist_corner_to_corner_is_seven() {
+        assert_eq!(cheby_dist(0, 63), 7);   // a1 ↔ h8
+        assert_eq!(cheby_dist(7, 56), 7);   // h1 ↔ a8
+    }
+
+    #[test]
+    fn cheby_dist_matches_inline_math() {
+        // Sanity: cross-check the table against the direct formula on every pair.
+        for a in 0u8..64 {
+            for b in 0u8..64 {
+                let ar = (a / 8) as i8; let af = (a % 8) as i8;
+                let br = (b / 8) as i8; let bf = (b % 8) as i8;
+                let dr = (ar - br).unsigned_abs();
+                let df = (af - bf).unsigned_abs();
+                assert_eq!(cheby_dist(a, b), dr.max(df));
+            }
+        }
     }
 }
