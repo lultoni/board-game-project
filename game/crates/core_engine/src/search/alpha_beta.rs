@@ -36,6 +36,24 @@ use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 /// to grade QS vs non-QS play strength. Production callers must not flip it.
 pub static DISABLE_QS: AtomicBool = AtomicBool::new(false);
 
+/// Runtime toggle for null-move pruning. Default `false` (NMP disabled) until
+/// re-benchmarked on a corpus with realistic skill loadouts. The search_bench
+/// harness flips this on for A/B comparison.
+///
+/// Null move = `Action::EndPhase` applied during `Phase::Skill`, which flips
+/// the side to move (via `turn_manager::end_turn`). Only fires during Skill
+/// phase — EndPhase during Move phase just transitions to the same player's
+/// Skill phase, so it isn't a real null.
+pub static ENABLE_NMP: AtomicBool = AtomicBool::new(true);
+
+/// R = 2 reduction for null-move search. Depth on the null branch is
+/// `depth - 1 - R`.
+const NMP_R: i32 = 2;
+/// Zugzwang guard: skip NMP when total piece count is under this threshold.
+/// In sparse endgames a "pass" can be strictly better than any real move,
+/// which is exactly the situation NMP fails on.
+const NMP_MIN_PIECES: u32 = 6;
+
 use super::evaluator::{Evaluator, HeuristicEvaluator, MATE_SCORE};
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
 use crate::game_logic::action::{Action, ActionKind};
@@ -182,7 +200,8 @@ pub(super) struct SearchCtx<'a> {
 }
 
 fn search(pos: &mut Position, depth: i32, ply: i32,
-          mut alpha: i32, mut beta: i32, ctx: &mut SearchCtx) -> i32 {
+          mut alpha: i32, mut beta: i32, can_null: bool,
+          ctx: &mut SearchCtx) -> i32 {
     ctx.nodes += 1;
 
     if ctx.nodes & TIME_CHECK_MASK == 0 {
@@ -224,6 +243,55 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         }
     }
 
+    // Null-move pruning. Assume the side to move passes (Action::EndPhase in
+    // Skill phase, which flips STM). If even a "free" pass by the opponent
+    // still keeps our position at/above beta (or at/below alpha for P2), the
+    // real best move is at least as good — cutoff without generating.
+    //
+    // Guards:
+    //   - Skill phase only (Move-phase EndPhase doesn't flip STM).
+    //   - actions_remaining >= 1 (EndPhase is only legal with actions left).
+    //   - No pending bodyguard (else make() will refuse EndPhase).
+    //   - depth >= 3 so the reduced null search still runs at depth >= 1.
+    //   - ply > 0 (never null at root — we need a real best move).
+    //   - can_null: never do two nulls in a row (avoid infinite reduction).
+    //   - Piece count >= NMP_MIN_PIECES to sidestep zugzwang in sparse endgames.
+    if ENABLE_NMP.load(AtomicOrdering::Relaxed)
+        && can_null
+        && ply > 0
+        && depth >= 3
+        && pos.current_phase == Phase::Skill
+        && pos.actions_remaining >= 1
+        && pos.pending_bodyguard.is_none()
+        && (pos.p1_pieces.0 | pos.p2_pieces.0).count_ones() >= NMP_MIN_PIECES
+    {
+        let null = Action::encode(0, 0, ActionKind::EndPhase, 0, 0);
+        let undo = make_unmake::make(pos, null);
+        // Null-window search around the appropriate bound. Since scores are
+        // absolute P1-POV, the pruning condition depends on which side we're
+        // trying to fail-high against: P1 (max) fails high vs beta, P2 (min)
+        // fails low vs alpha. `maximising_before_null` is the ORIGINAL side
+        // (the one we're pruning for); after make(), pos.to_move has flipped.
+        let maximising_before_null = pos.to_move == Player::P2; // flipped by make
+        let reduced = depth - 1 - NMP_R;
+        let s = if maximising_before_null {
+            // Original side was P1: probe with null window [beta-1, beta].
+            search(pos, reduced, ply + 1, beta - 1, beta, false, ctx)
+        } else {
+            // Original side was P2: probe with null window [alpha, alpha+1].
+            search(pos, reduced, ply + 1, alpha, alpha + 1, false, ctx)
+        };
+        make_unmake::unmake(pos, &undo);
+        if ctx.aborted { return 0; }
+        if maximising_before_null {
+            // P1's turn: if the opponent-pass score already fails high, cut.
+            // Avoid returning mate scores from a null branch (unverified).
+            if s >= beta && !is_mate(s) { return s; }
+        } else {
+            if s <= alpha && !is_mate(s) { return s; }
+        }
+    }
+
     let mut moves = generator::generate(pos);
     debug_assert!(!moves.is_empty(), "non-terminal position with no legal actions");
 
@@ -244,10 +312,15 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
             // Sort descending by ordering score. Stable sort keeps original
             // (generator) order as the tiebreaker.
             //
-            // Skip the sort below depth 3: at low depth the per-node sort
-            // overhead dominates the cutoff savings (the TT-move is already
-            // at slot 0 from the swap above, which is the only thing that
-            // matters when the first move usually causes a cutoff anyway).
+            // Skip the sort below depth 3: the A/B sweep (2026-07-05, corpus
+            // v2) confirmed sort-at-d≥1 loses 10% NPS and 0.3 plies at 1s;
+            // sort-at-d≥2 is essentially flat but never improves depth. The
+            // TT-move swap above is the only ordering work that pays for
+            // itself at low depth — first-move cutoffs dominate cutoff rate.
+            //
+            // Skipping the full sort in favour of TT-move + killer-promote
+            // only (B4) blew up skill-phase-full nodes by +55% — the
+            // history-based tail ordering is load-bearing.
             moves[start..].sort_by_key(|a| -ctx.ord.score(*a, side, ply, phase));
         }
     }
@@ -258,7 +331,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 
     for a in moves {
         let undo = make_unmake::make(pos, a);
-        let s = search(pos, depth - 1, ply + 1, alpha, beta, ctx);
+        let s = search(pos, depth - 1, ply + 1, alpha, beta, true, ctx);
         make_unmake::unmake(pos, &undo);
         if ctx.aborted { return 0; }
 
@@ -341,7 +414,7 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
 
     for d in 1..=max_depth.max(1) {
         let mut ctx = SearchCtx { tt, ord: &mut ord, evaluator, deadline, nodes: 0, aborted: false };
-        let score = search(pos, d as i32, 0, -INF, INF, &mut ctx);
+        let score = search(pos, d as i32, 0, -INF, INF, true, &mut ctx);
         total_nodes += ctx.nodes;
 
         if ctx.aborted { break; }

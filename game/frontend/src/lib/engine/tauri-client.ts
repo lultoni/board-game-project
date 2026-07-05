@@ -177,9 +177,13 @@ export class TauriClient implements EngineClient {
   async stepAi(onDepth?: (depth: number, score: number) => void): Promise<StepResult> {
     let unlisten: (() => void) | null = null;
     if (onDepth) {
-      unlisten = await listen<{ depth: number; score: number }>("ai-depth-update", (ev) => {
-        onDepth(ev.payload.depth, ev.payload.score);
-      });
+      try {
+        unlisten = await listen<{ depth: number; score: number }>("ai-depth-update", (ev) => {
+          onDepth(ev.payload.depth, ev.payload.score);
+        });
+      } catch (err) {
+        console.warn("ai-depth-update listen failed; continuing without depth streaming:", err);
+      }
     }
     try {
       const dto = await invoke<StepResultDto>("step_ai", { handle: this.#requireHandle() });

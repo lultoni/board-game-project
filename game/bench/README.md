@@ -7,33 +7,32 @@ the optimisation queue.
 
 ## How to run
 
-Build once:
+The canonical sweep runner is `game/bench/run_sweep.sh` — one command runs
+the full 5-budget grid (`depth6` + `time100/500/1000/3000ms`) plus the
+determinism smoke check:
+
 ```
-cargo build --release -p search_bench
+game/bench/run_sweep.sh baseline    # → bench/baseline-<budget>.json (canonical)
+game/bench/run_sweep.sh nmp         # → bench/results/nmp-<budget>.json (A/B)
 ```
 
-Fixed-depth mode (deterministic, ideal for compare-against-baseline):
+The `baseline` prefix is special-cased to write to the top-level `bench/`
+directory so accepted baselines are hard to overwrite by accident;
+every other prefix writes to `bench/results/` which is gitignored scratch.
+
+For ad-hoc single runs, invoke the binary directly:
+
 ```
-cargo run --release -p search_bench -- \
+cargo run --release -p search_bench --manifest-path game/Cargo.toml -- \
     --corpus game/bench/corpus/corpus.txt \
-    --mode depth --depth 6 --runs 5 \
+    --depth 6 \
     --out game/bench/results/run-depth6.json
 ```
 
-Fixed-time mode (measures player-facing strength via depth-reached + EBF):
+Or for the standalone determinism check:
 ```
-cargo run --release -p search_bench -- \
-    --corpus game/bench/corpus/corpus.txt \
-    --mode time --time-ms 1000 --runs 3 \
-    --out game/bench/results/run-time1000ms.json
-```
-
-Determinism check (asserts identical nodes/score/best-move across 10 runs
-per position at fixed depth):
-```
-cargo run --release -p search_bench -- \
-    --corpus game/bench/corpus/corpus.txt \
-    --determinism --depth 6 --determinism-runs 10
+cargo run --release -p search_bench --manifest-path game/Cargo.toml -- \
+    --determinism --corpus game/bench/corpus/corpus.txt
 ```
 
 The binary exits with code 0 on success, 4 if any tactical position's
@@ -42,8 +41,8 @@ correctness assertion fails (a "REGRESSION: <id>" line precedes the exit),
 
 ## How to interpret
 
-`baseline.json` is the canonical accepted baseline at fixed depth 6 (median
-of 5 runs). The matching multi-budget baselines are:
+`baseline-depth6.json` is the canonical accepted baseline at fixed depth 6
+(median of 5 runs). The matching multi-budget baselines are:
 - `baseline-time100ms.json`
 - `baseline-time500ms.json`
 - `baseline-time1000ms.json`
@@ -62,44 +61,46 @@ total time-to-depth still improve if the bookkeeping prunes enough nodes.
 
 When an optimisation lands and we accept it:
 
-1. Run the bench at fixed depth and at every committed time budget (the
-   full multi-budget sweep — see "Test protocol" below).
-2. Eyeball the per-position deltas vs the current baseline. Reject the
-   change if any time budget shows positions reaching lower depth than
-   baseline (regression in player-facing strength).
-3. If accepted, overwrite all six `baseline*.json` files with the new
-   run's JSON outputs.
+1. Run the full sweep with a candidate prefix: `game/bench/run_sweep.sh <name>`.
+2. Diff the per-position results vs `baseline-<budget>.json`. Reject if any
+   time budget shows positions reaching lower depth than baseline
+   (regression in player-facing strength) or a score drift at fixed depth 6.
+3. If accepted, re-run as `game/bench/run_sweep.sh baseline` to overwrite
+   all five committed baselines in one shot.
 4. The new baselines become the bar for the next optimisation.
 
-## Test protocol — multi-budget sweep (Session 36+)
+## Test protocol — multi-budget sweep
 
 Each candidate optimisation is graded against **every** budget, not just
 one. Killers/history (Session 36) revealed that an optimisation can be
 neutral or hurt at 1000ms while winning at 3000ms — testing one budget in
-isolation would have rejected a real win.
+isolation would have rejected a real win. Session 41 (delta pruning) added
+the further lesson that fixed-depth-6 alone hides score drifts that only
+surface when you compare per-position and per-category, not aggregates.
 
-Per-optimisation sweep:
-1. `--mode depth --depth 6 --runs 5` (deterministic node-count baseline).
-2. `--mode time --time-ms 100 --runs 3`
-3. `--mode time --time-ms 500 --runs 3`
-4. `--mode time --time-ms 1000 --runs 3`
-5. `--mode time --time-ms 3000 --runs 3`
-6. `--determinism --depth 6 --determinism-runs 5` (sanity check).
-
-Accept iff zero positions reach lower depth at any budget AND total
-depth-6 wall-clock is non-positive.
+`run_sweep.sh` runs the canonical order (depth6 → 100ms → 500ms → 1000ms
+→ 3000ms → determinism). Accept iff:
+- Zero positions reach lower depth at any budget,
+- Total depth-6 wall-clock is non-positive,
+- No score drifts or best-move disagreements at fixed depth 6,
+- Determinism check passes.
 
 ## Corpus
 
-`corpus/corpus.txt` is hand-curated from random self-play with the
-`build_corpus` example. 20 entries spanning opening, midgame-low-skill,
-phase-boundary, and endgame-sparse categories. The plan calls for at least
-one tactical / known-result position; tracked as a TODO at the bottom of
-the corpus file.
+`corpus/corpus.txt` is corpus v2 (Session 41, 2026-07-05): 30 positions
+sampled from search-driven self-play at depths 2/3/4 (cycled), with
+`MAX_PER_STM_PER_GAME=2` and view-key dedup. Categories:
+opening-with-skills, midgame-move, skill-phase-full, combo-loaded,
+endgame-with-skills, king-in-danger.
+
+Corpus v1 (Session 37 and earlier) was random-play-generated and produced
+eval-neutral positions; see `alpha-beta-optimisation-catalogue.md` Session
+37 retrospective. Corpus v2 was regenerated once positional eval landed.
 
 To regenerate raw samples:
 ```
-cargo run --release -p core_engine --example build_corpus -- \
+cargo run --release --manifest-path game/Cargo.toml \
+    -p core_engine --example build_corpus -- \
     --games 500 --seed 0xC0FFEE
 ```
 …then hand-curate the output into `corpus.txt`.
@@ -107,5 +108,6 @@ cargo run --release -p core_engine --example build_corpus -- \
 ## Storage layout
 
 - `corpus/` — committed corpus and raw samples.
-- `baseline.json`, `baseline-time1000ms.json` — committed baselines.
-- `results/` — gitignored scratch directory for runs.
+- `baseline-<budget>.json` — committed baselines (5 files).
+- `results/` — gitignored scratch directory for A/B runs.
+- `run_sweep.sh` — canonical sweep runner.

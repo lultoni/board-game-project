@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for the app: core plugins (event listen/emit, window, path, etc.).",
+  "windows": ["main", "*"],
+  "permissions": [
+    "core:default"
+  ]
+}

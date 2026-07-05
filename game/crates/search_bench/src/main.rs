@@ -34,7 +34,6 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 const DEFAULT_DEPTH: u8 = 6;
-const DEFAULT_TIME_MS: u64 = 1000;
 const DEFAULT_RUNS: usize = 5;
 const TT_MB: usize = 64;
 
@@ -83,16 +82,18 @@ struct Args {
 }
 
 fn print_usage_and_exit() -> ! {
-    eprintln!("usage: search_bench --corpus <path> [--mode depth|time] [--depth N] [--time-ms M] [--runs N] [--out <path>]");
+    eprintln!("usage: search_bench --corpus <path> (--depth N | --time-ms M) [--runs N] [--out <path>]");
     eprintln!("       search_bench --determinism [--corpus <path>] [--depth N] [--determinism-runs N]");
+    eprintln!();
+    eprintln!("Mode is inferred: --depth ⇒ depth mode; --time-ms ⇒ time mode.");
+    eprintln!("Passing both, or neither, is an error (use --determinism to opt out).");
     std::process::exit(2);
 }
 
 fn parse_args() -> Args {
     let mut corpus_path = PathBuf::from("game/bench/corpus/corpus.txt");
-    let mut mode_kind = "depth".to_string();
-    let mut depth = DEFAULT_DEPTH;
-    let mut time_ms = DEFAULT_TIME_MS;
+    let mut depth: Option<u8> = None;
+    let mut time_ms: Option<u64> = None;
     let mut runs = DEFAULT_RUNS;
     let mut out_path: Option<PathBuf> = None;
     let mut determinism = false;
@@ -109,28 +110,24 @@ fn parse_args() -> Args {
                 }));
                 i += 2;
             }
-            "--mode" => {
-                mode_kind = argv.get(i + 1).cloned().unwrap_or_default();
-                i += 2;
-            }
             "--depth" => {
-                depth = argv
+                depth = Some(argv
                     .get(i + 1)
                     .and_then(|s| s.parse().ok())
                     .unwrap_or_else(|| {
                         eprintln!("--depth needs a number");
                         std::process::exit(2);
-                    });
+                    }));
                 i += 2;
             }
             "--time-ms" => {
-                time_ms = argv
+                time_ms = Some(argv
                     .get(i + 1)
                     .and_then(|s| s.parse().ok())
                     .unwrap_or_else(|| {
                         eprintln!("--time-ms needs a number");
                         std::process::exit(2);
-                    });
+                    }));
                 i += 2;
             }
             "--runs" => {
@@ -172,12 +169,22 @@ fn parse_args() -> Args {
         }
     }
 
-    let mode = match mode_kind.as_str() {
-        "depth" => Mode::Depth(depth),
-        "time" => Mode::Time(time_ms),
-        other => {
-            eprintln!("--mode must be 'depth' or 'time', got '{}'", other);
-            print_usage_and_exit();
+    // Mode inference. Determinism runs at fixed depth (its own path); it may
+    // take --depth but doesn't need a mode.
+    let mode = if determinism {
+        Mode::Depth(depth.unwrap_or(DEFAULT_DEPTH))
+    } else {
+        match (depth, time_ms) {
+            (Some(_), Some(_)) => {
+                eprintln!("error: pass --depth OR --time-ms, not both");
+                print_usage_and_exit();
+            }
+            (Some(d), None) => Mode::Depth(d),
+            (None, Some(t)) => Mode::Time(t),
+            (None, None) => {
+                eprintln!("error: must pass --depth or --time-ms (or --determinism)");
+                print_usage_and_exit();
+            }
         }
     };
 
