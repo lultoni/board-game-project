@@ -6,8 +6,6 @@
     encodeDraftTurn,
     decodeMailbox,
     SKILLS,
-    SKILL_COUNT,
-    CATEGORY_COLOR,
     skillColor,
     type DraftStateView,
     type PositionView,
@@ -15,6 +13,7 @@
   } from "$lib/engine";
   import { buildEngineConfigJson, applyEvaluatorSettings } from "$lib/state/match-store.svelte";
   import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
+  import SkillPicker from "$lib/board/SkillPicker.svelte";
   import { t } from "$lib/state/i18n";
   import {
     match,
@@ -79,7 +78,6 @@
 
   const P1_SQUARES = STACK_M_LOADOUT_SQUARES.p1;
   const P2_SQUARES = STACK_M_LOADOUT_SQUARES.p2;
-  const allSkillIds = Array.from({ length: SKILL_COUNT }, (_, i) => i + 1);
 
   const sideToMove = $derived(draftState?.sideToMove ?? 0);
   const isP1Turn = $derived(sideToMove === 0);
@@ -867,29 +865,12 @@
       <!-- Skill catalogue: draggable source tiles -->
       <section class="picker">
         <h2>{t("draft.catalogue")}</h2>
-        <ul class="skills" class:disabled={!localCanDraft}>
-          {#each allSkillIds as id (id)}
-            {@const color = skillColor(id)}
-            <li>
-              <button
-                type="button"
-                class="skill-chip"
-                style:--cat={color}
-                draggable={localCanDraft}
-                disabled={!localCanDraft}
-                ondragstart={(ev) => dragStartSkill(ev, id)}
-                ondragend={dragEnd}
-                title={`${skillName(id)} — ${categoryLabel(id)}\n${skillDesc(id)}`}
-              >
-                <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
-                  <use href="#skill-glyph-{id}" />
-                </svg>
-                <span class="chip-name">{skillName(id)}</span>
-                <span class="chip-cat">{categoryLabel(id)}</span>
-              </button>
-            </li>
-          {/each}
-        </ul>
+        <SkillPicker
+          interaction="drag"
+          disabled={!localCanDraft}
+          onDragStart={dragStartSkill}
+          onDragEnd={dragEnd}
+        />
 
         {#if localCanDraft}
           <div
@@ -1043,57 +1024,7 @@
     font-size: 1.05rem;
   }
 
-  /* Catalogue chips */
-  .skills {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.4em;
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-  .skill-chip {
-    --cat: #888;
-    display: grid;
-    grid-template-rows: auto auto auto;
-    align-items: center;
-    justify-items: center;
-    gap: 0.1em;
-    width: 100%;
-    padding: 0.45em 0.35em 0.35em;
-    font: inherit;
-    background: var(--paper-bg);
-    border: 1.5px solid var(--cat);
-    border-radius: 6px;
-    cursor: grab;
-    transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease;
-  }
-  .skill-chip:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--cat) 12%, var(--paper-bg));
-    transform: translateY(-1px);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
-  }
-  .skill-chip:active:not(:disabled) { cursor: grabbing; }
-  .skill-chip:disabled { opacity: 0.4; cursor: not-allowed; }
-  .skill-chip .glyph {
-    width: 32px;
-    height: 32px;
-    color: var(--cat);
-    stroke-width: 2.4;
-  }
-  .skill-chip .glyph :global(use) { stroke-width: 2.4; }
-  .skill-chip .chip-name {
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: var(--paper-ink);
-  }
-  .skill-chip .chip-cat {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--cat);
-  }
-  .skills.disabled .skill-chip { opacity: 0.35; cursor: not-allowed; }
+  /* Catalogue chips live inside <SkillPicker> (see $lib/board/SkillPicker.svelte). */
 
   .trash {
     margin-top: 0.8em;
