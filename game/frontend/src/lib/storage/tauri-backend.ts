@@ -18,6 +18,7 @@ import type {
   MatchFilter,
   MatchMeta,
   PlyEntry,
+  SavedLoadout,
   TelemetryStore,
 } from "./types";
 
@@ -71,6 +72,21 @@ export class TauriTelemetryStore implements TelemetryStore {
     throw new Error("TauriTelemetryStore not implemented");
   }
   async updateMultiplayerRole(): Promise<void> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async saveLoadout(): Promise<void> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async listLoadouts(): Promise<SavedLoadout[]> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async getLoadout(): Promise<SavedLoadout | null> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async deleteLoadout(): Promise<void> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async updateLoadoutName(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");
   }
   // Silence unused warnings on the placeholder fields.

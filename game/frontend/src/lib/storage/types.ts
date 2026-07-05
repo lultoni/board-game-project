@@ -3,6 +3,12 @@
 // A "match" is the full record of a played game (HvH / HvAI / AIvAI / MP).
 // Sandbox and Inspector are NOT logged here; they're analysis surfaces.
 //
+// Loadouts are custom `SideLoadout` records the user assembles in the
+// `/loadouts/` route. They live in their own store keyed by ULID; the
+// dedupe check operates on the skill tuple, not the display name.
+
+import type { SideLoadout } from "$lib/engine";
+//
 // Two-level layout: every applied ply is appended to the `plies` store
 // immediately (resilience to tab close mid-match). On natural game end the
 // consolidated MatchLog is written to the `matches` store with end-of-match
@@ -102,6 +108,17 @@ export interface JoinedCodeEntry {
   lastSeenSeq?: number;
 }
 
+/** A user-authored custom loadout, saved in the loadouts store. `loadout` is
+ *  a `SideLoadout` (6 pairs of skill IDs, King @ 0 + 5 Champions). The
+ *  dedupe check runs on the skill tuple only — two rows with the same
+ *  skills and different names are still duplicates. */
+export interface SavedLoadout {
+  id: string;              // ULID, time-sortable (via `newMatchId`).
+  name: string;            // Display label. Not used for dedupe.
+  loadout: SideLoadout;
+  createdAt: number;       // Unix ms.
+}
+
 /** Storage backend contract. Same surface for IDB (web) and Tauri FS
  *  (desktop). Picked at boot like the engine client. */
 export interface TelemetryStore {
@@ -172,6 +189,23 @@ export interface TelemetryStore {
    *  with an empty host slot): the row's log is authoritative, only the
    *  role changes. No-op if the row is missing. */
   updateMultiplayerRole(matchId: string, role: "host" | "joiner"): Promise<void>;
+
+  // --- custom loadouts store (Task 8) ---------------------------------------
+  /** Persist a new custom loadout row. Caller supplies the full `SavedLoadout`
+   *  including a freshly-minted ULID (`newMatchId()` reused). No dedupe here —
+   *  the caller runs `findDuplicate` against `listLoadouts()` first and either
+   *  disables the save button (manual save) or skips-and-reports (import). */
+  saveLoadout(row: SavedLoadout): Promise<void>;
+  /** All saved custom loadouts, sorted `createdAt` descending. */
+  listLoadouts(): Promise<SavedLoadout[]>;
+  /** Fetch one loadout by ID, or null if it doesn't exist. */
+  getLoadout(id: string): Promise<SavedLoadout | null>;
+  /** Remove a loadout by ID. No-op if the row is missing. */
+  deleteLoadout(id: string): Promise<void>;
+  /** Rename a loadout in place. No-op if the row is missing. Name is a
+   *  display label only — dedupe is on the skill tuple, so a rename can
+   *  never introduce or resolve a duplicate. */
+  updateLoadoutName(id: string, name: string): Promise<void>;
 }
 
 // --- ULID generation -------------------------------------------------------

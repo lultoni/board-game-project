@@ -332,6 +332,54 @@ describe("IdbTelemetryStore", () => {
       expect((await store.listJoinedCodes()).map((e) => e.code)).toEqual(["222222"]);
     });
   });
+
+  describe("loadouts store (Task 8a)", () => {
+    const LOADOUT_A = [[6, 9], [1, 6], [1, 10], [1, 9], [6, 10], [1, 9]] as const;
+    const LOADOUT_B = [[2, 6], [1, 8], [2, 9], [1, 14], [2, 6], [1, 8]] as const;
+
+    it("saveLoadout + getLoadout round-trips a row", async () => {
+      const row = { id: newMatchId(), name: "A", loadout: LOADOUT_A, createdAt: 1_000 };
+      await store.saveLoadout(row);
+      const back = await store.getLoadout(row.id);
+      expect(back).toEqual(row);
+    });
+
+    it("getLoadout returns null for unknown IDs", async () => {
+      expect(await store.getLoadout("does-not-exist")).toBeNull();
+    });
+
+    it("listLoadouts sorts newest first", async () => {
+      const older = { id: newMatchId(), name: "older", loadout: LOADOUT_A, createdAt: 1_000 };
+      const newer = { id: newMatchId(), name: "newer", loadout: LOADOUT_B, createdAt: 2_000 };
+      await store.saveLoadout(older);
+      await store.saveLoadout(newer);
+      const all = await store.listLoadouts();
+      expect(all.map((r) => r.name)).toEqual(["newer", "older"]);
+    });
+
+    it("deleteLoadout removes the row", async () => {
+      const row = { id: newMatchId(), name: "gone", loadout: LOADOUT_A, createdAt: 1_000 };
+      await store.saveLoadout(row);
+      await store.deleteLoadout(row.id);
+      expect(await store.getLoadout(row.id)).toBeNull();
+    });
+
+    it("deleteLoadout is a no-op on missing ID", async () => {
+      await expect(store.deleteLoadout("nope")).resolves.toBeUndefined();
+    });
+
+    it("updateLoadoutName changes name only, preserves skills + createdAt", async () => {
+      const row = { id: newMatchId(), name: "old", loadout: LOADOUT_A, createdAt: 1_000 };
+      await store.saveLoadout(row);
+      await store.updateLoadoutName(row.id, "new");
+      const back = await store.getLoadout(row.id);
+      expect(back).toEqual({ ...row, name: "new" });
+    });
+
+    it("updateLoadoutName is a no-op on missing ID", async () => {
+      await expect(store.updateLoadoutName("nope", "x")).resolves.toBeUndefined();
+    });
+  });
 });
 
 // Regression: users who opened `boardgame-matches-v2` from a build that

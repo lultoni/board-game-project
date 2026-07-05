@@ -17,6 +17,7 @@ import type {
   MatchMeta,
   MatchStatus,
   PlyEntry,
+  SavedLoadout,
   TelemetryStore,
 } from "./types";
 import { newMatchId } from "./types";
@@ -31,8 +32,11 @@ import type { MatchMode } from "../state/match-store.svelte";
 // The handler's `if (!objectStoreNames.contains(...))` guards make the upgrade
 // idempotent — existing matches/plies are untouched; the missing joined_codes
 // store gets created. Fresh DBs at v2 get all three stores in one pass.
+//
+// DB_VERSION bumped 2 → 3 for Task 8 (custom loadouts). Adds the `loadouts`
+// store; existing three stores are untouched by the same guarded upgrade.
 const DB_NAME = "boardgame-matches-v2";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_MATCHES = "matches";
 const STORE_PLIES = "plies";
 // Joiner-side record of multiplayer codes the user has connected to. Joiners
@@ -40,6 +44,9 @@ const STORE_PLIES = "plies";
 // they need a separate place to remember "I joined code 281947 yesterday;
 // show me a Rejoin card for it". Keyed by `code`.
 const STORE_JOINED_CODES = "joined_codes";
+// User-authored custom loadouts. Keyed by ULID. Separate store so listing
+// loadouts (fast, small) doesn't touch matches/plies.
+const STORE_LOADOUTS = "loadouts";
 
 interface MatchRow extends MatchMeta {
   // finalise fields, present only once status==="ended"
@@ -68,6 +75,10 @@ function openDb(factory: IDBFactory): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_JOINED_CODES)) {
         const s = db.createObjectStore(STORE_JOINED_CODES, { keyPath: "code" });
         s.createIndex("lastJoinedAt", "lastJoinedAtUnixMs", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_LOADOUTS)) {
+        const s = db.createObjectStore(STORE_LOADOUTS, { keyPath: "id" });
+        s.createIndex("createdAt", "createdAt", { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -427,6 +438,47 @@ export class IdbTelemetryStore implements TelemetryStore {
     const db = await this.#dbPromise;
     const tx = db.transaction(STORE_JOINED_CODES, "readwrite");
     tx.objectStore(STORE_JOINED_CODES).delete(code);
+    await awaitTx(tx);
+  }
+
+  async saveLoadout(row: SavedLoadout): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_LOADOUTS, "readwrite");
+    tx.objectStore(STORE_LOADOUTS).put(row);
+    await awaitTx(tx);
+  }
+
+  async listLoadouts(): Promise<SavedLoadout[]> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_LOADOUTS, "readonly");
+    const all = await awaitReq<SavedLoadout[]>(tx.objectStore(STORE_LOADOUTS).getAll());
+    await awaitTx(tx);
+    return all.sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  async getLoadout(id: string): Promise<SavedLoadout | null> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_LOADOUTS, "readonly");
+    const row = await awaitReq<SavedLoadout | undefined>(tx.objectStore(STORE_LOADOUTS).get(id));
+    await awaitTx(tx);
+    return row ?? null;
+  }
+
+  async deleteLoadout(id: string): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_LOADOUTS, "readwrite");
+    tx.objectStore(STORE_LOADOUTS).delete(id);
+    await awaitTx(tx);
+  }
+
+  async updateLoadoutName(id: string, name: string): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_LOADOUTS, "readwrite");
+    const store = tx.objectStore(STORE_LOADOUTS);
+    const existing = await awaitReq<SavedLoadout | undefined>(store.get(id));
+    if (!existing) return;
+    if (existing.name === name) return;
+    store.put({ ...existing, name });
     await awaitTx(tx);
   }
 }
