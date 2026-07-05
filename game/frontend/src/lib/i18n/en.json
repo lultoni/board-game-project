@@ -24,7 +24,13 @@
     "aiDrafting": "AI is drafting…",
     "waitingForPlayer": "Waiting for Player {n}…",
     "waitingForPeer": "Waiting for Player {n} (peer)…",
-    "starting": "Starting match…"
+    "starting": "Starting match…",
+    "customLoadoutHeading": "Draft from custom loadout",
+    "customLoadoutHint": "Auto-fills the remaining picks for the current side in a random order.",
+    "customLoadoutOpen": "Show custom loadouts",
+    "customLoadoutClose": "Hide custom loadouts",
+    "noCompatibleCustom": "No custom loadouts match the current draft progress.",
+    "noSavedLoadouts": "You have no saved custom loadouts yet."
   },
   "menu": {
     "newMatch": "New match",

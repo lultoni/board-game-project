@@ -33,5 +33,6 @@ export {
   type MatchMode,
   type MatchStatus,
   type PlyEntry,
+  type SavedLoadout,
   newMatchId,
 } from "./types";

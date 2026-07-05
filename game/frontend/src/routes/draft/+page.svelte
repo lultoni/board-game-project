@@ -52,6 +52,8 @@
   import MultiplayerStatusStrip from "$lib/multiplayer/MultiplayerStatusStrip.svelte";
   import { tearDownMultiplayerOnLeave } from "$lib/multiplayer/route-lifecycle";
   import { getTelemetryStore } from "$lib/storage";
+  import type { SavedLoadout } from "$lib/storage";
+  import type { SideLoadout } from "$lib/engine";
   import {
     squareName,
     STACK_M_LOADOUT_SQUARES,
@@ -107,6 +109,133 @@
   });
 
   const draftComplete = $derived((draftState?.turnNo ?? 0) >= 12);
+
+  // === Draft-from-custom-loadout (brick 8d) ==================================
+  //
+  // Auto-fills the remaining picks for the current side from a saved custom
+  // loadout, in randomised order. The dropdown is single-player only —
+  // multiplayer keeps a single shared pre-made source so both peers agree on
+  // fairness. Compatibility filter: a saved loadout is only shown if every
+  // already-drafted slot on the current side matches the loadout's stored
+  // skill for that (piece, slot). Selecting a loadout drives the remaining
+  // turns through the same `encodeDraftTurn` → `mpEngine.submitAction` path
+  // as manual picks, so the wire protocol (and telemetry) is unchanged.
+
+  let savedLoadouts = $state<SavedLoadout[]>([]);
+  let showCustomDropdown = $state(false);
+  let autoDrafting = $state(false);
+
+  onMount(async () => {
+    try {
+      savedLoadouts = await getTelemetryStore().listLoadouts();
+    } catch { /* empty catalogue is fine */ }
+  });
+
+  /** Piece offset into `usedSlots` for the currently drafting side. Pieces
+   *  0..5 are P1, 6..11 are P2. */
+  const currentPieceOffset = $derived(isP1Turn ? 0 : 6);
+
+  /** Compatibility check: every already-drafted slot on the current side must
+   *  match the loadout's stored skill for that (piece, slot). Reads slot
+   *  skills off the mailbox — same source of truth as the piece list. */
+  function loadoutIsCompatible(lo: SideLoadout): boolean {
+    if (!position || !draftState) return false;
+    const usedSlots = draftState.usedSlots;
+    for (let piece = 0; piece < 6; piece++) {
+      const sq = sideSquares[piece];
+      for (let slot = 0; slot < 2; slot++) {
+        if (!usedSlots[currentPieceOffset + piece][slot]) continue;
+        const committed = slotCommittedSkill(sq, slot);
+        if (committed !== lo[piece][slot]) return false;
+      }
+    }
+    return true;
+  }
+
+  const compatibleLoadouts = $derived.by(() => {
+    // Track the reactive deps explicitly.
+    void draftState; void position; void currentPieceOffset;
+    return savedLoadouts.filter((r) => loadoutIsCompatible(r.loadout));
+  });
+
+  /** Fisher–Yates shuffle using `crypto.getRandomValues` for non-determinism.
+   *  The auto-draft is single-player only, so no seed synchronisation is
+   *  needed. */
+  function shuffle<T>(arr: T[]): T[] {
+    const out = arr.slice();
+    const rng = new Uint32Array(1);
+    for (let i = out.length - 1; i > 0; i--) {
+      crypto.getRandomValues(rng);
+      const j = rng[0] % (i + 1);
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  /** Runs the remaining draft turns for the current side using `lo`. Each
+   *  turn picks two (piece, slot) targets in shuffled order and commits via
+   *  the same wrapper `submitAction` the manual UI uses. Aborts on the first
+   *  refused submission. */
+  async function autoDraftFromLoadout(lo: SideLoadout): Promise<void> {
+    if (isMultiplayer) return; // guard: dropdown is hidden but be safe
+    if (!eng || !mpEngine || !position || !draftState) return;
+    if (busy || autoDrafting) return;
+    // Discard any tentative picks so the auto-fill starts from a clean slate.
+    clearPicks();
+    // Capture the starting side once — the loop only fills for THIS side, so
+    // as soon as `isP1Turn` flips (turn commits to the other player) we stop.
+    const startedAsP1 = isP1Turn;
+    const startingOffset = startedAsP1 ? 0 : 6;
+    const startingSquares = startedAsP1 ? P1_SQUARES : P2_SQUARES;
+    autoDrafting = true;
+    try {
+      while (!draftComplete && isP1Turn === startedAsP1) {
+        // Snapshot the remaining slots for the starting side from usedSlots.
+        const remaining: Array<{ piece: number; slot: number }> = [];
+        for (let piece = 0; piece < 6; piece++) {
+          for (let slot = 0; slot < 2; slot++) {
+            if (!draftState.usedSlots[startingOffset + piece][slot]) {
+              remaining.push({ piece, slot });
+            }
+          }
+        }
+        if (remaining.length < 2) return; // shouldn't happen — sanity guard
+        const order = shuffle(remaining);
+        const a = order[0], b = order[1];
+        const s1 = lo[a.piece][a.slot];
+        const s2 = lo[b.piece][b.slot];
+        const sq1 = startingSquares[a.piece];
+        const sq2 = startingSquares[b.piece];
+        const raw = encodeDraftTurn(s1, sq1, a.slot, s2, sq2, b.slot);
+        sfx.play("phaseEnd");
+        busy = true;
+        try {
+          const result = await mpEngine.submitAction(raw);
+          if (!result.accepted) {
+            if (result.reason && result.reason !== "illegal") {
+              bootError = `auto-draft refused: ${result.reason}`;
+            }
+            return;
+          }
+        } finally {
+          busy = false;
+        }
+        // The wrapper's onApplied refreshes position + draftState; wait a
+        // microtask for reactive rerun.
+        await Promise.resolve();
+      }
+    } catch (e) {
+      bootError = (e as Error)?.message ?? String(e);
+    } finally {
+      autoDrafting = false;
+      showCustomDropdown = false;
+    }
+  }
+
+  function toggleCustomDropdown(): void {
+    sfx.play("click");
+    showCustomDropdown = !showCustomDropdown;
+  }
 
   // === Picker state ==========================================================
   //
@@ -950,6 +1079,57 @@
         {/each}
       </section>
     </div>
+
+    {#if !isMultiplayer && localCanDraft}
+      <section class="custom-loadouts">
+        <button
+          type="button"
+          class="cl-toggle"
+          onclick={toggleCustomDropdown}
+          aria-expanded={showCustomDropdown}
+        >
+          <span class="cl-caret">{showCustomDropdown ? "▾" : "▸"}</span>
+          {t("draft.customLoadoutHeading")}
+        </button>
+        {#if showCustomDropdown}
+          <p class="cl-hint">{t("draft.customLoadoutHint")}</p>
+          {#if savedLoadouts.length === 0}
+            <p class="cl-empty">{t("draft.noSavedLoadouts")}</p>
+          {:else if compatibleLoadouts.length === 0}
+            <p class="cl-empty">{t("draft.noCompatibleCustom")}</p>
+          {:else}
+            <ul class="cl-list">
+              {#each compatibleLoadouts as row (row.id)}
+                <li>
+                  <button
+                    type="button"
+                    class="cl-row"
+                    disabled={autoDrafting || busy}
+                    onclick={() => autoDraftFromLoadout(row.loadout)}
+                  >
+                    <span class="cl-name">{row.name}</span>
+                    <span class="cl-icons">
+                      {#each row.loadout as pair}
+                        {#each pair as sid}
+                          <svg
+                            class="cl-glyph"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                            style:--cat={skillColor(sid)}
+                          >
+                            <use href="#skill-glyph-{sid}" />
+                          </svg>
+                        {/each}
+                      {/each}
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      </section>
+    {/if}
   {/if}
 </main>
 
@@ -1165,5 +1345,69 @@
     border: 1.5px dashed currentColor;
     padding: 0.5em 0.8em;
     border-radius: 6px;
+  }
+  .custom-loadouts {
+    margin-top: 1rem;
+    padding: 0.5em 0.8em;
+    border: 1.5px solid var(--paper-line-strong);
+    border-radius: 6px;
+    background: var(--paper-bg);
+  }
+  .cl-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    background: none;
+    border: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--paper-ink);
+    cursor: pointer;
+    padding: 0.2em 0;
+  }
+  .cl-caret { display: inline-block; width: 1em; text-align: center; }
+  .cl-hint {
+    margin: 0.4em 0 0.6em;
+    font-size: 0.85rem;
+    color: var(--paper-ink-soft);
+    font-style: italic;
+  }
+  .cl-empty {
+    margin: 0.4em 0 0.2em;
+    color: var(--paper-ink-soft);
+    font-style: italic;
+  }
+  .cl-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 12rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .cl-row {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    width: 100%;
+    padding: 0.4em 0.6em;
+    border: 1.5px solid var(--paper-line);
+    border-radius: 4px;
+    background: var(--paper-bg);
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+  }
+  .cl-row:hover:not(:disabled) { border-color: var(--paper-line-strong); }
+  .cl-row:disabled { opacity: 0.55; cursor: default; }
+  .cl-name { flex: 1; font-weight: 600; }
+  .cl-icons { display: inline-flex; gap: 2px; flex-wrap: wrap; }
+  .cl-glyph {
+    width: 18px;
+    height: 18px;
+    color: var(--cat);
+    fill: currentColor;
   }
 </style>

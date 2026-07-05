@@ -39,7 +39,13 @@
     "aiDrafting": "KI draftet…",
     "waitingForPlayer": "Warte auf Spieler {n}…",
     "waitingForPeer": "Warte auf Spieler {n} (Gegner)…",
-    "starting": "Partie startet…"
+    "starting": "Partie startet…",
+    "customLoadoutHeading": "Aus eigenem Loadout draften",
+    "customLoadoutHint": "Füllt die verbleibenden Picks der aktuellen Seite in zufälliger Reihenfolge automatisch aus.",
+    "customLoadoutOpen": "Eigene Loadouts anzeigen",
+    "customLoadoutClose": "Eigene Loadouts ausblenden",
+    "noCompatibleCustom": "Keine eigenen Loadouts passen zum aktuellen Draft-Stand.",
+    "noSavedLoadouts": "Du hast noch keine eigenen Loadouts gespeichert."
   },
   "library": {
     "title": "Bibliothek",
