@@ -68,6 +68,7 @@
       <li><a href="./inspector/" onclick={() => sfx.play("click")}>{t("menu.openInspector")}</a></li>
       <li><a href="./replay/" onclick={() => sfx.play("click")}>{t("menu.openReplay")}</a></li>
       <li><a href="./library/" onclick={() => sfx.play("click")}>{t("menu.openLibrary")}</a></li>
+      <li><a href="./loadouts/" onclick={() => sfx.play("click")}>{t("menu.openLoadouts")}</a></li>
       {#if backend === "tauri"}
         <li><a href="./training/" onclick={() => sfx.play("click")}>Training Observatory</a></li>
       {/if}
