@@ -15,7 +15,7 @@
     MODIFIER_CHARGE,
     runAiCall,
   } from "$lib/engine";
-  import { PRE_MADE_LOADOUTS } from "$lib/state/draft";
+  import { resolveLoadout } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
   import {
     match,
@@ -564,21 +564,30 @@
       // `multiplayerRole` / `multiplayerCode` $derived constants) so they
       // automatically survive the reset.
       const wasMultiplayer = match.mode === "multiplayer";
-      // L8 — pre-made loadout path. Snapshot BEFORE resetMatchState() because
-      // the reset clears `preMadeLoadoutId` (so stale ids from a prior match
-      // can't leak in via direct navigation). `/setup/` writes the field on
-      // commit; we read it here once and consume.
-      const preMadeId = match.preMadeLoadoutId;
+      // Task 8 — per-side loadout path (either both pre-made / mirror match,
+      // or per-side custom+preMade mixes for local play). Snapshot BEFORE
+      // resetMatchState() because the reset clears `sideLoadouts` (so stale
+      // ids from a prior match can't leak in via direct navigation).
+      // `/setup/` writes the field on commit; we read it here once and
+      // consume via `resolveLoadout()`.
+      const sideLoadouts = match.sideLoadouts;
       resetMatchState();
       match.side = sideAtBoot;
-      if (preMadeId) {
-        // Both sides play the same curated loadout — mirror match.
-        const loadout = PRE_MADE_LOADOUTS[preMadeId];
-        const configJson = buildEngineConfigJson(sideAtBoot);
-        await eng.createEngineWithLoadouts(configJson, loadout, loadout);
+      if (sideLoadouts) {
+        const p1Loadout = await resolveLoadout(sideLoadouts.p1);
+        const p2Loadout = await resolveLoadout(sideLoadouts.p2);
+        if (p1Loadout && p2Loadout) {
+          const configJson = buildEngineConfigJson(sideAtBoot);
+          await eng.createEngineWithLoadouts(configJson, p1Loadout, p2Loadout);
+        } else {
+          // Custom row was deleted between the /setup/ pick and here. Fall
+          // back to a blank engine so the route doesn't deadlock.
+          console.warn("resolveLoadout returned null; falling back to fresh engine");
+          await eng.createEngine();
+        }
         // Consume — re-entering /match/ later (e.g. a snapshot restore from
         // the inspector) should NOT re-create from loadouts.
-        match.preMadeLoadoutId = null;
+        match.sideLoadouts = null;
       } else if (pending) {
         try {
           validateSnapshot(pending, {

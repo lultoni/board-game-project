@@ -10,10 +10,12 @@
     multiplayerRole,
     type SeatKind,
     type DraftMode,
+    type LoadoutRef,
     type PreMadeLoadoutId,
   } from "$lib/state/match-store.svelte";
   import { settings, type EvaluatorChoice, type EvaluatorSource } from "$lib/state/settings.svelte";
   import { isPreMadeLoadoutReady } from "$lib/state/draft";
+  import type { SavedLoadout } from "$lib/storage/types";
   import {
     disconnect as mpDisconnect,
     mpState,
@@ -83,9 +85,14 @@
       const msg = decodeMessageV2(raw);
       if (!msg || msg.kind !== "game-config") return;
       match.draftMode = msg.mode;
-      match.preMadeLoadoutId = msg.mode === "preMade"
-        ? (msg.preMadeId as PreMadeLoadoutId | null)
-        : null;
+      if (msg.mode === "preMade" && msg.preMadeId) {
+        // Multiplayer keeps the shared-picker rule: both sides play the same
+        // pre-made loadout. Custom loadouts are disabled in MP for fairness.
+        const ref: LoadoutRef = { kind: "preMade", id: msg.preMadeId as PreMadeLoadoutId };
+        match.sideLoadouts = { p1: ref, p2: ref };
+      } else {
+        match.sideLoadouts = null;
+      }
       match.side = { p1: "human", p2: "human" };
       navigatingForward = true;
       if (msg.mode === "preMade") {
@@ -116,16 +123,60 @@
   let p1: SeatKind = $state(match.side.p1);
   let p2: SeatKind = $state(match.side.p2);
 
-  // L8 — draft mode + pre-made loadout selection. Custom is the default;
-  // pre-made picks one of the three curated loadouts (all play as mirror
-  // matches — both sides use the same loadout).
+  // L8/Task 8 — draft mode + per-side loadout selection. Custom is the
+  // default; pre-made picks one of the three curated loadouts (or a saved
+  // custom loadout, local play only).
+  //
+  // For local play, P1 and P2 can independently pick any pre-made or any
+  // saved custom loadout. For multiplayer, the picker is a single shared
+  // control that only offers pre-mades — both sides get the same ref. The
+  // fairness story for MP custom loadouts hasn't been designed yet
+  // (deferred question), so custom picks are disallowed in MP.
   let draftMode: DraftMode = $state(match.draftMode);
-  let preMadeId: PreMadeLoadoutId = $state(match.preMadeLoadoutId ?? "firstGame");
+  // Initialize each side's ref from whatever match state currently holds, or
+  // default to firstGame. Saved rows are loaded async in a separate onMount.
+  const initialRef = (side: "p1" | "p2"): LoadoutRef => {
+    const cur = match.sideLoadouts?.[side];
+    if (cur) return cur;
+    return { kind: "preMade", id: "firstGame" };
+  };
+  let p1Ref = $state<LoadoutRef>(initialRef("p1"));
+  let p2Ref = $state<LoadoutRef>(initialRef("p2"));
+  // MP shared-picker mirror: the host's single pick that both sides receive.
+  let mpSharedPreMadeId = $state<PreMadeLoadoutId>(
+    (match.sideLoadouts?.p1.kind === "preMade" ? match.sideLoadouts.p1.id : null) ?? "firstGame",
+  );
+
+  // Saved custom loadouts, loaded async on mount. Empty until the IDB
+  // read completes; the picker treats an empty list as "no customs yet"
+  // and only shows the pre-made section.
+  let savedLoadouts = $state<SavedLoadout[]>([]);
+  onMount(async () => {
+    try {
+      const { getTelemetryStore } = await import("$lib/storage");
+      savedLoadouts = await getTelemetryStore().listLoadouts();
+    } catch {
+      savedLoadouts = [];
+    }
+  });
 
   const hasAi = $derived(p1 === "ai" || p2 === "ai");
   const isAivAi = $derived(p1 === "ai" && p2 === "ai");
 
-  const preMadeReady = $derived(isPreMadeLoadoutReady(preMadeId));
+  /** Returns true when the given ref points at something valid and complete.
+   *  For pre-mades this is `isPreMadeLoadoutReady`; for custom refs it
+   *  checks that the id still exists in `savedLoadouts`. */
+  function isRefReady(ref: LoadoutRef): boolean {
+    if (ref.kind === "preMade") return isPreMadeLoadoutReady(ref.id);
+    return savedLoadouts.some((r) => r.id === ref.id);
+  }
+
+  const p1Ready = $derived(isRefReady(p1Ref));
+  const p2Ready = $derived(isRefReady(p2Ref));
+  const mpSharedReady = $derived(isPreMadeLoadoutReady(mpSharedPreMadeId));
+  const bothReady = $derived(
+    isMultiplayer ? mpSharedReady : (p1Ready && p2Ready),
+  );
 
   const PRE_MADE_OPTIONS: { id: PreMadeLoadoutId; labelKey: string }[] = [
     { id: "firstGame",  labelKey: "setup.preMadeLoadouts.firstGame" },
@@ -147,7 +198,17 @@
       match.mode = modeFromSeats({ p1, p2 });
     }
     match.draftMode = draftMode;
-    match.preMadeLoadoutId = draftMode === "preMade" ? preMadeId : null;
+    if (draftMode === "preMade") {
+      if (isMultiplayer) {
+        // MP: mirror the host's single pre-made pick onto both sides.
+        const ref: LoadoutRef = { kind: "preMade", id: mpSharedPreMadeId };
+        match.sideLoadouts = { p1: ref, p2: ref };
+      } else {
+        match.sideLoadouts = { p1: p1Ref, p2: p2Ref };
+      }
+    } else {
+      match.sideLoadouts = null;
+    }
     // MP host coordinates navigation with the joiner via `game-config`. The
     // matchId slot here is a nav-only placeholder — the real authoritative
     // matchId is anchored later by the wrapper's `session-hello` from
@@ -157,13 +218,13 @@
       const msg: WireMessageV2 = {
         kind: "game-config",
         mode: draftMode,
-        preMadeId: draftMode === "preMade" ? preMadeId : null,
+        preMadeId: draftMode === "preMade" ? mpSharedPreMadeId : null,
         matchId: mpState.code ?? "pending",
       };
       mpSendRaw(encodeMessageV2(msg));
     }
     if (draftMode === "preMade") {
-      // Skip the /draft/ route entirely — /match/ reads preMadeLoadoutId and
+      // Skip the /draft/ route entirely — /match/ reads sideLoadouts and
       // builds the engine with both sides preloaded.
       navigatingForward = true;
       await goto("../match/");
@@ -421,29 +482,87 @@
       </div>
 
       {#if draftMode === "preMade"}
-        <fieldset class="preMadePicker">
-          <legend>{t("setup.preMadeLoadouts.header")}</legend>
-          {#each PRE_MADE_OPTIONS as opt}
-            {@const ready = isPreMadeLoadoutReady(opt.id)}
-            <label class:disabled={!ready}>
-              <input
-                type="radio"
-                name="preMadeId"
-                value={opt.id}
-                checked={preMadeId === opt.id}
-                disabled={!ready}
-                onchange={() => { sfx.play("click"); preMadeId = opt.id; }}
-              />
-              <span>{t(opt.labelKey)}</span>
-              {#if !ready}
-                <span class="placeholderTag">{t("setup.preMadeLoadouts.placeholder")}</span>
-              {/if}
-            </label>
-          {/each}
-          {#if !preMadeReady}
+        {#if isMultiplayer}
+          <!-- MP: single shared picker; both sides play the same pre-made. -->
+          <fieldset class="preMadePicker">
+            <legend>{t("setup.preMadeLoadouts.header")}</legend>
+            {#each PRE_MADE_OPTIONS as opt}
+              {@const ready = isPreMadeLoadoutReady(opt.id)}
+              <label class:disabled={!ready}>
+                <input
+                  type="radio"
+                  name="mpSharedPreMadeId"
+                  value={opt.id}
+                  checked={mpSharedPreMadeId === opt.id}
+                  disabled={!ready}
+                  onchange={() => { sfx.play("click"); mpSharedPreMadeId = opt.id; }}
+                />
+                <span>{t(opt.labelKey)}</span>
+                {#if !ready}
+                  <span class="placeholderTag">{t("setup.preMadeLoadouts.placeholder")}</span>
+                {/if}
+              </label>
+            {/each}
+            {#if !mpSharedReady}
+              <p class="warn">{t("setup.preMadeLoadouts.notReadyWarning")}</p>
+            {/if}
+          </fieldset>
+        {:else}
+          <!-- Local play: per-side pickers. Each side lists pre-mades then a
+               divider then any saved custom loadouts. Passing a `ref` shape
+               keeps the union type honest at the write site. -->
+          <div class="sidePickers">
+            {#each [{ side: "p1" as const, label: t("setup.p1Label") }, { side: "p2" as const, label: t("setup.p2Label") }] as col}
+              {@const currentRef = col.side === "p1" ? p1Ref : p2Ref}
+              <fieldset class="preMadePicker side" class:p1={col.side === "p1"} class:p2={col.side === "p2"}>
+                <legend>{col.label}</legend>
+                {#each PRE_MADE_OPTIONS as opt}
+                  {@const ready = isPreMadeLoadoutReady(opt.id)}
+                  {@const isChecked = currentRef.kind === "preMade" && currentRef.id === opt.id}
+                  <label class:disabled={!ready}>
+                    <input
+                      type="radio"
+                      name={`loadout-${col.side}`}
+                      checked={isChecked}
+                      disabled={!ready}
+                      onchange={() => {
+                        sfx.play("click");
+                        const ref: LoadoutRef = { kind: "preMade", id: opt.id };
+                        if (col.side === "p1") p1Ref = ref; else p2Ref = ref;
+                      }}
+                    />
+                    <span>{t(opt.labelKey)}</span>
+                    {#if !ready}
+                      <span class="placeholderTag">{t("setup.preMadeLoadouts.placeholder")}</span>
+                    {/if}
+                  </label>
+                {/each}
+                {#if savedLoadouts.length > 0}
+                  <div class="divider">— {t("loadouts.listHeading")} —</div>
+                  {#each savedLoadouts as row (row.id)}
+                    {@const isChecked = currentRef.kind === "custom" && currentRef.id === row.id}
+                    <label>
+                      <input
+                        type="radio"
+                        name={`loadout-${col.side}`}
+                        checked={isChecked}
+                        onchange={() => {
+                          sfx.play("click");
+                          const ref: LoadoutRef = { kind: "custom", id: row.id };
+                          if (col.side === "p1") p1Ref = ref; else p2Ref = ref;
+                        }}
+                      />
+                      <span>{row.name}</span>
+                    </label>
+                  {/each}
+                {/if}
+              </fieldset>
+            {/each}
+          </div>
+          {#if !bothReady}
             <p class="warn">{t("setup.preMadeLoadouts.notReadyWarning")}</p>
           {/if}
-        </fieldset>
+        {/if}
       {/if}
     </section>
   {/if}
@@ -453,7 +572,7 @@
       <button
         class="primary"
         onclick={start}
-        disabled={draftMode === "preMade" && !preMadeReady}
+        disabled={draftMode === "preMade" && !bothReady}
       >{t("setup.continue")}</button>
     </div>
   {/if}
@@ -611,6 +730,23 @@
   .preMadePicker label.disabled {
     color: var(--paper-ink-soft);
     cursor: not-allowed;
+  }
+  .sidePickers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7em;
+    margin-top: 0.7em;
+  }
+  @media (max-width: 640px) {
+    .sidePickers { grid-template-columns: 1fr; }
+  }
+  .preMadePicker.side.p1 legend { color: var(--p1, #2b4a8a); }
+  .preMadePicker.side.p2 legend { color: var(--p2, #a13a2a); }
+  .divider {
+    margin: 0.4em 0 0.2em;
+    font-size: 0.85em;
+    color: var(--paper-ink-soft);
+    text-align: center;
   }
   .placeholderTag {
     font-size: 0.85em;

@@ -26,14 +26,34 @@ export type DraftMode = "custom" | "preMade";
  *  the setup screen; both sides play the same loadout (mirror match). */
 export type PreMadeLoadoutId = "firstGame" | "secondGame" | "thirdGame";
 
+/** L8/Task 8 — a resolved reference to whichever loadout a side is playing
+ *  in a `preMade`-flow local match. Either a hard-coded pre-made id, or a
+ *  ULID pointing at a saved row in IDB's `loadouts` store. `/match/`
+ *  resolves this to a concrete `SideLoadout` at engine-boot time via
+ *  `resolveLoadout()`. Multiplayer still uses only `{ kind: "preMade" }` on
+ *  both sides (shared picker; fairness constraint). */
+export type LoadoutRef =
+  | { kind: "preMade"; id: PreMadeLoadoutId }
+  | { kind: "custom";  id: string };
+
 export interface MatchState {
   mode: MatchMode;
   side: { p1: SeatKind; p2: SeatKind };
   /** L8 — which draft flow to enter on `/draft/`. Set by `/setup/`. */
   draftMode: DraftMode;
-  /** L8 — only consulted when `draftMode === "preMade"`. `/match/` reads
-   *  this to call `createEngineWithLoadouts`, then clears it. */
-  preMadeLoadoutId: PreMadeLoadoutId | null;
+  /** Task 8 — per-side loadout picks for `draftMode === "preMade"` local
+   *  matches. `/match/` reads this to call `createEngineWithLoadouts`
+   *  after resolving each side (pre-made table lookup or IDB row fetch),
+   *  then clears it. `null` means no pre-made flow was selected.
+   *
+   *  Multiplayer invariant: when set in MP mode, both sides MUST reference
+   *  the same pre-made id. The wire protocol only ships a single
+   *  `preMadeId` and the joiner mirrors it onto both slots.
+   *
+   *  This replaces the singular `preMadeLoadoutId` that existed before
+   *  Task 8. Left un-versioned because match state is session-scoped —
+   *  nothing persists it across restarts. */
+  sideLoadouts: { p1: LoadoutRef; p2: LoadoutRef } | null;
   position: PositionView | null;
   legal: Uint32Array;
   /** Square (0..63) currently selected by the human, if any. */
@@ -75,7 +95,7 @@ export const match = $state<MatchState>({
   mode: "idle",
   side: { p1: "human", p2: "human" },
   draftMode: "custom",
-  preMadeLoadoutId: null,
+  sideLoadouts: null,
   position: null,
   legal: new Uint32Array(),
   selection: null,
@@ -106,11 +126,11 @@ export function multiplayerCode(): string | null {
 export function resetMatchState(): void {
   match.mode = "idle";
   // Preserve `side` across resets — set by setup, consumed by draft & match.
-  // `draftMode` and `preMadeLoadoutId` reset to their defaults so that direct
+  // `draftMode` and `sideLoadouts` reset to their defaults so that direct
   // navigation to /match/ without going through /setup/ doesn't inherit stale
   // mode picks from a previous match. `/setup/` re-writes both on commit.
   match.draftMode = "custom";
-  match.preMadeLoadoutId = null;
+  match.sideLoadouts = null;
   match.position = null;
   match.legal = new Uint32Array();
   match.selection = null;

@@ -13,7 +13,8 @@ import {
   type Owner,
   type SideLoadout,
 } from "$lib/engine";
-import type { PreMadeLoadoutId } from "$lib/state/match-store.svelte";
+import type { LoadoutRef, PreMadeLoadoutId } from "$lib/state/match-store.svelte";
+import { getTelemetryStore } from "$lib/storage";
 
 /** Two skill IDs (1..15). 0 = empty slot. */
 export type Loadout = [number, number];
@@ -112,4 +113,17 @@ export function isPreMadeLoadoutReady(id: PreMadeLoadoutId): boolean {
     if (s1 === s2) return false;
   }
   return true;
+}
+
+/** Task 8 — resolve a `LoadoutRef` to a concrete `SideLoadout`. Pre-made
+ *  ids hit the in-memory table; custom ids fetch from IDB's `loadouts`
+ *  store. Returns `null` when a custom row can't be found (deleted between
+ *  the setup pick and the /match/ boot). Callers should fall back to a
+ *  default (or refuse to boot) on `null`. */
+export async function resolveLoadout(ref: LoadoutRef): Promise<SideLoadout | null> {
+  if (ref.kind === "preMade") {
+    return PRE_MADE_LOADOUTS[ref.id] ?? null;
+  }
+  const row = await getTelemetryStore().getLoadout(ref.id);
+  return row ? row.loadout : null;
 }
