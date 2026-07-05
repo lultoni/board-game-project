@@ -14,6 +14,7 @@
   import { buildEngineConfigJson, applyEvaluatorSettings } from "$lib/state/match-store.svelte";
   import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
   import SkillPicker from "$lib/board/SkillPicker.svelte";
+  import LoadoutBoard from "$lib/board/LoadoutBoard.svelte";
   import { t } from "$lib/state/i18n";
   import {
     match,
@@ -915,6 +916,24 @@
     const entry = decodeMailbox(position.mailbox[sq]);
     return slot === 0 ? entry.skill1 : entry.skill2;
   }
+
+  /** Snapshot the drafting side's currently-committed skills as a
+   *  `SideLoadout`, for the read-only LoadoutBoard preview (brick 8i).
+   *  Unfilled slots are 0 and render as empty placeholders in the mini-board.
+   *  Tentative picks are NOT included — only committed slots — so the
+   *  preview stays authoritative against the engine state. */
+  const draftedSideLoadout = $derived.by(() => {
+    if (!position) return null;
+    const pairs: Array<[number, number]> = [];
+    for (let i = 0; i < 6; i++) {
+      const sq = sideSquares[i];
+      pairs.push([
+        slotCommittedSkill(sq, 0),
+        slotCommittedSkill(sq, 1),
+      ]);
+    }
+    return pairs as unknown as SideLoadout;
+  });
 </script>
 
 <SkillGlyphDefs />
@@ -1011,6 +1030,17 @@
             aria-label="drop here to remove tentative pick"
           >
             {t("draft.removeHint")}
+          </div>
+        {/if}
+
+        {#if draftedSideLoadout}
+          <div class="drafted-preview" aria-label="drafted so far">
+            <LoadoutBoard
+              side={isP1Turn ? "p1" : "p2"}
+              loadout={draftedSideLoadout}
+              interactive={false}
+              selectedPieceIdx={null}
+            />
           </div>
         {/if}
       </section>
@@ -1409,5 +1439,10 @@
     height: 18px;
     color: var(--cat);
     fill: currentColor;
+  }
+  .drafted-preview {
+    margin-top: 0.8rem;
+    display: flex;
+    justify-content: center;
   }
 </style>
