@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-07-03 — Session 40 end (WS relay + v0.1.0 release).*
+*Last updated: 2026-07-06 — Session 42 end (Task 8 shipped).*
 
 ---
 
@@ -30,42 +30,49 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 40 end, 2026-07-02)
+### Where We Are (Session 42 end, 2026-07-06)
 
-- **v0.1.0 is built and waiting.** GH Actions Release workflow ran successfully on the `v0.1.0` tag. All 5 matrix artefacts exist: macOS .dmg, Linux .AppImage (CPU + CUDA), Windows .msi/.exe (CPU + CUDA). It is a draft release — not yet published.
-- **Multiplayer now uses a WS relay.** PeerJS/WebRTC replaced with a custom WS relay hosted on Fly.io (`boardgame-relay.fly.dev`). Works on all platforms including Linux. Protocol documented in `game/PROTOCOL_TRACE.md`.
-- **Engine is stable.** Combo bonus self-grant bug fixed (session 39). Bodyguard DTO projected into position snapshots. Linux audio/animation workarounds in place.
+- **Task 8 shipped.** Custom loadout manager complete: `/loadouts/` route (list/editor/import/export), IDB v3 `loadouts` store, `L1:` base64url share codes + JSON, dedupe on skill tuple, per-side setup pickers (`sideLoadouts` refactor of match-store), draft-from-custom dropdown with compatibility filter + auto-fill, read-only mini-board preview on draft screen. Shared `BackButton.svelte` rolled out across seven routes.
+- **v0.1.0 is still built and waiting.** Draft release from Session 40 has not yet been tested on real hardware. WS relay (Fly.io) still the multiplayer transport.
+- **Engine unchanged this session.** No design decisions; no OQs resolved. Pure feature engineering on the frontend.
 
 ### Immediate Next Action
 
-**Test the v0.1.0 release artefacts on actual hardware.** Download from the GitHub draft release, install/run on each target platform, and verify:
-1. App launches and plays a normal game.
-2. Multiplayer via WS relay works end-to-end (host create → guest join → move relay → game completion).
-3. If all platforms pass: publish the draft release.
+**Test the v0.1.0 release artefacts on actual hardware** (unchanged from Session 40 end):
+1. Download from the GitHub draft release, install/run on each target platform.
+2. Verify multiplayer via WS relay works end-to-end (host create → guest join → move relay → game completion).
+3. Smoke-test the MP setup path (single shared picker branch — code touched by Session 42's `sideLoadouts` refactor).
+4. If all platforms pass: publish the draft release.
 
 ### Open methodological loose ends
 
 - A5: Replay page parity (PlayerPanels, turn strip) — deferred
 - ETA field in status snapshot always null — not computed yet
+- MP loadout fairness story (custom loadouts disabled in MP) — deferred; noted in code
 - v0.1.0 draft release — needs publish after cross-platform testing
 
 ### Key DB Queries
 
 | Query | Returns |
 |-------|---------|
+| `SELECT body FROM sessions WHERE id='session-42';` | Task 8 — Custom Loadout Manager |
+| `SELECT body FROM sessions WHERE id='session-41';` | Task batch + Phase A/B search sweep |
 | `SELECT body FROM sessions WHERE id='session-40';` | WS relay + v0.1.0 release |
-| `SELECT body FROM sessions WHERE id='session-39';` | Stabilisation (engine bugs, Linux, RC2) |
-| `SELECT body FROM sessions WHERE id='session-38';` | NN Trainer Debug + Gauntlet Speed |
 | `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance |
 
 ### Key Files
 
 | Path | Purpose |
 |------|---------|
-| `game/relay/` | WS relay server (hosted on Fly.io) |
-| `game/PROTOCOL_TRACE.md` | Full WS relay protocol documentation |
-| `game/frontend/src/lib/multiplayer/websocket-transport.ts` | New WS transport (replaces transport.ts) |
-| `game/frontend/src/lib/multiplayer/route-lifecycle.ts` | Route connect/disconnect lifecycle |
-| `.github/workflows/release.yml` | Release matrix (injects relay secrets) |
+| `game/frontend/src/routes/loadouts/+page.svelte` | Loadout editor route |
+| `game/frontend/src/lib/board/LoadoutBoard.svelte` | Mini-board (viewBox-croppable) |
+| `game/frontend/src/lib/board/SkillPicker.svelte` | Shared 15-skill grid (drag + click modes) |
+| `game/frontend/src/lib/storage/loadout-codec.ts` | `L1:` share code + JSON codec |
+| `game/frontend/src/lib/storage/loadout-dedupe.ts` | Skill-tuple dedupe |
+| `game/frontend/src/lib/ui/BackButton.svelte` | Shared back button |
+| `game/frontend/src/lib/state/match-store.svelte.ts` | `sideLoadouts: { p1, p2 }` |
+| `game/relay/` | WS relay server (Fly.io) |
+| `game/PROTOCOL_TRACE.md` | WS relay protocol |
+| `.github/workflows/release.yml` | Release matrix |
 | `design/design.db` | Source of truth (binary; committed) |
 | `.claude/STATUS.md` | One-screen re-entry summary |

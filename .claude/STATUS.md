@@ -2,29 +2,30 @@
 
 *One-screen re-entry doc. Read first after a gap. Regenerated from the DB at session end.*
 
-*Last updated: 2026-07-03 — Session 40 end (WS relay + v0.1.0 release).*
+*Last updated: 2026-07-06 — Session 42 end (Task 8 shipped).*
 
 ---
 
 ## Current focus
 
-**Testing the v0.1.0 release artefacts.** The GH Actions release workflow ran successfully (all 5 matrix jobs). Draft release at GitHub Releases has macOS .dmg, Linux .AppImage (CPU+CUDA), Windows .msi/.exe (CPU+CUDA). Need to test the prebuilt binaries on actual hardware across platforms and verify multiplayer (WS relay, Fly.io) end-to-end in the shipped builds.
+**Testing the v0.1.0 release artefacts + MP prebuilt smoke** — unchanged from Session 40/41 end. Task 8 (custom loadout manager) is now fully shipped and doesn't gate release, but the two testing blockers below still do.
 
 ## Active stack
 
 **Stack M — Game Length Cut.** Engine + UI are Stack M-shaped. `sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"`.
 
-## What changed since session 38
+## What changed since session 41
 
-- **Session 39 (2026-06-30):** Stabilisation. Cargo.lock pinned (CI time-crate breakage). Engine bug fixed: combo bonus self-grant when same piece hooks twice (`relocate_piece` now updates dedup arrays). Linux fixes: AudioContext sandbox workaround, animation lag (DMABUF), "not available on Linux" notice for MP. Bodyguard DTO fix: `pending_bodyguard` now projected into `PositionViewDto`. RC2 release workflow succeeded.
-- **Session 40 (2026-07-02):** PeerJS/WebRTC replaced with custom WS relay (`game/relay/`) hosted on Fly.io. New frontend transport layer: `websocket-transport.ts`, `transport-config.ts`, `route-lifecycle.ts`, `MultiplayerStatusStrip.svelte`. Protocol documented in `game/PROTOCOL_TRACE.md`. Release workflow now injects relay secrets. `v0.1.0` tag pushed — all 5 matrix artefacts produced (draft release).
+- **Session 42 (2026-07-06):** Task 8 fully shipped in nine commits (`40f284d` … `9bbf6db`). IDB v3 loadouts store, share-code (`L1:` base64url) + JSON export/import, dedupe on skill tuple, `/loadouts/` editor with mini-board + skill picker, per-side loadout pickers in setup (`sideLoadouts: { p1, p2 }` refactor of `match-store`), draft-from-custom dropdown with compatibility filter + randomised auto-fill, read-only mini-board preview on draft screen. Follow-up UX pass: shared `BackButton` component across seven routes, 3-rank board cutout in editor via viewBox crop, vertical editor stack, orientation toggle removed.
 
 ## Immediate next action
 
-Test the v0.1.0 release artefacts:
-1. Download and run each platform's build (macOS .dmg, Linux .AppImage, Windows .msi).
-2. Verify multiplayer over the WS relay works end-to-end in the prebuilt versions (not just in dev).
-3. If all good, publish the draft release.
+Unchanged from Session 40 end — Task 8 was interleaved work, not a shift in priorities:
+
+1. Download and run each platform's v0.1.0 build (macOS .dmg, Linux .AppImage, Windows .msi).
+2. Verify WS-relay multiplayer end-to-end in the prebuilt versions (not just in dev).
+3. Test the MP setup-shared-picker branch once (unchanged code path, but now shares `sideLoadouts` refactor plumbing — worth a smoke test).
+4. Publish the draft release once cross-platform smoke passes.
 
 ## Live critical / high-priority open questions
 
@@ -32,10 +33,11 @@ Test the v0.1.0 release artefacts:
 
 ## Open loose ends
 
-- A5: Replay page parity (PlayerPanels, turn strip) — logged, not started
-- ETA field in status snapshot always null — not yet computed
-- v0.1.0 is a draft release — needs publish after testing
+- A5: Replay page parity (PlayerPanels, turn strip) — deferred
+- ETA field in status snapshot always null — not computed yet
+- MP loadout fairness story (blocks custom loadouts in MP) — deferred; noted in code
+- v0.1.0 draft release — still awaiting cross-platform smoke test + publish
 
 ## DB sanity
 
-Sessions 39 + 40 rows inserted. `PRAGMA integrity_check` → ok.
+Session 42 row inserted. `PRAGMA integrity_check` → ok.
