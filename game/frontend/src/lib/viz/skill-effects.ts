@@ -467,21 +467,662 @@ const renderFallback: SkillRenderer = (ctx, eff, age, size) => {
   ctx.stroke();
 };
 
+// === Skill 3: Break — the shatter ===========================================
+// Short thick chisel-mark stamps down (100ms), radial crack-lines emanate
+// from impact (60ms draw, 250ms fade). Total ~410ms.
+
+const BREAK_TTL = 410;
+
+const renderBreak: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= BREAK_TTL) return;
+  const t = age / BREAK_TTL;
+  const color = skillColor(eff.skillId);
+  const to = squareCenter(eff.to, size);
+  const from = squareCenter(eff.from, size);
+
+  // Phase: strike 100 / cracks-draw 60 / fade 250. Combine strike+cracks-draw
+  // as one attack; then release.
+  const attackFrac = 160 / BREAK_TTL;
+  const holdFrac = 0;
+  const { phase, local } = phaseOf(t, attackFrac, holdFrac);
+
+  // Thick chisel-mark: short stroke coming down onto target from caster
+  // direction. Only draws during first ~60% of attack.
+  if (phase === "attack" && local < 0.63) {
+    const strikeLocal = local / 0.63;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    // Chisel starts ~0.4 size out from target and moves in.
+    const chiselLen = size * 0.4;
+    const tipDist = chiselLen * (1 - strikeLocal);
+    const tipX = to.x - ux * tipDist;
+    const tipY = to.y - uy * tipDist;
+    const tailX = tipX - ux * (chiselLen * 0.35);
+    const tailY = tipY - uy * (chiselLen * 0.35);
+    ctx.strokeStyle = withAlpha(color, 0.95);
+    ctx.lineWidth = size * 0.075;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+  }
+
+  // Crack lines: 5 short jagged strokes from target center outward. Draw
+  // starting at ~60% of attack, fade over release.
+  if (t > 0.15) {
+    const crackT = phase === "attack"
+      ? (local - 0.63) / 0.37
+      : 1;
+    const alpha = phase === "release" ? 0.9 * (1 - local) : 0.9;
+    if (crackT > 0) {
+      ctx.strokeStyle = withAlpha(color, alpha);
+      ctx.lineWidth = size * 0.025;
+      ctx.lineCap = "round";
+      const nCracks = 5;
+      // Deterministic angle spread from src+target hash so cracks feel
+      // intentional per-cast, not jittery per-frame.
+      const seed = (eff.from * 2654435761 ^ eff.to * 40503) >>> 0;
+      for (let i = 0; i < nCracks; i++) {
+        const baseAng = (i / nCracks) * Math.PI * 2;
+        const jitter = ((seed >> (i * 3)) & 0x7) / 0x7 - 0.5;
+        const ang = baseAng + jitter * 0.4;
+        const maxLen = size * (0.18 + ((seed >> (i * 3 + 8)) & 0x7) / 0x7 * 0.1);
+        const len = maxLen * Math.min(1, crackT);
+        // Draw a slight zigzag: midpoint kinked by ~15° in a deterministic dir.
+        const midR = len * 0.55;
+        const kinkAng = ang + (((seed >> (i * 2 + 16)) & 1) ? 0.25 : -0.25);
+        const midX = to.x + Math.cos(kinkAng) * midR;
+        const midY = to.y + Math.sin(kinkAng) * midR;
+        const endX = to.x + Math.cos(ang) * len;
+        const endY = to.y + Math.sin(ang) * len;
+        ctx.beginPath();
+        ctx.moveTo(to.x, to.y);
+        ctx.lineTo(midX, midY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+    }
+  }
+};
+
+// === Skill 4: Steal — the pickpocket ========================================
+// Thin dashed line darts caster→target (120ms). Coin flies back caster→target
+// (200ms) after grab. Caster scale-pulse can't be done from Canvas without
+// coupling to Piece — instead, we add a small "gotcha" burst at caster on
+// arrival. Total ~600ms.
+
+const STEAL_TTL = 700;
+
+const renderSteal: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= STEAL_TTL) return;
+  const t = age / STEAL_TTL;
+  const color = skillColor(eff.skillId);
+  const from = squareCenter(eff.from, size);
+  const to = squareCenter(eff.to, size);
+
+  // Segments (of 700ms): reach 120 / grab 100 / return 200 / burst 100 / fade 180
+  const reachEnd = 120 / STEAL_TTL;
+  const grabEnd = 220 / STEAL_TTL;
+  const returnEnd = 420 / STEAL_TTL;
+  const burstEnd = 520 / STEAL_TTL;
+
+  // Reach line: dashed stroke from caster to target, drawn during reach.
+  // Persists faintly through grab, then fades.
+  ctx.setLineDash([size * 0.06, size * 0.05]);
+  ctx.lineCap = "butt";
+  ctx.lineWidth = size * 0.028;
+  let reachAlpha: number;
+  let reachT: number;
+  if (t < reachEnd) {
+    reachAlpha = 0.85;
+    reachT = t / reachEnd;
+  } else if (t < grabEnd) {
+    reachAlpha = 0.85;
+    reachT = 1;
+  } else if (t < returnEnd) {
+    // fades during return
+    reachAlpha = 0.85 * (1 - (t - grabEnd) / (returnEnd - grabEnd));
+    reachT = 1;
+  } else {
+    reachAlpha = 0;
+    reachT = 1;
+  }
+  if (reachAlpha > 0.01) {
+    ctx.strokeStyle = withAlpha(color, reachAlpha);
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(from.x + (to.x - from.x) * reachT, from.y + (to.y - from.y) * reachT);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Coin: after grab (t > grabEnd), a filled disk travels target → caster.
+  if (t > grabEnd && t < returnEnd) {
+    const coinT = (t - grabEnd) / (returnEnd - grabEnd);
+    const cx = to.x + (from.x - to.x) * coinT;
+    const cy = to.y + (from.y - to.y) * coinT;
+    ctx.fillStyle = withAlpha(color, 0.9);
+    ctx.strokeStyle = withAlpha("#3a2a1a", 0.9);
+    ctx.lineWidth = size * 0.015;
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 0.065, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Caster "gotcha" burst: 4 short radial ticks at the caster during burst
+  // phase, fading through the tail.
+  if (t > returnEnd) {
+    const localT = t < burstEnd
+      ? (t - returnEnd) / (burstEnd - returnEnd)
+      : 1;
+    const fadeT = t < burstEnd ? 0 : (t - burstEnd) / (1 - burstEnd);
+    const alpha = 0.9 * (1 - fadeT);
+    if (alpha > 0.01) {
+      const spokeLen = size * 0.14 * localT;
+      ctx.strokeStyle = withAlpha(color, alpha);
+      ctx.lineWidth = size * 0.025;
+      ctx.lineCap = "round";
+      for (let i = 0; i < 4; i++) {
+        const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        const innerR = size * 0.14;
+        const x1 = from.x + Math.cos(ang) * innerR;
+        const y1 = from.y + Math.sin(ang) * innerR;
+        const x2 = from.x + Math.cos(ang) * (innerR + spokeLen);
+        const y2 = from.y + Math.sin(ang) * (innerR + spokeLen);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    }
+  }
+};
+
+// === Skill 5: Tempest — the shock-burst =====================================
+// Mechanic: target takes 1 damage, all 8 neighbours of the target get pushed
+// 1 tile outward. Animation: quick strike-line caster → target (140ms),
+// then an expanding shock-ring around the target with 8 short push-ticks
+// pointing outward in the cardinal/diagonal directions.
+
+const TEMPEST_TTL = 720;
+
+const renderTempest: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= TEMPEST_TTL) return;
+  const t = age / TEMPEST_TTL;
+  const color = skillColor(eff.skillId);
+  const from = squareCenter(eff.from, size);
+  const to = squareCenter(eff.to, size);
+
+  // Segments: strike 140 / shock 300 / fade 280
+  const strikeEnd = 140 / TEMPEST_TTL;
+  const shockEnd = 440 / TEMPEST_TTL;
+
+  // Strike-line: fast red stroke from caster to target.
+  if (t < strikeEnd) {
+    const localT = t / strikeEnd;
+    const endX = from.x + (to.x - from.x) * localT;
+    const endY = from.y + (to.y - from.y) * localT;
+    ctx.strokeStyle = withAlpha(color, 0.9);
+    ctx.lineWidth = nibWidth(size * 0.045, localT);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+  } else if (t < shockEnd) {
+    // Faint residual strike-line fading.
+    const fadeT = (t - strikeEnd) / (shockEnd - strikeEnd);
+    ctx.strokeStyle = withAlpha(color, 0.5 * (1 - fadeT));
+    ctx.lineWidth = size * 0.03;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+  }
+
+  // Shock: expanding ring around target + 8 outward push-ticks.
+  if (t >= strikeEnd) {
+    const shockT = t < shockEnd
+      ? (t - strikeEnd) / (shockEnd - strikeEnd)
+      : 1;
+    const fadeT = t < shockEnd ? 0 : (t - shockEnd) / (1 - shockEnd);
+    const shockAlpha = 0.9 * (1 - fadeT);
+
+    // Expanding ring: r goes 0.35 → 1.15 tile radii.
+    const r = size * (0.35 + shockT * 0.8);
+    ctx.strokeStyle = withAlpha(color, shockAlpha * (1 - shockT * 0.5));
+    ctx.lineWidth = size * 0.035 * (1 - shockT * 0.4);
+    ctx.beginPath();
+    ctx.arc(to.x, to.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 8 push-ticks pointing outward at each cardinal/diagonal direction.
+    // They lengthen as the ring expands, giving a "pieces being pushed out"
+    // read.
+    const tickInnerR = size * 0.55;
+    const tickLen = size * 0.18 * shockT;
+    if (tickLen > 1) {
+      ctx.lineWidth = size * 0.03 * (1 - shockT * 0.3);
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
+        const x1 = to.x + Math.cos(ang) * tickInnerR;
+        const y1 = to.y + Math.sin(ang) * tickInnerR;
+        const x2 = to.x + Math.cos(ang) * (tickInnerR + tickLen);
+        const y2 = to.y + Math.sin(ang) * (tickInnerR + tickLen);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    }
+  }
+};
+
+// === Skill 7: Heal — the mending thread =====================================
+// Twin thread caster → ally. At ally, thread wraps into a closed loop. Loop
+// pulses once as +HP appears. Total ~660ms.
+
+const HEAL_TTL = 660;
+
+const renderHeal: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= HEAL_TTL) return;
+  const t = age / HEAL_TTL;
+  const color = skillColor(eff.skillId);
+  const from = squareCenter(eff.from, size);
+  const to = squareCenter(eff.to, size);
+
+  // Segments: thread 200 / wrap 120 / pulse 100 / fade 240
+  const threadEnd = 200 / HEAL_TTL;
+  const wrapEnd = 320 / HEAL_TTL;
+  const pulseEnd = 420 / HEAL_TTL;
+
+  const sign = pairSign(eff.from, eff.to);
+  const perp = perpOffset(from, to, size * 0.2 * sign);
+  const midX = (from.x + to.x) / 2 + perp.x;
+  const midY = (from.y + to.y) / 2 + perp.y;
+
+  // Thread: bezier stroke drawn from caster to ally.
+  if (t < wrapEnd + 0.1) {
+    const drawEnd = t < threadEnd ? t / threadEnd : 1;
+    const alpha = 0.75;
+    ctx.strokeStyle = withAlpha(color, alpha);
+    ctx.lineCap = "round";
+    ctx.lineWidth = size * 0.025;
+    const steps = 20;
+    const drawSteps = Math.max(1, Math.floor(steps * drawEnd));
+    ctx.beginPath();
+    for (let i = 0; i <= drawSteps; i++) {
+      const tt = i / steps;
+      const p = bezierPt(from, { x: midX, y: midY }, to, tt);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+
+  // Wrap loop: closed circle around the ally, drawn once threadEnd passes.
+  if (t > threadEnd) {
+    const localT = t < wrapEnd
+      ? (t - threadEnd) / (wrapEnd - threadEnd)
+      : 1;
+    let loopR = size * 0.24;
+    let loopAlpha: number;
+    if (t < wrapEnd) {
+      loopAlpha = 0.85 * localT;
+    } else if (t < pulseEnd) {
+      const pulseLocal = (t - wrapEnd) / (pulseEnd - wrapEnd);
+      // Grow then shrink: 0.24 → 0.28 → 0.24
+      const pulse = Math.sin(pulseLocal * Math.PI) * (size * 0.04);
+      loopR = size * 0.24 + pulse;
+      loopAlpha = 0.85;
+    } else {
+      const fadeLocal = (t - pulseEnd) / (1 - pulseEnd);
+      loopAlpha = 0.85 * (1 - fadeLocal);
+    }
+    ctx.strokeStyle = withAlpha(color, loopAlpha);
+    ctx.lineWidth = size * 0.028;
+    ctx.beginPath();
+    if (t < wrapEnd) {
+      // Draw partial loop: arc from angle 0 to 2π * localT.
+      ctx.arc(to.x, to.y, loopR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * localT);
+    } else {
+      ctx.arc(to.x, to.y, loopR, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+  }
+};
+
+// === Skill 8: Plate — the shield handed over ================================
+// Small shield-glyph travels caster → ally along arc, settles onto ally.
+
+const PLATE_TTL = 620;
+
+const renderPlate: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= PLATE_TTL) return;
+  const t = age / PLATE_TTL;
+  const color = skillColor(eff.skillId);
+  const from = squareCenter(eff.from, size);
+  const to = squareCenter(eff.to, size);
+
+  // Segments: travel 220 / settle 80 / fade 200 (+ trailing residue)
+  const travelEnd = 220 / PLATE_TTL;
+  const settleEnd = 300 / PLATE_TTL;
+
+  // Trajectory: gentle arc.
+  const sign = pairSign(eff.from, eff.to);
+  const perp = perpOffset(from, to, size * 0.35 * sign);
+  const midX = (from.x + to.x) / 2 + perp.x;
+  const midY = (from.y + to.y) / 2 + perp.y;
+
+  let cx: number, cy: number, scale: number, alpha: number;
+  if (t < travelEnd) {
+    const localT = t / travelEnd;
+    const p = bezierPt(from, { x: midX, y: midY }, to, localT);
+    cx = p.x;
+    cy = p.y;
+    scale = 1;
+    alpha = 0.9;
+  } else if (t < settleEnd) {
+    const localT = (t - travelEnd) / (settleEnd - travelEnd);
+    cx = to.x;
+    cy = to.y;
+    // Shrink from 1 → 0.65 as it "settles" onto the piece.
+    scale = 1 - localT * 0.35;
+    alpha = 0.9;
+  } else {
+    const fadeLocal = (t - settleEnd) / (1 - settleEnd);
+    cx = to.x;
+    cy = to.y;
+    scale = 0.65;
+    alpha = 0.9 * (1 - fadeLocal);
+  }
+
+  // Heater-shield outline centered at (cx, cy).
+  const w = size * 0.24 * scale;
+  const h = size * 0.32 * scale;
+  const topY = cy - h * 0.5;
+  ctx.strokeStyle = withAlpha(color, alpha);
+  ctx.fillStyle = withAlpha("#f8f1de", alpha * 0.4); // paper-bg fill inside
+  ctx.lineWidth = size * 0.03 * scale;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - w, topY + h * 0.15);
+  ctx.quadraticCurveTo(cx - w, topY, cx, topY);
+  ctx.quadraticCurveTo(cx + w, topY, cx + w, topY + h * 0.15);
+  ctx.lineTo(cx + w * 0.7, topY + h * 0.7);
+  ctx.quadraticCurveTo(cx, topY + h, cx, topY + h);
+  ctx.quadraticCurveTo(cx, topY + h, cx - w * 0.7, topY + h * 0.7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+};
+
+// === Skill 9: Dash — no dedicated fx (dust trail already carries it) ========
+// Fall through to fallback (which is quiet).
+
+// === Skill 10: Blast — the leap-and-strike ==================================
+// Piece slide (dust trail) already handles the movement; we add a red radial
+// burst at the LANDING square.
+
+const BLAST_TTL = 460;
+
+const renderBlast: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= BLAST_TTL) return;
+  const t = age / BLAST_TTL;
+  const color = skillColor(eff.skillId);
+  // Landing square = eff.to (the enemy target the caster leapt at).
+  const to = squareCenter(eff.to, size);
+
+  // Segments: burst-draw 180 / hold 60 / fade 220
+  const drawEnd = 180 / BLAST_TTL;
+  const holdEnd = 240 / BLAST_TTL;
+
+  let spokeLen: number;
+  let alpha: number;
+  if (t < drawEnd) {
+    const localT = t / drawEnd;
+    spokeLen = size * 0.22 * localT;
+    alpha = 0.9;
+  } else if (t < holdEnd) {
+    spokeLen = size * 0.22;
+    alpha = 0.9;
+  } else {
+    const fadeLocal = (t - holdEnd) / (1 - holdEnd);
+    spokeLen = size * 0.22 + size * 0.05 * fadeLocal;
+    alpha = 0.9 * (1 - fadeLocal);
+  }
+  ctx.strokeStyle = withAlpha(color, alpha);
+  ctx.lineWidth = size * 0.035;
+  ctx.lineCap = "round";
+  const innerR = size * 0.16;
+  const nSpokes = 6;
+  for (let i = 0; i < nSpokes; i++) {
+    const ang = (i / nSpokes) * Math.PI * 2 + Math.PI / nSpokes;
+    const x1 = to.x + Math.cos(ang) * innerR;
+    const y1 = to.y + Math.sin(ang) * innerR;
+    const x2 = to.x + Math.cos(ang) * (innerR + spokeLen);
+    const y2 = to.y + Math.sin(ang) * (innerR + spokeLen);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+};
+
+// === Skill 11: Shove — the push =============================================
+// Thick arrow-stroke from caster's edge toward target (100ms), then arrow
+// follows the piece as it slides. We don't have access to the slide start
+// time directly, so we render the arrow-stroke fully within the effect
+// budget: quick wind-up + short "push follow-through" + fade.
+
+const SHOVE_TTL = 520;
+
+const renderShove: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= SHOVE_TTL) return;
+  const t = age / SHOVE_TTL;
+  const color = skillColor(eff.skillId);
+  const from = squareCenter(eff.from, size);
+  const to = squareCenter(eff.to, size);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+
+  // Segments: draw 120 / follow 180 / fade 220
+  const drawEnd = 120 / SHOVE_TTL;
+  const followEnd = 300 / SHOVE_TTL;
+
+  // Arrow originates at caster's edge and extends toward target.
+  const startDist = size * 0.28;
+  const arrowStart = { x: from.x + ux * startDist, y: from.y + uy * startDist };
+
+  let tipDist: number;
+  let alpha: number;
+  if (t < drawEnd) {
+    const localT = t / drawEnd;
+    tipDist = startDist + (len - startDist) * 0.35 * localT;
+    alpha = 0.95;
+  } else if (t < followEnd) {
+    const localT = (t - drawEnd) / (followEnd - drawEnd);
+    // Extend further as if following the shoved piece.
+    tipDist = startDist + (len - startDist) * (0.35 + 0.5 * localT);
+    alpha = 0.95;
+  } else {
+    const fadeLocal = (t - followEnd) / (1 - followEnd);
+    tipDist = startDist + (len - startDist) * 0.85;
+    alpha = 0.95 * (1 - fadeLocal);
+  }
+  const tipX = from.x + ux * tipDist;
+  const tipY = from.y + uy * tipDist;
+  // Shaft tapers from thick at start to thin at tip.
+  ctx.strokeStyle = withAlpha(color, alpha);
+  ctx.lineCap = "round";
+  ctx.lineWidth = size * 0.06;
+  ctx.beginPath();
+  ctx.moveTo(arrowStart.x, arrowStart.y);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+  // Arrow head at tip (small chevron).
+  const headSize = size * 0.09;
+  const perpXn = -uy, perpYn = ux;
+  ctx.fillStyle = withAlpha(color, alpha);
+  ctx.beginPath();
+  ctx.moveTo(tipX + ux * headSize * 0.6, tipY + uy * headSize * 0.6);
+  ctx.lineTo(tipX + perpXn * headSize * 0.5, tipY + perpYn * headSize * 0.5);
+  ctx.lineTo(tipX - perpXn * headSize * 0.5, tipY - perpYn * headSize * 0.5);
+  ctx.closePath();
+  ctx.fill();
+};
+
+// === Skill 12: Swap — the exchange ==========================================
+// Two ally pieces exchange squares. Signature = two interlocking curved
+// strokes meeting at midpoint + a small purple diamond glyph at the
+// crossing.
+
+const SWAP_TTL = 640;
+
+const renderSwap: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= SWAP_TTL) return;
+  const t = age / SWAP_TTL;
+  const color = skillColor(eff.skillId);
+  const from = squareCenter(eff.from, size);
+  const to = squareCenter(eff.to, size);
+
+  // Segments: draw 260 / diamond 120 / fade 260
+  const drawEnd = 260 / SWAP_TTL;
+  const diamondEnd = 380 / SWAP_TTL;
+
+  // Two arcs curving opposite directions, each starts at one endpoint,
+  // curls toward the midpoint, and stops at the OTHER endpoint (broken
+  // lemniscate — the arcs cross visually at midpoint).
+  const perp1 = perpOffset(from, to, size * 0.4);
+  const perp2 = perpOffset(from, to, -size * 0.4);
+  const straightMid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+
+  const drawT = t < drawEnd ? t / drawEnd : 1;
+  let alpha: number;
+  if (t < diamondEnd) alpha = 0.85;
+  else {
+    const fadeLocal = (t - diamondEnd) / (1 - diamondEnd);
+    alpha = 0.85 * (1 - fadeLocal);
+  }
+
+  ctx.strokeStyle = withAlpha(color, alpha);
+  ctx.lineWidth = size * 0.03;
+  ctx.lineCap = "round";
+  // Arc 1: from → to via perp1
+  const ctrl1 = { x: straightMid.x + perp1.x, y: straightMid.y + perp1.y };
+  const ctrl2 = { x: straightMid.x + perp2.x, y: straightMid.y + perp2.y };
+  const steps = 22;
+  const drawSteps = Math.max(1, Math.floor(steps * drawT));
+  ctx.beginPath();
+  for (let i = 0; i <= drawSteps; i++) {
+    const tt = i / steps;
+    const p = bezierPt(from, ctrl1, to, tt);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+  ctx.beginPath();
+  for (let i = 0; i <= drawSteps; i++) {
+    const tt = i / steps;
+    const p = bezierPt(to, ctrl2, from, tt);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+
+  // Diamond glyph at the crossing (drawn midpoint), appears after arcs are
+  // mostly drawn.
+  if (t > drawEnd * 0.7 && t < diamondEnd + 0.15) {
+    const dLocal = Math.min(1, (t - drawEnd * 0.7) / ((diamondEnd + 0.15) - drawEnd * 0.7));
+    const dAlpha = alpha * dLocal;
+    const dSize = size * 0.08 * Math.min(1, dLocal * 1.3);
+    ctx.fillStyle = withAlpha(color, dAlpha);
+    ctx.strokeStyle = withAlpha(color, dAlpha);
+    ctx.lineWidth = size * 0.02;
+    ctx.beginPath();
+    ctx.moveTo(straightMid.x, straightMid.y - dSize);
+    ctx.lineTo(straightMid.x + dSize, straightMid.y);
+    ctx.lineTo(straightMid.x, straightMid.y + dSize);
+    ctx.lineTo(straightMid.x - dSize, straightMid.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+};
+
+// === Skill 13: Retreat — the pull-back ======================================
+// Piece slides with dust trail (already handled elsewhere); we add a short
+// trailing "arrow-tail" at the origin square.
+
+const RETREAT_TTL = 440;
+
+const renderRetreat: SkillRenderer = (ctx, eff, age, size) => {
+  if (age >= RETREAT_TTL) return;
+  const t = age / RETREAT_TTL;
+  const color = skillColor(eff.skillId);
+  const from = squareCenter(eff.from, size);
+  const to = squareCenter(eff.to, size);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+
+  // Three parallel ticks perpendicular to the retreat direction, positioned
+  // just past the origin along the retreat path. They fade quickly, giving
+  // a "getting out of there" read.
+  const drawEnd = 100 / RETREAT_TTL;
+
+  let drawT: number;
+  let alpha: number;
+  if (t < drawEnd) {
+    drawT = t / drawEnd;
+    alpha = 0.85;
+  } else {
+    drawT = 1;
+    const fadeLocal = (t - drawEnd) / (1 - drawEnd);
+    alpha = 0.85 * (1 - fadeLocal);
+  }
+
+  ctx.strokeStyle = withAlpha(color, alpha);
+  ctx.lineWidth = size * 0.025;
+  ctx.lineCap = "round";
+  const perpXn = -uy, perpYn = ux;
+  const tickLen = size * 0.08;
+  for (let i = 0; i < 3; i++) {
+    // Ticks sit at 15%, 25%, 35% along the retreat path.
+    const along = 0.15 + i * 0.1;
+    const baseX = from.x + ux * len * along;
+    const baseY = from.y + uy * len * along;
+    const currentLen = tickLen * drawT;
+    ctx.beginPath();
+    ctx.moveTo(baseX - perpXn * currentLen, baseY - perpYn * currentLen);
+    ctx.lineTo(baseX + perpXn * currentLen, baseY + perpYn * currentLen);
+    ctx.stroke();
+  }
+};
+
 // Registry keyed by skill id. Undefined entries fall through to renderFallback.
 const SKILL_RENDERERS: Record<number, SkillRenderer> = {
   1: renderLance,
   2: renderHook,
-  3: renderFallback,   // break
-  4: renderFallback,   // steal
-  5: renderFallback,   // tempest
+  3: renderBreak,
+  4: renderSteal,
+  5: renderTempest,
   6: renderShieldSelf,
-  7: renderFallback,   // heal
-  8: renderFallback,   // plate
-  9: renderFallback,   // dash (dust already covers)
-  10: renderFallback,  // blast
-  11: renderFallback,  // shove
-  12: renderFallback,  // swap
-  13: renderFallback,  // retreat
+  7: renderHeal,
+  8: renderPlate,
+  9: renderFallback,   // dash — dust already covers it
+  10: renderBlast,
+  11: renderShove,
+  12: renderSwap,
+  13: renderRetreat,
   14: renderFocus,
   15: renderCharge,
 };
