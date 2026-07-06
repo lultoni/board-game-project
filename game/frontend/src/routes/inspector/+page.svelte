@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
+  import BackButton from "$lib/ui/BackButton.svelte";
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import { createPlyRenderer, type PlyRenderer } from "$lib/board/ply-renderer.svelte";
@@ -661,7 +662,7 @@
 
 <main>
   <header>
-    <p class="back"><a href="../">← back</a></p>
+    <BackButton />
     <h1>Inspector</h1>
     {#if tree}
       <button class="ghost" type="button" onclick={backToEntry}>Discard tree</button>
@@ -865,7 +866,6 @@
     padding-bottom: 0.4rem;
   }
   header h1 { margin: 0; font-size: 1.5rem; flex: 1; }
-  .back a { text-decoration: none; }
   .ghost { background: transparent; }
   .err {
     color: #a94b3b;

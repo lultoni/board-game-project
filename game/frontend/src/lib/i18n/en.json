@@ -2,7 +2,8 @@
   "app": {
     "title": "(game name)",
     "engineVersion": "engine v{version}",
-    "loading": "loading…"
+    "loading": "loading…",
+    "back": "← back"
   },
   "match": {
     "title": "match · {mode}"

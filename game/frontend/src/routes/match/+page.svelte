@@ -17,6 +17,7 @@
   } from "$lib/engine";
   import { resolveLoadout } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
+  import BackButton from "$lib/ui/BackButton.svelte";
   import {
     match,
     modeFromSeats,
@@ -1516,7 +1517,7 @@
 
 <main>
   <header>
-    <p class="back"><a href="../" onclick={() => sfx.play("click")}>← back</a></p>
+    <BackButton />
     <h1>{t("match.title", { mode })}</h1>
     {#if match.mode === "multiplayer"}
       <ConnectivityPill />
@@ -1839,7 +1840,6 @@
     font-size: 1.2rem;
     margin: 0;
   }
-  .back a { text-decoration: none; }
 
   /* ── Game area: board column + right panel ──────────────────────────────── */
   .game-area {

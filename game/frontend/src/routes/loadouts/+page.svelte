@@ -14,10 +14,11 @@
   import { sfx } from "$lib/audio/sfx";
   import { getTelemetryStore, newMatchId } from "$lib/storage";
   import type { SavedLoadout } from "$lib/storage/types";
-  import type { Owner, SideLoadout } from "$lib/engine";
+  import type { SideLoadout } from "$lib/engine";
   import LoadoutBoard from "$lib/board/LoadoutBoard.svelte";
   import SkillPicker from "$lib/board/SkillPicker.svelte";
   import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
+  import BackButton from "$lib/ui/BackButton.svelte";
   import { findDuplicate, loadoutKey } from "$lib/storage/loadout-dedupe";
   import {
     encodeJson,
@@ -41,7 +42,6 @@
   /** Working copy of the loadout being edited. Committed to IDB on Save. */
   let draftLoadout = $state<SideLoadout>(cloneLoadout(EMPTY));
   let draftName = $state("");
-  let orientation = $state<Owner>("p1");
 
   /** Which piece (0..5) has focus in the editor. Null = no piece selected. */
   let selectedPieceIdx = $state<number | null>(null);
@@ -363,7 +363,7 @@
 
 <main class="loadouts">
   <header>
-    <a class="back" href="./" onclick={() => sfx.play("click")}>{t("loadouts.back")}</a>
+    <BackButton />
     <h1>{t("loadouts.title")}</h1>
   </header>
 
@@ -501,58 +501,39 @@
               maxlength="63"
             />
           </label>
-
-          <div class="orientation">
-            <span class="orientation-label">{t("loadouts.orientation")}</span>
-            <label>
-              <input
-                type="radio"
-                name="orientation"
-                value="p1"
-                bind:group={orientation}
-              />
-              {t("loadouts.orientationP1")}
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="orientation"
-                value="p2"
-                bind:group={orientation}
-              />
-              {t("loadouts.orientationP2")}
-            </label>
-          </div>
         </div>
 
         <div class="editor-body">
-          <div class="board-column">
+          <div class="board-strip">
             <LoadoutBoard
-              side={orientation}
+              side="p1"
               loadout={draftLoadout}
               interactive={true}
               selectedPieceIdx={selectedPieceIdx}
               onPieceClick={onPieceClick}
+              squareSize={54}
+              ranks={3}
             />
-            {#if duplicate}
-              <p class="dup-warning">
-                {t("loadouts.duplicateOf", { name: duplicate.name })}
-              </p>
+          </div>
+
+          {#if duplicate}
+            <p class="dup-warning">
+              {t("loadouts.duplicateOf", { name: duplicate.name })}
+            </p>
+          {/if}
+          <div class="save-row">
+            <button
+              type="button"
+              class="primary"
+              disabled={saveDisabled}
+              title={saveDisabledReason}
+              onclick={save}
+            >
+              {editingId === "__new__" ? t("loadouts.saveNew") : t("loadouts.save")}
+            </button>
+            {#if saveDisabled && saveDisabledReason}
+              <span class="save-hint">{saveDisabledReason}</span>
             {/if}
-            <div class="save-row">
-              <button
-                type="button"
-                class="primary"
-                disabled={saveDisabled}
-                title={saveDisabledReason}
-                onclick={save}
-              >
-                {editingId === "__new__" ? t("loadouts.saveNew") : t("loadouts.save")}
-              </button>
-              {#if saveDisabled && saveDisabledReason}
-                <span class="save-hint">{saveDisabledReason}</span>
-              {/if}
-            </div>
           </div>
 
           <div class="picker-column">
@@ -631,14 +612,6 @@
     font-size: 1.8rem;
     margin: 0;
   }
-  .back {
-    color: inherit;
-    text-decoration: none;
-    padding: 0.2em 0.5em;
-    border: 1.5px solid var(--paper-line-strong);
-    border-radius: 5px;
-  }
-  .back:hover { background: var(--paper-line); }
   .cols {
     display: grid;
     grid-template-columns: 1fr 1.15fr;
@@ -809,28 +782,15 @@
     background: var(--paper-bg);
     color: inherit;
   }
-  .orientation {
-    display: flex;
-    gap: 0.5em;
-    align-items: center;
-  }
-  .orientation-label {
-    font-size: 0.9em;
-    color: var(--paper-ink-soft, #6a604a);
-  }
   .editor-body {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 1rem;
-    align-items: start;
-  }
-  @media (max-width: 700px) {
-    .editor-body { grid-template-columns: 1fr; }
-  }
-  .board-column {
     display: flex;
     flex-direction: column;
-    gap: 0.5em;
+    gap: 0.8rem;
+  }
+  .board-strip {
+    display: flex;
+    justify-content: center;
+    padding: 0.4rem 0;
   }
   .save-row {
     display: flex;

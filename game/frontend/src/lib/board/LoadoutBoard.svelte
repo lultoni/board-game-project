@@ -34,6 +34,12 @@
     selectedPieceIdx: number | null;
     /** Fired on interactive click. pieceIdx is 0..5 into the loadout. */
     onPieceClick?: (pieceIdx: number) => void;
+    /** Pixel edge per square. Larger = piece glyphs are more legible. */
+    squareSize?: number;
+    /** How many ranks to include, counted from the drawing side's back rank
+     *  (which is always at the bottom of the viewBox). 8 = full board, 3 =
+     *  King+Champions rank + Guards rank + one empty rank of context. */
+    ranks?: number;
   }
 
   let {
@@ -42,12 +48,23 @@
     interactive,
     selectedPieceIdx,
     onPieceClick,
+    squareSize = 26,
+    ranks = 8,
   }: Props = $props();
 
-  // SVG geometry. Kept small (~208px total) so two boards fit side-by-side in
-  // narrow panels; the container can scale it up with a CSS width if needed.
-  const SIZE = 26;                       // pixel edge per square
-  const BOARD = SIZE * 8;                // full board pixel size
+  // SVG geometry. The board is always drawn as a full 8x8 grid internally,
+  // then the viewBox is cropped to the requested rank range so consumers can
+  // show a 3-rank strip (editor) or the full board (draft preview).
+  const SIZE = $derived(squareSize);
+  const BOARD_W = $derived(SIZE * 8);
+  const BOARD_H = $derived(SIZE * 8);
+  const CROP_RANKS = $derived(Math.max(1, Math.min(8, ranks)));
+  const CROP_H = $derived(SIZE * CROP_RANKS);
+  // The drawing side's back rank sits at the bottom (y = 7*SIZE for a P1
+  // view, y = 0 for a P2 view since we flip). The crop always starts at the
+  // bottom for P1 and at the top for P2 — that keeps the back rank on-screen
+  // regardless of which side is being edited.
+  const CROP_Y = $derived(side === "p1" ? BOARD_H - CROP_H : 0);
 
   // Convert an engine square (0..63, file = sq & 7, rank = sq >> 3) into SVG
   // coordinates. P1 is drawn with rank 1 at the bottom (SVG y grows downward,
@@ -88,9 +105,9 @@
 
 <svg
   class="mini-board"
-  viewBox="0 0 {BOARD} {BOARD}"
-  width={BOARD}
-  height={BOARD}
+  viewBox="0 {CROP_Y} {BOARD_W} {CROP_H}"
+  width={BOARD_W}
+  height={CROP_H}
   aria-label="loadout mini board"
 >
   <!-- Checkerboard squares -->

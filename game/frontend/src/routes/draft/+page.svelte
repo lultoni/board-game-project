@@ -15,6 +15,7 @@
   import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
   import SkillPicker from "$lib/board/SkillPicker.svelte";
   import LoadoutBoard from "$lib/board/LoadoutBoard.svelte";
+  import BackButton from "$lib/ui/BackButton.svelte";
   import { t } from "$lib/state/i18n";
   import {
     match,
@@ -940,7 +941,7 @@
 
 <main>
   <header>
-    <p class="back"><a href="../" onclick={() => sfx.play("click")}>← back</a></p>
+    <BackButton />
     <h1>{t("draft.title")}</h1>
     <small class="mode-tag">{mode}</small>
     {#if isMultiplayer}
@@ -1176,7 +1177,6 @@
     margin-bottom: 0.4rem;
   }
   header h1 { font-size: 1.6rem; margin: 0; }
-  .back a { text-decoration: none; }
   .mode-tag {
     border: 1.5px solid var(--paper-line-strong);
     border-radius: 4px;

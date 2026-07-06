@@ -19,6 +19,7 @@
   import { snapshotJsonFromMatchLog, logIsMidDraftCheap } from "$lib/multiplayer-resume";
   import { match, resetMatchState } from "$lib/state/match-store.svelte";
   import { getTelemetryStore, type MatchMeta, type JoinedCodeEntry } from "$lib/storage";
+  import BackButton from "$lib/ui/BackButton.svelte";
 
   type LobbyView = "choose" | "hosting" | "joining";
 
@@ -343,7 +344,6 @@
    *  mode and reported "disconnected". */
   async function leaveLobby(ev: MouseEvent): Promise<void> {
     ev.preventDefault();
-    sfx.play("click");
     cancel();
     // Reset mode too — cancel() leaves match.mode alone because it's still
     // owned by the lobby flow until the user actually leaves.
@@ -429,7 +429,7 @@
 
 <main>
   <header>
-    <p class="back"><a href="../" onclick={leaveLobby}>{t("multiplayer.back")}</a></p>
+    <BackButton onclick={leaveLobby} />
     <h1>{t("multiplayer.title")}</h1>
   </header>
 
@@ -591,10 +591,6 @@
   header h1 {
     margin: 0.2rem 0 0;
     font-size: 1.8rem;
-  }
-  .back a {
-    color: var(--paper-ink-soft);
-    text-decoration: none;
   }
   .cards {
     display: grid;

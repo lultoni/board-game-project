@@ -4,6 +4,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { t } from "$lib/state/i18n";
   import { sfx } from "$lib/audio/sfx";
+  import BackButton from "$lib/ui/BackButton.svelte";
   import {
     match,
     modeFromSeats,
@@ -280,7 +281,7 @@
 
 <main>
   <header>
-    <p class="back"><a href="../" onclick={() => sfx.play("click")}>{t("setup.back")}</a></p>
+    <BackButton />
     <h1>{t("setup.title")}</h1>
   </header>
 
@@ -588,10 +589,6 @@
     margin-bottom: 1rem;
     border-bottom: 1.5px solid var(--paper-line);
     padding-bottom: 0.4rem;
-  }
-  .back a {
-    color: var(--paper-ink-soft);
-    text-decoration: none;
   }
   h1 {
     font-size: 2rem;
