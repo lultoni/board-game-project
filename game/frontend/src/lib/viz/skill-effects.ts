@@ -169,6 +169,12 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   const color = skillColor(eff.skillId);
   const from = squareCenter(eff.from, size);
   const to = squareCenter(eff.to, size);
+  // Post-move target square: when the target actually slid toward the caster,
+  // the ply-renderer records where it ended up. The pull-taut phase should
+  // track the target's new square so the chain end follows the piece
+  // instead of sticking on the pre-move square.
+  const pulled = eff.outcome?.targetPostSq;
+  const pulledPt = pulled !== undefined ? squareCenter(pulled, size) : to;
   // Bezier control offset — sags "downward" perpendicular to the ray, plus a
   // deterministic sign so left-to-right and right-to-left casts curve
   // opposite ways rather than always the same side.
@@ -214,10 +220,17 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   }
 
   // Actual bezier control: mix straight midpoint with sagged midpoint.
+  // Curve endpoint during release slides from the original target toward the
+  // pulled square so the chain "reels the piece in" visually. During attack/
+  // hold the endpoint is still the caught piece's original square.
   const straightMidX = (from.x + to.x) / 2;
   const straightMidY = (from.y + to.y) / 2;
   const ctrlX = straightMidX + (midX - straightMidX) * sag;
   const ctrlY = straightMidY + (midY - straightMidY) * sag;
+  // Blend end-of-curve from `to` (attack/hold) toward `pulledPt` (release).
+  const pullProgress = 1 - sag; // 0 during attack/hold, ramps to 1 during pull, holds at 1 through fade
+  const endX = to.x + (pulledPt.x - to.x) * pullProgress;
+  const endY = to.y + (pulledPt.y - to.y) * pullProgress;
 
   // Determine the segment of the curve currently drawn. Attack grows the
   // stroke from t=0 to t=1 along the curve; hold + release show the full
@@ -225,6 +238,7 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   const drawEnd = phase === "attack" ? local : 1;
 
   // Rasterize the curve as a series of short segments so we can taper width.
+  const endPt = { x: endX, y: endY };
   const steps = 24;
   const drawSteps = Math.max(1, Math.floor(steps * drawEnd));
   ctx.strokeStyle = withAlpha(color, alpha);
@@ -232,7 +246,7 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   ctx.beginPath();
   for (let i = 0; i <= drawSteps; i++) {
     const tt = i / steps;
-    const p = bezierPt(from, { x: ctrlX, y: ctrlY }, to, tt);
+    const p = bezierPt(from, { x: ctrlX, y: ctrlY }, endPt, tt);
     if (i === 0) ctx.moveTo(p.x, p.y);
     else ctx.lineTo(p.x, p.y);
   }
@@ -242,17 +256,17 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   // Hook barb at the target end during attack + hold. Small triangle
   // perpendicular to the tangent at t=1.
   if (phase !== "release") {
-    const near = bezierPt(from, { x: ctrlX, y: ctrlY }, to, 0.94);
-    const dx = to.x - near.x;
-    const dy = to.y - near.y;
+    const near = bezierPt(from, { x: ctrlX, y: ctrlY }, endPt, 0.94);
+    const dx = endPt.x - near.x;
+    const dy = endPt.y - near.y;
     const len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
     const barb = size * 0.08;
     ctx.fillStyle = withAlpha(color, alpha);
     ctx.beginPath();
-    ctx.moveTo(to.x + ux * barb * 0.4, to.y + uy * barb * 0.4);
-    ctx.lineTo(to.x + -uy * barb, to.y + ux * barb);
-    ctx.lineTo(to.x - ux * barb * 0.4, to.y - uy * barb * 0.4);
+    ctx.moveTo(endPt.x + ux * barb * 0.4, endPt.y + uy * barb * 0.4);
+    ctx.lineTo(endPt.x + -uy * barb, endPt.y + ux * barb);
+    ctx.lineTo(endPt.x - ux * barb * 0.4, endPt.y - uy * barb * 0.4);
     ctx.closePath();
     ctx.fill();
   }
@@ -265,8 +279,116 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
 
 const SHIELD_TTL = 620;
 
+/** Focus-retargeted Shield: caster hands a shield glyph to an ally along a
+ *  short bezier arc, with a faint blue thread trailing the hand-off. Reads
+ *  as "the caster is warding their ally" rather than the self-brace. */
+const renderShieldToAlly: SkillRenderer = (ctx, eff, age, size) => {
+  const ttl = SHIELD_TTL;
+  const t = age / ttl;
+  const color = skillColor(eff.skillId);
+  const from = squareCenter(eff.from, size);
+  const to = squareCenter(eff.auxSq ?? eff.from, size);
+
+  // Segments: reach 140 / travel 200 / settle 80 / fade 200
+  const reachEnd = 140 / ttl;
+  const travelEnd = 340 / ttl;
+  const settleEnd = 420 / ttl;
+
+  // Bezier for both the trailing thread and the glyph's flight path.
+  const sign = pairSign(eff.from, eff.auxSq ?? eff.from);
+  const perp = perpOffset(from, to, size * 0.32 * sign);
+  const midX = (from.x + to.x) / 2 + perp.x;
+  const midY = (from.y + to.y) / 2 + perp.y;
+
+  // Trailing thread: draws from caster along the arc during reach, holds
+  // through travel, fades during settle. Communicates the caster→ally link
+  // even before the shield glyph settles.
+  let threadEnd: number;
+  let threadAlpha: number;
+  if (t < reachEnd) {
+    threadEnd = t / reachEnd;
+    threadAlpha = 0.7;
+  } else if (t < travelEnd) {
+    threadEnd = 1;
+    threadAlpha = 0.7;
+  } else if (t < settleEnd) {
+    threadEnd = 1;
+    threadAlpha = 0.7 * (1 - (t - travelEnd) / (settleEnd - travelEnd));
+  } else {
+    threadEnd = 1;
+    threadAlpha = 0;
+  }
+  if (threadAlpha > 0.01) {
+    const steps = 20;
+    const drawSteps = Math.max(1, Math.floor(steps * threadEnd));
+    ctx.strokeStyle = withAlpha(color, threadAlpha);
+    ctx.lineCap = "round";
+    ctx.lineWidth = size * 0.028;
+    ctx.beginPath();
+    for (let i = 0; i <= drawSteps; i++) {
+      const tt = i / steps;
+      const p = bezierPt(from, { x: midX, y: midY }, to, tt);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+
+  // Shield glyph flying from caster to ally, then settling onto the ally.
+  let cx: number, cy: number, scale: number, glyphA: number;
+  if (t < reachEnd) {
+    // No glyph yet — thread is just being drawn.
+    return;
+  } else if (t < travelEnd) {
+    const localT = (t - reachEnd) / (travelEnd - reachEnd);
+    const p = bezierPt(from, { x: midX, y: midY }, to, localT);
+    cx = p.x;
+    cy = p.y;
+    scale = 1;
+    glyphA = 0.9;
+  } else if (t < settleEnd) {
+    const localT = (t - travelEnd) / (settleEnd - travelEnd);
+    cx = to.x;
+    cy = to.y;
+    scale = 1 - localT * 0.35;
+    glyphA = 0.9;
+  } else {
+    const fadeLocal = (t - settleEnd) / (1 - settleEnd);
+    cx = to.x;
+    cy = to.y;
+    scale = 0.65;
+    glyphA = 0.9 * (1 - fadeLocal);
+  }
+
+  const w = size * 0.22 * scale;
+  const h = size * 0.30 * scale;
+  const topY = cy - h * 0.5;
+  ctx.strokeStyle = withAlpha(color, glyphA);
+  ctx.fillStyle = withAlpha("#f8f1de", glyphA * 0.4);
+  ctx.lineWidth = size * 0.03 * scale;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - w, topY + h * 0.15);
+  ctx.quadraticCurveTo(cx - w, topY, cx, topY);
+  ctx.quadraticCurveTo(cx + w, topY, cx + w, topY + h * 0.15);
+  ctx.lineTo(cx + w * 0.7, topY + h * 0.7);
+  ctx.quadraticCurveTo(cx, topY + h, cx, topY + h);
+  ctx.quadraticCurveTo(cx, topY + h, cx - w * 0.7, topY + h * 0.7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+};
+
 const renderShieldSelf: SkillRenderer = (ctx, eff, age, size) => {
   if (age >= SHIELD_TTL) return;
+  // Focus-retargeted Shield: `hasAux` is set and `auxSq` is the ally
+  // recipient. Draw a Plate-style "handed over" choreography instead of the
+  // self-brace, so the caster→ally relationship is visible on the board.
+  if (eff.hasAux && eff.auxSq !== undefined && eff.auxSq !== eff.from) {
+    renderShieldToAlly(ctx, eff, age, size);
+    return;
+  }
   const t = age / SHIELD_TTL;
   const color = skillColor(eff.skillId);
   const c = squareCenter(eff.from, size);
@@ -600,7 +722,11 @@ const renderSteal: SkillRenderer = (ctx, eff, age, size) => {
   ctx.setLineDash([]);
 
   // Coin: after grab (t > grabEnd), a filled disk travels target → caster.
-  if (t > grabEnd && t < returnEnd) {
+  // Skip when the outcome tells us nothing was actually stolen (target was
+  // broke). The reach + burst still fire so the *attempt* reads, but no
+  // coin flies back — matches the actual game state.
+  const moneyMoved = eff.outcome?.moneyStolen !== false;
+  if (moneyMoved && t > grabEnd && t < returnEnd) {
     const coinT = (t - grabEnd) / (returnEnd - grabEnd);
     const cx = to.x + (from.x - to.x) * coinT;
     const cy = to.y + (from.y - to.y) * coinT;
@@ -876,24 +1002,79 @@ const renderBlast: SkillRenderer = (ctx, eff, age, size) => {
   if (age >= BLAST_TTL) return;
   const t = age / BLAST_TTL;
   const color = skillColor(eff.skillId);
-  // Landing square = eff.to (the enemy target the caster leapt at).
+  const from = squareCenter(eff.from, size);
   const to = squareCenter(eff.to, size);
 
-  // Segments: burst-draw 180 / hold 60 / fade 220
-  const drawEnd = 180 / BLAST_TTL;
-  const holdEnd = 240 / BLAST_TTL;
+  // Segments: leap-streak 140 / burst-draw 140 / hold 60 / fade 120
+  const streakEnd = 140 / BLAST_TTL;
+  const drawEnd = 280 / BLAST_TTL;
+  const holdEnd = 340 / BLAST_TTL;
+
+  // Direction unit vector for the leap streak.
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+
+  // Leap streak: a short arcing stroke from the caster's edge toward the
+  // landing square. Provides attribution ("this piece leapt from here") and
+  // direction ("that way"). Fades once the burst starts.
+  {
+    let streakAlpha: number;
+    let streakEndT: number;
+    if (t < streakEnd) {
+      streakEndT = t / streakEnd;
+      streakAlpha = 0.85;
+    } else if (t < drawEnd) {
+      streakEndT = 1;
+      streakAlpha = 0.85 * (1 - (t - streakEnd) / (drawEnd - streakEnd));
+    } else {
+      streakAlpha = 0;
+      streakEndT = 1;
+    }
+    if (streakAlpha > 0.01) {
+      // Slight arc so the streak reads as a leap, not a hitscan line.
+      const sign = pairSign(eff.from, eff.to);
+      const perp = perpOffset(from, to, size * 0.18 * sign);
+      // Start just off the caster's edge; end just short of the landing so
+      // it doesn't clash with the burst.
+      const s = { x: from.x + ux * size * 0.24, y: from.y + uy * size * 0.24 };
+      const e = { x: to.x - ux * size * 0.24, y: to.y - uy * size * 0.24 };
+      const midX = (s.x + e.x) / 2 + perp.x;
+      const midY = (s.y + e.y) / 2 + perp.y;
+      ctx.strokeStyle = withAlpha(color, streakAlpha);
+      ctx.lineWidth = size * 0.05;
+      ctx.lineCap = "round";
+      const steps = 16;
+      const drawSteps = Math.max(1, Math.floor(steps * streakEndT));
+      ctx.beginPath();
+      for (let i = 0; i <= drawSteps; i++) {
+        const tt = i / steps;
+        const p = bezierPt(s, { x: midX, y: midY }, e, tt);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // Landing burst (was the whole animation). Now fires after the streak.
+  if (t < streakEnd) return;
+  const burstT = (t - streakEnd) / (1 - streakEnd);
+  const burstDrawFrac = (drawEnd - streakEnd) / (1 - streakEnd);
+  const burstHoldFrac = (holdEnd - streakEnd) / (1 - streakEnd);
 
   let spokeLen: number;
   let alpha: number;
-  if (t < drawEnd) {
-    const localT = t / drawEnd;
+  if (burstT < burstDrawFrac) {
+    const localT = burstT / burstDrawFrac;
     spokeLen = size * 0.22 * localT;
     alpha = 0.9;
-  } else if (t < holdEnd) {
+  } else if (burstT < burstHoldFrac) {
     spokeLen = size * 0.22;
     alpha = 0.9;
   } else {
-    const fadeLocal = (t - holdEnd) / (1 - holdEnd);
+    const fadeLocal = (burstT - burstHoldFrac) / (1 - burstHoldFrac);
     spokeLen = size * 0.22 + size * 0.05 * fadeLocal;
     alpha = 0.9 * (1 - fadeLocal);
   }
@@ -934,48 +1115,92 @@ const renderShove: SkillRenderer = (ctx, eff, age, size) => {
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
 
-  // Segments: draw 120 / follow 180 / fade 220
-  const drawEnd = 120 / SHOVE_TTL;
-  const followEnd = 300 / SHOVE_TTL;
+  // Segments: wind-up 80 / draw 120 / follow 180 / fade 140
+  const windupEnd = 80 / SHOVE_TTL;
+  const drawEnd = 200 / SHOVE_TTL;
+  const followEnd = 380 / SHOVE_TTL;
 
-  // Arrow originates at caster's edge and extends toward target.
-  const startDist = size * 0.28;
-  const arrowStart = { x: from.x + ux * startDist, y: from.y + uy * startDist };
+  // Wind-up: two short parallel "brace" marks straddling the caster,
+  // perpendicular to the shove direction. Makes it visible which piece is
+  // doing the shoving before the arrow even leaves the caster.
+  if (t < drawEnd) {
+    const windAlpha = t < windupEnd
+      ? 0.9 * (t / windupEnd)
+      : 0.9 * (1 - (t - windupEnd) / (drawEnd - windupEnd));
+    if (windAlpha > 0.01) {
+      const px = -uy, py = ux;
+      const braceR = size * 0.22;
+      const braceLen = size * 0.14;
+      ctx.strokeStyle = withAlpha(color, windAlpha);
+      ctx.lineWidth = size * 0.03;
+      ctx.lineCap = "round";
+      for (const s of [-1, 1]) {
+        const bx = from.x + px * braceR * s - ux * size * 0.02;
+        const by = from.y + py * braceR * s - uy * size * 0.02;
+        ctx.beginPath();
+        ctx.moveTo(bx - ux * braceLen * 0.5, by - uy * braceLen * 0.5);
+        ctx.lineTo(bx + ux * braceLen * 0.5, by + uy * braceLen * 0.5);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Arrow: after the wind-up, thick shaft grows from caster edge toward
+  // target. Base is at the caster edge (visible on the caster piece);
+  // taper toward tip so the eye reads "this piece pushed that way".
+  if (t < windupEnd) return;
+  const arrowT = (t - windupEnd) / (1 - windupEnd);
+  const arrowStart = { x: from.x + ux * size * 0.22, y: from.y + uy * size * 0.22 };
 
   let tipDist: number;
   let alpha: number;
-  if (t < drawEnd) {
-    const localT = t / drawEnd;
-    tipDist = startDist + (len - startDist) * 0.35 * localT;
+  const startDist = size * 0.22;
+  if (arrowT < (drawEnd - windupEnd) / (1 - windupEnd)) {
+    const localT = arrowT / ((drawEnd - windupEnd) / (1 - windupEnd));
+    tipDist = startDist + (len - startDist) * 0.4 * localT;
     alpha = 0.95;
-  } else if (t < followEnd) {
-    const localT = (t - drawEnd) / (followEnd - drawEnd);
-    // Extend further as if following the shoved piece.
-    tipDist = startDist + (len - startDist) * (0.35 + 0.5 * localT);
+  } else if (arrowT < (followEnd - windupEnd) / (1 - windupEnd)) {
+    const denom = (followEnd - drawEnd) / (1 - windupEnd);
+    const localT = (arrowT - (drawEnd - windupEnd) / (1 - windupEnd)) / denom;
+    tipDist = startDist + (len - startDist) * (0.4 + 0.55 * localT);
     alpha = 0.95;
   } else {
-    const fadeLocal = (t - followEnd) / (1 - followEnd);
-    tipDist = startDist + (len - startDist) * 0.85;
+    const denom = (1 - followEnd) / (1 - windupEnd);
+    const fadeLocal = (arrowT - (followEnd - windupEnd) / (1 - windupEnd)) / denom;
+    tipDist = startDist + (len - startDist) * 0.95;
     alpha = 0.95 * (1 - fadeLocal);
   }
   const tipX = from.x + ux * tipDist;
   const tipY = from.y + uy * tipDist;
-  // Shaft tapers from thick at start to thin at tip.
+
+  // Tapered shaft: draw in two segments, thick at base, thin at tip. Canvas
+  // 2D has no native taper, so we approximate with a few overlapping strokes
+  // of decreasing width along the shaft.
+  const shaftSteps = 6;
   ctx.strokeStyle = withAlpha(color, alpha);
   ctx.lineCap = "round";
-  ctx.lineWidth = size * 0.06;
-  ctx.beginPath();
-  ctx.moveTo(arrowStart.x, arrowStart.y);
-  ctx.lineTo(tipX, tipY);
-  ctx.stroke();
-  // Arrow head at tip (small chevron).
-  const headSize = size * 0.09;
+  for (let i = 0; i < shaftSteps; i++) {
+    const t0 = i / shaftSteps;
+    const t1 = (i + 1) / shaftSteps;
+    const x0 = arrowStart.x + (tipX - arrowStart.x) * t0;
+    const y0 = arrowStart.y + (tipY - arrowStart.y) * t0;
+    const x1 = arrowStart.x + (tipX - arrowStart.x) * t1;
+    const y1 = arrowStart.y + (tipY - arrowStart.y) * t1;
+    // Width tapers from 0.075 at base to 0.03 at tip.
+    ctx.lineWidth = size * (0.075 - 0.045 * (t0 + t1) / 2);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  }
+  // Arrow head chevron.
+  const headSize = size * 0.11;
   const perpXn = -uy, perpYn = ux;
   ctx.fillStyle = withAlpha(color, alpha);
   ctx.beginPath();
   ctx.moveTo(tipX + ux * headSize * 0.6, tipY + uy * headSize * 0.6);
-  ctx.lineTo(tipX + perpXn * headSize * 0.5, tipY + perpYn * headSize * 0.5);
-  ctx.lineTo(tipX - perpXn * headSize * 0.5, tipY - perpYn * headSize * 0.5);
+  ctx.lineTo(tipX + perpXn * headSize * 0.55, tipY + perpYn * headSize * 0.55);
+  ctx.lineTo(tipX - perpXn * headSize * 0.55, tipY - perpYn * headSize * 0.55);
   ctx.closePath();
   ctx.fill();
 };

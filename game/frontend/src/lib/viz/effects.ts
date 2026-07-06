@@ -43,7 +43,8 @@ export type Effect =
       amount: number;
       startedAt: number;
     }
-  | SkillEffect;
+  | SkillEffect
+  | SpotlightEffect;
 
 /** Per-skill choreography descriptors. `skillId` picks the drawing routine in
  *  EffectsLayer; `from`/`to` locate the animation on the board. Self-cast
@@ -53,6 +54,36 @@ export type SkillEffect = {
   skillId: number;
   from: number;
   to: number;
+  startedAt: number;
+  /** True when the action carried an aux square (Focus-retargeted Shield,
+   *  Dash, or Retreat). The renderer uses this to switch e.g. self-Shield
+   *  into an ally-thread flavour. */
+  hasAux?: boolean;
+  /** Aux square when `hasAux` is set. For Focus-retargeted Shield this is
+   *  the ally receiving the buff. */
+  auxSq?: number;
+  /** Outcome-aware fields sampled from the post-state. Present when the
+   *  ply-renderer could compute them (skill actions only). */
+  outcome?: {
+    /** True iff Steal actually moved money (target had cash). Steal renderer
+     *  suppresses the coin-return glyph when false. */
+    moneyStolen?: boolean;
+    /** Actual post-move square of the *target* piece (used by Hook so the
+     *  chain end tracks the pulled target rather than sticking on the
+     *  original target square). */
+    targetPostSq?: number;
+  };
+};
+
+/** A brief, subtle attention ring drawn on the CASTER square each time any
+ *  skill fires. Purpose: draw the eye to the caster so Focus / Charge /
+ *  Shield reads even when the user is looking elsewhere on the board. Kept
+ *  quiet — a thin ink ring, not a bloom. */
+export type SpotlightEffect = {
+  kind: "spotlight";
+  at: number;
+  /** Category tint — same colour system as the skill's own choreography. */
+  color: string;
   startedAt: number;
 };
 
@@ -64,4 +95,5 @@ export const FX_LIFETIME_MS = {
   heal: 720,
   armor: 720,
   skill: 900,
+  spotlight: 520,
 } as const;

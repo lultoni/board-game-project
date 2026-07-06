@@ -275,7 +275,37 @@
       }
     } else if (eff.kind === "skill") {
       renderSkill(ctx, eff, age, size);
+    } else if (eff.kind === "spotlight") {
+      // Attention ring on the caster square. A thin ink hoop that expands
+      // slightly and fades. Kept quiet so it doesn't fight the per-skill
+      // choreography drawn on top.
+      const ttl = FX_LIFETIME_MS.spotlight;
+      const t = age / ttl;
+      const c = squareCenter(eff.at, size);
+      const outerR = size * 0.36 + t * size * 0.14;
+      const outerA = Math.max(0, (1 - t) * 0.75);
+      ctx.strokeStyle = withAlpha(eff.color, outerA);
+      ctx.lineWidth = size * 0.035 * (1 - t * 0.5);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, outerR, 0, Math.PI * 2);
+      ctx.stroke();
+      const innerR = size * 0.28 - t * size * 0.06;
+      const innerA = Math.max(0, (1 - t * 1.8) * 0.55);
+      if (innerA > 0 && innerR > 0) {
+        ctx.strokeStyle = withAlpha(eff.color, innerA);
+        ctx.lineWidth = size * 0.02;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, innerR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
+  }
+
+  function withAlpha(hex: string, a: number): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 
   onMount(() => {

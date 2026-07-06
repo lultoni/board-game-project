@@ -28,6 +28,7 @@ import {
   type PositionView,
 } from "$lib/engine";
 import type { Effect } from "$lib/viz/effects";
+import { skillColor } from "$lib/engine/skills";
 import { sfx } from "$lib/audio/sfx";
 import { slideDurationMs } from "$lib/state/settings.svelte";
 
@@ -42,6 +43,11 @@ export interface PreStateSnapshot {
   preFull: Uint16Array | null;
   preTarget: ReturnType<typeof decodeMailbox> | null;
   preBodyguard: BodyguardSnapshot;
+  /** P1 money at pre-state. Sampled so the Skill emission phase can tell
+   *  whether Steal actually moved cash (target had ≥1) and suppress the
+   *  coin-return glyph when nothing was pilfered. */
+  preP1Money: number;
+  preP2Money: number;
 }
 
 /** A `$state`-backed carrier the renderer writes through to. Match passes
@@ -557,7 +563,13 @@ export function createPlyRenderer(
     if (isDraftTurn(raw) || isBodyguardChoice(raw)) {
       const pos = prePosition ?? getPosition();
       const preFull = pos?.mailbox ? new Uint16Array(pos.mailbox) : null;
-      return { preFull, preTarget: null, preBodyguard: [] };
+      return {
+        preFull,
+        preTarget: null,
+        preBodyguard: [],
+        preP1Money: pos?.p1Money ?? 0,
+        preP2Money: pos?.p2Money ?? 0,
+      };
     }
     const decoded = decodeAction(raw);
     const pos = prePosition ?? getPosition();
@@ -579,7 +591,13 @@ export function createPlyRenderer(
         }
       }
     }
-    return { preFull, preTarget, preBodyguard };
+    return {
+      preFull,
+      preTarget,
+      preBodyguard,
+      preP1Money: pos?.p1Money ?? 0,
+      preP2Money: pos?.p2Money ?? 0,
+    };
   }
 
   // === Apply + render ======================================================
@@ -757,11 +775,39 @@ export function createPlyRenderer(
       const casterSq = decoded.src;
       const targetSq = decoded.target;
       const now = clock.now();
+      // Outcome-aware fields the skill renderers can consult so the drawing
+      // reflects what actually happened, not just the action intent:
+      // - Steal: did the target actually have money to lose? Compare pre/post
+      //   totals; a non-zero delta on either side means money moved.
+      // - Hook: where did the pulled target end up? diff.moves whose `from`
+      //   equals `targetSq` is the target's post-square (paired by nearest
+      //   dst in diffSkillMailbox).
+      const moneyStolen =
+        fresh.pos.p1Money !== pre.preP1Money || fresh.pos.p2Money !== pre.preP2Money;
+      let targetPostSq: number | undefined;
+      const pulledMove = diff.moves.find((m) => m.from === targetSq);
+      if (pulledMove) targetPostSq = pulledMove.to;
       effectQueue.push({
         kind: "skill",
         skillId: decoded.skillId,
         from: casterSq,
         to: targetSq,
+        startedAt: now,
+        hasAux: decoded.hasAux,
+        auxSq: decoded.hasAux ? decoded.auxSq : undefined,
+        outcome: { moneyStolen, targetPostSq },
+      });
+      // Global caster spotlight — subtle attention ring on the casting piece
+      // so effects like Focus/Charge/Shield are readable even if the eye is
+      // elsewhere. Uses the skill's category tint. Drawn UNDER the choreography
+      // because it's pushed after (canvas draws in queue order — later entries
+      // paint on top; the spotlight paints on top of the per-skill draw. That
+      // matches the fireworks-ring-around-caster feel: the ring surrounds the
+      // caster's centre and the skill mark extends beyond it toward target).
+      effectQueue.push({
+        kind: "spotlight",
+        at: casterSq,
+        color: skillColor(decoded.skillId),
         startedAt: now,
       });
       const impactFired = emitImpactEvents(preFull, newMailbox, diff);
