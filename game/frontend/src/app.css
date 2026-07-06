@@ -59,18 +59,20 @@ h1, h2, h3 {
   top: 10px;
   right: 12px;
   z-index: 100;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border-radius: 50%;
-  font-size: 1.15rem;
+  padding: 0.35em 0.8em;
+  border: 1.5px solid var(--paper-line-strong);
+  border-radius: 999px;
+  background: var(--paper-bg);
+  color: var(--paper-ink);
+  font: inherit;
+  font-size: 0.85rem;
   line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.55;
-  transition: opacity 150ms;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 150ms ease, box-shadow 150ms ease, transform 80ms ease;
 }
 .gear-btn:hover {
   opacity: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }

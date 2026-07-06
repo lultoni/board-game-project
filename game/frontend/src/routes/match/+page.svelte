@@ -1490,6 +1490,29 @@
     if (typeof window !== "undefined") {
       window.removeEventListener("beforeunload", beforeUnloadGuard);
     }
+    // Local matches (HvH / HvAI / AIvAI / sandbox): if the player leaves before
+    // the game finishes naturally, transition the telemetry row from
+    // in-progress → abandoned so the Library stops treating it as live. MP
+    // uses markNetworkLost via a separate reactive effect. markAbandoned is
+    // idempotent (only flips when status === "in-progress"), so a finalized
+    // row is unaffected.
+    if (match.mode !== "multiplayer"
+        && match.telemetryMatchId
+        && !match.telemetryFinalised) {
+      const id = match.telemetryMatchId;
+      const engRef = eng;
+      void (async () => {
+        try {
+          let partial: string | undefined;
+          if (engRef) {
+            try { partial = (await engRef.matchLogJson()) ?? undefined; } catch { /* engine bad state */ }
+          }
+          await getTelemetryStore().markAbandoned(id, partial);
+        } catch {
+          // Swallow — telemetry must never block navigation.
+        }
+      })();
+    }
     if (mpEngine) {
       mpEngine.dispose();
       mpEngine = null;

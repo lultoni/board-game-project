@@ -3,7 +3,8 @@
     "title": "(game name)",
     "engineVersion": "engine v{version}",
     "loading": "loading…",
-    "back": "← back"
+    "back": "← back",
+    "settings": "settings"
   },
   "match": {
     "title": "match · {mode}"
@@ -36,6 +37,9 @@
   "menu": {
     "newMatch": "New match",
     "localPlay": "Local play",
+    "localPlaySubtitle": "Hotseat or vs AI",
+    "multiplayerSubtitle": "Play a friend online",
+    "librarySubtitle": "Past matches, replays, inspector",
     "modeHvh": "Local hotseat (human vs human)",
     "modeHvai": "Human vs AI",
     "modeAivai": "AI vs AI (spectator)",
@@ -214,6 +218,8 @@
     "load": "Load",
     "invalid": "Could not parse MatchLog JSON.",
     "restart": "Restart",
+    "stepBack": "◀ Step",
+    "stepForward": "Step ▶",
     "plyCounter": "Ply {current} / {total}",
     "atStart": "(start position)",
     "atEnd": "(end of match)",

@@ -23,8 +23,8 @@
     return store.subscribe((v) => (snap = v.data));
   });
 
-  const population = $derived<PopulationMember[]>(snap?.population ?? []);
-  const active = $derived(snap?.active_match ?? null);
+  const population: PopulationMember[] = $derived.by(() => snap?.population ?? []);
+  const active = $derived.by(() => snap?.active_match ?? null);
 
   const sorted = $derived.by(() => {
     const copy = [...population];

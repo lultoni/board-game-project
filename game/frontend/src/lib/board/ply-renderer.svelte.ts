@@ -22,6 +22,8 @@ import {
   ActionKind,
   decodeAction,
   decodeMailbox,
+  isBodyguardChoice,
+  isDraftTurn,
   type EngineClient,
   type PositionView,
 } from "$lib/engine";
@@ -548,6 +550,15 @@ export function createPlyRenderer(
   // === Pre-state snapshot ==================================================
 
   function snapshotPreState(raw: number, prePosition?: PositionView): PreStateSnapshot {
+    // Draft turns (bit 30) and bodyguard choices (bit 31) use disjoint bit
+    // layouts from Move/Skill/EndPhase/EndTurn. Feeding them through
+    // decodeAction extracts junk src/target/kind fields. Neither kind changes
+    // board occupancy, so an empty pre-state is correct.
+    if (isDraftTurn(raw) || isBodyguardChoice(raw)) {
+      const pos = prePosition ?? getPosition();
+      const preFull = pos?.mailbox ? new Uint16Array(pos.mailbox) : null;
+      return { preFull, preTarget: null, preBodyguard: [] };
+    }
     const decoded = decodeAction(raw);
     const pos = prePosition ?? getPosition();
     const preMailbox = pos?.mailbox ?? null;
@@ -597,6 +608,23 @@ export function createPlyRenderer(
   }
 
   async function renderApplied(raw: number, pre: PreStateSnapshot): Promise<void> {
+    // Draft turns and bodyguard choices don't drive board animations. Draft
+    // plies update piece skill assignments (visible via position but not by
+    // motion). Bodyguard choices may swap the attacked piece; either way, the
+    // Move/Skill decode path would extract junk fields. Pull fresh engine
+    // state and return.
+    if (isDraftTurn(raw)) {
+      drainPendingSkillRefresh();
+      await refresh();
+      return;
+    }
+    if (isBodyguardChoice(raw)) {
+      // Full resync — a guard may have taken the hit, so pieceIds needs to
+      // reconcile against the new mailbox rather than just re-reading position.
+      await resyncFromEngine();
+      return;
+    }
+
     const { preFull, preTarget, preBodyguard } = pre;
     const decoded = decodeAction(raw);
 

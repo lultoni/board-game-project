@@ -3,7 +3,8 @@
     "title": "(spielname)",
     "engineVersion": "Engine v{version}",
     "loading": "lädt…",
-    "back": "← zurück"
+    "back": "← zurück",
+    "settings": "Einstellungen"
   },
   "match": {
     "title": "Partie · {mode}"
@@ -11,6 +12,9 @@
   "menu": {
     "newMatch": "Neue Partie",
     "localPlay": "Lokales Spiel",
+    "localPlaySubtitle": "Hotseat oder gegen KI",
+    "multiplayerSubtitle": "Spiele online mit Freunden",
+    "librarySubtitle": "Partien, Wiederholungen, Inspektor",
     "modeHvh": "Hotseat (Mensch gegen Mensch)",
     "modeHvai": "Mensch gegen KI",
     "modeAivai": "KI gegen KI (Zuschauen)",
@@ -199,6 +203,8 @@
     "load": "Laden",
     "invalid": "MatchLog-JSON konnte nicht gelesen werden.",
     "restart": "Neustart",
+    "stepBack": "◀ Schritt",
+    "stepForward": "Schritt ▶",
     "plyCounter": "Halbzug {current} / {total}",
     "atStart": "(Startposition)",
     "atEnd": "(Ende der Partie)",

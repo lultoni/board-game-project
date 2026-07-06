@@ -20,6 +20,9 @@
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import { createPlyRenderer, type PlyRenderer } from "$lib/board/ply-renderer.svelte";
+  import PlayerPanel from "$lib/match/PlayerPanel.svelte";
+  import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
+  import BackButton from "$lib/ui/BackButton.svelte";
 
   // Empty snapshot used to reset the engine before replaying from ply 0.
   // We keep the original log's start_fen + config and only zero `actions`.
@@ -172,6 +175,13 @@
     void jumpTo(0);
   }
 
+  function stepBackward(): void {
+    if (busy || currentPly === 0) return;
+    sfx.play("click");
+    playing = false;
+    void jumpTo(currentPly - 1);
+  }
+
   // Auto-play loop. Each tick schedules a single step; the next iteration
   // is triggered when currentPly changes (which retriggers this $effect).
   $effect(() => {
@@ -204,7 +214,7 @@
 
 <main>
   <header>
-    <p><a href="../" onclick={() => sfx.play("click")}>{t("replay.back")}</a></p>
+    <BackButton />
     <h1>{t("replay.title")}</h1>
   </header>
 
@@ -227,15 +237,66 @@
     </section>
   {:else if renderer}
     <section class="viewer">
-      <div class="board-wrap">
-        <Board
-          position={renderer.position}
-          pieceIds={renderer.pieceIds}
-          shakingSquares={renderer.shakingSquares}
-          lastApplied={lastAppliedDisplay}
-          interactive={false}
-        />
-        <EffectsLayer viewBox={800} wheelPad={60} queue={renderer.effectQueue} />
+      <div class="game-area">
+        <div class="board-column">
+          <PlayerPanel
+            player="p2"
+            position={renderer.position}
+            aiThinking={false}
+            aiLastDepth={0}
+            aiLastScore={0}
+            aiMaxDepth={0}
+            isAiSeat={false}
+          />
+
+          <div class="board-stack">
+            <Board
+              position={renderer.position}
+              pieceIds={renderer.pieceIds}
+              shakingSquares={renderer.shakingSquares}
+              lastApplied={lastAppliedDisplay}
+              interactive={false}
+            />
+            <EffectsLayer viewBox={800} wheelPad={60} queue={renderer.effectQueue} />
+          </div>
+
+          <PlayerPanel
+            player="p1"
+            position={renderer.position}
+            aiThinking={false}
+            aiLastDepth={0}
+            aiLastScore={0}
+            aiMaxDepth={0}
+            isAiSeat={false}
+          />
+        </div>
+
+        <div class="right-column">
+          <aside class="right-panel">
+            <div class="status-block">
+              <div class="stat-row">
+                <span class="stat-label">Round</span>
+                <span class="stat-value">{renderer.position?.roundNumber ?? "–"}</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Phase</span>
+                <span class="phase-pill" class:move={renderer.position?.currentPhase === 0} class:skill={renderer.position?.currentPhase !== 0}>
+                  {renderer.position?.currentPhase === 0 ? "Move" : "Skill"}
+                </span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Actions</span>
+                <span class="stat-value">{renderer.position?.actionsRemaining ?? "–"}</span>
+              </div>
+            </div>
+
+            <div class="panel-divider"></div>
+
+            {#if renderer.position}
+              <ProgressionPanel roundNumber={renderer.position.roundNumber} />
+            {/if}
+          </aside>
+        </div>
       </div>
 
       <div class="meta">
@@ -257,6 +318,21 @@
       <div class="controls">
         <button
           type="button"
+          disabled={busy || currentPly === 0}
+          onclick={restart}
+        >
+          {t("replay.restart")}
+        </button>
+        <button
+          type="button"
+          disabled={busy || playing || currentPly === 0}
+          onclick={stepBackward}
+          aria-label={t("replay.stepBack")}
+        >
+          {t("replay.stepBack")}
+        </button>
+        <button
+          type="button"
           disabled={busy || plies.length === 0 || currentPly >= plies.length}
           onclick={togglePlay}
         >
@@ -267,14 +343,7 @@
           disabled={busy || playing || currentPly >= plies.length}
           onclick={() => { sfx.play("click"); void stepForward(); }}
         >
-          {t("controls.step")}
-        </button>
-        <button
-          type="button"
-          disabled={busy || currentPly === 0}
-          onclick={restart}
-        >
-          {t("replay.restart")}
+          {t("replay.stepForward")}
         </button>
       </div>
 
@@ -360,11 +429,96 @@
     gap: 0.8rem;
     align-items: stretch;
   }
-  .board-wrap {
-    max-width: 640px;
-    align-self: center;
-    width: 100%;
+  .game-area {
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+  }
+  .board-column {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    /* Replay reserves more vertical space than /match/ because meta, controls,
+       and scrubber all sit below the board (match view puts them in a right
+       column). ~170px matches match, +170px for the below-board block. */
+    width: min(calc(100vw - 240px - 2rem), calc(100dvh - 340px));
+    min-width: 280px;
+  }
+  .board-stack {
     position: relative;
+    width: 100%;
+  }
+  .right-column {
+    flex: 0 0 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .right-panel {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.6rem 0.7rem;
+    border: 1.5px solid var(--paper-line-strong);
+    border-radius: 6px;
+    background: var(--paper-bg);
+    min-height: 0;
+  }
+  .panel-divider {
+    height: 1px;
+    background: var(--paper-line);
+    margin: 0.1rem 0;
+  }
+  .status-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+  .stat-label {
+    font-size: 0.72rem;
+    color: var(--paper-ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat-value {
+    font-weight: 600;
+    font-size: 0.95rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .phase-pill {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15em 0.55em;
+    border-radius: 999px;
+    border: 1.5px solid currentColor;
+  }
+  .phase-pill.move {
+    color: var(--p1);
+  }
+  .phase-pill.skill {
+    color: var(--p2);
+  }
+  @media (max-width: 820px) {
+    .game-area {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .board-column {
+      width: 100%;
+    }
+    .right-column {
+      flex: 1 1 auto;
+    }
   }
   .meta {
     display: flex;

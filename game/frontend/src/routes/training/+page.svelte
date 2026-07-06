@@ -2,7 +2,8 @@
   import { onMount, setContext } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { sfx } from "$lib/audio/sfx";
-  import { createPollingStore } from "$lib/training/polling";
+  import { createPollingStore, type PollState } from "$lib/training/polling";
+  import type { Readable } from "svelte/store";
   import type { StatusSnapshot, TrainingPhase, BackendInfo } from "$lib/training/types";
   import LiveMatchView from "$lib/training/LiveMatchView.svelte";
   import TournamentStandings from "$lib/training/TournamentStandings.svelte";
@@ -27,8 +28,12 @@
 
   let selectedRaterId = $state<string | null>(null);
 
-  type StatusStore = ReturnType<typeof createPollingStore<StatusSnapshot>>;
-  type StatusValue = { data: StatusSnapshot | null; error: string | null; lastUpdated: number | null };
+  type StatusStore = Readable<PollState<StatusSnapshot>>;
+  interface StatusValue {
+    data: StatusSnapshot | null;
+    error: string | null;
+    lastUpdated: number | null;
+  }
   let statusStore: StatusStore | null = $state(null);
   let statusValue: StatusValue | null = $state(null);
 
@@ -37,7 +42,9 @@
       statusValue = null;
       return;
     }
-    const unsub = statusStore.subscribe((v) => (statusValue = v));
+    const unsub = statusStore.subscribe((v: StatusValue) => {
+      statusValue = v;
+    });
     return unsub;
   });
 
@@ -120,16 +127,16 @@
     return Date.now() - ts < STALE_MS;
   });
 
-  const phase = $derived<TrainingPhase>(
+  const phase: TrainingPhase = $derived.by(() =>
     statusFresh ? (statusValue?.data?.phase ?? "idle") : "idle",
   );
   const isRunning = $derived(runRequested || (statusFresh && phase !== "idle"));
 
-  const generation = $derived(statusValue?.data?.generation ?? null);
-  const round = $derived(statusValue?.data?.round ?? null);
-  const etaSeconds = $derived(statusValue?.data?.eta_seconds ?? null);
-  const populationCount = $derived(statusValue?.data?.population?.length ?? 0);
-  const activeMatch = $derived(statusValue?.data?.active_match ?? null);
+  const generation = $derived.by(() => statusValue?.data?.generation ?? null);
+  const round = $derived.by(() => statusValue?.data?.round ?? null);
+  const etaSeconds = $derived.by(() => statusValue?.data?.eta_seconds ?? null);
+  const populationCount = $derived.by(() => statusValue?.data?.population?.length ?? 0);
+  const activeMatch = $derived.by(() => statusValue?.data?.active_match ?? null);
 
   $effect(() => {
     if (runRequested && statusFresh && phase !== "idle") {

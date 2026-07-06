@@ -5,6 +5,7 @@
   import Settings from "$lib/SettingsModal.svelte";
   import { applyMasterVolume, sfx } from "$lib/audio/sfx";
   import { resetEngine } from "$lib/engine";
+  import { t } from "$lib/state/i18n";
   import MpErrorBanner from "$lib/multiplayer/MpErrorBanner.svelte";
   let { children } = $props();
 
@@ -30,6 +31,6 @@
 </script>
 
 <MpErrorBanner />
-<button class="gear-btn" onclick={() => { settingsOpen = true; }} aria-label="Open settings">⚙</button>
+<button class="gear-btn" onclick={() => { settingsOpen = true; }} aria-label={t("app.settings")}>{t("app.settings")}</button>
 <Settings open={settingsOpen} onClose={() => { settingsOpen = false; }} />
 {@render children?.()}
