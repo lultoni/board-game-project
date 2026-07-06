@@ -749,6 +749,21 @@ export function createPlyRenderer(
       const newMailbox = fresh.pos.mailbox;
       const diff = diffSkillMailbox(preFull, newMailbox);
       const hasReloc = hasRelocationOrDeath(diff);
+      // Emit the per-skill choreography first (drawn behind mailbox-delta
+      // effects because it's pushed earlier). Uses decoded.skillId + src
+      // as caster; target = decoded.target for cast-at-square skills, or
+      // src for self-casts (defaultRange 0). Focus/Charge (14/15) produce
+      // no mailbox delta, so this is the ONLY visual signal they get.
+      const casterSq = decoded.src;
+      const targetSq = decoded.target;
+      const now = clock.now();
+      effectQueue.push({
+        kind: "skill",
+        skillId: decoded.skillId,
+        from: casterSq,
+        to: targetSq,
+        startedAt: now,
+      });
       const impactFired = emitImpactEvents(preFull, newMailbox, diff);
       const applyFresh = () => {
         setPosition(fresh.pos);

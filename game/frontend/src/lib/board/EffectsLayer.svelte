@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { type Effect, FX_LIFETIME_MS } from "$lib/viz/effects";
+  import { renderSkill } from "$lib/viz/skill-effects";
 
   interface Props {
     /** SVG viewBox edge in pixels. Same value as Board. */
@@ -272,6 +273,8 @@
         ctx.arc(c.x, c.y, size * 0.35, 0, Math.PI * 2);
         ctx.fill();
       }
+    } else if (eff.kind === "skill") {
+      renderSkill(ctx, eff, age, size);
     }
   }
 

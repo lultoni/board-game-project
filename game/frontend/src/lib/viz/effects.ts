@@ -42,7 +42,19 @@ export type Effect =
       /** Armor delta (currently always 1, or -1 when stripped). */
       amount: number;
       startedAt: number;
-    };
+    }
+  | SkillEffect;
+
+/** Per-skill choreography descriptors. `skillId` picks the drawing routine in
+ *  EffectsLayer; `from`/`to` locate the animation on the board. Self-cast
+ *  skills set `from === to`. See .claude/plans/skill-animations.md. */
+export type SkillEffect = {
+  kind: "skill";
+  skillId: number;
+  from: number;
+  to: number;
+  startedAt: number;
+};
 
 export const FX_LIFETIME_MS = {
   dust: 650,
@@ -51,4 +63,5 @@ export const FX_LIFETIME_MS = {
   shake: 320,
   heal: 720,
   armor: 720,
+  skill: 900,
 } as const;
