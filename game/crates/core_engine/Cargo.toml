@@ -9,6 +9,14 @@ description = "Pure Rust game engine for (GAME NAME). Stateless math; no I/O; no
 [lib]
 crate-type = ["rlib"]
 
+[features]
+# Optional per-section instrumentation for the bench crate. Off by default so
+# release builds (Tauri, nn_trainer, etc.) don't pay per-call TLS load/store
+# costs on the eval/search hot path. Enable with:
+#   cargo build --features bench_counters
+# or from a dependent crate's Cargo.toml.
+bench_counters = []
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -56,6 +56,7 @@ const NMP_MIN_PIECES: u32 = 6;
 
 use super::evaluator::{Evaluator, HeuristicEvaluator, MATE_SCORE};
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
+use super::counters;
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::{generator, make_unmake};
 use crate::state::Position;
@@ -203,6 +204,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
           mut alpha: i32, mut beta: i32, can_null: bool,
           ctx: &mut SearchCtx) -> i32 {
     ctx.nodes += 1;
+    counters::bump_ab_nodes();
 
     if ctx.nodes & TIME_CHECK_MASK == 0 {
         if let Some(d) = ctx.deadline {

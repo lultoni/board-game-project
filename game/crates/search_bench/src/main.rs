@@ -23,6 +23,7 @@
 
 use core_engine::game_logic::action::{Action, ActionKind};
 use core_engine::search::alpha_beta::{find_best, SearchResult};
+use core_engine::search::counters::{self, Snapshot as CounterSnapshot, ATTACKER_LIST_HIST_BUCKETS};
 use core_engine::search::evaluator::evaluate_breakdown;
 use core_engine::search::transposition::{Stats as TtStats, TranspositionTable};
 use core_engine::state::Position;
@@ -65,6 +66,7 @@ struct Measurement {
     tt_hits: u64,
     tt_hit_rate: f64,
     ebf: f64,
+    counters: CounterSnapshot,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -319,6 +321,7 @@ fn load_corpus(path: &PathBuf) -> Vec<CorpusEntry> {
 fn one_run(pos_template: &Position, mode: Mode) -> (Measurement, TtStats) {
     let mut pos = pos_template.clone();
     let mut tt = TranspositionTable::with_capacity_mb(TT_MB);
+    counters::reset();
     let t0 = Instant::now();
     let (time_ms_arg, max_depth_arg) = match mode {
         Mode::Depth(d) => (0u64, d),
@@ -327,6 +330,7 @@ fn one_run(pos_template: &Position, mode: Mode) -> (Measurement, TtStats) {
     let sr: SearchResult = find_best(&mut pos, &mut tt, time_ms_arg, max_depth_arg);
     let elapsed = t0.elapsed().as_secs_f64();
     let stats = tt.stats();
+    let counter_snap = counters::snapshot();
 
     let nps = if elapsed > 0.0 { sr.nodes as f64 / elapsed } else { 0.0 };
     let ebf = if sr.depth > 0 {
@@ -351,6 +355,7 @@ fn one_run(pos_template: &Position, mode: Mode) -> (Measurement, TtStats) {
         tt_hits: stats.hits,
         tt_hit_rate: hit_rate,
         ebf,
+        counters: counter_snap,
     };
     (m, stats)
 }
@@ -456,6 +461,32 @@ fn run_corpus(entries: &[CorpusEntry], mode: Mode, runs: usize) -> (Vec<(String,
             med.ebf,
             action_brief(med.best_move),
         );
+        let c = &med.counters;
+        let leaf = c.ab_nodes + c.qs_nodes;
+        let gate_total = c.maee_gate_pass + c.maee_gate_skip;
+        let attackers_mean = if c.enumerate_attackers_calls > 0 {
+            c.attackers_total() as f64 / c.enumerate_attackers_calls as f64
+        } else {
+            0.0
+        };
+        println!(
+            "  counters:  eval={} ab={} qs={} leaf_ratio_qs={:.2}  maee_pass/skip={}/{} ({:.1}%)  skill_pass/skip={}/{}  act0_hit={}  maee_side={} maee_target={} enum_att={} att_mean={:.2}  skill_act={}",
+            c.eval_calls,
+            c.ab_nodes,
+            c.qs_nodes,
+            if leaf > 0 { c.qs_nodes as f64 / leaf as f64 } else { 0.0 },
+            c.maee_gate_pass,
+            c.maee_gate_skip,
+            if gate_total > 0 { 100.0 * c.maee_gate_pass as f64 / gate_total as f64 } else { 0.0 },
+            c.skill_gate_pass,
+            c.skill_gate_skip,
+            c.actions_zero_hit,
+            c.maee_side_calls,
+            c.maee_target_calls,
+            c.enumerate_attackers_calls,
+            attackers_mean,
+            c.skill_activity_calls,
+        );
 
         results.push((entry.id.clone(), med));
     }
@@ -477,6 +508,32 @@ fn json_escape(s: &str) -> String {
         }
     }
     out
+}
+
+/// Inline-serialize a CounterSnapshot as a JSON object. `indent` is the
+/// leading whitespace already at the start of the caller's line — used for
+/// nested object formatting.
+fn write_counter_snapshot(s: &mut String, c: &CounterSnapshot, indent: &str) {
+    s.push_str("{\n");
+    s.push_str(&format!("{}  \"eval_calls\": {},\n", indent, c.eval_calls));
+    s.push_str(&format!("{}  \"maee_gate_pass\": {},\n", indent, c.maee_gate_pass));
+    s.push_str(&format!("{}  \"maee_gate_skip\": {},\n", indent, c.maee_gate_skip));
+    s.push_str(&format!("{}  \"skill_gate_pass\": {},\n", indent, c.skill_gate_pass));
+    s.push_str(&format!("{}  \"skill_gate_skip\": {},\n", indent, c.skill_gate_skip));
+    s.push_str(&format!("{}  \"actions_zero_hit\": {},\n", indent, c.actions_zero_hit));
+    s.push_str(&format!("{}  \"maee_side_calls\": {},\n", indent, c.maee_side_calls));
+    s.push_str(&format!("{}  \"maee_target_calls\": {},\n", indent, c.maee_target_calls));
+    s.push_str(&format!("{}  \"enumerate_attackers_calls\": {},\n", indent, c.enumerate_attackers_calls));
+    s.push_str(&format!("{}  \"skill_activity_calls\": {},\n", indent, c.skill_activity_calls));
+    s.push_str(&format!("{}  \"ab_nodes\": {},\n", indent, c.ab_nodes));
+    s.push_str(&format!("{}  \"qs_nodes\": {},\n", indent, c.qs_nodes));
+    s.push_str(&format!("{}  \"attacker_list_hist\": [", indent));
+    for (i, v) in c.attacker_list_hist.iter().enumerate() {
+        if i > 0 { s.push_str(", "); }
+        s.push_str(&format!("{}", v));
+    }
+    s.push_str("]\n");
+    s.push_str(&format!("{}}}", indent));
 }
 
 fn write_json(
@@ -503,12 +560,36 @@ fn write_json(
     let geo_nps = geometric_mean(&nps_values);
     let depth_min = depth_values.iter().copied().min().unwrap_or(0);
     let depth_max = depth_values.iter().copied().max().unwrap_or(0);
+
+    // Sum counters across all positions so aggregate reflects "over the whole
+    // corpus run" rather than a mean of per-position values.
+    let mut agg = CounterSnapshot::default();
+    for (_, m) in results {
+        agg.eval_calls += m.counters.eval_calls;
+        agg.maee_gate_pass += m.counters.maee_gate_pass;
+        agg.maee_gate_skip += m.counters.maee_gate_skip;
+        agg.skill_gate_pass += m.counters.skill_gate_pass;
+        agg.skill_gate_skip += m.counters.skill_gate_skip;
+        agg.actions_zero_hit += m.counters.actions_zero_hit;
+        agg.maee_side_calls += m.counters.maee_side_calls;
+        agg.maee_target_calls += m.counters.maee_target_calls;
+        agg.enumerate_attackers_calls += m.counters.enumerate_attackers_calls;
+        agg.skill_activity_calls += m.counters.skill_activity_calls;
+        agg.ab_nodes += m.counters.ab_nodes;
+        agg.qs_nodes += m.counters.qs_nodes;
+        for i in 0..ATTACKER_LIST_HIST_BUCKETS {
+            agg.attacker_list_hist[i] += m.counters.attacker_list_hist[i];
+        }
+    }
+
     s.push_str(&format!("  \"aggregate\": {{\n"));
     s.push_str(&format!("    \"geometric_mean_nps\": {:.2},\n", geo_nps));
     s.push_str(&format!("    \"depth_min\": {},\n", depth_min));
     s.push_str(&format!("    \"depth_max\": {},\n", depth_max));
-    s.push_str(&format!("    \"positions\": {}\n", results.len()));
-    s.push_str(&format!("  }},\n"));
+    s.push_str(&format!("    \"positions\": {},\n", results.len()));
+    s.push_str("    \"counters\": ");
+    write_counter_snapshot(&mut s, &agg, "    ");
+    s.push_str("\n  },\n");
 
     s.push_str("  \"positions\": [\n");
     for (i, (id, m)) in results.iter().enumerate() {
@@ -526,7 +607,10 @@ fn write_json(
         s.push_str(&format!("      \"tt_probes\": {},\n", m.tt_probes));
         s.push_str(&format!("      \"tt_hits\": {},\n", m.tt_hits));
         s.push_str(&format!("      \"tt_hit_rate\": {:.4},\n", m.tt_hit_rate));
-        s.push_str(&format!("      \"ebf\": {:.3}\n", m.ebf));
+        s.push_str(&format!("      \"ebf\": {:.3},\n", m.ebf));
+        s.push_str("      \"counters\": ");
+        write_counter_snapshot(&mut s, &m.counters, "      ");
+        s.push('\n');
         s.push_str("    }");
         if i + 1 < results.len() {
             s.push(',');

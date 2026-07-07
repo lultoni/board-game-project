@@ -35,6 +35,7 @@ use crate::time::now_ms;
 
 use super::alpha_beta::{SearchCtx, INF, TIME_CHECK_MASK};
 use super::evaluator::MATE_SCORE;
+use super::counters;
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::skills::{
     skill_category, skill_cost, skill_default_range, skill_from_id, Skill, SkillCategory,
@@ -168,6 +169,7 @@ pub(super) fn quiesce(
     ctx: &mut SearchCtx,
 ) -> i32 {
     ctx.nodes += 1;
+    counters::bump_qs_nodes();
 
     if ctx.nodes & TIME_CHECK_MASK == 0 {
         if let Some(d) = ctx.deadline {

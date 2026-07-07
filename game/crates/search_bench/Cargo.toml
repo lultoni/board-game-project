@@ -11,6 +11,6 @@ name = "search_bench"
 path = "src/main.rs"
 
 [dependencies]
-core_engine = { workspace = true }
+core_engine = { workspace = true, features = ["bench_counters"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

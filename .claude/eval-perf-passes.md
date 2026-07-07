@@ -2,7 +2,7 @@
 
 *Living doc. Each perf pass on `core_engine/src/search/evaluator.rs` follows the same recipe: critique → plan → implement → bench → recritique. Track results here so we can see whether each pass actually helped and what's left to attack.*
 
-*Last updated: 2026-07-07 — Pass 1 landed. Known regressions flagged; Pass 2 items queued.*
+*Last updated: 2026-07-07 — Pass 2 in progress. Items 5+4 done; act0 short-circuit reverted. Item 1 (horizon fix) up next.*
 
 ---
 
@@ -242,6 +242,50 @@ Never overwrite existing labels; append new ones.
 4. **Investigate why `midgame-move-02` regressed in a Move-phase position.** MAEE still runs there. Suspicion: `actions_remaining==0` zeroing the side-to-move's threat_* term in the middle of a Move phase shifts ordering unfavourably at some subtree. Alternatively: AttackerList `Attacker { cost: i16, sq: u8 }` layout is now 4 B including 1 B pad — different memmove/sort semantics vs the old 8 B `{ i32, u8 }` items. Either could perturb ordering. Instrument with per-position search stats before touching.
 
 5. **Bench-side improvement: per-section counters.** Add lightweight counters to eval/search hot paths — MAEE call count per node, AttackerList size histogram, phase-gate hit rate at leaves, per-move-ordering-key TT hit rate. Currently the bench reports nodes + time + EBF only, which hides *why* a position regressed. Adding these makes each future pass diagnosable without ad-hoc instrumentation. Ship this early in Pass 2 so subsequent passes benefit.
+
+---
+
+### Pass 2 progress log
+
+**Item 5 (per-section counters) — DONE (2026-07-07).**
+
+New module `core_engine::search::counters`. Feature-gated behind `bench_counters` (off by default; enabled transitively via `search_bench` crate). Zero cost in Tauri/nn_trainer release builds — every counter fn compiles to `{}` without the feature. With the feature, TLS-backed `Cell<Snapshot>` — cheap enough for the bench (~+15% eval cost when instrumented; not a factor for the search-side node-count metrics we care about).
+
+Counters exposed: `eval_calls`, `maee_gate_pass/skip`, `skill_gate_pass/skip`, `actions_zero_hit`, `maee_side_calls`, `maee_target_calls`, `enumerate_attackers_calls`, `attacker_list_hist[0..=8]`, `skill_activity_calls`, `ab_nodes`, `qs_nodes`. Bench prints per-position summary + emits full snapshot in the search-\*.json output. Aggregate rollup across all positions in the top-level `aggregate.counters` block.
+
+Reference data: `bench/results/search-post-pass1-instrumented-d6.json`.
+
+**Item 4 (midgame-move-02 investigation) — DONE (2026-07-07). Root cause identified.**
+
+Counters reveal that `midgame-move-02` and the other 3 "mysterious" Pass 1 regressions all share a profile: high `actions_zero_hit` fraction (77-95% of eval calls) plus high MAEE-gate-pass fraction (97%+). Hypothesis: the `actions_remaining==0` side-to-move short-circuit is asymmetrically zeroing one side's `threat_*`/`skill_act_*` at the majority of leaves, creating an eval-value discontinuity that perturbs move ordering.
+
+**Probe test (2026-07-07):** disabled the short-circuit block; re-ran 5-position mini-corpus at d6.
+
+| Position | Pass 1 nodes | probe (no act0) nodes | Δ |
+|---|---|---|---|
+| midgame-move-01 | 1.61 M | 1.36 M | -15% |
+| **midgame-move-02** | **688 K** | **231 K** | **-66%** (recovers to ~pre-MAEE baseline of 225 K) |
+| midgame-move-05 | 1.14 M | 715 K | -37% |
+| **skill-phase-full-03** | **5.71 M** | **3.54 M** | **-38%** (residual is the phase-gate horizon effect; item 1 handles that) |
+| combo-loaded-04 | 98 K | 48 K | -52% (recovers to pre-Pass-1 47 K) |
+
+Confirmed: the short-circuit is the direct cause of 4/5 known regressions. skill-phase-full-03 has an additional cause (the phase gate itself — item 1).
+
+**Item 4 fix (2026-07-07):** removed the `actions_remaining==0` side-to-move zeroing. Kept the `bump_actions_zero_hit()` counter for future diagnostic use. 392 tests pass. The `if pos.actions_remaining == 0 { … }` block now only bumps the counter and is a no-op otherwise.
+
+Not doing a full-corpus rerun yet — the 5-position probe already covers all known regressions and confirms the fix. The corpus-wide impact will be captured after item 1 lands (which needs its own bench anyway).
+
+**Corpus-wide observations from item 5 counters that inform later items:**
+
+1. `maee_gate_pass` fires 92-99% on the slow positions (Move-phase-heavy trees). The phase-gate's savings mostly hit *cheap* positions, not the expensive ones — reinforces that **item 1 (horizon fix / MAEE-everywhere-cheaply) is the biggest remaining win**.
+2. `qs_nodes / (ab_nodes + qs_nodes)` = 0.6–0.97 on the slow positions. Most eval calls come from QS, not from AB leaves. The Pass 3+ "quiescence redesign" item is more concrete now: **MAEE-from-QS is where the time is**, not MAEE-from-static-leaves.
+3. `att_mean` = 1.4–1.6 attackers per enumeration on average across the corpus. The Pass 1 cap-8 sizing has plenty of headroom; no case for further shrinking.
+
+---
+
+### Pass 2 explicit follow-ups (original, superseded above for items 4 and 5)
+
+Items 1-3 remain open. Items 4 and 5 above.
 
 ---
 

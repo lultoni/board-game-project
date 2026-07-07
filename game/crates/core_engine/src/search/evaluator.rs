@@ -65,6 +65,7 @@
 use crate::state::Position;
 use crate::state::position::{GameResult, Phase, Player};
 use crate::state::magic;
+use crate::search::counters;
 use crate::game_logic::skills::{
     Skill, SkillCategory, TargetOwner, skill_from_id, skill_cost, skill_category,
     skill_default_range, skill_target_owner,
@@ -229,6 +230,7 @@ impl Evaluator for HeuristicEvaluator {
 }
 
 pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
+    counters::bump_eval_calls();
     // (a) Terminal — overrules everything. Per-bucket fields stay zero;
     //     only `total` carries the ±MATE_SCORE.
     match pos.game_result {
@@ -301,21 +303,34 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     // (e) Skill-activity: only meaningful in the Skill phase — skills are
     // illegal in Move/Draft.
     //
-    // Additional short-circuit: if the side to move has 0 actions_remaining,
-    // they cannot cash in either term this turn. Zero it out for that side.
+    // NOTE: a Pass 1 short-circuit that zeroed the side-to-move's threat_*
+    // and skill_act_* when actions_remaining == 0 was reverted in Pass 2 —
+    // it caused ~30-70% node explosions on multiple positions because it
+    // created a large asymmetric leaf-eval discontinuity that perturbed
+    // move ordering.
     if pos.current_phase == Phase::Move {
+        counters::bump_maee_gate_pass();
         b.threat_p1 = maee_side(pos, Player::P1);
         b.threat_p2 = maee_side(pos, Player::P2);
+    } else {
+        counters::bump_maee_gate_skip();
     }
     if pos.current_phase == Phase::Skill {
+        counters::bump_skill_gate_pass();
         b.skill_act_p1 = skill_activity(pos, Player::P1);
         b.skill_act_p2 = skill_activity(pos, Player::P2);
+    } else {
+        counters::bump_skill_gate_skip();
     }
+    // NOTE: earlier Pass 1 also zeroed threat_* / skill_act_* for the side
+    // to move when actions_remaining == 0. That short-circuit created an
+    // asymmetric leaf-eval discontinuity that perturbed move ordering and
+    // caused 30-70% node explosions on midgame-move-02/05, combo-loaded-04,
+    // and skill-phase-full-03. Removed in Pass 2 (see .claude/eval-perf-passes.md).
+    // The `actions_zero_hit` counter is kept for future diagnostics of any
+    // successor optimisation.
     if pos.actions_remaining == 0 {
-        match pos.to_move {
-            Player::P1 => { b.threat_p1 = 0; b.skill_act_p1 = 0; }
-            Player::P2 => { b.threat_p2 = 0; b.skill_act_p2 = 0; }
-        }
+        counters::bump_actions_zero_hit();
     }
 
     b.total =
@@ -443,6 +458,7 @@ fn enumerate_attackers(
     target_sq: u8,
     vacated: u64,
 ) -> AttackerList {
+    counters::bump_enumerate_attackers_calls();
     let own_bb = match side {
         Player::P1 => pos.p1_pieces.0,
         Player::P2 => pos.p2_pieces.0,
@@ -474,6 +490,7 @@ fn enumerate_attackers(
         let cost = attacker_cost(mat, m.hp(), m.armor());
         out.push(Attacker { cost, sq });
     }
+    counters::record_attacker_list_len(out.len as usize);
     out
 }
 
@@ -482,6 +499,7 @@ fn enumerate_attackers(
 /// initiator gains, negative = losing trade.
 #[inline]
 fn maee(pos: &Position, target_sq: u8) -> i32 {
+    counters::bump_maee_target_calls();
     let target_bit = SQ_BIT[target_sq as usize];
     let target_is_p1 = pos.p1_pieces.0 & target_bit != 0;
     let stm = if target_is_p1 { Player::P2 } else { Player::P1 };
@@ -568,6 +586,7 @@ fn other(p: Player) -> Player {
 /// exchange contributes nothing (we don't reward not-attacking).
 #[inline]
 fn maee_side(pos: &Position, side: Player) -> i32 {
+    counters::bump_maee_side_calls();
     let (opp_bb, own_bb) = match side {
         Player::P1 => (pos.p2_pieces.0, pos.p1_pieces.0),
         Player::P2 => (pos.p1_pieces.0, pos.p2_pieces.0),
@@ -605,6 +624,7 @@ fn maee_side(pos: &Position, side: Player) -> i32 {
 /// ~24 pieces × 2 slots × O(1) = ~48 lookups per leaf. Cheap.
 #[inline]
 fn skill_activity(pos: &Position, side: Player) -> i32 {
+    counters::bump_skill_activity_calls();
     let (own_bb, opp_bb, own_money) = match side {
         Player::P1 => (pos.p1_pieces.0, pos.p2_pieces.0, pos.p1_money),
         Player::P2 => (pos.p2_pieces.0, pos.p1_pieces.0, pos.p2_money),
