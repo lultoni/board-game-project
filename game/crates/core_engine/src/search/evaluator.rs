@@ -72,6 +72,16 @@ use crate::game_logic::skills::{
 
 pub const MATE_SCORE: i32 = 1_000_000;
 
+/// Precomputed 1 << sq lookup for the 64 board squares. Used in hot bit-set
+/// operations inside the evaluator to avoid re-materialising `1u64 << sq`
+/// under a runtime shift on every access.
+const SQ_BIT: [u64; 64] = {
+    let mut t = [0u64; 64];
+    let mut i = 0usize;
+    while i < 64 { t[i] = 1u64 << i; i += 1; }
+    t
+};
+
 // === Slice 9: material weights ===========================================
 //
 // Order of magnitude: one Champion >> one HP swing >> one armor swing >>
@@ -107,26 +117,48 @@ const MYSTIC_FLAG_BONUS:  i32 = 20;  // per Focus/Charge that has a real follow-
 const ARMOR_CAP:          u8 = 2;
 const HP_CAP:             u8 = 2;
 
-// PLACEHOLDER. A balance-slice will replace this with a tuned table once we
-// have playtest data. The current scheme — cost × 40 + range bonus + category
+// PLACEHOLDER. A balance-slice will replace this table with tuned values once
+// we have playtest data. The scheme — cost × 40 + range bonus + category
 // bonus — keeps each skill in a sensible 50..=220 range (well under
 // CHAMPION_VALUE) and orders skills roughly by their resource cost. It is
 // *consistent* (deterministic), so alpha-beta will still prefer the
 // objectively better of two material-equivalent positions; it is just not
 // strictly correct in absolute terms.
+//
+// Indexed by `Skill as u8` (id 1..=15); slot 0 is the "unequipped" sentinel.
+// Values precomputed from `skill_cost(s)*40 + range_bonus(s) + cat_bonus(s)`
+// where range_bonus is {0→0, 1→10, 2→20, ≥3→30} and cat_bonus is
+// {Strike→30, Move→20, Shield→15, Mystic→10}.
+const SKILL_VALUE: [i32; 16] = [
+      0, // 0  unequipped
+    120, // 1  Lance   (2·40 + 10 + 30)
+    170, // 2  Hook    (3·40 + 20 + 30)
+    130, // 3  Break   (2·40 + 20 + 30)
+    210, // 4  Steal   (4·40 + 20 + 30)
+    210, // 5  Tempest (4·40 + 20 + 30)
+     95, // 6  Shield  (2·40 +  0 + 15)
+    145, // 7  Heal    (3·40 + 10 + 15)
+    145, // 8  Plate   (3·40 + 10 + 15)
+    160, // 9  Dash    (3·40 + 20 + 20)
+    120, // 10 Blast   (2·40 + 20 + 20)
+    170, // 11 Shove   (3·40 + 30 + 20)
+    200, // 12 Swap    (4·40 + 20 + 20)
+    210, // 13 Retreat (4·40 + 30 + 20)
+     50, // 14 Focus   (1·40 +  0 + 10)
+    130, // 15 Charge  (3·40 +  0 + 10)
+];
+
 #[inline]
+#[allow(dead_code)] // kept for tests + eval_breakdown_diff callers
 fn skill_value(s: Skill) -> i32 {
-    let base = skill_cost(s) as i32 * 40;
-    let range_bonus = match skill_default_range(s) {
-        0 => 0, 1 => 10, 2 => 20, _ => 30,
-    };
-    let category_bonus = match skill_category(s) {
-        SkillCategory::Strike => 30,
-        SkillCategory::Move   => 20,
-        SkillCategory::Shield => 15,
-        SkillCategory::Mystic => 10,
-    };
-    base + range_bonus + category_bonus
+    SKILL_VALUE[s as usize]
+}
+
+/// Convenience for the hot loop: value from a mailbox skill id (0..=15) with
+/// a single bounds-checked table load. Returns 0 for the unequipped sentinel.
+#[inline]
+fn skill_value_from_id(id: u8) -> i32 {
+    if (id as usize) < SKILL_VALUE.len() { SKILL_VALUE[id as usize] } else { 0 }
 }
 
 /// Per-component decomposition of the static eval. `total` is exactly what
@@ -219,7 +251,6 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
         let is_p1 = pos.p1_pieces.0 & mask != 0;
 
         let is_guard    = pos.guards.0    & mask != 0;
-        let _is_champion = pos.champions.0 & mask != 0;
 
         let material =
             if      pos.kings.0     & mask != 0 { KING_MATERIAL }
@@ -227,9 +258,7 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
             else                                { GUARD_VALUE };
         let hp_term    = HP_PER_POINT    * m.hp()    as i32;
         let armor_term = ARMOR_PER_POINT * m.armor() as i32;
-        let mut skill_term = 0;
-        if let Some(sk) = skill_from_id(m.skill1()) { skill_term += skill_value(sk); }
-        if let Some(sk) = skill_from_id(m.skill2()) { skill_term += skill_value(sk); }
+        let skill_term = skill_value_from_id(m.skill1()) + skill_value_from_id(m.skill2());
 
         // Mobility: count squares the piece can actually reach given board state.
         // Guards: BFS-2 discounting all occupied squares.
@@ -263,22 +292,30 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     b.money_p1 = MONEY_PER_UNIT * pos.p1_money as i32;
     b.money_p2 = MONEY_PER_UNIT * pos.p2_money as i32;
 
-    // (d) Threat-symmetric term: pre-price hanging pieces so the eval doesn't
-    // sign-flip between P1's turn and P2's turn just because one side happens
-    // to be side-to-move at the leaf. For each capturable enemy piece, credit
-    // the attacker 0.25× the target's value (material + hp + armor). Kings
-    // are excluded (their capture goes through the MATE_SCORE branch and would
-    // otherwise be double-counted at MATE_SCORE weight). Skipped in Draft phase
-    // where pieces aren't on the board yet.
-    if pos.current_phase != Phase::Draft {
+    // (d) Threat-symmetric term (MAEE): pre-priced net-of-exchange value for
+    // each capturable enemy piece. Only meaningful in the Move phase — move-
+    // attacks are illegal in Skill/Draft. Skipping in the wrong phase drops
+    // the term to zero for both sides symmetrically, which is honest: in the
+    // Skill phase there is no move-attack this turn to price.
+    //
+    // (e) Skill-activity: only meaningful in the Skill phase — skills are
+    // illegal in Move/Draft.
+    //
+    // Additional short-circuit: if the side to move has 0 actions_remaining,
+    // they cannot cash in either term this turn. Zero it out for that side.
+    if pos.current_phase == Phase::Move {
         b.threat_p1 = maee_side(pos, Player::P1);
         b.threat_p2 = maee_side(pos, Player::P2);
-
-        // (e) Skill-activity: credit only skills that could actually do
-        // something right now (money available, legal targets exist). See
-        // `skill_activity` for the per-category rules.
+    }
+    if pos.current_phase == Phase::Skill {
         b.skill_act_p1 = skill_activity(pos, Player::P1);
         b.skill_act_p2 = skill_activity(pos, Player::P2);
+    }
+    if pos.actions_remaining == 0 {
+        match pos.to_move {
+            Player::P1 => { b.threat_p1 = 0; b.skill_act_p1 = 0; }
+            Player::P2 => { b.threat_p2 = 0; b.skill_act_p2 = 0; }
+        }
     }
 
     b.total =
@@ -312,22 +349,30 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
 // actually capture without dying was the root cause of the AI-king-forward
 // bias this term is designed to fix.
 
-const MAEE_MAX_ATTACKERS: usize = 16;
+// Geometric ceiling for attackers-of-a-square in this game: the Chebyshev-1
+// ring around any square has 8 slots (the only squares from which a Champion
+// can move-attack). Guards must BFS-2 through empty squares to reach an
+// adjacent square of the target, and each Guard on a Chebyshev-1 square
+// blocks BFS entry for outer Guards — so filling more than 8 attackers
+// requires occupying more than 8 adjacent-or-nearby squares AND leaving BFS
+// paths open, which are mutually exclusive. Realistic in-game max is 3-5.
+const MAEE_MAX_ATTACKERS: usize = 8;
 const MAEE_MAX_PLIES: usize = 32;
 
 /// One attacker candidate: (cost, source-square).
+/// Cost fits in i16: max is CHAMPION_VALUE(1000) + 2·HP_PER_POINT(300) +
+/// 2·ARMOR_PER_POINT(240) = 1540. Packs to 4 bytes with 1 byte of padding.
 #[derive(Copy, Clone)]
 struct Attacker {
-    cost: i32,
+    cost: i16,
     sq: u8,
 }
 
 /// Fixed-size sorted-cheapest-first list. Avoids heap allocation on the hot
-/// eval path. Size cap is 16 — a single 8×8 square can be reached by at
-/// most 8 Champions/King (adjacency) + a few Guards; 16 is comfortable.
+/// eval path. Total struct size = 8 · 4 B + 1 B (len) + padding ≈ 36 B.
 struct AttackerList {
     items: [Attacker; MAEE_MAX_ATTACKERS],
-    len: usize,
+    len: u8,
 }
 
 impl AttackerList {
@@ -338,12 +383,13 @@ impl AttackerList {
     /// Insertion-sort push. Drops the most expensive on overflow.
     #[inline]
     fn push(&mut self, a: Attacker) {
+        let len = self.len as usize;
         // Find insert position.
         let mut i = 0;
-        while i < self.len && self.items[i].cost <= a.cost { i += 1; }
-        if self.len < MAEE_MAX_ATTACKERS {
+        while i < len && self.items[i].cost <= a.cost { i += 1; }
+        if len < MAEE_MAX_ATTACKERS {
             // Shift right.
-            let mut j = self.len;
+            let mut j = len;
             while j > i {
                 self.items[j] = self.items[j - 1];
                 j -= 1;
@@ -367,20 +413,21 @@ impl AttackerList {
     fn pop_front(&mut self) -> Option<Attacker> {
         if self.len == 0 { return None; }
         let out = self.items[0];
-        for i in 1..self.len { self.items[i - 1] = self.items[i]; }
+        let len = self.len as usize;
+        for i in 1..len { self.items[i - 1] = self.items[i]; }
         self.len -= 1;
         Some(out)
     }
 }
 
 #[inline]
-fn attacker_cost(mat: i32, hp: u8, armor: u8) -> i32 {
-    mat + HP_PER_POINT * hp as i32 + ARMOR_PER_POINT * armor as i32
+fn attacker_cost(mat: i32, hp: u8, armor: u8) -> i16 {
+    (mat + HP_PER_POINT * hp as i32 + ARMOR_PER_POINT * armor as i32) as i16
 }
 
 #[inline]
 fn piece_material_of(pos: &Position, sq: u8) -> i32 {
-    let bit = 1u64 << sq;
+    let bit = SQ_BIT[sq as usize];
     if pos.champions.0 & bit != 0 { CHAMPION_VALUE }
     else if pos.guards.0 & bit != 0 { GUARD_VALUE }
     else { KING_MATERIAL } // shouldn't reach — kings excluded upstream
@@ -389,6 +436,7 @@ fn piece_material_of(pos: &Position, sq: u8) -> i32 {
 /// Enumerate all pieces of `side` (excluding king) that can move-attack
 /// `target_sq` given the current occupancy minus `vacated`. Returns sorted
 /// cheapest-first.
+#[inline]
 fn enumerate_attackers(
     pos: &Position,
     side: Player,
@@ -401,7 +449,7 @@ fn enumerate_attackers(
     };
     let attackers_pool = own_bb & !pos.kings.0 & !vacated;
     let all_occ = (pos.p1_pieces.0 | pos.p2_pieces.0) & !vacated;
-    let target_bit = 1u64 << target_sq;
+    let target_bit = SQ_BIT[target_sq as usize];
 
     let mut out = AttackerList::new();
     let mut bits = attackers_pool;
@@ -409,8 +457,9 @@ fn enumerate_attackers(
         let sq = bits.trailing_zeros() as u8;
         bits &= bits - 1;
         if sq == target_sq { continue; }
+        let sq_bit = SQ_BIT[sq as usize];
 
-        let is_guard = pos.guards.0 & (1u64 << sq) != 0;
+        let is_guard = pos.guards.0 & sq_bit != 0;
         let can_attack = if is_guard {
             let reach = magic::movement_targets_speed2(sq, all_occ).0;
             magic::movement_attack_targets_speed2(sq, all_occ, reach, target_bit).0 != 0
@@ -421,7 +470,7 @@ fn enumerate_attackers(
         if !can_attack { continue; }
 
         let m = pos.mailbox[sq as usize];
-        let mat = if pos.champions.0 & (1u64 << sq) != 0 { CHAMPION_VALUE } else { GUARD_VALUE };
+        let mat = if pos.champions.0 & sq_bit != 0 { CHAMPION_VALUE } else { GUARD_VALUE };
         let cost = attacker_cost(mat, m.hp(), m.armor());
         out.push(Attacker { cost, sq });
     }
@@ -431,8 +480,9 @@ fn enumerate_attackers(
 /// MAEE for a single target square. Returns net material delta from the
 /// initiator's POV (initiator = enemy of target's owner). Positive = the
 /// initiator gains, negative = losing trade.
+#[inline]
 fn maee(pos: &Position, target_sq: u8) -> i32 {
-    let target_bit = 1u64 << target_sq;
+    let target_bit = SQ_BIT[target_sq as usize];
     let target_is_p1 = pos.p1_pieces.0 & target_bit != 0;
     let stm = if target_is_p1 { Player::P2 } else { Player::P1 };
 
@@ -475,9 +525,10 @@ fn maee(pos: &Position, target_sq: u8) -> i32 {
             n_gains += 1;
 
             // Attacker now occupies target_sq; its origin is vacated.
-            vacated |= 1u64 << att.sq;
+            let att_bit = SQ_BIT[att.sq as usize];
+            vacated |= att_bit;
             let att_entry = pos.mailbox[att.sq as usize];
-            let att_mat = if pos.champions.0 & (1u64 << att.sq) != 0 { CHAMPION_VALUE } else { GUARD_VALUE };
+            let att_mat = if pos.champions.0 & att_bit != 0 { CHAMPION_VALUE } else { GUARD_VALUE };
             victim_val = att_mat;
             victim_hp = att_entry.hp();
             victim_armor = att_entry.armor();
@@ -515,6 +566,7 @@ fn other(p: Player) -> Player {
 /// Sum of MAEE credits for `side` over all enemy non-king targets `side`
 /// could move-attack this turn. Per-square results clamped at 0 — a losing
 /// exchange contributes nothing (we don't reward not-attacking).
+#[inline]
 fn maee_side(pos: &Position, side: Player) -> i32 {
     let (opp_bb, own_bb) = match side {
         Player::P1 => (pos.p2_pieces.0, pos.p1_pieces.0),
@@ -551,6 +603,7 @@ fn maee_side(pos: &Position, side: Player) -> i32 {
 /// Cost budget: for each equipped skill on each of `side`'s pieces, we call
 /// `magic::skill_attacks` once (O(1)) and count set bits in the result. That's
 /// ~24 pieces × 2 slots × O(1) = ~48 lookups per leaf. Cheap.
+#[inline]
 fn skill_activity(pos: &Position, side: Player) -> i32 {
     let (own_bb, opp_bb, own_money) = match side {
         Player::P1 => (pos.p1_pieces.0, pos.p2_pieces.0, pos.p1_money),
