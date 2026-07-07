@@ -2,7 +2,7 @@
 
 *Living doc. Each perf pass on `core_engine/src/search/evaluator.rs` follows the same recipe: critique → plan → implement → bench → recritique. Track results here so we can see whether each pass actually helped and what's left to attack.*
 
-*Last updated: 2026-07-07 — Pass 3 complete. Group A subset: attackers-table for initial MAEE enumeration + MAEE_MAX_PLIES 32→16. Eval geo mean 1853→1719 ns (-7%); search d6 total time 740s→364s (-51%) vs Pass 2 with node counts unchanged (behaviour-preserving). Deferred to future passes: incremental table maintenance across kills, AttackerList shift removal, stand-pat single-pass rewrite, threat_bb hand-off. See log.*
+*Last updated: 2026-07-07 — Pass 3 complete (both chunks). Chunk 1: attackers-table + MAEE_MAX_PLIES 32→16. Chunk 2: stand-pat single-pass (item 3), AttackerList head-cursor **shelved** (SROA regression), Guard geometry fix + fast bitboard recompute (item 4a — **5-6× per-node speedup**, also fixes a pre-existing over-approximation bug), incremental attackers-bitmask maintenance across kills (item 4b — additional -10% wall time). **Full-corpus d6: 364s → 59s (-84%)**; vs Pass 2: 740s → 59s (-92%, ~12.6× total). Node counts essentially identical. Still deferred: `threat_bb` hand-off audit.*
 
 ---
 
@@ -501,6 +501,79 @@ Initial attacker set for Guards used `king_expand(reach | sq_bit)` without a che
 5. **Table-build lazy / cached** — Group C (Zobrist-keyed) territory; a per-position table cache keyed on `pos.zobrist` might amortise the fixed cost across QS repetitions.
 
 **No memory / STATUS.md / HANDOVER.md updates needed** — this is a mechanical perf pass, not a design shift.
+
+---
+
+### Pass 3 continuation (2026-07-07) — Group A cleanup
+
+Second chunk of Pass 3 items, worked with the user in a single sitting after the initial attackers-table landed. Spot-checked on a 4-position corpus (ows-03, ows-04, midgame-move-03, skill-phase-full-03) at d6 rather than the full 30-position sweep, because full-corpus takes 25+ min.
+
+**Items landed:**
+
+- **Item 3 — stand-pat fold-back single pass.** Rewrote the two-pass min/max walk over `gains[]` as a single right-to-left scalar accumulator: seed `val = gains[n-1]`, then for each `i` from `n-2` down to `0`, clamp `val` at 0 based on parity, add `gains[i]`. Same output, one loop instead of two. Spot-bench: ~1% net win — within variance, no regression.
+
+- **Item 2 — AttackerList head-cursor (SHELVED).** Replaced `pop_front`'s shift with a head-cursor (`head: u8`, index into `items[]`). Theoretically O(n)→O(1) per pop. In practice: **regressed 3-8%** on all 4 spot positions. Root cause: the old constant `items[0]` read was SROA-friendly (kept in registers); the variable `items[head as usize]` forced memory loads and broke scalar replacement. At `att_mean ≈ 1.5`, the shift was essentially free (n=1 does zero shifts; n=2 does one copy). **Reverted entirely.** Not worth doing at current attacker densities. Kept as a "not worth it here" note for future reference — the same technique might pay off if attacker sets ever grow.
+
+- **Item 4a — Guard move-attack geometry fix + fast recompute.** Discovered while designing item 1: both `enumerate_attackers` and the Pass-3-initial `build_attackers_table` were using `movement_targets_speed2` (dist-≤-2 BFS through empties) as the Guard approach mask. Game rule per `generator.rs:473-512` is approach ≤ **speed-1** (dist-≤-1) — Guard moves 0 or 1 empty step then attacks cheby-1, max reach cheby-2 from origin. The BFS-2 admitted dist-2 landings as valid approaches, over-approximating the attacker set. Both bugged (pre-existing — Pass 3's initial code faithfully reproduced `enumerate_attackers`'s over-approximation, which is why the paranoid canary passed).
+
+  Fix (matches game rule + happens to be much faster):
+  ```rust
+  let approach = (magic::movement_targets_speed1(sq).0 & !all_occ) | sq_bit;
+  let fanout = king_expand(approach) & !sq_bit;  // in table build
+  king_expand(approach) & target_bit != 0        // in enumerate_attackers
+  ```
+  Pure bitwise; no scratch arrays; no branchy clip loop. Applied at both sites.
+
+  Spot-bench (post-4a vs post-4b-shelved baseline):
+  - `opening-with-skills-03`: 156.6 → 27.8 s (**5.6× faster per-node**)
+  - `opening-with-skills-04`: 71.6 → 12.5 s (5.7×)
+  - `midgame-move-03`: 15.0 → 2.6 s (5.8×)
+  - `skill-phase-full-03`: 39.5 → 6.3 s (6.3×)
+
+  Node counts drifted **<2%** (the extra dist-2 landings hardly ever changed a MAEE verdict), so this is almost pure per-node speedup driven by:
+  1. Killing `movement_targets_speed2`'s per-call `dist[64] + front[64] + next[64]` scratch alloc.
+  2. Replacing branchy `(0..8).contains(&r)` clipping with bitfile masks (`NOT_A`, `NOT_H`).
+
+  This is the phenomenal win Pass 3 chunk-2 was hoping for. Not a perf trick — a game-rule bug fix that also happened to be the biggest lever on the profile.
+
+- **Item 4b — incremental attackers-bitmask maintenance across kills.** Refactored `enumerate_attackers_from_table` into `attackers_bb_from_table` (returns `u64`) + `build_attacker_list(pos, bits)` (sorted list from bits). In `maee`, track `attackers_stm_bb: u64` and `attackers_dfd_bb: u64` alongside the sorted lists. On each kill:
+  1. Clear the killed attacker's bit from its side's bitmask (`&= !SQ_BIT[att.sq]`).
+  2. If the vacated origin sits cheby-1 of the target (`target_bit ∈ king_expand(att_bit)`), Guards adjacent to it may now use it as an approach square. `neigh = king_expand(att_bit) & pos.guards.0 & !vacated & !target_bit`. OR the appropriate ownership-masked bits into each side's bitmask. Champions are geometry-invariant — no addition step needed.
+  3. Rebuild `AttackerList`s from the updated bitmasks via `build_attacker_list`.
+
+  Replaces the per-kill from-scratch `enumerate_attackers` 64-square scan with a handful of bitwise ops per kill. Extended `maee_paranoid` canary to compare the incrementally-maintained list against a fresh `enumerate_attackers(vacated)` on every kill (was previously only checking the initial enum).
+
+  Correctness canary caught one bug during development: initial add-list didn't exclude `target_bit`, so a Guard sitting *at* the target square (the current victim) could be added as an attacker on the next round. Fixed by masking `& !target_bit` in the neighbour set. All 392 tests pass under `--features maee_paranoid`.
+
+  Spot-bench (post-4b vs post-4a):
+  - `opening-with-skills-03`: 27.8 → 25.3 s (**-9.3%**)
+  - `opening-with-skills-04`: 12.5 → 11.2 s (-10.7%)
+  - `midgame-move-03`: 2.6 → 2.3 s (-11.7%)
+  - `skill-phase-full-03`: 6.3 → 5.6 s (-10.9%)
+
+  Node counts identical (fully behaviour-preserving). ~10% wall-time win over 4a on top of 4a's own 5-6× improvement. Also removes the last dependency on `enumerate_attackers` from the hot path — it's now `#[cfg(feature = "maee_paranoid")]`-gated (only compiled when the canary is on).
+
+- **Dead-code cleanup.** Removed `enumerate_attackers_from_table` (subsumed by the split). Gated `enumerate_attackers` behind `#[cfg(feature = "maee_paranoid")]` — release builds no longer compile it.
+
+**Bench artifacts:** `/tmp/spot-post-item3.json`, `/tmp/spot-post-item4a.json`, `/tmp/spot-post-item4b.json`. Full-corpus d6: `game/bench/results/search-post-pass3-chunk2-d6.json`.
+
+**Full-corpus d6 result (vs chunk-1 baseline `search-post-pass3-d6.json`):**
+- Total wall time: **363.8 s → 58.7 s (-83.9%)**. 6.2× speedup.
+- Total nodes: 24.74 M → 24.72 M (-0.1%). Behaviour-preserving to the extent expected; the small drift comes from item 4a's geometry fix (fewer spurious attackers → occasional MAEE-verdict flip → subtly different search tree). 19/30 positions have identical node counts; the 11 with drift are all mid/skill-phase positions and all drift <3%.
+- Per-position character: chunk-1's known regressions on mid/skill-phase positions (1.2-1.4× slower per-position vs Pass 2) are now completely reversed — most positions -75% to -85% wall time. Endgame + trivial positions unchanged (they had no measurable MAEE cost to begin with).
+
+**Combined Pass 3 result (chunk-1 + chunk-2) vs Pass 2:**
+- Total wall time: 740 s → 59 s (-92%, ~12.6× speedup).
+- Node counts essentially identical (both chunks combined are within 0.1% of Pass 2).
+- Per-node cost regression from chunk-1 fully absorbed by chunk-2's item 4a.
+
+**Still deferred (Group A remnants):**
+- `threat_bb` hand-off / deletion audit. Still called inside `maee_side`; the attackers table subsumes some but not all of what it does. Left for Pass 4.
+
+**Combined Pass 3 (initial chunk + continuation) per-node character:**
+- Group A's original ~1.2-1.4× per-position slowdown vs Pass 2 (from the initial-chunk table-build fixed cost) should now be more than recovered by item 4a's 5-6× per-node speedup. Confirm on full-corpus.
+
+**No memory / STATUS.md / HANDOVER.md updates needed.**
 
 ---
 

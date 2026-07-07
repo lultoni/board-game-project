@@ -430,14 +430,14 @@ impl AttackerList {
 //
 // Built once at eval entry against the current occupancy. `p1_of[t]` is the
 // bitmask of P1 non-king pieces that can move-attack square `t`; symmetric for
-// `p2_of`. Consumed by `enumerate_attackers_from_table` for the *initial*
-// attacker enumeration in each `maee` call — the per-target repricing loop.
+// `p2_of`. Read by `maee` at the top of each per-target repricing loop via
+// `attackers_bb_from_table`.
 //
-// Kill-triggered re-enumerations (Guard BFS through a vacated blocker) still
-// go through the from-scratch `enumerate_attackers` path — precomputation
-// gains would be marginal there (few kills per position) and the incremental
-// fix-up is subtle. Kept simple; kill-side work is a Pass 4 target if it
-// shows up on the counters.
+// Kill-triggered re-enumerations (Guard adjacency gained when a blocker
+// vacates) are handled incrementally inside `maee`: the killed attacker's
+// bit is cleared, and if the vacated origin sits cheby-1 of the target,
+// Guards adjacent to it get OR'd in. This avoids the full 64-square scan of
+// the from-scratch path.
 
 struct AttackersTable {
     p1_of: [u64; 64],
@@ -473,16 +473,13 @@ fn build_attackers_table(pos: &Position, all_occ: u64) -> AttackersTable {
         let sq_bit = SQ_BIT[sq as usize];
         let is_guard = pos.guards.0 & sq_bit != 0;
         let attacks = if is_guard {
-            // Guard move-attack: reach any square that is Chebyshev-1-adjacent
-            // to a BFS-2 reachable-empty square OR to origin, AND itself within
-            // Chebyshev-2 of origin. The second clause matches the pre-reject
-            // in `magic::movement_attack_targets_speed2` — dist-2 reach squares
-            // may exist but the enemy must be ≤ 2 from origin.
-            let reach = magic::movement_targets_speed2(sq, all_occ).0;
-            let fanout = king_expand(reach | sq_bit);
-            // Cheby-2 mask: expand origin twice, minus origin itself.
-            let cheby2 = king_expand(king_expand(sq_bit)) & !sq_bit;
-            fanout & cheby2
+            // Guard move-attack (game rule per generator.rs:473-512): approach
+            // ≤ speed-1 steps then attack cheby-1. So the landing set is
+            // {src ∪ empty cheby-1 neighbours of src}, and the attack fanout is
+            // king_expand(landing) minus src itself. This is naturally within
+            // cheby-2 of src — no extra mask needed.
+            let approach = (magic::movement_targets_speed1(sq).0 & !all_occ) | sq_bit;
+            king_expand(approach) & !sq_bit
         } else {
             // Champion: 8 immediate neighbours.
             magic::movement_targets_speed1(sq).0
@@ -503,10 +500,8 @@ fn build_attackers_table(pos: &Position, all_occ: u64) -> AttackersTable {
         let sq_bit = SQ_BIT[sq as usize];
         let is_guard = pos.guards.0 & sq_bit != 0;
         let attacks = if is_guard {
-            let reach = magic::movement_targets_speed2(sq, all_occ).0;
-            let fanout = king_expand(reach | sq_bit);
-            let cheby2 = king_expand(king_expand(sq_bit)) & !sq_bit;
-            fanout & cheby2
+            let approach = (magic::movement_targets_speed1(sq).0 & !all_occ) | sq_bit;
+            king_expand(approach) & !sq_bit
         } else {
             magic::movement_targets_speed1(sq).0
         };
@@ -521,24 +516,24 @@ fn build_attackers_table(pos: &Position, all_occ: u64) -> AttackersTable {
     table
 }
 
-/// Table-driven attacker enumeration: builds the sorted-cheapest `AttackerList`
-/// from the precomputed attackers bitmask. Correctness is identical to
-/// `enumerate_attackers` at the top of a `maee` call (vacated == 0).
+/// Attacker-bitmask lookup: which squares of `side` currently attack `target_sq`
+/// according to the (initial) table. Callers pair this with `build_attacker_list`
+/// to get a sorted list, and maintain the bitmask incrementally across kills.
 #[inline]
-fn enumerate_attackers_from_table(
-    pos: &Position,
-    side: Player,
-    target_sq: u8,
-    table: &AttackersTable,
-) -> AttackerList {
-    counters::bump_enumerate_attackers_calls();
-    let mut bits = match side {
+fn attackers_bb_from_table(side: Player, target_sq: u8, table: &AttackersTable) -> u64 {
+    let bits = match side {
         Player::P1 => table.p1_of[target_sq as usize],
         Player::P2 => table.p2_of[target_sq as usize],
     };
     // Exclude the target square itself (a piece can't move-attack its own square).
-    bits &= !SQ_BIT[target_sq as usize];
+    bits & !SQ_BIT[target_sq as usize]
+}
 
+/// Build the sorted-cheapest-first `AttackerList` from a bitmask of attacker
+/// squares. Reads material/HP/armor per bit from `pos.mailbox`.
+#[inline]
+fn build_attacker_list(pos: &Position, mut bits: u64) -> AttackerList {
+    counters::bump_enumerate_attackers_calls();
     let mut out = AttackerList::new();
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
@@ -566,9 +561,12 @@ fn piece_material_of(pos: &Position, sq: u8) -> i32 {
     else { KING_MATERIAL } // shouldn't reach — kings excluded upstream
 }
 
-/// Enumerate all pieces of `side` (excluding king) that can move-attack
-/// `target_sq` given the current occupancy minus `vacated`. Returns sorted
-/// cheapest-first.
+/// From-scratch attacker enumeration for a target square. Used only as the
+/// reference oracle inside `#[cfg(feature = "maee_paranoid")]` blocks — the
+/// hot path in `maee` maintains an attacker bitmask incrementally across
+/// kills instead. Gated behind the feature so release builds don't compile
+/// this at all.
+#[cfg(feature = "maee_paranoid")]
 #[inline]
 fn enumerate_attackers(
     pos: &Position,
@@ -595,8 +593,10 @@ fn enumerate_attackers(
 
         let is_guard = pos.guards.0 & sq_bit != 0;
         let can_attack = if is_guard {
-            let reach = magic::movement_targets_speed2(sq, all_occ).0;
-            magic::movement_attack_targets_speed2(sq, all_occ, reach, target_bit).0 != 0
+            // Game rule: approach ≤ 1 step (empty cheby-1 neighbours of src)
+            // plus src itself, then attack cheby-1.
+            let approach = (magic::movement_targets_speed1(sq).0 & !all_occ) | sq_bit;
+            king_expand(approach) & target_bit != 0
         } else {
             // Champion (non-king): 8-adjacency.
             magic::movement_targets_speed1(sq).0 & target_bit != 0
@@ -629,8 +629,20 @@ fn maee(pos: &Position, target_sq: u8, table: &AttackersTable) -> i32 {
 
     let mut vacated = 0u64;
     // Initial enumeration reads from the precomputed table (vacated == 0).
-    let mut attackers_stm = enumerate_attackers_from_table(pos, stm, target_sq, table);
-    let mut attackers_dfd = enumerate_attackers_from_table(pos, other(stm), target_sq, table);
+    // Maintain the underlying attacker bitmasks alongside the sorted lists so
+    // we can update incrementally on each kill instead of re-enumerating from
+    // scratch. Only Guards gain new reach when a blocker vacates — Champions
+    // are geometry-invariant, so all newly-reachable attackers are Guards
+    // adjacent to the vacated square (which itself must be cheby-1 of the
+    // target for the freshly-empty square to serve as a valid approach).
+    let mut attackers_stm_bb = attackers_bb_from_table(stm, target_sq, table);
+    let mut attackers_dfd_bb = attackers_bb_from_table(other(stm), target_sq, table);
+    let mut attackers_stm = build_attacker_list(pos, attackers_stm_bb);
+    let mut attackers_dfd = build_attacker_list(pos, attackers_dfd_bb);
+    // Cheby-1 neighbourhood of the target — a vacated square must live here
+    // for it to newly enable Guards to attack the target via that empty as
+    // an approach step.
+    let target_cheby1 = king_expand(target_bit);
 
     // Correctness canary: table-driven initial enumeration must match the
     // from-scratch result exactly. Gated behind a feature (not `debug_assertions`)
@@ -693,10 +705,68 @@ fn maee(pos: &Position, target_sq: u8, table: &AttackersTable) -> i32 {
             victim_hp = att_entry.hp();
             victim_armor = att_entry.armor();
 
-            // Full re-enumeration against updated occupancy (handles Guards
-            // gaining reach when a blocker vacates).
-            attackers_stm = enumerate_attackers(pos, stm, target_sq, vacated);
-            attackers_dfd = enumerate_attackers(pos, other(stm), target_sq, vacated);
+            // Incremental attacker-set maintenance.
+            //
+            // 1) The killed attacker moved off `att.sq` — clear its bit from
+            //    whichever side's mask it belonged to. (`side` is the attacker
+            //    who just moved.)
+            // 2) If the vacated origin sits cheby-1 of the target, Guards
+            //    adjacent to it may now use it as an approach square. Add any
+            //    such Guards not already tracked.
+            //
+            // Champions need no addition step: their reach is 8-adjacency of
+            // their own square and does not depend on occupancy.
+            if side == stm {
+                attackers_stm_bb &= !att_bit;
+            } else {
+                attackers_dfd_bb &= !att_bit;
+            }
+
+            if target_cheby1 & att_bit != 0 {
+                // Guards adjacent to the vacated square that weren't already
+                // in each side's attacker set. Mask by side ownership and
+                // exclude anything already vacated (dead attackers sitting on
+                // target don't attack, and their origins are also gone); also
+                // exclude the target square itself (the current victim on it
+                // cannot attack itself).
+                let neigh = king_expand(att_bit) & pos.guards.0 & !vacated & !target_bit;
+                let stm_own = match stm {
+                    Player::P1 => pos.p1_pieces.0,
+                    Player::P2 => pos.p2_pieces.0,
+                };
+                let dfd_own = match other(stm) {
+                    Player::P1 => pos.p1_pieces.0,
+                    Player::P2 => pos.p2_pieces.0,
+                };
+                attackers_stm_bb |= neigh & stm_own & !attackers_stm_bb;
+                attackers_dfd_bb |= neigh & dfd_own & !attackers_dfd_bb;
+            }
+
+            attackers_stm = build_attacker_list(pos, attackers_stm_bb);
+            attackers_dfd = build_attacker_list(pos, attackers_dfd_bb);
+
+            // Correctness canary for the incremental update: on every kill,
+            // the incrementally-maintained list must match a from-scratch
+            // enumeration against the current `vacated` set.
+            #[cfg(feature = "maee_paranoid")]
+            {
+                let ref_stm = enumerate_attackers(pos, stm, target_sq, vacated);
+                let ref_dfd = enumerate_attackers(pos, other(stm), target_sq, vacated);
+                assert_eq!(attackers_stm.len, ref_stm.len,
+                    "post-kill attackers_stm len mismatch at target {} (vacated={:#x})",
+                    target_sq, vacated);
+                assert_eq!(attackers_dfd.len, ref_dfd.len,
+                    "post-kill attackers_dfd len mismatch at target {} (vacated={:#x})",
+                    target_sq, vacated);
+                for i in 0..attackers_stm.len as usize {
+                    assert_eq!(attackers_stm.items[i].sq, ref_stm.items[i].sq);
+                    assert_eq!(attackers_stm.items[i].cost, ref_stm.items[i].cost);
+                }
+                for i in 0..attackers_dfd.len as usize {
+                    assert_eq!(attackers_dfd.items[i].sq, ref_dfd.items[i].sq);
+                    assert_eq!(attackers_dfd.items[i].cost, ref_dfd.items[i].cost);
+                }
+            }
         }
 
         side = other(side);
@@ -704,18 +774,18 @@ fn maee(pos: &Position, target_sq: u8, table: &AttackersTable) -> i32 {
 
     if n_gains == 0 { return 0; }
 
-    // Stand-pat fold-back. Both sides may refuse their last exchange step if
-    // it's bad for them. `gains[i]` is stm-POV signed; stm plies are even
-    // (starting from 0), dfd plies are odd.
-    let mut n = n_gains;
-    while n > 1 {
-        let last = gains[n - 1];
-        let last_was_stm = ((n - 1) & 1) == 0;
-        let continuation = if last_was_stm { last.max(0) } else { last.min(0) };
-        gains[n - 2] += continuation;
-        n -= 1;
+    // Stand-pat fold-back, single-pass right-to-left in a scalar accumulator.
+    // Each side may refuse their last exchange step if it's bad for them:
+    // stm plies (even indices) clamp low at 0, dfd plies (odd indices) clamp
+    // high at 0. Ply 0 is stm's first attack; we return its raw value (caller
+    // discards non-positive maee anyway).
+    let mut val: i32 = gains[n_gains - 1];
+    for i in (0..n_gains - 1).rev() {
+        let ply_after = i + 1;
+        val = if (ply_after & 1) == 0 { val.max(0) } else { val.min(0) };
+        val += gains[i];
     }
-    gains[0]
+    val
 }
 
 #[inline]
