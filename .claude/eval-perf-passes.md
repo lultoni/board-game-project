@@ -245,6 +245,22 @@ Never overwrite existing labels; append new ones.
 
 ---
 
+### Pass 3+ candidates (deferred from Pass 1 scope-out)
+
+These appeared in the Pass 1 critique but were held back as too structural or too risky to batch. Kept here so they aren't lost:
+
+- **Precomputed per-position "who attacks square S" table.** Would eliminate MAEE's inner re-enumeration (the #1 cross-cutting complaint from all 5 critique agents). Big structural change; needs its own plan. **Directly enables Pass 2 item #1 option (c)** — cheap MAEE-everywhere depends on this.
+- **Incremental maintenance of `all_occ`, material sums, HP totals, etc. via make/unmake.** Requires touching `make_unmake.rs` and every eval consumer. Separate pass.
+- **Zobrist-keyed eval cache.** Requires cache-invalidation discipline (skills mutate state in ways that need care around the cache key). Separate pass.
+- **SEE for move ordering (in `alpha_beta.rs`, not `evaluator.rs`).** The single biggest search-side win identified in the Pass 1 critique. It's a search change, not an eval change, so it lives in its own pass.
+- **Quiescence redesign so MAEE isn't called on every QS node.** Requires understanding of QS interaction with MAEE and skill-cast leaves; separate investigation. Overlaps with Pass 2 item #1 option (b).
+- **BFS-2 rewrite from breadth-first to two-wave shift-and-mask.** `magic.rs` change; risk of subtle bug in Guard movement generation. Separate pass with a full test sweep.
+- **Mailbox AoS → SoA conversion.** `Position` layout change; touches every consumer of per-square data. High blast radius.
+- **`Position::Clone` heaviness.** Requires audit of every clone site to understand how many are actually necessary vs incidental.
+- **Skill activity gating on `moved_this_phase`.** Deferred; skills don't consume a piece's move slot, so the gating logic needs care to avoid dropping legitimate skill-cast value.
+
+---
+
 ## Notes for future passes
 
 - **Always commit before starting a pass.** The MAEE-post commit is a rollback anchor.
