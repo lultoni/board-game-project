@@ -271,21 +271,8 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     // otherwise be double-counted at MATE_SCORE weight). Skipped in Draft phase
     // where pieces aren't on the board yet.
     if pos.current_phase != Phase::Draft {
-        let non_kings = all_occ & !pos.kings.0;
-        let p1_threats = magic::threat_bb(
-            pos.p1_pieces.0,
-            pos.p1_pieces.0 & pos.guards.0,
-            pos.p2_pieces.0 & non_kings,
-            all_occ,
-        ).0;
-        let p2_threats = magic::threat_bb(
-            pos.p2_pieces.0,
-            pos.p2_pieces.0 & pos.guards.0,
-            pos.p1_pieces.0 & non_kings,
-            all_occ,
-        ).0;
-        b.threat_p1 = threat_value(pos, p1_threats);
-        b.threat_p2 = threat_value(pos, p2_threats);
+        b.threat_p1 = maee_side(pos, Player::P1);
+        b.threat_p2 = maee_side(pos, Player::P2);
 
         // (e) Skill-activity: credit only skills that could actually do
         // something right now (money available, legal targets exist). See
@@ -306,26 +293,255 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     b
 }
 
-/// Sum 0.25× (material + hp_value + armor_value) over all squares in `mask`.
-/// Values match the main eval's weights so a hanging Champion pre-prices at
-/// exactly 25% of what capturing it would net.
+// ── MAEE: Move-Attack Exchange Evaluation ────────────────────────────────
+//
+// Static-exchange evaluation adapted to this game's rules. Prices a single
+// enemy square by simulating the swap-off sequence of move-attackers on that
+// square, LVA-first, with stand-pat fold-back.
+//
+// Differences from chess SEE:
+//   1. HP/armor multi-hit: one move-attack deposits 1 damage; killing blow
+//      only lands after armor→HP is fully drained.
+//   2. Kill-follow-through: attacker enters target square on the killing
+//      blow. Subsequent attackers are attacking the new occupant.
+//   3. No sliders → no X-ray reveals when an attacker vacates its origin
+//      (Guards' BFS-2 can gain reach — we fully re-enumerate after each kill).
+//
+// Kings are EXCLUDED as both attackers and targets: king captures resolve as
+// MATE_SCORE terminals upstream, and a king "threatening" a piece it can't
+// actually capture without dying was the root cause of the AI-king-forward
+// bias this term is designed to fix.
+
+const MAEE_MAX_ATTACKERS: usize = 16;
+const MAEE_MAX_PLIES: usize = 32;
+
+/// One attacker candidate: (cost, source-square).
+#[derive(Copy, Clone)]
+struct Attacker {
+    cost: i32,
+    sq: u8,
+}
+
+/// Fixed-size sorted-cheapest-first list. Avoids heap allocation on the hot
+/// eval path. Size cap is 16 — a single 8×8 square can be reached by at
+/// most 8 Champions/King (adjacency) + a few Guards; 16 is comfortable.
+struct AttackerList {
+    items: [Attacker; MAEE_MAX_ATTACKERS],
+    len: usize,
+}
+
+impl AttackerList {
+    #[inline]
+    fn new() -> Self {
+        Self { items: [Attacker { cost: 0, sq: 0 }; MAEE_MAX_ATTACKERS], len: 0 }
+    }
+    /// Insertion-sort push. Drops the most expensive on overflow.
+    #[inline]
+    fn push(&mut self, a: Attacker) {
+        // Find insert position.
+        let mut i = 0;
+        while i < self.len && self.items[i].cost <= a.cost { i += 1; }
+        if self.len < MAEE_MAX_ATTACKERS {
+            // Shift right.
+            let mut j = self.len;
+            while j > i {
+                self.items[j] = self.items[j - 1];
+                j -= 1;
+            }
+            self.items[i] = a;
+            self.len += 1;
+        } else if i < MAEE_MAX_ATTACKERS {
+            // Full — but new attacker cheaper than the most expensive slot.
+            // Shift-right dropping the last.
+            let mut j = MAEE_MAX_ATTACKERS - 1;
+            while j > i {
+                self.items[j] = self.items[j - 1];
+                j -= 1;
+            }
+            self.items[i] = a;
+        }
+        // else: full AND new attacker is more expensive than everyone → drop.
+    }
+    /// Pop the cheapest (front).
+    #[inline]
+    fn pop_front(&mut self) -> Option<Attacker> {
+        if self.len == 0 { return None; }
+        let out = self.items[0];
+        for i in 1..self.len { self.items[i - 1] = self.items[i]; }
+        self.len -= 1;
+        Some(out)
+    }
+}
+
 #[inline]
-fn threat_value(pos: &Position, mask: u64) -> i32 {
-    let mut acc = 0i32;
-    let mut bits = mask;
+fn attacker_cost(mat: i32, hp: u8, armor: u8) -> i32 {
+    mat + HP_PER_POINT * hp as i32 + ARMOR_PER_POINT * armor as i32
+}
+
+#[inline]
+fn piece_material_of(pos: &Position, sq: u8) -> i32 {
+    let bit = 1u64 << sq;
+    if pos.champions.0 & bit != 0 { CHAMPION_VALUE }
+    else if pos.guards.0 & bit != 0 { GUARD_VALUE }
+    else { KING_MATERIAL } // shouldn't reach — kings excluded upstream
+}
+
+/// Enumerate all pieces of `side` (excluding king) that can move-attack
+/// `target_sq` given the current occupancy minus `vacated`. Returns sorted
+/// cheapest-first.
+fn enumerate_attackers(
+    pos: &Position,
+    side: Player,
+    target_sq: u8,
+    vacated: u64,
+) -> AttackerList {
+    let own_bb = match side {
+        Player::P1 => pos.p1_pieces.0,
+        Player::P2 => pos.p2_pieces.0,
+    };
+    let attackers_pool = own_bb & !pos.kings.0 & !vacated;
+    let all_occ = (pos.p1_pieces.0 | pos.p2_pieces.0) & !vacated;
+    let target_bit = 1u64 << target_sq;
+
+    let mut out = AttackerList::new();
+    let mut bits = attackers_pool;
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
         bits &= bits - 1;
-        let bit = 1u64 << sq;
+        if sq == target_sq { continue; }
+
+        let is_guard = pos.guards.0 & (1u64 << sq) != 0;
+        let can_attack = if is_guard {
+            let reach = magic::movement_targets_speed2(sq, all_occ).0;
+            magic::movement_attack_targets_speed2(sq, all_occ, reach, target_bit).0 != 0
+        } else {
+            // Champion (non-king): 8-adjacency.
+            magic::movement_targets_speed1(sq).0 & target_bit != 0
+        };
+        if !can_attack { continue; }
+
         let m = pos.mailbox[sq as usize];
-        let material = if pos.champions.0 & bit != 0 { CHAMPION_VALUE }
-                       else if pos.guards.0 & bit != 0 { GUARD_VALUE }
-                       else { 0 };
-        let raw = material + HP_PER_POINT * m.hp() as i32 + ARMOR_PER_POINT * m.armor() as i32;
-        acc += raw / 4;
+        let mat = if pos.champions.0 & (1u64 << sq) != 0 { CHAMPION_VALUE } else { GUARD_VALUE };
+        let cost = attacker_cost(mat, m.hp(), m.armor());
+        out.push(Attacker { cost, sq });
+    }
+    out
+}
+
+/// MAEE for a single target square. Returns net material delta from the
+/// initiator's POV (initiator = enemy of target's owner). Positive = the
+/// initiator gains, negative = losing trade.
+fn maee(pos: &Position, target_sq: u8) -> i32 {
+    let target_bit = 1u64 << target_sq;
+    let target_is_p1 = pos.p1_pieces.0 & target_bit != 0;
+    let stm = if target_is_p1 { Player::P2 } else { Player::P1 };
+
+    let mut victim_val = piece_material_of(pos, target_sq);
+    let entry = pos.mailbox[target_sq as usize];
+    let mut victim_hp = entry.hp();
+    let mut victim_armor = entry.armor();
+
+    let mut vacated = 0u64;
+    let mut attackers_stm = enumerate_attackers(pos, stm, target_sq, vacated);
+    let mut attackers_dfd = enumerate_attackers(pos, other(stm), target_sq, vacated);
+
+    // Signed per-ply gains from stm's POV.
+    let mut gains = [0i32; MAEE_MAX_PLIES];
+    let mut n_gains = 0usize;
+    let mut side = stm;
+
+    loop {
+        let att_opt = if side == stm {
+            attackers_stm.pop_front()
+        } else {
+            attackers_dfd.pop_front()
+        };
+        let Some(att) = att_opt else { break };
+        if n_gains >= MAEE_MAX_PLIES { break; }
+
+        let sign = if side == stm { 1 } else { -1 };
+        if victim_armor > 0 {
+            victim_armor -= 1;
+            gains[n_gains] = sign * ARMOR_PER_POINT;
+            n_gains += 1;
+        } else if victim_hp > 1 {
+            victim_hp -= 1;
+            gains[n_gains] = sign * HP_PER_POINT;
+            n_gains += 1;
+        } else {
+            // Killing blow.
+            let kill_gain = victim_val + HP_PER_POINT + ARMOR_PER_POINT * victim_armor as i32;
+            gains[n_gains] = sign * kill_gain;
+            n_gains += 1;
+
+            // Attacker now occupies target_sq; its origin is vacated.
+            vacated |= 1u64 << att.sq;
+            let att_entry = pos.mailbox[att.sq as usize];
+            let att_mat = if pos.champions.0 & (1u64 << att.sq) != 0 { CHAMPION_VALUE } else { GUARD_VALUE };
+            victim_val = att_mat;
+            victim_hp = att_entry.hp();
+            victim_armor = att_entry.armor();
+
+            // Full re-enumeration against updated occupancy (handles Guards
+            // gaining reach when a blocker vacates).
+            attackers_stm = enumerate_attackers(pos, stm, target_sq, vacated);
+            attackers_dfd = enumerate_attackers(pos, other(stm), target_sq, vacated);
+        }
+
+        side = other(side);
+    }
+
+    if n_gains == 0 { return 0; }
+
+    // Stand-pat fold-back. Both sides may refuse their last exchange step if
+    // it's bad for them. `gains[i]` is stm-POV signed; stm plies are even
+    // (starting from 0), dfd plies are odd.
+    let mut n = n_gains;
+    while n > 1 {
+        let last = gains[n - 1];
+        let last_was_stm = ((n - 1) & 1) == 0;
+        let continuation = if last_was_stm { last.max(0) } else { last.min(0) };
+        gains[n - 2] += continuation;
+        n -= 1;
+    }
+    gains[0]
+}
+
+#[inline]
+fn other(p: Player) -> Player {
+    match p { Player::P1 => Player::P2, Player::P2 => Player::P1 }
+}
+
+/// Sum of MAEE credits for `side` over all enemy non-king targets `side`
+/// could move-attack this turn. Per-square results clamped at 0 — a losing
+/// exchange contributes nothing (we don't reward not-attacking).
+fn maee_side(pos: &Position, side: Player) -> i32 {
+    let (opp_bb, own_bb) = match side {
+        Player::P1 => (pos.p2_pieces.0, pos.p1_pieces.0),
+        Player::P2 => (pos.p1_pieces.0, pos.p2_pieces.0),
+    };
+    let non_kings = (pos.p1_pieces.0 | pos.p2_pieces.0) & !pos.kings.0;
+    let all_occ = pos.p1_pieces.0 | pos.p2_pieces.0;
+
+    // Pre-filter: only enemy squares `side` can actually attack this turn.
+    let candidates = magic::threat_bb(
+        own_bb & !pos.kings.0,
+        own_bb & pos.guards.0,
+        opp_bb & non_kings,
+        all_occ,
+    ).0;
+
+    let mut acc = 0i32;
+    let mut bits = candidates;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let v = maee(pos, sq);
+        if v > 0 { acc += v; }
     }
     acc
 }
+
 
 /// Skill-activity term for one side. Only credits skills that could actually
 /// be used this turn: caster affords the cost AND ≥1 legal target/destination

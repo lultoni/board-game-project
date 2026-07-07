@@ -15,14 +15,13 @@ game/
 │   │       ├── search/         ← Layer 3: alpha-beta, transposition, evaluator
 │   │       ├── session.rs      ← Layer 4: match manager + action history
 │   │       └── telemetry.rs    ← Layer 5: match logs + export
-│   ├── wasm_wrapper/           ← wasm-bindgen surface for the web build
 │   └── tauri_wrapper/          ← Tauri 2 desktop wrapper (native engine)
-└── frontend/                   ← Layer 6: Svelte 5 + TypeScript (one UI, two targets)
+└── frontend/                   ← Layer 6: Svelte 5 + TypeScript
     └── src/
         ├── App.svelte
         ├── lib/
         │   ├── Board.svelte    ← 8×8 CSS Grid, PointerEvents
-        │   ├── engine.ts       ← runtime-agnostic engine bridge (WASM vs Tauri IPC)
+        │   ├── engine.ts       ← engine bridge (Tauri IPC)
         │   └── multiplayer.ts  ← Layer 7: PeerJS + WebRTC + commit-reveal
         └── main.ts
 ```

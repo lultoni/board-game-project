@@ -23,6 +23,7 @@
 
 use core_engine::game_logic::action::{Action, ActionKind};
 use core_engine::search::alpha_beta::{find_best, SearchResult};
+use core_engine::search::evaluator::evaluate_breakdown;
 use core_engine::search::transposition::{Stats as TtStats, TranspositionTable};
 use core_engine::state::Position;
 use core_engine::state::fen::from_fen;
@@ -79,14 +80,17 @@ struct Args {
     out_path: Option<PathBuf>,
     determinism: bool,
     determinism_runs: usize,
+    eval_only: bool,
+    eval_iterations: u64,
 }
 
 fn print_usage_and_exit() -> ! {
     eprintln!("usage: search_bench --corpus <path> (--depth N | --time-ms M) [--runs N] [--out <path>]");
     eprintln!("       search_bench --determinism [--corpus <path>] [--depth N] [--determinism-runs N]");
+    eprintln!("       search_bench --eval-only [--corpus <path>] [--eval-iterations N] [--out <path>]");
     eprintln!();
     eprintln!("Mode is inferred: --depth ⇒ depth mode; --time-ms ⇒ time mode.");
-    eprintln!("Passing both, or neither, is an error (use --determinism to opt out).");
+    eprintln!("Passing both, or neither, is an error (use --determinism or --eval-only to opt out).");
     std::process::exit(2);
 }
 
@@ -98,6 +102,8 @@ fn parse_args() -> Args {
     let mut out_path: Option<PathBuf> = None;
     let mut determinism = false;
     let mut determinism_runs = 10usize;
+    let mut eval_only = false;
+    let mut eval_iterations: u64 = 100_000;
 
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -151,6 +157,20 @@ fn parse_args() -> Args {
                 determinism = true;
                 i += 1;
             }
+            "--eval-only" => {
+                eval_only = true;
+                i += 1;
+            }
+            "--eval-iterations" => {
+                eval_iterations = argv
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(|| {
+                        eprintln!("--eval-iterations needs a number");
+                        std::process::exit(2);
+                    });
+                i += 2;
+            }
             "--determinism-runs" => {
                 determinism_runs = argv
                     .get(i + 1)
@@ -170,8 +190,8 @@ fn parse_args() -> Args {
     }
 
     // Mode inference. Determinism runs at fixed depth (its own path); it may
-    // take --depth but doesn't need a mode.
-    let mode = if determinism {
+    // take --depth but doesn't need a mode. Eval-only skips search entirely.
+    let mode = if determinism || eval_only {
         Mode::Depth(depth.unwrap_or(DEFAULT_DEPTH))
     } else {
         match (depth, time_ms) {
@@ -182,7 +202,7 @@ fn parse_args() -> Args {
             (Some(d), None) => Mode::Depth(d),
             (None, Some(t)) => Mode::Time(t),
             (None, None) => {
-                eprintln!("error: must pass --depth or --time-ms (or --determinism)");
+                eprintln!("error: must pass --depth or --time-ms (or --determinism / --eval-only)");
                 print_usage_and_exit();
             }
         }
@@ -195,6 +215,8 @@ fn parse_args() -> Args {
         out_path,
         determinism,
         determinism_runs,
+        eval_only,
+        eval_iterations,
     }
 }
 
@@ -568,6 +590,117 @@ fn run_determinism(entries: &[CorpusEntry], depth: u8, runs: usize) {
     eprintln!("All positions deterministic.");
 }
 
+fn run_eval_only(entries: &[CorpusEntry], iterations: u64, out_path: Option<&PathBuf>) {
+    eprintln!(
+        "Eval-only bench: {} positions × {} iterations each",
+        entries.len(),
+        iterations
+    );
+
+    // Per-position results: (id, total_ns, ns_per_eval, checksum).
+    // Checksum is the accumulated total-score to prevent the compiler from
+    // hoisting the call out of the loop or DCE'ing the whole body.
+    let mut per_pos: Vec<(String, u128, f64, i64)> = Vec::with_capacity(entries.len());
+
+    for entry in entries {
+        let pos = match from_fen(&entry.fen) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("FEN parse failed for {}: {:?}", entry.id, e);
+                std::process::exit(2);
+            }
+        };
+
+        // Warm-up: a small handful of calls to prime caches before timing.
+        let mut checksum: i64 = 0;
+        for _ in 0..64 {
+            let b = evaluate_breakdown(&pos);
+            checksum = checksum.wrapping_add(b.total as i64);
+        }
+
+        let t0 = Instant::now();
+        for _ in 0..iterations {
+            let b = evaluate_breakdown(&pos);
+            checksum = checksum.wrapping_add(b.total as i64);
+        }
+        let elapsed_ns = t0.elapsed().as_nanos();
+        let ns_per_eval = if iterations > 0 {
+            elapsed_ns as f64 / iterations as f64
+        } else {
+            0.0
+        };
+
+        println!(
+            "{:30}  cat={:20}  iters={:>10}  total={:>10.3}ms  ns/eval={:>8.1}  cs={}",
+            entry.id,
+            entry.category,
+            iterations,
+            elapsed_ns as f64 / 1_000_000.0,
+            ns_per_eval,
+            checksum,
+        );
+
+        per_pos.push((entry.id.clone(), elapsed_ns, ns_per_eval, checksum));
+    }
+
+    let ns_values: Vec<f64> = per_pos.iter().map(|(_, _, ns, _)| *ns).collect();
+    let geo_ns = geometric_mean(&ns_values);
+    let sum_ns: f64 = ns_values.iter().sum();
+    let mean_ns = if !ns_values.is_empty() { sum_ns / ns_values.len() as f64 } else { 0.0 };
+    let min_ns = ns_values.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_ns = ns_values.iter().cloned().fold(0.0f64, f64::max);
+
+    eprintln!("---");
+    eprintln!(
+        "aggregate: positions={} iters/pos={}  ns/eval  min={:.1} mean={:.1} geo={:.1} max={:.1}",
+        entries.len(),
+        iterations,
+        min_ns,
+        mean_ns,
+        geo_ns,
+        max_ns,
+    );
+
+    if let Some(path) = out_path {
+        let mut s = String::new();
+        s.push_str("{\n");
+        s.push_str("  \"mode\": \"eval-only\",\n");
+        s.push_str(&format!("  \"iterations_per_position\": {},\n", iterations));
+        s.push_str("  \"aggregate\": {\n");
+        s.push_str(&format!("    \"positions\": {},\n", entries.len()));
+        s.push_str(&format!("    \"ns_per_eval_min\": {:.3},\n", min_ns));
+        s.push_str(&format!("    \"ns_per_eval_mean\": {:.3},\n", mean_ns));
+        s.push_str(&format!("    \"ns_per_eval_geo\": {:.3},\n", geo_ns));
+        s.push_str(&format!("    \"ns_per_eval_max\": {:.3}\n", max_ns));
+        s.push_str("  },\n");
+        s.push_str("  \"positions\": [\n");
+        for (i, (id, total_ns, ns_per_eval, checksum)) in per_pos.iter().enumerate() {
+            s.push_str("    {\n");
+            s.push_str(&format!("      \"id\": \"{}\",\n", json_escape(id)));
+            s.push_str(&format!("      \"total_ns\": {},\n", total_ns));
+            s.push_str(&format!("      \"ns_per_eval\": {:.3},\n", ns_per_eval));
+            s.push_str(&format!("      \"checksum\": {}\n", checksum));
+            s.push_str("    }");
+            if i + 1 < per_pos.len() {
+                s.push(',');
+            }
+            s.push('\n');
+        }
+        s.push_str("  ]\n");
+        s.push_str("}\n");
+
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut f = fs::File::create(path).unwrap_or_else(|e| {
+            eprintln!("failed to create {}: {}", path.display(), e);
+            std::process::exit(2);
+        });
+        f.write_all(s.as_bytes()).expect("write json");
+        eprintln!("wrote {}", path.display());
+    }
+}
+
 fn main() {
     let args = parse_args();
     let entries = load_corpus(&args.corpus_path);
@@ -583,6 +716,11 @@ fn main() {
             Mode::Time(_) => DEFAULT_DEPTH,
         };
         run_determinism(&entries, depth, args.determinism_runs);
+        return;
+    }
+
+    if args.eval_only {
+        run_eval_only(&entries, args.eval_iterations, args.out_path.as_ref());
         return;
     }
 

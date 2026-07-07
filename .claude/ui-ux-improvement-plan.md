@@ -89,7 +89,7 @@ A structured improvement plan for the game's frontend. Built by auditing current
 #### A0 — Bug: P1 King/Champion render as Guards on initial load (Tauri only)
 - **Status: FIXED** (commit a6b11bc)
 - **Root cause (confirmed):** `u64` bitboard values for champions (~7.9×10¹⁸) and kings (~1.15×10¹⁸) both exceed JavaScript's f64 safe integer limit (2⁵³ ≈ 9×10¹⁵). Serde serialised them as JSON numbers; `JSON.parse` silently rounded them, making `bitboardHas` return false for every square. All pieces fell through to the "guard" default branch in `readPieces`.
-- **Fix:** Changed `PositionViewDto.bitboards` from `[u64; 5]` to `[String; 5]` and `zobrist` from `u64` to `String` in `game/crates/tauri_wrapper/src/lib.rs`. All construction sites updated to call `.to_string()`. The WASM client was unaffected (passes bitboards through `BigUint64Array` which preserves full u64 precision).
+- **Fix:** Changed `PositionViewDto.bitboards` from `[u64; 5]` to `[String; 5]` and `zobrist` from `u64` to `String` in `game/crates/tauri_wrapper/src/lib.rs`. All construction sites updated to call `.to_string()`.
 - **Tests added:** Two regression tests in `ply-renderer.test.ts` — `pieceIds` populated immediately after `resyncFromEngine()`, and stable ids preserved for squares that remain occupied across two calls. 229 frontend tests pass.
 
 #### A1 — Full-width layout: board + player panels side-by-side

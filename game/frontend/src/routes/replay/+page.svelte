@@ -360,14 +360,14 @@
               <ProgressionPanel roundNumber={renderer.position.roundNumber} />
             {/if}
           </aside>
+
+          {#if settings.showEvalPanel}
+            <div class="eval-below">
+              <EvalBreakdownPanel breakdown={heuristicEvalBreakdown} prevBreakdown={prevRoundBreakdown} />
+            </div>
+          {/if}
         </div>
       </div>
-
-      {#if settings.showEvalPanel}
-        <div class="eval-below">
-          <EvalBreakdownPanel breakdown={heuristicEvalBreakdown} prevBreakdown={prevRoundBreakdown} />
-        </div>
-      {/if}
 
       <div class="meta">
         <div class="ply-counter">
@@ -536,7 +536,12 @@
   }
   .eval-below {
     display: flex;
-    width: 100%;
+    /* Break out of the 200px right-column so component names fit. Anchor to
+       the column's right edge and grow leftward into the gap next to the
+       board. Capped by viewport so it never eats the board on narrow windows. */
+    width: min(360px, calc(100vw - 2rem));
+    align-self: flex-end;
+    margin-right: 0;
   }
   .eval-below :global(.eval-panel) {
     flex: 1 1 auto;
