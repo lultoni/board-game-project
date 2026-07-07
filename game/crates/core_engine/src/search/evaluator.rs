@@ -313,8 +313,9 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     // created a large asymmetric leaf-eval discontinuity that perturbed
     // move ordering.
     counters::bump_maee_gate_pass();
-    b.threat_p1 = maee_side(pos, Player::P1);
-    b.threat_p2 = maee_side(pos, Player::P2);
+    let attackers_table = build_attackers_table(pos, all_occ);
+    b.threat_p1 = maee_side(pos, Player::P1, &attackers_table);
+    b.threat_p2 = maee_side(pos, Player::P2, &attackers_table);
     counters::bump_skill_gate_pass();
     b.skill_act_p1 = skill_activity(pos, Player::P1);
     b.skill_act_p2 = skill_activity(pos, Player::P2);
@@ -361,7 +362,8 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
 // requires occupying more than 8 adjacent-or-nearby squares AND leaving BFS
 // paths open, which are mutually exclusive. Realistic in-game max is 3-5.
 const MAEE_MAX_ATTACKERS: usize = 8;
-const MAEE_MAX_PLIES: usize = 32;
+// Geometric ceiling: 2 sides × MAEE_MAX_ATTACKERS = 16 total plies possible.
+const MAEE_MAX_PLIES: usize = 16;
 
 /// One attacker candidate: (cost, source-square).
 /// Cost fits in i16: max is CHAMPION_VALUE(1000) + 2·HP_PER_POINT(300) +
@@ -422,6 +424,133 @@ impl AttackerList {
         self.len -= 1;
         Some(out)
     }
+}
+
+// ── Precomputed "who attacks square S" table ──────────────────────────────
+//
+// Built once at eval entry against the current occupancy. `p1_of[t]` is the
+// bitmask of P1 non-king pieces that can move-attack square `t`; symmetric for
+// `p2_of`. Consumed by `enumerate_attackers_from_table` for the *initial*
+// attacker enumeration in each `maee` call — the per-target repricing loop.
+//
+// Kill-triggered re-enumerations (Guard BFS through a vacated blocker) still
+// go through the from-scratch `enumerate_attackers` path — precomputation
+// gains would be marginal there (few kills per position) and the incremental
+// fix-up is subtle. Kept simple; kill-side work is a Pass 4 target if it
+// shows up on the counters.
+
+struct AttackersTable {
+    p1_of: [u64; 64],
+    p2_of: [u64; 64],
+}
+
+/// King-expand: bitboard OR of all 8-directional 1-step neighbours. Used to
+/// project a Guard's reach-set into its move-attack fanout.
+#[inline]
+fn king_expand(x: u64) -> u64 {
+    const NOT_A: u64 = 0xfefefefefefefefe; // !file A
+    const NOT_H: u64 = 0x7f7f7f7f7f7f7f7f; // !file H
+    let l = (x & NOT_A) >> 1;
+    let r = (x & NOT_H) << 1;
+    let h = x | l | r;
+    h | (h << 8) | (h >> 8)
+}
+
+/// Build the per-side attackers table for the current position.
+///
+/// For each non-king piece at `sq`, computes the bitmask of squares it can
+/// move-attack given `all_occ`, then transposes: for each attackable target
+/// `t`, sets bit `sq` in `of[t]`.
+#[inline]
+fn build_attackers_table(pos: &Position, all_occ: u64) -> AttackersTable {
+    let mut table = AttackersTable { p1_of: [0u64; 64], p2_of: [0u64; 64] };
+
+    // P1 side.
+    let mut bits = pos.p1_pieces.0 & !pos.kings.0;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let sq_bit = SQ_BIT[sq as usize];
+        let is_guard = pos.guards.0 & sq_bit != 0;
+        let attacks = if is_guard {
+            // Guard move-attack: reach any square that is Chebyshev-1-adjacent
+            // to a BFS-2 reachable-empty square OR to origin, AND itself within
+            // Chebyshev-2 of origin. The second clause matches the pre-reject
+            // in `magic::movement_attack_targets_speed2` — dist-2 reach squares
+            // may exist but the enemy must be ≤ 2 from origin.
+            let reach = magic::movement_targets_speed2(sq, all_occ).0;
+            let fanout = king_expand(reach | sq_bit);
+            // Cheby-2 mask: expand origin twice, minus origin itself.
+            let cheby2 = king_expand(king_expand(sq_bit)) & !sq_bit;
+            fanout & cheby2
+        } else {
+            // Champion: 8 immediate neighbours.
+            magic::movement_targets_speed1(sq).0
+        };
+        let mut a = attacks;
+        while a != 0 {
+            let t = a.trailing_zeros() as usize;
+            a &= a - 1;
+            table.p1_of[t] |= sq_bit;
+        }
+    }
+
+    // P2 side.
+    let mut bits = pos.p2_pieces.0 & !pos.kings.0;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let sq_bit = SQ_BIT[sq as usize];
+        let is_guard = pos.guards.0 & sq_bit != 0;
+        let attacks = if is_guard {
+            let reach = magic::movement_targets_speed2(sq, all_occ).0;
+            let fanout = king_expand(reach | sq_bit);
+            let cheby2 = king_expand(king_expand(sq_bit)) & !sq_bit;
+            fanout & cheby2
+        } else {
+            magic::movement_targets_speed1(sq).0
+        };
+        let mut a = attacks;
+        while a != 0 {
+            let t = a.trailing_zeros() as usize;
+            a &= a - 1;
+            table.p2_of[t] |= sq_bit;
+        }
+    }
+
+    table
+}
+
+/// Table-driven attacker enumeration: builds the sorted-cheapest `AttackerList`
+/// from the precomputed attackers bitmask. Correctness is identical to
+/// `enumerate_attackers` at the top of a `maee` call (vacated == 0).
+#[inline]
+fn enumerate_attackers_from_table(
+    pos: &Position,
+    side: Player,
+    target_sq: u8,
+    table: &AttackersTable,
+) -> AttackerList {
+    counters::bump_enumerate_attackers_calls();
+    let mut bits = match side {
+        Player::P1 => table.p1_of[target_sq as usize],
+        Player::P2 => table.p2_of[target_sq as usize],
+    };
+    // Exclude the target square itself (a piece can't move-attack its own square).
+    bits &= !SQ_BIT[target_sq as usize];
+
+    let mut out = AttackerList::new();
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let sq_bit = SQ_BIT[sq as usize];
+        let m = pos.mailbox[sq as usize];
+        let mat = if pos.champions.0 & sq_bit != 0 { CHAMPION_VALUE } else { GUARD_VALUE };
+        let cost = attacker_cost(mat, m.hp(), m.armor());
+        out.push(Attacker { cost, sq });
+    }
+    counters::record_attacker_list_len(out.len as usize);
+    out
 }
 
 #[inline]
@@ -487,7 +616,7 @@ fn enumerate_attackers(
 /// initiator's POV (initiator = enemy of target's owner). Positive = the
 /// initiator gains, negative = losing trade.
 #[inline]
-fn maee(pos: &Position, target_sq: u8) -> i32 {
+fn maee(pos: &Position, target_sq: u8, table: &AttackersTable) -> i32 {
     counters::bump_maee_target_calls();
     let target_bit = SQ_BIT[target_sq as usize];
     let target_is_p1 = pos.p1_pieces.0 & target_bit != 0;
@@ -499,8 +628,32 @@ fn maee(pos: &Position, target_sq: u8) -> i32 {
     let mut victim_armor = entry.armor();
 
     let mut vacated = 0u64;
-    let mut attackers_stm = enumerate_attackers(pos, stm, target_sq, vacated);
-    let mut attackers_dfd = enumerate_attackers(pos, other(stm), target_sq, vacated);
+    // Initial enumeration reads from the precomputed table (vacated == 0).
+    let mut attackers_stm = enumerate_attackers_from_table(pos, stm, target_sq, table);
+    let mut attackers_dfd = enumerate_attackers_from_table(pos, other(stm), target_sq, table);
+
+    // Correctness canary: table-driven initial enumeration must match the
+    // from-scratch result exactly. Gated behind a feature (not `debug_assertions`)
+    // because the from-scratch comparison quadruples eval cost — impractical for
+    // normal `cargo test` cycles. Enable with `--features maee_paranoid` when
+    // touching table-build logic.
+    #[cfg(feature = "maee_paranoid")]
+    {
+        let ref_stm = enumerate_attackers(pos, stm, target_sq, 0);
+        let ref_dfd = enumerate_attackers(pos, other(stm), target_sq, 0);
+        assert_eq!(attackers_stm.len, ref_stm.len,
+            "attackers_stm len mismatch at target {}", target_sq);
+        assert_eq!(attackers_dfd.len, ref_dfd.len,
+            "attackers_dfd len mismatch at target {}", target_sq);
+        for i in 0..attackers_stm.len as usize {
+            assert_eq!(attackers_stm.items[i].sq, ref_stm.items[i].sq);
+            assert_eq!(attackers_stm.items[i].cost, ref_stm.items[i].cost);
+        }
+        for i in 0..attackers_dfd.len as usize {
+            assert_eq!(attackers_dfd.items[i].sq, ref_dfd.items[i].sq);
+            assert_eq!(attackers_dfd.items[i].cost, ref_dfd.items[i].cost);
+        }
+    }
 
     // Signed per-ply gains from stm's POV.
     let mut gains = [0i32; MAEE_MAX_PLIES];
@@ -574,29 +727,30 @@ fn other(p: Player) -> Player {
 /// could move-attack this turn. Per-square results clamped at 0 — a losing
 /// exchange contributes nothing (we don't reward not-attacking).
 #[inline]
-fn maee_side(pos: &Position, side: Player) -> i32 {
+fn maee_side(pos: &Position, side: Player, table: &AttackersTable) -> i32 {
     counters::bump_maee_side_calls();
-    let (opp_bb, own_bb) = match side {
-        Player::P1 => (pos.p2_pieces.0, pos.p1_pieces.0),
-        Player::P2 => (pos.p1_pieces.0, pos.p2_pieces.0),
+    let opp_bb = match side {
+        Player::P1 => pos.p2_pieces.0,
+        Player::P2 => pos.p1_pieces.0,
     };
     let non_kings = (pos.p1_pieces.0 | pos.p2_pieces.0) & !pos.kings.0;
-    let all_occ = pos.p1_pieces.0 | pos.p2_pieces.0;
+    let enemy_targets = opp_bb & non_kings;
 
-    // Pre-filter: only enemy squares `side` can actually attack this turn.
-    let candidates = magic::threat_bb(
-        own_bb & !pos.kings.0,
-        own_bb & pos.guards.0,
-        opp_bb & non_kings,
-        all_occ,
-    ).0;
+    // Candidate targets: enemy non-kings that `side` has at least one attacker
+    // for. Derived from the precomputed table — replaces the old `threat_bb`
+    // call that recomputed the same information from scratch.
+    let side_of = match side {
+        Player::P1 => &table.p1_of,
+        Player::P2 => &table.p2_of,
+    };
 
     let mut acc = 0i32;
-    let mut bits = candidates;
+    let mut bits = enemy_targets;
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
         bits &= bits - 1;
-        let v = maee(pos, sq);
+        if side_of[sq as usize] == 0 { continue; }
+        let v = maee(pos, sq, table);
         if v > 0 { acc += v; }
     }
     acc

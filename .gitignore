@@ -10,3 +10,6 @@
 .vscode/
 *.swp
 *.swo
+
+# node stuff
+node_modules

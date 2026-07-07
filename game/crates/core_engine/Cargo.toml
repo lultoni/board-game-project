@@ -17,6 +17,12 @@ crate-type = ["rlib"]
 # or from a dependent crate's Cargo.toml.
 bench_counters = []
 
+# Paranoid correctness check for the MAEE attackers-table: every initial
+# enumeration is compared to a from-scratch scan. Quadruples eval cost; use
+# only when touching table-build or MAEE code. Enable with:
+#   cargo test -p core_engine --features maee_paranoid
+maee_paranoid = []
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
