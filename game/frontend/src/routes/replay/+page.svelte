@@ -14,6 +14,7 @@
     SnapshotValidationError,
     validateMatchLog,
     type EngineClient,
+    type EvalBreakdown,
   } from "$lib/engine";
   import { consumePendingMatchLog } from "$lib/storage/library-handoff";
   import { snapshotJsonFromMatchLog } from "$lib/multiplayer-resume";
@@ -22,6 +23,7 @@
   import { createPlyRenderer, type PlyRenderer } from "$lib/board/ply-renderer.svelte";
   import PlayerPanel from "$lib/match/PlayerPanel.svelte";
   import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
+  import EvalBreakdownPanel from "$lib/eval/EvalBreakdownPanel.svelte";
   import BackButton from "$lib/ui/BackButton.svelte";
 
   // Empty snapshot used to reset the engine before replaying from ply 0.
@@ -37,6 +39,11 @@
   let playing = $state(false);
   let busy = $state(false);
   let loaded = $state(false);
+  let heuristicEvalBreakdown = $state<EvalBreakdown | null>(null);
+  // Snapshot of the breakdown at the end of the previous round, so the panel
+  // can show round-over-round change per component.
+  let prevRoundBreakdown = $state<EvalBreakdown | null>(null);
+  let lastRoundSeen = $state<number | null>(null);
 
   const actionLabel = $derived(
     currentPly > 0 && currentPly <= plies.length
@@ -182,15 +189,54 @@
     void jumpTo(currentPly - 1);
   }
 
+  // Poll heuristic eval breakdown on each ply change so the analysis panel
+  // stays in sync with the current-position display. Gated on the setting;
+  // no work performed when the panel is hidden.
+  $effect(() => {
+    void currentPly;
+    void loaded;
+    if (!settings.showEvalPanel || !eng || !loaded) {
+      heuristicEvalBreakdown = null;
+      prevRoundBreakdown = null;
+      lastRoundSeen = null;
+      return;
+    }
+    const e = eng;
+    const priorBreakdown = heuristicEvalBreakdown;
+    const priorRound = lastRoundSeen;
+    void e.heuristicEval().then((v) => {
+      const curRound = renderer?.position?.roundNumber ?? null;
+      // When the round advances, freeze the last-seen breakdown as the "previous"
+      // reference so the panel can display the round-over-round change.
+      if (curRound !== null && priorRound !== null && curRound !== priorRound && priorBreakdown !== null) {
+        prevRoundBreakdown = priorBreakdown;
+      }
+      lastRoundSeen = curRound;
+      heuristicEvalBreakdown = v;
+    }).catch(() => {});
+  });
+
   // Auto-play loop. Each tick schedules a single step; the next iteration
   // is triggered when currentPly changes (which retriggers this $effect).
+  //
+  // With `respectAnimation` on, the step is gated on MAX(user-delay,
+  // animation-done) — cinematic viewers get the full walk + lunge, "fast"
+  // users with short delay values keep their pacing. With it off, only the
+  // user delay matters and the next ply can interrupt an in-flight animation.
   $effect(() => {
     if (!playing) return;
     if (busy) return;
     if (currentPly >= plies.length) return;
+    if (!renderer) return;
+    const r = renderer;
     const delay = Math.max(16, settings.replayStepDelayMs);
-    const id = setTimeout(() => void stepForward(), delay);
-    return () => clearTimeout(id);
+    let cancelled = false;
+    const sleep = new Promise<void>((r) => setTimeout(r, delay));
+    const gate = settings.respectAnimation
+      ? Promise.all([sleep, r.animationDone()]).then(() => undefined)
+      : sleep;
+    void gate.then(() => { if (!cancelled) void stepForward(); });
+    return () => { cancelled = true; };
   });
 
   // Loop-on-end: when replay finishes and loopOnEnd is set, restart from ply 0.
@@ -209,6 +255,22 @@
     if (!pastedRaw.trim()) return;
     sfx.play("click");
     void loadFromJson(pastedRaw);
+  }
+
+  let fenCopyState = $state<"idle" | "copied" | "failed">("idle");
+  let fenCopyTimer: ReturnType<typeof setTimeout> | null = null;
+  async function copyFen(): Promise<void> {
+    if (!eng) return;
+    sfx.play("click");
+    try {
+      const fen = await eng.positionFen();
+      await navigator.clipboard.writeText(fen);
+      fenCopyState = "copied";
+    } catch {
+      fenCopyState = "failed";
+    }
+    if (fenCopyTimer !== null) clearTimeout(fenCopyTimer);
+    fenCopyTimer = setTimeout(() => { fenCopyState = "idle"; }, 1200);
   }
 </script>
 
@@ -254,6 +316,8 @@
               position={renderer.position}
               pieceIds={renderer.pieceIds}
               shakingSquares={renderer.shakingSquares}
+              lungeSquares={renderer.lungeSquares}
+              pieceMotion={renderer.pieceMotion}
               lastApplied={lastAppliedDisplay}
               interactive={false}
             />
@@ -299,6 +363,12 @@
         </div>
       </div>
 
+      {#if settings.showEvalPanel}
+        <div class="eval-below">
+          <EvalBreakdownPanel breakdown={heuristicEvalBreakdown} prevBreakdown={prevRoundBreakdown} />
+        </div>
+      {/if}
+
       <div class="meta">
         <div class="ply-counter">
           {t("replay.plyCounter", { current: currentPly, total: plies.length })}
@@ -313,6 +383,15 @@
             <span class="last-action">{actionLabel}</span>
           {/if}
         </div>
+        <button
+          type="button"
+          class="copy-fen"
+          onclick={() => void copyFen()}
+          disabled={busy}
+          title="Copy FEN of current position"
+        >
+          {fenCopyState === "copied" ? "✓ Copied" : fenCopyState === "failed" ? "✗ Failed" : "Copy FEN"}
+        </button>
       </div>
 
       <div class="controls">
@@ -455,6 +534,14 @@
     flex-direction: column;
     gap: 0.5rem;
   }
+  .eval-below {
+    display: flex;
+    width: 100%;
+  }
+  .eval-below :global(.eval-panel) {
+    flex: 1 1 auto;
+    width: 100%;
+  }
   .right-panel {
     flex: 1 1 auto;
     display: flex;
@@ -541,6 +628,20 @@
   }
   .last-action {
     color: var(--paper-ink);
+  }
+  .copy-fen {
+    padding: 0.3em 0.7em;
+    border: 1.5px solid var(--paper-line-strong);
+    background: var(--paper-bg);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: inherit;
+  }
+  .copy-fen:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
   .controls {
     display: flex;

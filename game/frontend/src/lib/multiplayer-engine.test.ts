@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMpEngine, type MpEngineHandle } from "./multiplayer-engine";
 import type { WireMessageV2, WirePhase } from "./multiplayer-protocol-v2";
-import type { EngineClient, PositionView, StepResult } from "./engine";
+import type { EngineClient, EvalBreakdown, PositionView, StepResult } from "./engine";
 
 // ---------- Fake engine ----------------------------------------------------
 //
@@ -63,7 +63,19 @@ class FakeEngine implements EngineClient {
   async stepAi(): Promise<StepResult> { throw new Error("not used"); }
   async requestAiMoveForced(): Promise<StepResult> { throw new Error("not used"); }
   async requestAiMoveAtDepth(): Promise<StepResult> { throw new Error("not used"); }
-  async heuristicEval(): Promise<number> { return 0; }
+  async heuristicEval(): Promise<EvalBreakdown> {
+    return {
+      material_p1: 0, material_p2: 0,
+      hp_p1: 0, hp_p2: 0,
+      armor_p1: 0, armor_p2: 0,
+      skills_p1: 0, skills_p2: 0,
+      money_p1: 0, money_p2: 0,
+      mobility_p1: 0, mobility_p2: 0,
+      threat_p1: 0, threat_p2: 0,
+      skill_act_p1: 0, skill_act_p2: 0,
+      total: 0,
+    };
+  }
   async positionFen(): Promise<string> { return ""; }
   async snapshotJson(): Promise<string> { return this.snapshotBlob; }
   async restoreFromSnapshot(json: string): Promise<void> {

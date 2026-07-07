@@ -346,6 +346,10 @@ describe("createPlyRenderer", () => {
       16: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
     }));
     await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+    // Attack/death SFX are deferred until the piece visually reaches the
+    // target (walk + kill-lunge). Drain the scheduler so the contact-fire
+    // closure runs.
+    scheduler.fireAll();
 
     const sfxKeys = sfx.calls.map((c) => c.key);
     expect(sfxKeys).toContain("attack");
@@ -365,6 +369,9 @@ describe("createPlyRenderer", () => {
       16: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },
     }));
     await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+    // Damage effect fires from the deferred contact-fire closure; drain
+    // the scheduler so it pushes.
+    scheduler.fireAll();
 
     const impactEffects = renderer.effectQueue.filter((e) => e.kind === "impact");
     expect(impactEffects.length).toBeGreaterThan(0);
@@ -400,6 +407,12 @@ describe("createPlyRenderer", () => {
       16: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },
     }));
     await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+    // Attack-contact effects (damage, shake) are deferred until the piece
+    // visually reaches the target. Fire the pending contact-fire timer,
+    // but *not* the shake-clear timer it schedules — that's what dispose
+    // is supposed to drain in this test.
+    const contactHandles = scheduler.pendingHandles();
+    for (const h of contactHandles) scheduler.fire(h);
 
     expect(scheduler.pendingCount()).toBeGreaterThan(0);
     expect(renderer.shakingSquares.has(16)).toBe(true);

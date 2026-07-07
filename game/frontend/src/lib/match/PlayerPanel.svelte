@@ -15,9 +15,23 @@
     aiMaxDepth: number;
     /** Whether this seat is controlled by an AI (drives indicator visibility). */
     isAiSeat: boolean;
+    /** `Date.now()` snapshot when the current search started, or null. */
+    aiSearchStartedAt?: number | null;
+    /** Configured think-time budget for this seat (ms). */
+    aiThinkBudgetMs?: number;
+    /** Ply counter at which the last search finished; used to time the linger. */
+    aiFinishedAtPly?: number | null;
+    /** Live ply counter; controls when the linger indicator hides. */
+    plyCount?: number;
   }
 
-  let { player, position, aiThinking, aiLastDepth, aiLastScore, aiMaxDepth, isAiSeat }: Props = $props();
+  let {
+    player, position, aiThinking, aiLastDepth, aiLastScore, aiMaxDepth, isAiSeat,
+    aiSearchStartedAt = null,
+    aiThinkBudgetMs = 1000,
+    aiFinishedAtPly = null,
+    plyCount = 0,
+  }: Props = $props();
 
   function popcount(bb: bigint): number {
     let n = 0;
@@ -51,6 +65,59 @@
 
   const color = $derived(player === "p1" ? "var(--p1, #4b6b8a)" : "var(--p2, #a94b3b)");
   const label = $derived(player === "p1" ? "Player 1" : "Player 2");
+
+  // ── AI progress bar ──────────────────────────────────────────────────────
+  // Frontend-driven rAF loop while `aiThinking` is true. Progress is time-
+  // based on the frontend since Rust only calls back per completed depth.
+  // We write `progress ∈ [0, 1]` (may exceed 1 briefly when the search is
+  // over budget) into a state field the template renders.
+  let progress = $state(0);
+  let rafId = 0;
+
+  $effect(() => {
+    // Rerun whenever the trigger inputs change.
+    void aiThinking;
+    void aiSearchStartedAt;
+    void aiThinkBudgetMs;
+    void settings.showThinkProgressBar;
+
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    // Skip the rAF loop entirely when the bar is hidden. Saves ~60 wakeups/sec
+    // per AI seat during a search, which adds up when the eval panel and other
+    // effects are also live.
+    if (!settings.showThinkProgressBar) {
+      progress = 0;
+      return;
+    }
+    if (!aiThinking || aiSearchStartedAt === null || aiThinkBudgetMs <= 0) {
+      progress = 0;
+      return;
+    }
+    const startedAt = aiSearchStartedAt;
+    const budget = aiThinkBudgetMs;
+    const tick = () => {
+      const now = Date.now();
+      progress = Math.max(0, (now - startedAt) / budget);
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    };
+  });
+
+  // The prior search's depth/score stays visible until the next search's
+  // streaming callback overwrites the numbers. Prevents flicker between plies
+  // and lets the user actually read the last result before it disappears.
+  // `aiFinishedAtPly` is retained on the state, but the display no longer
+  // gates on ply-count matching — the badge is sticky until a new search
+  // starts (aiThinking becomes true) or until aiLastDepth is cleared.
+  const showLinger = $derived(
+    isAiSeat && !aiThinking && aiLastDepth > 0
+  );
+
+  const overBudget = $derived(progress >= 1);
+  const fillPct = $derived(Math.min(100, Math.max(0, progress * 100)));
 </script>
 
 <div class="player-panel" class:p1={player === "p1"} class:p2={player === "p2"}>
@@ -61,6 +128,13 @@
       <span class="thinking-badge">
         <span class="spinner" aria-hidden="true"></span>
         <span class="thinking-text">thinking</span>
+        {#if settings.showAiDepth && aiLastDepth > 0}
+          <span class="depth">d{aiLastDepth}{aiMaxDepth === 0 ? '/∞' : `/${aiMaxDepth}`} {aiLastScore > 0 ? '+' : ''}{aiLastScore}</span>
+        {/if}
+      </span>
+    {:else if showLinger}
+      <span class="thinking-badge linger" aria-hidden="true">
+        <span class="thinking-text">done</span>
         {#if settings.showAiDepth && aiLastDepth > 0}
           <span class="depth">d{aiLastDepth}{aiMaxDepth === 0 ? '/∞' : `/${aiMaxDepth}`} {aiLastScore > 0 ? '+' : ''}{aiLastScore}</span>
         {/if}
@@ -99,6 +173,12 @@
     <span class="money">${money}</span>
   </div>
 </div>
+
+{#if isAiSeat && aiThinking && aiThinkBudgetMs > 0 && settings.showThinkProgressBar}
+  <div class="think-progress" class:over-budget={overBudget} aria-hidden="true">
+    <div class="think-progress__fill" style="width: {fillPct}%"></div>
+  </div>
+{/if}
 
 <style>
   .player-panel {
@@ -140,6 +220,31 @@
     padding: 0.1em 0.5em;
     border-radius: 3px;
     background: var(--paper-square-light, #ece2c8);
+  }
+  .thinking-badge.linger {
+    opacity: 0.5;
+    background: transparent;
+  }
+
+  .think-progress {
+    height: 3px;
+    margin-top: 2px;
+    border-radius: 2px;
+    background: var(--paper-square-light, #ece2c8);
+    overflow: hidden;
+  }
+  .think-progress__fill {
+    height: 100%;
+    background: #c99a4a; /* warm accent — matches paper aesthetic */
+    transition: width 60ms linear;
+  }
+  .think-progress.over-budget .think-progress__fill {
+    background: #d17a2a;
+    animation: think-pulse 900ms ease-in-out infinite;
+  }
+  @keyframes think-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
   }
 
   .thinking-text {

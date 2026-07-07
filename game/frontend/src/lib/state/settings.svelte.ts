@@ -40,12 +40,23 @@ export interface Settings {
   replayStepDelayMs: number;
   /** Loop replay to start when it reaches the end. */
   replayLoopOnEnd: boolean;
-  /** Wait for piece slide to finish before advancing to next replay step. */
-  replayRespectAnimation: boolean;
+  /** Wait for the piece animation to finish before the next AI ply / replay
+   *  step advances. Applies globally to AI turns and replay auto-play. When
+   *  false, AI/replay proceed on their own delay floors regardless of how
+   *  long the piece walk + lunge takes. */
+  respectAnimation: boolean;
   /** Show depth counter alongside AI spinner. */
   showAiDepth: boolean;
+  /** Show the per-seat AI think-progress bar (rAF-driven fill under each
+   *  PlayerPanel). Turn off to skip the rAF loop entirely when the bar is
+   *  hidden — noticeable on lower-end machines with many panels visible. */
+  showThinkProgressBar: boolean;
   /** Show heuristic eval bar + score in the match UI. */
   showHeuristicEval: boolean;
+  /** Show the full heuristic eval breakdown side panel (per-component,
+   *  per-side, colour-coded). Intended for analysis / tuning. Independent
+   *  of `showHeuristicEval` — both may be on. */
+  showEvalPanel: boolean;
 }
 
 export type EvaluatorSource = "heuristic" | "run" | "blessed";
@@ -74,9 +85,11 @@ const DEFAULTS: Settings = {
   animationSpeed: "normal",
   replayStepDelayMs: 600,
   replayLoopOnEnd: false,
-  replayRespectAnimation: true,
+  respectAnimation: true,
   showAiDepth: true,
+  showThinkProgressBar: true,
   showHeuristicEval: false,
+  showEvalPanel: false,
 };
 
 const EVAL_SOURCES: ReadonlyArray<EvaluatorSource> = ["heuristic", "run", "blessed"];
@@ -149,9 +162,16 @@ function validate(raw: unknown): Settings {
     animationSpeed: pickAnimationSpeed(r.animationSpeed, DEFAULTS.animationSpeed),
     replayStepDelayMs: pickFiniteNonNeg(r.replayStepDelayMs, DEFAULTS.replayStepDelayMs),
     replayLoopOnEnd: pickBool(r.replayLoopOnEnd, DEFAULTS.replayLoopOnEnd),
-    replayRespectAnimation: pickBool(r.replayRespectAnimation, DEFAULTS.replayRespectAnimation),
+    // Backwards-compat: old blobs used `replayRespectAnimation` (replay-only).
+    // Fall through to the old key so existing users keep their preference.
+    respectAnimation: pickBool(
+      r.respectAnimation ?? r.replayRespectAnimation,
+      DEFAULTS.respectAnimation,
+    ),
     showAiDepth: pickBool(r.showAiDepth, DEFAULTS.showAiDepth),
+    showThinkProgressBar: pickBool(r.showThinkProgressBar, DEFAULTS.showThinkProgressBar),
     showHeuristicEval: pickBool(r.showHeuristicEval, DEFAULTS.showHeuristicEval),
+    showEvalPanel: pickBool(r.showEvalPanel, DEFAULTS.showEvalPanel),
   };
 }
 
@@ -193,6 +213,27 @@ export const SLIDE_DURATION_MS: Record<AnimationSpeed, number> = {
 export function slideDurationMs(): number {
   return SLIDE_DURATION_MS[settings.animationSpeed];
 }
+
+/** Multiplier applied to baseline FX_LIFETIME_MS values so per-skill choreography,
+ *  impact rings, damage numbers, spotlights, etc. all scale with the user's
+ *  animation-speed pick.
+ *
+ *  Ratios chosen to match the walk-speed ratios (slide-duration / 280 ms normal):
+ *    off       0        → skip animations entirely
+ *    fast      0.5      → half-time
+ *    normal    1        → baseline
+ *    cinematic 2.5      → slow, exaggerated flourishes matching the slow walk
+ *
+ *  `off` returns 0 so callers can shortcut and simply skip pushing the effect
+ *  (a zero-lifetime effect would expire on the first frame anyway). */
+export function fxSpeedMultiplier(): number {
+  switch (settings.animationSpeed) {
+    case "off": return 0;
+    case "fast": return 0.5;
+    case "normal": return 1;
+    case "cinematic": return 2.5;
+  }
+}
 export function initSettingsPersistence() {
   $effect(() => {
     // Touch every key so $effect tracks them all.
@@ -212,9 +253,11 @@ export function initSettingsPersistence() {
     void settings.animationSpeed;
     void settings.replayStepDelayMs;
     void settings.replayLoopOnEnd;
-    void settings.replayRespectAnimation;
+    void settings.respectAnimation;
     void settings.showAiDepth;
+    void settings.showThinkProgressBar;
     void settings.showHeuristicEval;
+    void settings.showEvalPanel;
     persist();
   });
 }

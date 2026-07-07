@@ -4,6 +4,7 @@
   import SkillWheel, { type SliceKind } from "./SkillWheel.svelte";
   import DirectionPicker from "./DirectionPicker.svelte";
   import type { SkillVariant } from "$lib/state/skill-targets";
+  import type { PieceMotion } from "./ply-renderer.svelte";
 
   interface Props {
     position: PositionView | null;
@@ -110,6 +111,11 @@
     /** Per-square lunge offsets (SVG px) + dist. Drives the lunge-recoil CSS animation
      *  on non-kill attacks: piece at `sq` lunges by (dx, dy) then recoils. */
     lungeSquares?: Map<number, { dx: number; dy: number; dist: number }>;
+    /** Multi-hop walk descriptors keyed by the piece's final square. When a
+     *  piece has an entry, its outer `<g>` drives a WAAPI keyframe animation
+     *  along the waypoints (with a subtle bounce) instead of the CSS
+     *  transition. Populated by the ply-renderer on Move actions. */
+    pieceMotion?: Map<number, PieceMotion>;
     /** Whose turn it is: 0 = P1, 1 = P2, null = game over / unknown.
      *  Renders a coloured accent strip on the active player's board edge. */
     toMove?: number | null;
@@ -154,6 +160,7 @@
     onDirectionPick,
     onDirectionCancel,
     lungeSquares = new Map<number, { dx: number; dy: number; dist: number }>(),
+    pieceMotion = new Map<number, PieceMotion>(),
     toMove = null,
   }: Props = $props();
 
@@ -811,6 +818,7 @@
         overrideXY={overrideForPiece(piece.square)}
         shake={shakingSquares.has(piece.square)}
         lunge={lungeSquares.get(piece.square) ?? null}
+        motion={pieceMotion.get(piece.square) ?? null}
         {effectsActive}
         dormant={position
           ? (piece.owner === "p1" ? 0 : 1) !== position.toMove

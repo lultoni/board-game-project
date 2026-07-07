@@ -28,9 +28,10 @@ import {
   type PositionView,
 } from "$lib/engine";
 import type { Effect } from "$lib/viz/effects";
+import { FX_LIFETIME_MS } from "$lib/viz/effects";
 import { skillColor } from "$lib/engine/skills";
 import { sfx } from "$lib/audio/sfx";
-import { slideDurationMs } from "$lib/state/settings.svelte";
+import { slideDurationMs, fxSpeedMultiplier } from "$lib/state/settings.svelte";
 
 // === Public types ==========================================================
 
@@ -108,6 +109,32 @@ export interface ApplyAndRenderOpts {
   plyHintBase?: string;
 }
 
+/** Descriptor for a piece's multi-hop walk. Consumed by Piece.svelte via the
+ *  `motion` prop and rendered with a WAAPI keyframe animation. Keyed in the
+ *  renderer's `pieceMotion` map by the piece's FINAL square (where the DOM
+ *  element rests after the state flip).
+ *
+ *  `waypoints` is the ordered list of squares the piece walks through,
+ *  inclusive of endpoints: `[src, mid1, ..., finalWalkSq]`. Each hop lasts
+ *  `slideDurationMs()`, with a small Y-bounce injected at each waypoint
+ *  arrival so the walk reads as "stepping" rather than a glide.
+ *
+ *  When `killLungeTo` is set, the piece follows the walk with an extra lunge
+ *  segment from the last waypoint into the given square and stays there. Used
+ *  for killing move-attacks where the attacker ends up on the dead enemy's
+ *  square (approach ≠ target case) or a direct kill (approach === target).
+ *  Non-kill attacks leave this null and rely on the existing lunge-recoil
+ *  driven by `lungeSquares`. */
+export interface PieceMotion {
+  waypoints: number[];
+  killLungeTo: number | null;
+  startedAt: number;
+  /** Number of hops = waypoints.length - 1 (0 when a piece never moves). Kept
+   *  as a separate field so consumers don't recompute; also drives the total
+   *  animation duration (hops × slide + optional kill-lunge). */
+  hops: number;
+}
+
 export interface PlyRenderer {
   // Reactive state — bind into Board / EffectsLayer.
   readonly position: PositionView | null;
@@ -118,8 +145,17 @@ export interface PlyRenderer {
    *  non-kill attack's slide finishes: piece lunges toward the target and
    *  recoils. dist-1 = jab-and-back; dist-2 = step, step, back. */
   readonly lungeSquares: Map<number, { dx: number; dy: number; dist: number }>;
+  /** Walk descriptors keyed by the piece's FINAL square. Board.svelte passes
+   *  the entry matching each rendered piece into `<Piece motion={...}>`. Only
+   *  populated for Move actions; cleared when the animation finishes. */
+  readonly pieceMotion: Map<number, PieceMotion>;
   readonly effectQueue: Effect[];
   readonly lastApplied: { src: number; target: number } | null;
+
+  /** Resolves when the currently-emitted piece motion (if any) has finished.
+   *  Used by match / replay to gate the next ply behind `respectAnimation`.
+   *  When no motion is active, resolves immediately. */
+  animationDone(): Promise<void>;
 
   // Lifecycle.
   /** Capture pre-state from the currently-rendered position, run `applyFn`
@@ -258,6 +294,50 @@ function walkedPath(
   return [decoded.src, approach];
 }
 
+/** Pick a chebyshev-midpoint square for a speed-2 zigzag move. Engine BFS may
+ *  route around a blocker; we don't have that path so we pick a visually
+ *  plausible corner. Prefer a candidate that is empty in the pre-mailbox so
+ *  the walking piece doesn't visibly overlap another. If both candidates are
+ *  occupied (or the pair isn't 2-apart), returns null. */
+function chebyshevMidpoint(
+  from: number,
+  to: number,
+  preMailbox: Uint16Array | null,
+): number | null {
+  const fF = from & 7, fR = (from >> 3) & 7;
+  const tF = to & 7, tR = (to >> 3) & 7;
+  const dxTotal = tF - fF;
+  const dyTotal = tR - fR;
+  if (Math.max(Math.abs(dxTotal), Math.abs(dyTotal)) !== 2) return null;
+  // Straight 2-step (0/±2 in one axis, 0 in the other): unique midpoint.
+  if (dxTotal === 0 || dyTotal === 0) {
+    const mf = fF + Math.sign(dxTotal);
+    const mr = fR + Math.sign(dyTotal);
+    return (mr << 3) | mf;
+  }
+  // Diagonal 2-step (±2, ±2): unique midpoint on the diagonal.
+  if (Math.abs(dxTotal) === 2 && Math.abs(dyTotal) === 2) {
+    const mf = fF + Math.sign(dxTotal);
+    const mr = fR + Math.sign(dyTotal);
+    return (mr << 3) | mf;
+  }
+  // L-shape (2/±1 or 1/±2): two candidates — the corner via file first, or
+  // via rank first. Prefer the empty one; fall back to file-first.
+  const c1F = fF + Math.sign(dxTotal) * Math.min(1, Math.abs(dxTotal));
+  const c1R = fR + (Math.abs(dyTotal) === 2 ? Math.sign(dyTotal) : 0);
+  const c2F = fF + (Math.abs(dxTotal) === 2 ? Math.sign(dxTotal) : 0);
+  const c2R = fR + Math.sign(dyTotal) * Math.min(1, Math.abs(dyTotal));
+  const cand1 = (c1R << 3) | c1F;
+  const cand2 = (c2R << 3) | c2F;
+  if (preMailbox) {
+    const e1 = decodeMailbox(preMailbox[cand1]).empty;
+    const e2 = decodeMailbox(preMailbox[cand2]).empty;
+    if (e1 && !e2) return cand1;
+    if (e2 && !e1) return cand2;
+  }
+  return cand1;
+}
+
 interface SkillDiff {
   stayed: number[];
   moves: { from: number; to: number; dist: number }[];
@@ -378,8 +458,29 @@ export function createPlyRenderer(
 
   let shakingSquares = $state<Set<number>>(new Set());
   let lungeSquares = $state<Map<number, { dx: number; dy: number; dist: number }>>(new Map());
+  let pieceMotion = $state<Map<number, PieceMotion>>(new Map());
+
+  // Pending animationDone gate. `animationEndsAt` is a monotonic timestamp
+  // (clock.now() basis) — when the current wall clock passes it, the
+  // animation is finished. Resolved by a scheduled timer. Multiple callers
+  // (e.g. AI loop + replay autoplay) can await the same underlying promise.
+  let animationEndsAt = 0;
+  let animationPromise: Promise<void> = Promise.resolve();
+  let animationResolve: (() => void) | null = null;
 
   const effectQueue: Effect[] = $state([]);
+
+  /** Push an effect into the queue, stamping `ttl` from the current animation
+   *  speed multiplier so cinematic viewers get a slow, deliberate flourish
+   *  while fast viewers get a snappier one. Skips the push entirely when
+   *  animations are off. */
+  function pushFx(eff: Effect): void {
+    const mult = fxSpeedMultiplier();
+    if (mult === 0) return;
+    const baseline = FX_LIFETIME_MS[eff.kind];
+    (eff as { ttl?: number }).ttl = baseline * mult;
+    effectQueue.push(eff);
+  }
 
   let lastApplied = $state<{ src: number; target: number } | null>(null);
 
@@ -452,8 +553,9 @@ export function createPlyRenderer(
   }
 
   /** Trigger a lunge-and-recoil animation on `sq` toward `targetSq`.
-   *  The lunge fires AFTER the piece has finished sliding to its resting square
-   *  (delay = slideDurationMs). The `dist` drives which keyframe plays:
+   *  Caller is responsible for scheduling this AFTER the walk (WAAPI) has
+   *  finished — this function starts the CSS keyframe immediately.
+   *  The `dist` drives which keyframe plays:
    *  dist-1 = jab-and-recoil; dist-2 = step, step, recoil. */
   function triggerLunge(sq: number, targetSq: number): void {
     const dur = slideDurationMs();
@@ -465,23 +567,68 @@ export function createPlyRenderer(
     const dx = (tFile - sqFile) * SQUARE_PX;
     const dy = (sqRank - tRank) * SQUARE_PX;
     const dist = Math.max(Math.abs(tFile - sqFile), Math.abs(tRank - sqRank));
-    // Lunge fires after the slide finishes so both animations don't overlap.
-    const lungeHandle = scheduleTimer(() => {
-      lungeSquares = new Map([[sq, { dx, dy, dist }]]);
-      // Lunge duration: dist-1 = 2× slide, dist-2 = 3× slide (step + step + recoil).
-      const lungeDur = dur * (dist >= 2 ? 3 : 2);
-      scheduleTimer(() => {
-        lungeSquares = new Map([...lungeSquares].filter(([s]) => s !== sq));
-      }, lungeDur);
-    }, dur);
+    lungeSquares = new Map([[sq, { dx, dy, dist }]]);
+    // Lunge duration: dist-1 = 2× slide, dist-2 = 3× slide (step + step + recoil).
+    const lungeDur = dur * (dist >= 2 ? 3 : 2);
+    scheduleTimer(() => {
+      lungeSquares = new Map([...lungeSquares].filter(([s]) => s !== sq));
+    }, lungeDur);
+  }
+
+  /** Total ms a PieceMotion will consume: `hops × slideDur` for the walk plus
+   *  a kill-lunge budget when set. Non-kill attacks add their own recoil budget
+   *  via `triggerLunge` (dist-scaled multiplier of slide). Callers who need to
+   *  gate on the WHOLE post-move animation should also consult that lunge time. */
+  function motionDurationMs(m: PieceMotion, dur: number): number {
+    let total = m.hops * dur;
+    if (m.killLungeTo !== null) total += dur; // one extra hop for the kill lunge
+    return total;
+  }
+
+  /** Emit a walk descriptor and arm the animationDone gate. `finalSq` is the
+   *  square the piece REST at after the state flip (Board keys pieceMotion by
+   *  finalSq). Also schedules a timer to clear the entry so a stale motion
+   *  doesn't survive into the next ply. */
+  function emitPieceMotion(finalSq: number, motion: PieceMotion, extraLungeDur = 0): void {
+    const dur = slideDurationMs();
+    const total = motionDurationMs(motion, dur) + extraLungeDur;
+    pieceMotion = new Map([...pieceMotion, [finalSq, motion]]);
+    if (total <= 0) return;
+    const endsAt = clock.now() + total;
+    if (endsAt > animationEndsAt) animationEndsAt = endsAt;
+    // Fresh promise so late awaiters don't resolve on an old cycle.
+    if (!animationResolve) {
+      animationPromise = new Promise<void>((res) => { animationResolve = res; });
+    }
+    scheduleTimer(() => {
+      // Only clear if this is still the same descriptor (defensive against
+      // rapid successive plies replacing it mid-flight).
+      if (pieceMotion.get(finalSq) === motion) {
+        const next = new Map(pieceMotion);
+        next.delete(finalSq);
+        pieceMotion = next;
+      }
+      // Resolve only when we've reached the tracked end (a later, longer
+      // motion may extend the window).
+      if (clock.now() >= animationEndsAt - 1 && animationResolve) {
+        const r = animationResolve;
+        animationResolve = null;
+        r();
+      }
+    }, total);
+  }
+
+  function animationDone(): Promise<void> {
+    if (animationResolve === null) return Promise.resolve();
+    return animationPromise;
   }
 
   function pushDamageEffect(targetSq: number, before: number, after: number): void {
     const dmg = before - after;
     if (dmg <= 0) return;
     const now = clock.now();
-    effectQueue.push({ kind: "impact", at: targetSq, startedAt: now });
-    effectQueue.push({ kind: "damageNumber", at: targetSq, amount: dmg, startedAt: now + 80 });
+    pushFx({ kind: "impact", at: targetSq, startedAt: now });
+    pushFx({ kind: "damageNumber", at: targetSq, amount: dmg, startedAt: now + 80 });
     triggerShake(targetSq);
     playSfx("damage");
   }
@@ -507,16 +654,16 @@ export function createPlyRenderer(
         pushDamageEffect(renderSq, a.hp + a.armor, b.hp + b.armor);
         fired = true;
       } else if (hpDelta > 0) {
-        effectQueue.push({ kind: "heal", at: renderSq, amount: hpDelta, startedAt: now });
+        pushFx({ kind: "heal", at: renderSq, amount: hpDelta, startedAt: now });
         playSfx("heal");
         fired = true;
       }
       if (arDelta > 0) {
-        effectQueue.push({ kind: "armor", at: renderSq, amount: arDelta, startedAt: now + 40 });
+        pushFx({ kind: "armor", at: renderSq, amount: arDelta, startedAt: now + 40 });
         playSfx("armor");
         fired = true;
       } else if (arDelta < 0 && hpDelta === 0) {
-        effectQueue.push({ kind: "armor", at: renderSq, amount: arDelta, startedAt: now });
+        pushFx({ kind: "armor", at: renderSq, amount: arDelta, startedAt: now });
         playSfx("armorBreak");
         fired = true;
       }
@@ -531,7 +678,7 @@ export function createPlyRenderer(
     for (const m of diff.moves) {
       const path = straightPath(m.from, m.to);
       if (path.length >= 2) {
-        effectQueue.push({ kind: "dust", path, startedAt: now });
+        pushFx({ kind: "dust", path, startedAt: now });
       }
       const id = pieceIds.get(m.from);
       if (id !== undefined) {
@@ -543,9 +690,9 @@ export function createPlyRenderer(
     for (const v of diff.deaths) {
       const a = decodeMailbox(pre[v]);
       const dmg = a.hp + a.armor;
-      effectQueue.push({ kind: "impact", at: v, startedAt: now });
+      pushFx({ kind: "impact", at: v, startedAt: now });
       if (dmg > 0) {
-        effectQueue.push({ kind: "damageNumber", at: v, amount: dmg, startedAt: now + 80 });
+        pushFx({ kind: "damageNumber", at: v, amount: dmg, startedAt: now + 80 });
       }
       triggerShake(v);
       pieceIds.delete(v);
@@ -722,42 +869,137 @@ export function createPlyRenderer(
     if (decoded.kind === ActionKind.Move) {
       const path = walkedPath(decoded, killed);
       if (path.length >= 2) {
-        effectQueue.push({ kind: "dust", path, startedAt: clock.now() });
+        pushFx({ kind: "dust", path, startedAt: clock.now() });
       }
       const finalAttackerSq = decoded.hasAux
         ? (killed ? decoded.target : decoded.auxSq)
         : decoded.target;
       const tiles = chebyshev(decoded.src, finalAttackerSq);
-      playSfx(decoded.hasAux ? "attack" : "move", { tiles });
-      if (killed) playSfx("death");
-      const postPos = getPosition();
-      if (decoded.hasAux && preTarget && postPos) {
-        const postTarget = decodeMailbox(postPos.mailbox[decoded.target]);
-        const before = preTarget.hp + preTarget.armor;
-        const after = killed ? 0 : postTarget.hp + postTarget.armor;
-        if (after < before) {
-          pushDamageEffect(decoded.target, before, after);
+      // Move SFX (footstep) fires immediately — that's the walk start.
+      // Attack SFX (impact) and death SFX are deferred until the piece
+      // actually reaches the target, so audio matches the lunge landing.
+      if (!decoded.hasAux) playSfx("move", { tiles });
+
+      // Piece-motion emission: derive the waypoint list from the decoded
+      // action + kill outcome. Rules match .claude/plans/swirling-floating-alpaca.md:
+      //   pure move (no aux): [src, target], or [src, mid, target] if cheb 2.
+      //   move-attack, no kill: [src, approach] — lunge-recoil fires separately.
+      //   move-attack, kill (approach != target): [src, approach] + killLungeTo=target.
+      //   move-attack, kill (approach == target): [src, target] with kill lunge implicit.
+      const dur = slideDurationMs();
+      let walkHops = 0;
+      if (dur > 0) {
+        let waypoints: number[];
+        let killLungeTo: number | null = null;
+        if (!decoded.hasAux) {
+          const mid = chebyshevMidpoint(decoded.src, decoded.target, preFull);
+          waypoints = mid !== null
+            ? [decoded.src, mid, decoded.target]
+            : [decoded.src, decoded.target];
+        } else if (!killed) {
+          waypoints = decoded.auxSq === decoded.src
+            ? [decoded.src]
+            : [decoded.src, decoded.auxSq];
+        } else if (decoded.auxSq !== decoded.target) {
+          waypoints = decoded.auxSq === decoded.src
+            ? [decoded.src]
+            : [decoded.src, decoded.auxSq];
+          killLungeTo = decoded.target;
         } else {
-          for (const bg of preBodyguard) {
-            const post = decodeMailbox(postPos.mailbox[bg.sq]);
-            const bgBefore = bg.entry.hp + bg.entry.armor;
-            const bgAfter = post.hp + post.armor;
-            if (bgAfter < bgBefore) {
-              pushDamageEffect(bg.sq, bgBefore, bgAfter);
-              break;
-            }
+          waypoints = [decoded.src, decoded.target];
+        }
+        const hops = Math.max(0, waypoints.length - 1);
+        walkHops = hops;
+        if (hops > 0 || killLungeTo !== null) {
+          // Extra lunge budget for non-kill attacks so animationDone waits for
+          // the full recoil, not just the walk. dist-1 = 2×slide, dist-2 = 3×slide.
+          let extraLunge = 0;
+          if (decoded.hasAux && !killed) {
+            const d = chebyshev(decoded.auxSq, decoded.target);
+            extraLunge = dur * (d >= 2 ? 3 : 2);
           }
+          emitPieceMotion(
+            finalAttackerSq,
+            {
+              waypoints,
+              killLungeTo,
+              startedAt: clock.now(),
+              hops,
+            },
+            extraLunge,
+          );
         }
       }
+
+      const postPos = getPosition();
       const finalSq = decoded.hasAux
         ? (killed ? decoded.target : decoded.auxSq)
         : decoded.target;
       opts.onMoveLanding?.(finalSq);
+
+      // Attack contact timing: damage numbers, hit-shake, damage SFX and
+      // (for non-kill attacks) the lunge-recoil all fire when the attacker
+      // would visually reach the target — after the walk finishes, plus
+      // roughly half the lunge duration so the "impact" lands at the top
+      // of the lunge arc rather than at the start. For kill attacks with
+      // approach ≠ target we use the walk end + one hop (the kill lunge in
+      // the WAAPI animation) so damage fires as the attacker lands ON the
+      // dead enemy's square.
+      if (decoded.hasAux && preTarget && postPos) {
+        const postTarget = decodeMailbox(postPos.mailbox[decoded.target]);
+        const before = preTarget.hp + preTarget.armor;
+        const after = killed ? 0 : postTarget.hp + postTarget.armor;
+        // Timing: walk duration + a portion of the lunge/kill-lunge that
+        // corresponds to the piece hitting the target square (peak of the
+        // lunge arc, not the recovery).
+        let contactDelay = walkHops * dur;
+        if (killed) {
+          // Kill: the WAAPI kill-lunge segment lasts `dur` and peaks at
+          // offset ~0.40 (see buildKeyframes in Piece.svelte). Fire damage
+          // and the death SFX at that peak — that's when the attacker has
+          // physically leaned partway onto the defender square. The rest
+          // of the segment carries the attacker forward onto the now-empty
+          // target square.
+          contactDelay += dur * 0.40;
+        } else {
+          // Non-kill: CSS lunge peaks at ~45% for dist-1, ~67% for dist-2.
+          const d = chebyshev(decoded.auxSq, decoded.target);
+          const lungeTotal = dur * (d >= 2 ? 3 : 2);
+          const peakFrac = d >= 2 ? 0.67 : 0.45;
+          contactDelay += lungeTotal * peakFrac;
+        }
+        const fire = () => {
+          if (after < before) {
+            pushDamageEffect(decoded.target, before, after);
+          } else {
+            for (const bg of preBodyguard) {
+              const post = decodeMailbox(postPos.mailbox[bg.sq]);
+              const bgBefore = bg.entry.hp + bg.entry.armor;
+              const bgAfter = post.hp + post.armor;
+              if (bgAfter < bgBefore) {
+                pushDamageEffect(bg.sq, bgBefore, bgAfter);
+                break;
+              }
+            }
+          }
+          playSfx("attack", { tiles });
+          if (killed) playSfx("death");
+        };
+        if (contactDelay > 0) scheduleTimer(fire, contactDelay);
+        else fire();
+      }
+
       // Non-kill attack: attacker ends at auxSq (approach) but attacked target.
-      // Trigger a lunge-and-recoil animation so the attacker visually reaches
-      // toward the target square before snapping back to approach.
+      // Fire the lunge-and-recoil animation on the piece AFTER the walk
+      // finishes so the visual sequence reads walk → lunge → recoil rather
+      // than starting the lunge mid-walk.
       if (decoded.hasAux && !killed) {
-        triggerLunge(decoded.auxSq, decoded.target);
+        const walkDurMs = walkHops * dur;
+        if (walkDurMs > 0) {
+          scheduleTimer(() => triggerLunge(decoded.auxSq, decoded.target), walkDurMs);
+        } else {
+          triggerLunge(decoded.auxSq, decoded.target);
+        }
       }
     }
 
@@ -787,7 +1029,7 @@ export function createPlyRenderer(
       let targetPostSq: number | undefined;
       const pulledMove = diff.moves.find((m) => m.from === targetSq);
       if (pulledMove) targetPostSq = pulledMove.to;
-      effectQueue.push({
+      pushFx({
         kind: "skill",
         skillId: decoded.skillId,
         from: casterSq,
@@ -804,7 +1046,7 @@ export function createPlyRenderer(
       // paint on top; the spotlight paints on top of the per-skill draw. That
       // matches the fireworks-ring-around-caster feel: the ring surrounds the
       // caster's centre and the skill mark extends beyond it toward target).
-      effectQueue.push({
+      pushFx({
         kind: "spotlight",
         at: casterSq,
         color: skillColor(decoded.skillId),
@@ -879,6 +1121,7 @@ export function createPlyRenderer(
     pieceIds = new Map();
     nextPieceId = 1;
     shakingSquares = new Set();
+    pieceMotion = new Map();
     effectQueue.length = 0;
     lastApplied = null;
     const fresh = await fetchFreshState();
@@ -902,6 +1145,9 @@ export function createPlyRenderer(
     pieceIds = new Map();
     nextPieceId = 1;
     shakingSquares = new Set();
+    pieceMotion = new Map();
+    animationEndsAt = 0;
+    if (animationResolve) { animationResolve(); animationResolve = null; }
     effectQueue.length = 0;
     lastApplied = null;
     checkpoints.clear();
@@ -917,6 +1163,9 @@ export function createPlyRenderer(
     pendingSkillRefresh = null;
     effectQueue.length = 0;
     shakingSquares = new Set();
+    pieceMotion = new Map();
+    animationEndsAt = 0;
+    if (animationResolve) { animationResolve(); animationResolve = null; }
     checkpoints.clear();
     checkpointsBase = null;
   }
@@ -975,6 +1224,7 @@ export function createPlyRenderer(
     // can diff against it.
     effectQueue.length = 0;
     shakingSquares = new Set();
+    pieceMotion = new Map();
     pieceIds = new Map();
     nextPieceId = 1;
     lastApplied = null;
@@ -996,8 +1246,10 @@ export function createPlyRenderer(
     get pieceIds() { return pieceIds; },
     get shakingSquares() { return shakingSquares; },
     get lungeSquares() { return lungeSquares; },
+    get pieceMotion() { return pieceMotion; },
     get effectQueue() { return effectQueue; },
     get lastApplied() { return lastApplied; },
+    animationDone,
     applyAndRender,
     renderApplied,
     snapshotPreState,

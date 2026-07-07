@@ -1,6 +1,12 @@
 // Lightweight FX queue consumed by the Canvas overlay. Components push
 // effect descriptors after each `tryApply` and the overlay drains them over
 // the next ~700ms. Effects own no state outside the canvas itself.
+//
+// All effects carry an optional `ttl` field: when set, the overlay uses it
+// as the lifetime in place of the FX_LIFETIME_MS default. Producers stamp
+// this at creation time (scaled by animationSpeed via `fxLifetime(kind)`)
+// so a cinematic viewer's flourishes run 2.5× as long as a normal viewer's
+// without needing the renderer to track speed itself.
 
 export type Effect =
   | {
@@ -9,23 +15,28 @@ export type Effect =
       path: number[];
       /** ms timestamp when this effect was created. */
       startedAt: number;
+      /** Optional per-instance lifetime override; defaults to FX_LIFETIME_MS.dust. */
+      ttl?: number;
     }
   | {
       kind: "impact";
       at: number;
       startedAt: number;
+      ttl?: number;
     }
   | {
       kind: "damageNumber";
       at: number;
       amount: number;
       startedAt: number;
+      ttl?: number;
     }
   | {
       kind: "shake";
       /** Square whose piece should shake briefly. */
       at: number;
       startedAt: number;
+      ttl?: number;
     }
   | {
       kind: "heal";
@@ -34,6 +45,7 @@ export type Effect =
       /** HP restored (currently always 1). */
       amount: number;
       startedAt: number;
+      ttl?: number;
     }
   | {
       kind: "armor";
@@ -42,6 +54,7 @@ export type Effect =
       /** Armor delta (currently always 1, or -1 when stripped). */
       amount: number;
       startedAt: number;
+      ttl?: number;
     }
   | SkillEffect
   | SpotlightEffect;
@@ -55,6 +68,7 @@ export type SkillEffect = {
   from: number;
   to: number;
   startedAt: number;
+  ttl?: number;
   /** True when the action carried an aux square (Focus-retargeted Shield,
    *  Dash, or Retreat). The renderer uses this to switch e.g. self-Shield
    *  into an ally-thread flavour. */
@@ -85,6 +99,7 @@ export type SpotlightEffect = {
   /** Category tint — same colour system as the skill's own choreography. */
   color: string;
   startedAt: number;
+  ttl?: number;
 };
 
 export const FX_LIFETIME_MS = {

@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import type {
   DraftStateView,
   EngineClient,
+  EvalBreakdown,
   FinalResultByte,
   PositionView,
   SideLoadout,
@@ -198,9 +199,8 @@ export class TauriClient implements EngineClient {
     return normaliseStepResult(dto);
   }
 
-  async heuristicEval(): Promise<number> {
-    const bd = await invoke<{ total: number }>("heuristic_eval", { handle: this.#requireHandle() });
-    return bd.total;
+  async heuristicEval(): Promise<EvalBreakdown> {
+    return await invoke<EvalBreakdown>("heuristic_eval", { handle: this.#requireHandle() });
   }
 
   async requestAiMoveAtDepth(maxDepth: number): Promise<StepResult> {

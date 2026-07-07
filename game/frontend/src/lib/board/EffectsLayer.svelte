@@ -128,9 +128,9 @@
       }
       advancePrefix = false;
       const age = now - eff.startedAt;
-      const ttl = FX_LIFETIME_MS[eff.kind];
+      const ttl = eff.ttl ?? FX_LIFETIME_MS[eff.kind];
       if (age < ttl) {
-        renderEffect(ctx, eff, age, size);
+        renderEffect(ctx, eff, age, size, ttl);
         alive++;
       } else {
         expired.add(eff);
@@ -153,7 +153,7 @@
     raf = requestAnimationFrame(frame);
   }
 
-  function renderEffect(ctx: CanvasRenderingContext2D, eff: Effect, age: number, size: number) {
+  function renderEffect(ctx: CanvasRenderingContext2D, eff: Effect, age: number, size: number, ttl: number) {
     if (eff.kind === "dust") {
       const ps = ensureDustParticles(eff, size);
       const dt = 16; // approx ms/frame (advance by a frame each draw)
@@ -169,7 +169,7 @@
         ctx.fill();
       }
     } else if (eff.kind === "impact") {
-      const t = age / FX_LIFETIME_MS.impact;
+      const t = age / ttl;
       const c = squareCenter(eff.at, size);
       const r = size * 0.18 + t * size * 0.45;
       ctx.strokeStyle = `rgba(196, 74, 58, ${(1 - t) * 0.9})`;
@@ -189,7 +189,7 @@
         ctx.fill();
       }
     } else if (eff.kind === "damageNumber") {
-      const t = age / FX_LIFETIME_MS.damageNumber;
+      const t = age / ttl;
       const c = squareCenter(eff.at, size);
       const y = c.y - size * 0.2 - t * size * 0.6;
       const a = Math.max(0, 1 - t);
@@ -204,7 +204,6 @@
       ctx.fillText(text, c.x, y);
     } else if (eff.kind === "heal") {
       // Soft green ring + + glyph rising. Lifetime 720ms.
-      const ttl = FX_LIFETIME_MS.heal;
       const t = age / ttl;
       const c = squareCenter(eff.at, size);
       // Expanding ring.
@@ -240,7 +239,6 @@
     } else if (eff.kind === "armor") {
       // Steel-blue shield rune that pulses then fades. Negative amount =
       // armor stripped (Break) → coppery flash instead of blue.
-      const ttl = FX_LIFETIME_MS.armor;
       const t = age / ttl;
       const c = squareCenter(eff.at, size);
       const positive = eff.amount > 0;
@@ -274,12 +272,11 @@
         ctx.fill();
       }
     } else if (eff.kind === "skill") {
-      renderSkill(ctx, eff, age, size);
+      renderSkill(ctx, eff, age, size, ttl);
     } else if (eff.kind === "spotlight") {
       // Attention ring on the caster square. A thin ink hoop that expands
       // slightly and fades. Kept quiet so it doesn't fight the per-skill
       // choreography drawn on top.
-      const ttl = FX_LIFETIME_MS.spotlight;
       const t = age / ttl;
       const c = squareCenter(eff.at, size);
       const outerR = size * 0.36 + t * size * 0.14;

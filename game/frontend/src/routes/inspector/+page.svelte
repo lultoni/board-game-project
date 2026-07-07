@@ -658,6 +658,23 @@
 
   // Show the AI hint pair on the board (preferred), else last applied.
   const boardLastApplied = $derived(aiHintHighlight ?? lastAppliedPair);
+
+  let fenCopyState = $state<"idle" | "copied" | "failed">("idle");
+  let fenCopyTimer: ReturnType<typeof setTimeout> | null = null;
+  async function copyFen(): Promise<void> {
+    const node = currentNode;
+    if (!node) return;
+    try {
+      // Prefer the node's cached FEN — engine sync may lag behind selection.
+      const fen = node.fen ?? await (await getEngine()).positionFen();
+      await navigator.clipboard.writeText(fen);
+      fenCopyState = "copied";
+    } catch {
+      fenCopyState = "failed";
+    }
+    if (fenCopyTimer !== null) clearTimeout(fenCopyTimer);
+    fenCopyTimer = setTimeout(() => { fenCopyState = "idle"; }, 1200);
+  }
 </script>
 
 <main>
@@ -665,6 +682,14 @@
     <BackButton />
     <h1>Inspector</h1>
     {#if tree}
+      <button
+        class="ghost copy-fen"
+        type="button"
+        onclick={() => void copyFen()}
+        title="Copy FEN of current position"
+      >
+        {fenCopyState === "copied" ? "✓ Copied" : fenCopyState === "failed" ? "✗ Failed" : "Copy FEN"}
+      </button>
       <button class="ghost" type="button" onclick={backToEntry}>Discard tree</button>
     {/if}
   </header>

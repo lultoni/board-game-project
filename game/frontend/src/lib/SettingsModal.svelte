@@ -52,6 +52,10 @@
       </div>
     </label>
     <label class="row">
+      <span>Wait for animations before next action</span>
+      <input type="checkbox" bind:checked={settings.respectAnimation} />
+    </label>
+    <label class="row">
       <span>Show legal targets</span>
       <input type="checkbox" bind:checked={settings.showLegalTargets} />
     </label>
@@ -96,8 +100,16 @@
       <input type="checkbox" bind:checked={settings.showAiDepth} />
     </label>
     <label class="row">
+      <span>Show AI think-progress bar</span>
+      <input type="checkbox" bind:checked={settings.showThinkProgressBar} />
+    </label>
+    <label class="row">
       <span>Show heuristic eval</span>
       <input type="checkbox" bind:checked={settings.showHeuristicEval} />
+    </label>
+    <label class="row">
+      <span>Show eval breakdown panel</span>
+      <input type="checkbox" bind:checked={settings.showEvalPanel} />
     </label>
     <label class="row">
       <span>AIvAI step delay (ms)</span>
@@ -136,10 +148,6 @@
     <label class="row">
       <span>Loop on end</span>
       <input type="checkbox" bind:checked={settings.replayLoopOnEnd} />
-    </label>
-    <label class="row">
-      <span>Wait for animation</span>
-      <input type="checkbox" bind:checked={settings.replayRespectAnimation} />
     </label>
   </section>
 

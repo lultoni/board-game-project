@@ -72,6 +72,30 @@ export type SideLoadout = readonly [
 
 export type FinalResultByte = 0 | 1 | 2 | 3; // P1Win | P2Win | Draw | Aborted
 
+/** Per-component decomposition of the static heuristic eval. Mirrors the
+ *  Rust `search::evaluator::EvalBreakdown` struct 1:1 (snake_case field
+ *  names as they come off the Tauri IPC wire). `total` = sum(*_p1) - sum(*_p2)
+ *  in the non-terminal case. */
+export interface EvalBreakdown {
+  material_p1:  number;
+  material_p2:  number;
+  hp_p1:        number;
+  hp_p2:        number;
+  armor_p1:     number;
+  armor_p2:     number;
+  skills_p1:    number;
+  skills_p2:    number;
+  money_p1:     number;
+  money_p2:     number;
+  mobility_p1:  number;
+  mobility_p2:  number;
+  threat_p1:    number;
+  threat_p2:    number;
+  skill_act_p1: number;
+  skill_act_p2: number;
+  total:        number;
+}
+
 export interface EngineClient {
   version(): Promise<string>;
   createEngine(configJson?: string): Promise<void>;
@@ -95,8 +119,9 @@ export interface EngineClient {
   tryApply(action: number): Promise<StepResult>;
   stepAi(onDepth?: (depth: number, score: number) => void): Promise<StepResult>;
   /** Compute the static heuristic evaluation of the current board position.
-   *  Returns a P1-POV total score (positive = P1 ahead). */
-  heuristicEval(): Promise<number>;
+   *  Returns the full per-component breakdown; `total` is P1-POV
+   *  (positive = P1 ahead). */
+  heuristicEval(): Promise<EvalBreakdown>;
   /** Inspector variant: runs the search regardless of seat kind so HvH
    *  positions can also ask "what would the AI play here?". The seat-
    *  restricted variant was removed as dead surface — match uses `stepAi`. */

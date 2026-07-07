@@ -1037,10 +1037,11 @@
         {#if draftedSideLoadout}
           <div class="drafted-preview" aria-label="drafted so far">
             <LoadoutBoard
-              side={isP1Turn ? "p1" : "p2"}
+              side="p1"
               loadout={draftedSideLoadout}
               interactive={false}
               selectedPieceIdx={null}
+              ranks={3}
             />
           </div>
         {/if}

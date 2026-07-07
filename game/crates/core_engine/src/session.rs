@@ -512,8 +512,16 @@ impl Match {
     /// in practice can only happen when the draft is already complete or
     /// the position is malformed (engine bug).
     fn draft_preset_search_result(&self) -> SearchResult {
-        use crate::game_logic::draft::{next_preset_draft_turn, DEFAULT_AI_LOADOUT};
-        let best = next_preset_draft_turn(&self.position, &DEFAULT_AI_LOADOUT);
+        use crate::game_logic::draft::{next_preset_draft_turn, DEFAULT_AI_LOADOUT, DEFAULT_AI_LOADOUT_P2};
+        use crate::state::position::Player;
+        // P1 gets the base preset, P2 gets an alternate so AIvAI matches don't
+        // play two mirror armies. Both are internally valid loadouts (all four
+        // skill categories represented, no same-piece dupes).
+        let preset = match self.position.to_move {
+            Player::P1 => &DEFAULT_AI_LOADOUT,
+            Player::P2 => &DEFAULT_AI_LOADOUT_P2,
+        };
+        let best = next_preset_draft_turn(&self.position, preset);
         SearchResult {
             best,
             score: 0,

@@ -5,6 +5,7 @@
 // See .claude/plans/skill-animations.md for the design brief.
 
 import type { SkillEffect } from "./effects";
+import { FX_LIFETIME_MS } from "./effects";
 import { skillColor } from "$lib/engine/skills";
 
 /** Convert #rrggbb + alpha into an rgba() string. Assumes 6-digit hex. */
@@ -83,10 +84,20 @@ export function renderSkill(
   eff: SkillEffect,
   age: number,
   size: number,
+  ttl: number,
 ): void {
   const dispatch = SKILL_RENDERERS[eff.skillId];
   if (!dispatch) return;
-  dispatch(ctx, eff, age, size);
+  // Scale age by the same speed multiplier the outer ttl encodes. Each per-skill
+  // renderer uses its own local `_TTL` constant and divides `age / _TTL` to get
+  // a normalized progress; by pre-dividing age we make those constants read as
+  // baseline (mult=1) timings while the effect actually plays over `mult × _TTL`
+  // real milliseconds. Cinematic viewers see a 2.5× slower flourish; fast
+  // viewers see a 0.5× snappier one. `off` never reaches here (mult=0 skips the
+  // push entirely in ply-renderer's `pushFx`).
+  const mult = ttl / FX_LIFETIME_MS.skill;
+  const scaledAge = mult > 0 ? age / mult : age;
+  dispatch(ctx, eff, scaledAge, size);
 }
 
 type SkillRenderer = (

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { SKILLS, skillColor, type BoardPiece } from "$lib/engine";
   import { settings, SLIDE_DURATION_MS } from "$lib/state/settings.svelte";
+  import type { PieceMotion } from "./ply-renderer.svelte";
+  import { untrack } from "svelte";
 
   interface Props {
     piece: BoardPiece;
@@ -27,6 +29,13 @@
      *  Used for non-kill attacks: attacker rests at auxSq but visually lunges
      *  toward the target and bounces back. */
     lunge?: { dx: number; dy: number; dist: number } | null;
+    /** Multi-hop walk descriptor. When present, replaces the CSS transition
+     *  with a WAAPI keyframe animation stepping through each waypoint (with a
+     *  small Y-bounce mid-hop). On kill, chains a final lunge into
+     *  `killLungeTo` and leaves the piece there. The piece's `piece.square`
+     *  is expected to already equal the last waypoint (state has flipped by
+     *  the time this arrives). */
+    motion?: PieceMotion | null;
   }
 
   let {
@@ -39,6 +48,7 @@
     effectsActive = false,
     dormant = false,
     lunge = null,
+    motion = null,
   }: Props = $props();
 
   const file = $derived(piece.square & 7);
@@ -48,8 +58,11 @@
   const x = $derived(overrideXY ? overrideXY.x : baseX);
   const y = $derived(overrideXY ? overrideXY.y : baseY);
   const slideDur = $derived(SLIDE_DURATION_MS[settings.animationSpeed]);
+  // When a motion descriptor is driving a WAAPI walk, suppress the CSS
+  // transition — the WAAPI animation owns transform until it finishes, and
+  // a stale transition would fight it at the endpoint.
   const transition = $derived(
-    overrideXY || !animate || slideDur === 0
+    overrideXY || !animate || slideDur === 0 || motion
       ? "none"
       : `transform ${slideDur}ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity ${Math.round(slideDur * 0.86)}ms ease, filter ${Math.round(slideDur * 0.86)}ms ease`,
   );
@@ -61,6 +74,131 @@
       ? `--lunge-dx:${lunge.dx}px;--lunge-dy:${lunge.dy}px;animation:${lunge.dist >= 2 ? "piece-lunge-2" : "piece-lunge-1"} ${slideDur * (lunge.dist >= 2 ? 3 : 2)}ms ease-in-out forwards`
       : "",
   );
+
+  // WAAPI walk driver. When `motion` becomes non-null, run a keyframe
+  // animation that walks the outer <g>'s transform through each waypoint
+  // (with a Y-bounce dip at each mid-hop) and optionally chains a kill lunge.
+  // Ref to the outer <g> so we can call .animate() on it.
+  let gEl: SVGGElement | undefined = $state();
+  let currentAnim: Animation | null = null;
+
+  function sqToXY(sq: number): { x: number; y: number } {
+    const f = sq & 7;
+    const r = (sq >> 3) & 7;
+    return { x: f * size, y: (7 - r) * size };
+  }
+
+  function buildKeyframes(m: PieceMotion): Keyframe[] {
+    // Bounce amplitude — tuned to feel like a footfall, not a jump.
+    const bounce = size * 0.045;
+    const frames: Keyframe[] = [];
+    const totalHops = m.hops + (m.killLungeTo !== null ? 1 : 0);
+    if (totalHops === 0) return frames;
+    // Walk segments: for each pair (waypoints[i], waypoints[i+1]) emit the
+    // waypoint keyframe, plus a mid-hop keyframe with a -bounce offset. The
+    // final waypoint gets a plain keyframe (rest at the last square).
+    // scale(1) is included in every frame so WAAPI can interpolate cleanly
+    // into the kill-lunge frames which include scale(...).
+    for (let i = 0; i < m.waypoints.length; i++) {
+      const { x: wx, y: wy } = sqToXY(m.waypoints[i]);
+      frames.push({
+        transform: `translate(${wx}px, ${wy}px) scale(1)`,
+        offset: i / totalHops,
+      });
+      // Mid-hop bounce (skip after the last waypoint of the WALK phase if
+      // a kill lunge follows — the lunge gets its own bounce).
+      if (i < m.waypoints.length - 1) {
+        const nxt = sqToXY(m.waypoints[i + 1]);
+        const mx = (wx + nxt.x) / 2;
+        const my = (wy + nxt.y) / 2 - bounce;
+        frames.push({
+          transform: `translate(${mx}px, ${my}px) scale(1)`,
+          offset: (i + 0.5) / totalHops,
+        });
+      }
+    }
+    // Kill-lunge: from last waypoint (approach) into killLungeTo (target).
+    // One extra hop's worth of duration. Choreographed as a lean-forward jab
+    // that partially overlaps the target square, holds briefly at the peak
+    // (this is when the defender is removed from the mailbox), then completes
+    // onto the now-empty target square. Reads as "punch → they fall → step in"
+    // rather than a straight teleport.
+    if (m.killLungeTo !== null) {
+      const last = m.waypoints[m.waypoints.length - 1];
+      const from = sqToXY(last);
+      const to = sqToXY(m.killLungeTo);
+      // Anticipation frame: slight pull back (8% of vector, opposite direction).
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const anticipX = from.x - dx * 0.08;
+      const anticipY = from.y - dy * 0.08;
+      // Partial-overlap peak at ~55% of the way to target with a small scale
+      // bump. This is the "hit" frame — damage fires around this time.
+      const peakX = from.x + dx * 0.55;
+      const peakY = from.y + dy * 0.55;
+      const anticipOffset = (m.hops + 0.10) / totalHops;
+      const peakOffset = (m.hops + 0.40) / totalHops;
+      const holdOffset = (m.hops + 0.55) / totalHops;
+      const impactOffset = 1;
+      frames.push({
+        transform: `translate(${anticipX}px, ${anticipY}px) scale(1)`,
+        offset: anticipOffset,
+      });
+      frames.push({
+        transform: `translate(${peakX}px, ${peakY}px) scale(1.08)`,
+        offset: peakOffset,
+      });
+      frames.push({
+        transform: `translate(${peakX}px, ${peakY}px) scale(1.06)`,
+        offset: holdOffset,
+      });
+      frames.push({
+        transform: `translate(${to.x}px, ${to.y}px) scale(1)`,
+        offset: impactOffset,
+      });
+    }
+    return frames;
+  }
+
+  // Kick off the WAAPI animation whenever a fresh motion arrives. Read
+  // slideDur through untrack so a settings change mid-flight doesn't
+  // re-trigger the effect.
+  $effect(() => {
+    if (!motion || !gEl) return;
+    const dur = untrack(() => slideDur);
+    if (dur === 0) return;
+    const totalHops = motion.hops + (motion.killLungeTo !== null ? 1 : 0);
+    if (totalHops === 0) return;
+    const frames = buildKeyframes(motion);
+    if (frames.length < 2) return;
+    // Cancel any prior in-flight walk before starting the new one.
+    if (currentAnim) {
+      currentAnim.cancel();
+      currentAnim = null;
+    }
+    const totalMs = dur * totalHops;
+    const anim = gEl.animate(frames, {
+      duration: totalMs,
+      easing: "linear",
+      // Fill backwards so t=0 paints at waypoints[0] (src) before the
+      // animation actually starts — otherwise the piece would flash at its
+      // final square for one frame before the walk begins.
+      fill: "backwards",
+    });
+    currentAnim = anim;
+    anim.finished
+      .then(() => {
+        // Once done, drop the WAAPI transform so the CSS baseline
+        // `translate(baseX, baseY)` (matching piece.square) takes over.
+        if (currentAnim === anim) {
+          anim.cancel();
+          currentAnim = null;
+        }
+      })
+      .catch(() => {
+        // .cancel() rejects .finished — swallow.
+      });
+  });
 
   const ownerColor = $derived(
     piece.owner === "p1" ? "var(--p1, #2b4a8a)" : "var(--p2, #a13a2a)",
@@ -144,6 +282,7 @@
 </script>
 
 <g
+  bind:this={gEl}
   class="piece"
   class:p1={piece.owner === "p1"}
   class:p2={piece.owner === "p2"}
@@ -390,24 +529,31 @@
   /* Lunge-and-recoil animations. Fired after the positional slide settles.
      Both use --lunge-dx / --lunge-dy set inline when lunge prop is active.
 
-     dist-1: jab straight to the target square, snap back.
-       Timeline: 0% resting → 45% at target → 100% resting.
+     The lunge is a PARTIAL overlap: the attacker leans ~55% of the way into
+     the defender square (not fully occupying it) and grows slightly bigger
+     at the peak. That partial encroachment reads as a hit rather than a
+     positional replacement, and leaves visual room for the defender piece
+     to still be seen underneath.
 
-     dist-2: step to approach square, step to target, snap all the way back.
-       Each "step" = 1/3 of the full dx/dy vector.
-       Timeline: 0% resting → 33% at halfway → 67% at target → 100% resting. */
+     dist-1: jab toward target, snap back.
+       Timeline: 0% resting → 45% at 55% of the vector (scaled up) → 100% resting.
+
+     dist-2: step out to halfway, lean further to ~55% of vector, snap back.
+       Timeline: 0% → 33% at 30% → 67% at 55% (scaled up) → 100% resting. */
   .lunge-wrap {
     /* default: no transform when not lunging */
+    transform-box: fill-box;
+    transform-origin: center;
   }
   @keyframes piece-lunge-1 {
-    0%   { transform: translate(0, 0); }
-    45%  { transform: translate(var(--lunge-dx, 0px), var(--lunge-dy, 0px)); }
-    100% { transform: translate(0, 0); }
+    0%   { transform: translate(0, 0) scale(1); }
+    45%  { transform: translate(calc(var(--lunge-dx, 0px) * 0.55), calc(var(--lunge-dy, 0px) * 0.55)) scale(1.08); }
+    100% { transform: translate(0, 0) scale(1); }
   }
   @keyframes piece-lunge-2 {
-    0%   { transform: translate(0, 0); }
-    33%  { transform: translate(calc(var(--lunge-dx, 0px) / 2), calc(var(--lunge-dy, 0px) / 2)); }
-    67%  { transform: translate(var(--lunge-dx, 0px), var(--lunge-dy, 0px)); }
-    100% { transform: translate(0, 0); }
+    0%   { transform: translate(0, 0) scale(1); }
+    33%  { transform: translate(calc(var(--lunge-dx, 0px) * 0.30), calc(var(--lunge-dy, 0px) * 0.30)) scale(1.04); }
+    67%  { transform: translate(calc(var(--lunge-dx, 0px) * 0.55), calc(var(--lunge-dy, 0px) * 0.55)) scale(1.08); }
+    100% { transform: translate(0, 0) scale(1); }
   }
 </style>

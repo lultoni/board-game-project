@@ -14,6 +14,7 @@
     MODIFIER_FOCUS,
     MODIFIER_CHARGE,
     runAiCall,
+    type EvalBreakdown,
   } from "$lib/engine";
   import { resolveLoadout } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
@@ -66,6 +67,7 @@
   import { createPlyRenderer, type PlyRenderer } from "$lib/board/ply-renderer.svelte";
   import PlayerPanel from "$lib/match/PlayerPanel.svelte";
   import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
+  import EvalBreakdownPanel from "$lib/eval/EvalBreakdownPanel.svelte";
 
   const mode = $derived(match.mode === "multiplayer" ? "multiplayer" : modeFromSeats(match.side));
 
@@ -80,8 +82,24 @@
   let aiLastScore = $state(0);
   /** Timestamp of last depth-update UI flush — used to throttle reactive writes to 100ms. */
   let lastDepthUpdateMs = 0;
+  /** `Date.now()` when the current AI search started. null when idle. Drives
+   *  the time-based progress bar in PlayerPanel. */
+  let aiSearchStartedAt = $state<number | null>(null);
+  /** Monotonic ply counter — incremented after every successful apply. Used
+   *  to time the AI thinking indicator's post-search linger: the indicator
+   *  stays visible for one opponent turn after the search finished. */
+  let plyCount = $state(0);
+  /** `plyCount` snapshot captured when the last AI search finished. null
+   *  when no search has ever run this match, or after the linger has hidden. */
+  let aiFinishedAtPly = $state<number | null>(null);
   /** Static heuristic eval of the current board (P1 POV). null = not yet polled. */
   let heuristicEvalScore = $state<number | null>(null);
+  /** Full eval breakdown for the analysis panel. null = not yet polled. */
+  let heuristicEvalBreakdown = $state<EvalBreakdown | null>(null);
+  // Snapshot of the breakdown at the end of the previous round, so the panel
+  // can show round-over-round change per component.
+  let prevRoundBreakdown = $state<EvalBreakdown | null>(null);
+  let lastRoundSeen = $state<number | null>(null);
 
   /** Role-aware ply renderer. Owns the effects/SFX pipeline, pieceIds,
    *  shakingSquares, effectQueue, and the deferred-skill-refresh state. Both
@@ -863,6 +881,7 @@
 
   /** Phase-boundary bookkeeping that used to live inside renderApplied. */
   function afterApplied(): void {
+    plyCount += 1;
     // A successful apply means whatever transient error the user was looking
     // at (move-refused, illegal-target, etc.) is no longer relevant.
     // Anti-cheat / engine-boot errors set bootError too, but those branches
@@ -873,10 +892,32 @@
       usedThisPhase = new Set();
       lastPhaseKey = k;
     }
-    if (settings.showHeuristicEval && eng && match.mode !== "multiplayer") {
-      void eng.heuristicEval().then((v) => { heuristicEvalScore = v; }).catch(() => {});
-    }
   }
+
+  // Poll the heuristic eval whenever the position advances (including the
+  // initial one after engine boot, which afterApplied() never sees) or the
+  // relevant settings toggle on. Reads through the same guards.
+  $effect(() => {
+    void match.position;
+    void settings.showHeuristicEval;
+    void settings.showEvalPanel;
+    if (!(settings.showHeuristicEval || settings.showEvalPanel)) return;
+    if (!eng || match.mode === "multiplayer" || !match.position) return;
+    const e = eng;
+    const priorBreakdown = heuristicEvalBreakdown;
+    const priorRound = lastRoundSeen;
+    void e.heuristicEval().then((v) => {
+      heuristicEvalScore = v.total;
+      const curRound = match.position?.roundNumber ?? null;
+      // On round transition, freeze the last-seen breakdown as the "previous"
+      // reference so the panel can display the round-over-round change.
+      if (curRound !== null && priorRound !== null && curRound !== priorRound && priorBreakdown !== null) {
+        prevRoundBreakdown = priorBreakdown;
+      }
+      lastRoundSeen = curRound;
+      heuristicEvalBreakdown = v;
+    }).catch(() => {});
+  });
 
   /** Run one AI step for the side-to-move, then render the result. The engine
    *  applies the action atomically inside stepAi, so we snapshot pre-state
@@ -895,7 +936,13 @@
     if (match.position.gameResult !== 0) return;
     busy = true;
     aiThinking = true;
-    aiLastScore = 0;
+    // Do NOT reset aiLastDepth / aiLastScore / aiFinishedAtPly here. The prior
+    // values stay visible until the streaming depth callback overwrites them
+    // (typically within a few frames) or the search completes. The `thinking`
+    // spinner already visually takes over from the linger badge, so there's no
+    // risk of confusion — and this avoids the "d0 +0" flash the user reported
+    // when quick shallow depths report before the deeper ones catch up.
+    aiSearchStartedAt = Date.now();
     try {
       // Drain any deferred Skill refresh before snapshotting pre-state — see
       // applyRaw for rationale.
@@ -935,13 +982,18 @@
       // yet. snapshotPreState reads from there, so this is safe.
       const pre = renderer.snapshotPreState(raw);
       await renderer.renderApplied(raw, pre);
-      // Let the CSS slide transition finish before busy clears so the next AI
-      // step doesn't start (and repaint the board) while pieces are mid-flight.
-      // The delay is shared between the AI think-time floor and the animation —
-      // if think-time already consumed more ms than the slide, no extra wait.
-      const slideDur = slideDurationMs();
-      if (slideDur > 0) {
-        await new Promise<void>((r) => setTimeout(r, slideDur));
+      // Wait for the piece animation to finish before the next AI step so the
+      // board settles between plies. Gated on the `respectAnimation` setting:
+      // when off, we still keep a tiny floor equal to one slide duration to
+      // give the browser a paint frame, but multi-hop walks + kill lunges no
+      // longer block AI cadence.
+      if (settings.respectAnimation) {
+        await renderer.animationDone();
+      } else {
+        const slideDur = slideDurationMs();
+        if (slideDur > 0) {
+          await new Promise<void>((r) => setTimeout(r, slideDur));
+        }
       }
       match.lastApplied = raw;
       afterApplied();
@@ -955,6 +1007,12 @@
       bootError = (e as Error)?.message ?? String(e);
     } finally {
       aiThinking = false;
+      aiSearchStartedAt = null;
+      // Capture the ply the search finished on so PlayerPanel can render the
+      // greyed-out linger for exactly one opponent turn (until `plyCount`
+      // advances past this snapshot). afterApplied already bumped plyCount
+      // on the applied AI ply, so `plyCount` at this point == "AI just moved".
+      aiFinishedAtPly = plyCount;
       busy = false;
     }
   }
@@ -1583,6 +1641,10 @@
           aiLastScore={aiLastScore}
           aiMaxDepth={settings.p2MaxDepth}
           isAiSeat={p2IsAi}
+          aiSearchStartedAt={p2Thinking ? aiSearchStartedAt : null}
+          aiThinkBudgetMs={settings.p2ThinkTimeMs}
+          aiFinishedAtPly={aiFinishedAtPly}
+          plyCount={plyCount}
         />
 
         <div class="board-stack" class:sandbox-mode={match.mode === "sandbox"}>
@@ -1596,6 +1658,7 @@
             usedSquares={usedThisPhase}
             shakingSquares={renderer?.shakingSquares ?? new Set()}
             lungeSquares={renderer?.lungeSquares ?? new Map()}
+            pieceMotion={renderer?.pieceMotion ?? new Map()}
             toMove={match.position?.gameResult === 0 ? (match.position?.toMove ?? null) : null}
             effectsActive={(renderer?.effectQueue.length ?? 0) > 0}
             approachChoices={pendingApproach?.approaches ?? []}
@@ -1655,6 +1718,10 @@
           aiLastScore={aiLastScore}
           aiMaxDepth={settings.p1MaxDepth}
           isAiSeat={p1IsAi}
+          aiSearchStartedAt={p1Thinking ? aiSearchStartedAt : null}
+          aiThinkBudgetMs={settings.p1ThinkTimeMs}
+          aiFinishedAtPly={aiFinishedAtPly}
+          plyCount={plyCount}
         />
       </div>
 
@@ -1828,6 +1895,12 @@
         <ProgressionPanel roundNumber={match.position.roundNumber} />
       {/if}
       </div>
+
+      {#if settings.showEvalPanel && match.mode !== "multiplayer"}
+        <div class="eval-column">
+          <EvalBreakdownPanel breakdown={heuristicEvalBreakdown} prevBreakdown={prevRoundBreakdown} />
+        </div>
+      {/if}
     </div>
   {/if}
 </main>
@@ -1924,6 +1997,22 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  .eval-column {
+    flex: 1 1 320px;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    /* Match the board's height budget so the panel fills vertically as well.
+       Same formula as .board-column's height cap so the fill bar's track can
+       run the full board height on typical viewports. */
+    max-height: calc(100dvh - 170px);
+  }
+  .eval-column :global(.eval-panel) {
+    flex: 1 1 auto;
+    height: 100%;
   }
 
   .right-panel {
@@ -2210,6 +2299,10 @@
       width: 100%;
     }
     .right-column {
+      flex: unset;
+      width: 100%;
+    }
+    .eval-column {
       flex: unset;
       width: 100%;
     }

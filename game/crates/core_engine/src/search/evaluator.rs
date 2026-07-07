@@ -63,10 +63,11 @@
 //!      Bodyguard) — small bonuses, added last.
 
 use crate::state::Position;
-use crate::state::position::GameResult;
+use crate::state::position::{GameResult, Phase, Player};
 use crate::state::magic;
 use crate::game_logic::skills::{
-    Skill, SkillCategory, skill_from_id, skill_cost, skill_category, skill_default_range,
+    Skill, SkillCategory, TargetOwner, skill_from_id, skill_cost, skill_category,
+    skill_default_range, skill_target_owner,
 };
 
 pub const MATE_SCORE: i32 = 1_000_000;
@@ -93,7 +94,18 @@ const MONEY_PER_UNIT:  i32 = 25;
 // to material so positional advantage doesn't overshadow piece count.
 const GUARD_MOB_PER_SQ:   i32 = 8;   // centre Guard (20 reachable) ≈ 160 pts
 const CHAMP_MOB_PER_SQ:   i32 = 12;  // centre Champ (8 free) ≈ 96 pts
-const ADVANCE_BONUS:       i32 = 15;  // per rank advanced toward enemy
+
+// Skill-activity weights. Kept small relative to mobility (which is 8–12/sq)
+// so they nudge play toward useful casts without swamping material.
+const STRIKE_PER_TARGET:  i32 = 6;   // per enemy in Strike range
+const MOVE_PER_DEST:      i32 = 3;   // per legal destination (Dash/Retreat) or per pushable target (Shove/Blast) or per swap partner
+const SHIELD_PER_TARGET:  i32 = 5;   // per Heal/Plate ally that would actually benefit
+const SHIELD_SELF:        i32 = 5;   // Shield if own armor < cap
+const MYSTIC_FLAG_BONUS:  i32 = 20;  // per Focus/Charge that has a real follow-up this turn
+
+// Stack M caps.
+const ARMOR_CAP:          u8 = 2;
+const HP_CAP:             u8 = 2;
 
 // PLACEHOLDER. A balance-slice will replace this with a tuned table once we
 // have playtest data. The current scheme — cost × 40 + range bonus + category
@@ -136,6 +148,17 @@ pub struct EvalBreakdown {
     pub money_p2:     i32,
     pub mobility_p1:  i32,
     pub mobility_p2:  i32,
+    /// Pre-priced "hanging piece" credit: 0.25× the value of enemy pieces
+    /// this side could move-attack this turn. Symmetric across sides so the
+    /// leaf eval doesn't flip sign with the side-to-move — the attacker's
+    /// pending gain is already reflected before the capture ply resolves.
+    pub threat_p1:    i32,
+    pub threat_p2:    i32,
+    /// Active-skill activity credit: per-target for Strike/Move/Shield (money-
+    /// and legality-gated), single flag for Mystic (Focus/Charge) gated on an
+    /// affordable follow-on active skill actually having ≥1 legal action.
+    pub skill_act_p1: i32,
+    pub skill_act_p2: i32,
     pub total:        i32,
 }
 
@@ -221,24 +244,18 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
                 * CHAMP_MOB_PER_SQ
         };
 
-        // Rank advancement bonus: encourage pushing toward the enemy.
-        // P1 advances toward rank 7 (high index); P2 toward rank 0 (low index).
-        let rank = (sq / 8) as i32;
-        let advance = if is_p1 { rank } else { 7 - rank };
-        let advance_score = advance * ADVANCE_BONUS;
-
         if is_p1 {
             b.material_p1  += material;
             b.hp_p1        += hp_term;
             b.armor_p1     += armor_term;
             b.skills_p1    += skill_term;
-            b.mobility_p1  += mob_score + advance_score;
+            b.mobility_p1  += mob_score;
         } else {
             b.material_p2  += material;
             b.hp_p2        += hp_term;
             b.armor_p2     += armor_term;
             b.skills_p2    += skill_term;
-            b.mobility_p2  += mob_score + advance_score;
+            b.mobility_p2  += mob_score;
         }
     }
 
@@ -246,14 +263,231 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     b.money_p1 = MONEY_PER_UNIT * pos.p1_money as i32;
     b.money_p2 = MONEY_PER_UNIT * pos.p2_money as i32;
 
+    // (d) Threat-symmetric term: pre-price hanging pieces so the eval doesn't
+    // sign-flip between P1's turn and P2's turn just because one side happens
+    // to be side-to-move at the leaf. For each capturable enemy piece, credit
+    // the attacker 0.25× the target's value (material + hp + armor). Kings
+    // are excluded (their capture goes through the MATE_SCORE branch and would
+    // otherwise be double-counted at MATE_SCORE weight). Skipped in Draft phase
+    // where pieces aren't on the board yet.
+    if pos.current_phase != Phase::Draft {
+        let non_kings = all_occ & !pos.kings.0;
+        let p1_threats = magic::threat_bb(
+            pos.p1_pieces.0,
+            pos.p1_pieces.0 & pos.guards.0,
+            pos.p2_pieces.0 & non_kings,
+            all_occ,
+        ).0;
+        let p2_threats = magic::threat_bb(
+            pos.p2_pieces.0,
+            pos.p2_pieces.0 & pos.guards.0,
+            pos.p1_pieces.0 & non_kings,
+            all_occ,
+        ).0;
+        b.threat_p1 = threat_value(pos, p1_threats);
+        b.threat_p2 = threat_value(pos, p2_threats);
+
+        // (e) Skill-activity: credit only skills that could actually do
+        // something right now (money available, legal targets exist). See
+        // `skill_activity` for the per-category rules.
+        b.skill_act_p1 = skill_activity(pos, Player::P1);
+        b.skill_act_p2 = skill_activity(pos, Player::P2);
+    }
+
     b.total =
         (b.material_p1 - b.material_p2) +
         (b.hp_p1       - b.hp_p2)       +
         (b.armor_p1    - b.armor_p2)    +
         (b.skills_p1   - b.skills_p2)   +
         (b.money_p1    - b.money_p2)    +
-        (b.mobility_p1 - b.mobility_p2);
+        (b.mobility_p1 - b.mobility_p2) +
+        (b.threat_p1   - b.threat_p2)   +
+        (b.skill_act_p1 - b.skill_act_p2);
     b
+}
+
+/// Sum 0.25× (material + hp_value + armor_value) over all squares in `mask`.
+/// Values match the main eval's weights so a hanging Champion pre-prices at
+/// exactly 25% of what capturing it would net.
+#[inline]
+fn threat_value(pos: &Position, mask: u64) -> i32 {
+    let mut acc = 0i32;
+    let mut bits = mask;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let bit = 1u64 << sq;
+        let m = pos.mailbox[sq as usize];
+        let material = if pos.champions.0 & bit != 0 { CHAMPION_VALUE }
+                       else if pos.guards.0 & bit != 0 { GUARD_VALUE }
+                       else { 0 };
+        let raw = material + HP_PER_POINT * m.hp() as i32 + ARMOR_PER_POINT * m.armor() as i32;
+        acc += raw / 4;
+    }
+    acc
+}
+
+/// Skill-activity term for one side. Only credits skills that could actually
+/// be used this turn: caster affords the cost AND ≥1 legal target/destination
+/// exists. Mystic (Focus/Charge) get a single flag bonus gated on the caster
+/// having an affordable, legally-usable follow-up active skill this turn.
+///
+/// Cost budget: for each equipped skill on each of `side`'s pieces, we call
+/// `magic::skill_attacks` once (O(1)) and count set bits in the result. That's
+/// ~24 pieces × 2 slots × O(1) = ~48 lookups per leaf. Cheap.
+fn skill_activity(pos: &Position, side: Player) -> i32 {
+    let (own_bb, opp_bb, own_money) = match side {
+        Player::P1 => (pos.p1_pieces.0, pos.p2_pieces.0, pos.p1_money),
+        Player::P2 => (pos.p2_pieces.0, pos.p1_pieces.0, pos.p2_money),
+    };
+    let all_occ = pos.p1_pieces.0 | pos.p2_pieces.0;
+    let mut acc = 0i32;
+
+    let mut bits = own_bb;
+    while bits != 0 {
+        let src = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        let m = pos.mailbox[src as usize];
+
+        // Detect Focus/Charge modifiers already in play for this piece to
+        // avoid crediting the mystic flag AND the buffed follow-up range.
+        // Cheap approximation: we use `skill_default_range` throughout and
+        // don't apply the +1 for a pending Focus. Not perfectly accurate but
+        // conservative — it always undercounts, never over.
+
+        // Iterate this piece's two skill slots.
+        for slot in 0u8..2 {
+            let sid = if slot == 0 { m.skill1() } else { m.skill2() };
+            let Some(sk) = skill_from_id(sid) else { continue };
+
+            let cost = skill_cost(sk) as u16;
+            if own_money < cost { continue; }
+
+            acc += skill_slot_credit(pos, side, sk, src, own_bb, opp_bb, all_occ, own_money, m);
+        }
+    }
+    acc
+}
+
+/// Per-skill target/destination counting, returning the eval credit for one
+/// slot. Split out so the outer loop stays readable.
+#[inline]
+fn skill_slot_credit(
+    pos: &Position,
+    side: Player,
+    sk: Skill,
+    src: u8,
+    own_bb: u64,
+    opp_bb: u64,
+    all_occ: u64,
+    own_money: u16,
+    m: crate::state::MailboxEntry,
+) -> i32 {
+    let range = skill_default_range(sk);
+    let owner = skill_target_owner(sk);
+    let cat = skill_category(sk);
+
+    // Mystic (Focus/Charge): flag bonus gated on an affordable, castable
+    // follow-up active skill on the SAME piece this turn.
+    if matches!(cat, SkillCategory::Mystic) {
+        let mystic_cost = skill_cost(sk) as u16;
+        // Look at the OTHER slot on this piece for a follow-up.
+        let other_sid = if m.skill1() == sk as u8 { m.skill2() } else { m.skill1() };
+        let Some(follow) = skill_from_id(other_sid) else { return 0 };
+        // Follow-up must be an active category (not another mystic modifier).
+        if matches!(skill_category(follow), SkillCategory::Mystic) { return 0 };
+        let follow_cost = skill_cost(follow) as u16;
+        // Both must be affordable together.
+        if own_money < mystic_cost + follow_cost { return 0 };
+        // Follow-up must have ≥1 legal target from `src`.
+        let follow_range = skill_default_range(follow);
+        let follow_owner = skill_target_owner(follow);
+        if slot_target_count(follow, follow_owner, follow_range, src, own_bb, opp_bb, all_occ, pos, side) == 0 {
+            return 0;
+        }
+        return MYSTIC_FLAG_BONUS;
+    }
+
+    let n = slot_target_count(sk, owner, range, src, own_bb, opp_bb, all_occ, pos, side);
+    if n == 0 { return 0; }
+
+    match cat {
+        SkillCategory::Strike => n as i32 * STRIKE_PER_TARGET,
+        SkillCategory::Move   => n as i32 * MOVE_PER_DEST,
+        SkillCategory::Shield => {
+            // Shield (SelfOnly) contributes a fixed bonus if it would stick.
+            if matches!(owner, TargetOwner::SelfOnly) { SHIELD_SELF }
+            else { n as i32 * SHIELD_PER_TARGET }
+        }
+        SkillCategory::Mystic => 0, // handled above
+    }
+}
+
+/// Count legal targets for one skill from square `src`. Cheap proxy —
+/// approximates the generator's logic without duplicating it. Used only for
+/// the eval's activity term.
+#[inline]
+fn slot_target_count(
+    sk: Skill,
+    owner: TargetOwner,
+    range: u8,
+    src: u8,
+    own_bb: u64,
+    opp_bb: u64,
+    all_occ: u64,
+    pos: &Position,
+    _side: Player,
+) -> u32 {
+    match owner {
+        TargetOwner::Enemy => {
+            let ray = magic::skill_attacks(src, all_occ, range).0;
+            (ray & opp_bb).count_ones()
+        }
+        TargetOwner::Ally => {
+            let ray = magic::skill_attacks(src, all_occ, range).0;
+            let candidates = ray & own_bb & !(1u64 << src);
+            // Filter Heal/Plate: target must actually need it, else no credit.
+            match sk {
+                Skill::Heal => {
+                    let mut n = 0u32;
+                    let mut bits = candidates;
+                    while bits != 0 {
+                        let t = bits.trailing_zeros() as usize;
+                        bits &= bits - 1;
+                        if pos.mailbox[t].hp() < HP_CAP { n += 1; }
+                    }
+                    n
+                }
+                Skill::Plate => {
+                    let mut n = 0u32;
+                    let mut bits = candidates;
+                    while bits != 0 {
+                        let t = bits.trailing_zeros() as usize;
+                        bits &= bits - 1;
+                        if pos.mailbox[t].armor() < ARMOR_CAP { n += 1; }
+                    }
+                    n
+                }
+                _ => candidates.count_ones(), // Swap: any ally partner is valid
+            }
+        }
+        TargetOwner::Either => {
+            // Shove: any target square in range on a ray.
+            let ray = magic::skill_attacks(src, all_occ, range).0;
+            (ray & (own_bb | opp_bb) & !(1u64 << src)).count_ones()
+        }
+        TargetOwner::Empty => {
+            // Dash/Retreat: empty squares within range on a queen-ray. Use
+            // `skill_attacks(src, 0, range)` (unblocked) then subtract occupied.
+            let all_ray = magic::skill_attacks(src, 0, range).0;
+            (all_ray & !all_occ).count_ones()
+        }
+        TargetOwner::SelfOnly => {
+            // Shield: 1 credit only if own armor < cap.
+            let a = pos.mailbox[src as usize].armor();
+            if a < ARMOR_CAP { 1 } else { 0 }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -411,8 +645,8 @@ mod tests {
                 .with_skill1(Skill::Tempest as u8)
                 .with_skill2(Skill::Charge as u8));
         // Mobility: Champion at sq 28 (rank 3), 8 neighbours all free.
-        // CHAMP_MOB_PER_SQ=12, 8 squares = 96; ADVANCE_BONUS=15, rank=3 → 45.
-        let mob = 8 * CHAMP_MOB_PER_SQ + 3 * ADVANCE_BONUS;
+        // CHAMP_MOB_PER_SQ=12, 8 squares = 96.
+        let mob = 8 * CHAMP_MOB_PER_SQ;
         let expected = CHAMPION_VALUE
             + 2 * HP_PER_POINT
             + 2 * ARMOR_PER_POINT

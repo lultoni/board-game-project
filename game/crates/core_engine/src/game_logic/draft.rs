@@ -134,6 +134,19 @@ pub const DEFAULT_AI_LOADOUT: SideLoadout = [
     (12, 11),   // Champ 5: Swap + Shove
 ];
 
+/// Alternate loadout used by P2 in AIvAI matches so both AIs don't draft the
+/// same army. Different picks across every piece — same coverage guarantee
+/// (all four skill categories present) but a distinct playstyle: heavier on
+/// direct strikes and reach, lighter on tanking.
+pub const DEFAULT_AI_LOADOUT_P2: SideLoadout = [
+    (7,  8),    // King: Heal + Plate
+    (5,  13),   // Champ 1: Tempest + Retreat
+    (1,  15),   // Champ 2: Lance + Charge
+    (2,  9),    // Champ 3: Hook + Dash
+    (3,  14),   // Champ 4: Break + Focus
+    (4,  11),   // Champ 5: Steal + Shove
+];
+
 /// Given a target loadout for the side-to-move, return the next
 /// `DraftTurn` action that fills two as-yet-unfilled slots on that side
 /// with the preset's prescribed skills.
