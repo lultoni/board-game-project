@@ -368,38 +368,6 @@ pub fn movement_attack_targets_speed2(sq: u8, _occ: u64, reach_empty: u64, opp_b
     Bitboard(attacks)
 }
 
-/// Aggregate move-attack threat set for one side.
-///
-/// Returns the bitmask of enemy squares that ANY piece in `own_pieces` could
-/// move-attack this turn against the given `all_occ` and `opp_bb`. `own_guards`
-/// is `own_pieces & guards`; the rest are treated as speed-1 (Champion/King)
-/// movers. Kings are included — for eval purposes their attack reach is
-/// identical to a Champion's, and King captures resolve as game wins upstream.
-///
-/// Cost: O(|own_pieces|) — one table lookup per Champion/King, one BFS-2 +
-/// attack scan per Guard. Cheap enough to call twice per leaf (once per side).
-///
-/// This is used by the eval's threat-symmetric term so both stm and the other
-/// side get symmetric "at-risk material" pricing regardless of whose turn it
-/// is at the leaf — kills shallow-search sign flips.
-#[inline]
-pub fn threat_bb(own_pieces: u64, own_guards: u64, opp_bb: u64, all_occ: u64) -> Bitboard {
-    let mut threats = 0u64;
-    let mut bits = own_pieces;
-    while bits != 0 {
-        let sq = bits.trailing_zeros() as u8;
-        bits &= bits - 1;
-        let is_guard = own_guards & (1u64 << sq) != 0;
-        if is_guard {
-            let reach = movement_targets_speed2(sq, all_occ).0;
-            threats |= movement_attack_targets_speed2(sq, all_occ, reach, opp_bb).0;
-        } else {
-            // Champion / King: 8-adjacent, intersected with opponent pieces.
-            threats |= movement_targets_speed1(sq).0 & opp_bb;
-        }
-    }
-    Bitboard(threats)
-}
 
 #[cfg(test)]
 mod tests {

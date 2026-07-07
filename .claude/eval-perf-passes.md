@@ -2,7 +2,7 @@
 
 *Living doc. Each perf pass on `core_engine/src/search/evaluator.rs` follows the same recipe: critique → plan → implement → bench → recritique. Track results here so we can see whether each pass actually helped and what's left to attack.*
 
-*Last updated: 2026-07-07 — Pass 3 complete (both chunks). Chunk 1: attackers-table + MAEE_MAX_PLIES 32→16. Chunk 2: stand-pat single-pass (item 3), AttackerList head-cursor **shelved** (SROA regression), Guard geometry fix + fast bitboard recompute (item 4a — **5-6× per-node speedup**, also fixes a pre-existing over-approximation bug), incremental attackers-bitmask maintenance across kills (item 4b — additional -10% wall time). **Full-corpus d6: 364s → 59s (-84%)**; vs Pass 2: 740s → 59s (-92%, ~12.6× total). Node counts essentially identical. Still deferred: `threat_bb` hand-off audit.*
+*Last updated: 2026-07-07 — **Group A complete.** Pass 3 chunks 1+2 landed the attackers-table, MAEE_MAX_PLIES 32→16, stand-pat single-pass, Guard geometry fix (item 4a — 5-6× per-node, also fixes a pre-existing over-approximation bug), incremental attackers-bitmask across kills (item 4b), and `threat_bb` audit + deletion (dead code). AttackerList head-cursor shelved (SROA regression at n~1.5). **Full-corpus d6: 364s → 59s (-84%)**; vs Pass 2: 740s → 59s (~12.6×). Node counts within 0.1%. Next focus: Group B (incremental state via make/unmake) or Group D (SEE for move ordering).*
 
 ---
 
@@ -334,17 +334,19 @@ The user's earlier item-2 EndPhase intuition (skip at root) doesn't transfer to 
 
 Merged from two sources: (a) items deferred from Pass 1 as too structural/risky to batch, and (b) the Pass 3 critique run (5 agents, post-Pass-2 state: eval 1101→1853 ns / 1.68×, search still elevated on `opening-with-skills-03/04` at d6). Grouped by logical theme; the same underlying issue that surfaced from multiple critique angles is folded into one entry with the citations preserved.
 
-#### Group A — MAEE / attacker enumeration internals
+#### Group A — MAEE / attacker enumeration internals — **COMPLETE (Pass 3)**
 
-Core structural complaint from Pass 1 and reinforced by Pass 3 agents 2 & 4: MAEE does too much work per call and repeats it. **Pass 3 landed the initial-enumeration path (per-position attackers table) and MAEE_MAX_PLIES 32→16.** The remaining Group A items below are still open.
+Core structural complaint from Pass 1 and reinforced by Pass 3 agents 2 & 4: MAEE does too much work per call and repeats it. **All items resolved across Pass 3 chunks 1 and 2.** Kept below with strikethroughs for historical trace.
 
-- ~~**Precomputed per-position "who attacks square S" table.**~~ **LANDED in Pass 3** for the initial `enumerate_attackers` call in `maee`. Cross-cutting complaint from all 5 Pass 1 critique agents; reinforced by Pass 3 agents 2 & 4. Table is per-`evaluate_breakdown`; not incrementally maintained across kills yet. Directly enables Pass 2 item #1 option (c) — MAEE-everywhere is now the production path.
-- **MAEE re-enumeration is total, not incremental.** Both sides' attackers re-enumerated after every kill (`evaluator.rs:545-546`) even though only Guards can gain reach from a vacated blocker. Pass 3 kept kill-triggered re-enums on the from-scratch path. Fixing this is the biggest remaining Group A win — a `newly_reachable_guards` bitboard diff would scope the update.
-- **`enumerate_attackers` called 2× per target on MAEE entry** — RESOLVED for the initial call (both sides read from the same table). Still called 2× per kill.
-- **`AttackerList` O(n²) hot loop.** `push` is insertion-sort with nested shifts; `pop_front` shifts the whole array (`evaluator.rs:389-424`). Struct fits in a u32x8 — a bitonic sort or ring buffer would be trivial.
-- **`threat_bb` work is thrown away.** Runs inside `maee_side` (`:587`); `maee` then re-enumerates attackers ignoring it — no hand-off. May be subsumable entirely by the attackers table; needs audit.
-- **Stand-pat fold-back is serial** (`evaluator.rs:558-564`): right-to-left mutation of `gains[]` where a single-pass running min/max would suffice.
-- ~~**Oversized MAEE buffers.**~~ **LANDED in Pass 3** — `MAEE_MAX_PLIES` shrunk 32 → 16 (true geometric ceiling = 2 × 8-per-side max). `gains: [i32; 16]` = 64 B stack, halved.
+- ~~**Precomputed per-position "who attacks square S" table.**~~ **LANDED (Pass 3 chunk 1).** Per-`evaluate_breakdown` scatter; read by `maee` at each per-target repricing loop entry.
+- ~~**MAEE re-enumeration is total, not incremental.**~~ **LANDED (Pass 3 chunk 2, item 4b).** Incremental bitmask maintenance across kills: clear killed attacker bit; on vacated-cheby-1-of-target, OR in Guards adjacent to vacated square. Champions geometry-invariant, no addition step.
+- ~~**`enumerate_attackers` called 2× per target on MAEE entry.**~~ **LANDED (Pass 3 chunk 1)** for the initial call; kill-time re-enums also eliminated by 4b. `enumerate_attackers` itself is now `#[cfg(feature = "maee_paranoid")]`-gated — the paranoid canary is its only remaining caller.
+- ~~**`AttackerList` O(n²) hot loop.**~~ **INVESTIGATED, SHELVED (Pass 3 chunk 2, item 2).** Head-cursor variant regressed 3-8% on spot corpus — the constant `items[0]` read in the old shift version was SROA-friendly (register-resident), and at avg `att_mean ≈ 1.5`, actual shift cost was near zero. Not worth doing at current densities; revisit if attacker sets ever grow.
+- ~~**`threat_bb` work is thrown away.**~~ **LANDED (Pass 3 chunk 2 audit, 2026-07-07).** `threat_bb` was already replaced in-code by the attackers table's per-target masks; the function was dead. Deleted from `state/magic.rs`. `movement_attack_targets_speed2` retained (still used by `generator.rs` for real move generation).
+- ~~**Stand-pat fold-back is serial.**~~ **LANDED (Pass 3 chunk 2, item 3).** Single right-to-left scalar accumulator instead of two passes over `gains[]`.
+- ~~**Oversized MAEE buffers.**~~ **LANDED (Pass 3 chunk 1).** `MAEE_MAX_PLIES` 32 → 16.
+
+Group A is closed. Any future MAEE/attacker work goes under a fresh group (e.g., Group B's incremental-across-make/unmake table maintenance, or Group C's Zobrist-keyed eval cache).
 
 #### Group B — Incremental state via make/unmake
 
@@ -567,13 +569,27 @@ Second chunk of Pass 3 items, worked with the user in a single sitting after the
 - Node counts essentially identical (both chunks combined are within 0.1% of Pass 2).
 - Per-node cost regression from chunk-1 fully absorbed by chunk-2's item 4a.
 
-**Still deferred (Group A remnants):**
-- `threat_bb` hand-off / deletion audit. Still called inside `maee_side`; the attackers table subsumes some but not all of what it does. Left for Pass 4.
+**Group A remnants (deferred at time of chunk-2 landing):**
+- `threat_bb` hand-off / deletion audit → **resolved in the same session** (see log entry below). Group A is now fully closed.
 
 **Combined Pass 3 (initial chunk + continuation) per-node character:**
 - Group A's original ~1.2-1.4× per-position slowdown vs Pass 2 (from the initial-chunk table-build fixed cost) should now be more than recovered by item 4a's 5-6× per-node speedup. Confirm on full-corpus.
 
 **No memory / STATUS.md / HANDOVER.md updates needed.**
+
+---
+
+### Pass 3 audit (2026-07-07) — `threat_bb` deletion, Group A closed
+
+Ran the deferred `threat_bb` audit as the last Group A cleanup.
+
+**Finding:** `threat_bb` had already been replaced in the hot path — `maee_side` reads candidate targets from `table.p<X>_of[sq]` (per-target attacker mask) instead of computing an aggregate threat bitmask. The comment at `evaluator.rs:810` already flagged this. Function was dead code: `grep -r threat_bb` returned only the definition in `state/magic.rs` and one comment mention.
+
+**Change:** Deleted `pub fn threat_bb` from `state/magic.rs` (its doc block plus ~15 lines of body). Updated the `evaluator.rs` comment to describe what `maee_side` does today instead of citing the historical replacement. `movement_attack_targets_speed2` retained — still used by `generator.rs` for real move generation.
+
+**Semantic note:** `threat_bb` used the same BFS-2 over-approximation for Guard reach that item 4a corrected in the attackers table. If it had still been in use, deletion would have shifted eval slightly. Being unused, the deletion is purely a code-hygiene change — no bench delta, all 392 tests still pass.
+
+**Group A is now fully closed.** Backlog entry above updated with strikethroughs and a summary of what remains open (Groups B–E untouched, and a shelved-but-documented note for the AttackerList head-cursor experiment).
 
 ---
 

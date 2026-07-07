@@ -807,8 +807,8 @@ fn maee_side(pos: &Position, side: Player, table: &AttackersTable) -> i32 {
     let enemy_targets = opp_bb & non_kings;
 
     // Candidate targets: enemy non-kings that `side` has at least one attacker
-    // for. Derived from the precomputed table — replaces the old `threat_bb`
-    // call that recomputed the same information from scratch.
+    // for. Read from the precomputed attackers table — skips targets no
+    // attacker can reach without paying a full MAEE call to find that out.
     let side_of = match side {
         Player::P1 => &table.p1_of,
         Player::P2 => &table.p2_of,
