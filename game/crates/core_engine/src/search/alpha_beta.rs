@@ -36,9 +36,10 @@ use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 /// to grade QS vs non-QS play strength. Production callers must not flip it.
 pub static DISABLE_QS: AtomicBool = AtomicBool::new(false);
 
-/// Runtime toggle for null-move pruning. Default `false` (NMP disabled) until
-/// re-benchmarked on a corpus with realistic skill loadouts. The search_bench
-/// harness flips this on for A/B comparison.
+/// Runtime toggle for null-move pruning. Default `true`. Validated in the
+/// Session 41 Phase B sweep on corpus v2: -9.4% depth-6 nodes, +0.27 plies at
+/// 1s, +18.6% NPS geom-mean, zero regressions. The search_bench harness can
+/// flip this off for A/B comparison.
 ///
 /// Null move = `Action::EndPhase` applied during `Phase::Skill`, which flips
 /// the side to move (via `turn_manager::end_turn`). Only fires during Skill
@@ -406,6 +407,23 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
     } else {
         Some(now_ms().saturating_add(time_limit_ms))
     };
+
+    // Forced-move short-circuit. When the position has exactly one legal
+    // action (common: EndPhase-only when actions_remaining==0 and no skills
+    // are castable), skip the whole tree — the caller will just apply it.
+    // Score is the static eval so telemetry / UI show something meaningful.
+    // nodes=1: we did examine one node (the root) to determine it was forced.
+    if pos.game_result.is_none() {
+        let root_moves = generator::generate(pos);
+        if root_moves.len() == 1 {
+            return SearchResult {
+                best:  Some(root_moves[0]),
+                score: evaluator.evaluate(pos),
+                depth: max_depth.max(1),
+                nodes: 1,
+            };
+        }
+    }
 
     let mut best = SearchResult::default();
     let mut total_nodes: u64 = 0;

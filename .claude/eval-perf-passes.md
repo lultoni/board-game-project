@@ -2,7 +2,7 @@
 
 *Living doc. Each perf pass on `core_engine/src/search/evaluator.rs` follows the same recipe: critique → plan → implement → bench → recritique. Track results here so we can see whether each pass actually helped and what's left to attack.*
 
-*Last updated: 2026-07-07 — Pass 2 in progress. Items 5+4+1 done (per-section counters, act0 revert, phase-gate drop). Items 2+3 (forced-move handling) up next.*
+*Last updated: 2026-07-07 — Pass 2 complete. 4 of 5 items landed: 5 (counters), 4 (act0 revert), 1 (phase-gate drop), 2 (forced-move root). Item 3 attempted and reverted — see log. Pending: full-corpus d6 bench + re-critique agents.*
 
 ---
 
@@ -294,6 +294,34 @@ Verification:
 
   The horizon-effect fix delivers the expected big win on skill-phase-full-03 (Skill-phase position where MAEE was previously blind). midgame-move-01 regresses (+25%) — unconditional MAEE reprices some moves the gate had left at zero, shifting move ordering. Net across the probe is positive; full-corpus impact deferred to after items 2+3 land.
 
+**Item 2 (forced-move root short-circuit) — DONE (2026-07-07).**
+
+Added an early return in `find_best_with_evaluator` (`search/alpha_beta.rs`): if `generator::generate(pos).len() == 1` at the root, skip iterative deepening entirely and return `SearchResult { best: Some(root_moves[0]), score: evaluator.evaluate(pos), depth: max_depth, nodes: 1 }`. `nodes = 1` (not 0) keeps the `telemetry::step_ai_records_searchmeta` test's `nodes > 0` invariant intact — semantically we did examine 1 node (the root) to determine forcedness. Runs `game_result.is_none()` guard first so terminal positions still get proper scoring.
+
+Zero-risk: does not affect any position with >1 legal action, which is the entire benchmark corpus. The win shows up in live play on positions with an EndPhase-only situation or a forced capture.
+
+**Item 3 (forced-move extension in tree) — ATTEMPTED, REVERTED (2026-07-07).**
+
+Implemented: at internal search nodes with exactly 1 legal action, recurse with `depth - 1 + 1 = depth` (unchanged). `ply` still increments. Added `ply < MAX_PLY - 1` guard against pathological chained-forced-move recursion.
+
+**Result**: full test suite hung on `session::tests::aivai_terminates_within_budget` after 36 minutes at 99.5% CPU (killed manually). No infinite loop — the ply guard prevented that — but a catastrophic tree explosion.
+
+**Diagnostic trace** (midgame-move-01, 1s budget, extension fires logged to stderr):
+- 9,151 extensions fired in 1 second.
+- 8,395× at `ply=2 depth=1`, 700× at `ply=4 depth=1`, 50× at `ply=2 depth=2`.
+- Every one: `phase=Move to_move=P1 actions_remaining=0 action=EndPhase`.
+- Search reached only depth 3 in 1s (baseline: d5-6).
+
+**Root cause**: after a side consumes its move-phase actions (`actions_remaining==0`), the ONLY legal action is `EndPhase`. This is not a rare pathological state — it's a **structural, every-game-line property** of the phase system. Every phase-boundary internal node triggers an extension. That EndPhase gates a full subtree of subsequent decisions (same player's Skill phase, all skill options), so extending doubles the work of every phase transition on every line. Compounded across thousands of phase-boundary nodes → tree explosion → search shallower, not deeper.
+
+The user's earlier item-2 EndPhase intuition (skip at root) doesn't transfer to internal nodes: at the root an EndPhase-only position has no subtree because we don't search it, so skipping is free. At internal nodes there's a real subtree behind every EndPhase; extending duplicates that subtree.
+
+**Reverted.** The idea moves to the Pass 3+ backlog. Key question left open: are there enough *tactically meaningful* forced moves (forced Move-Attack, forced BodyguardChoice, forced non-EndPhase skill) that a properly-guarded extension would help? Need instrumented counter first (added as Pass 3 prerequisite below).
+
+**Drive-by fixes (2026-07-07):**
+- `ENABLE_NMP` doc comment corrected: said "Default `false` (disabled) until benchmarked" but code was `AtomicBool::new(true)`. Session 41 Phase B sweep already validated NMP-on with -9.4% depth-6 nodes / +18.6% NPS. Comment updated to reflect production state.
+- `SettingsModal.svelte`: Think-time inputs (both P1 and P2) `min` lowered from 100 → 0, added italic hint below each row: "0 = no time limit; search runs to Max depth." Enables users to run depth-only AI mode from the settings panel.
+
 **Corpus-wide observations from item 5 counters that inform later items:**
 
 1. `maee_gate_pass` fires 92-99% on the slow positions (Move-phase-heavy trees). The phase-gate's savings mostly hit *cheap* positions, not the expensive ones — reinforces that **item 1 (horizon fix / MAEE-everywhere-cheaply) is the biggest remaining win**.
@@ -321,6 +349,7 @@ These appeared in the Pass 1 critique but were held back as too structural or to
 - **Mailbox AoS → SoA conversion.** `Position` layout change; touches every consumer of per-square data. High blast radius.
 - **`Position::Clone` heaviness.** Requires audit of every clone site to understand how many are actually necessary vs incidental.
 - **Skill activity gating on `moved_this_phase`.** Deferred; skills don't consume a piece's move slot, so the gating logic needs care to avoid dropping legitimate skill-cast value.
+- **Forced-move extension inside the tree, take 2.** Pass 2 item 3 failed because unconditional extension on `moves.len()==1` fires at every phase-boundary internal node (`actions_remaining==0 → EndPhase-only`) — a structural, per-game-line condition, not a rare tactical one. Doubles the work of every phase transition, tanks depth reached in a time budget. Retry needs: (a) prerequisite counter measuring how often `moves.len()==1 && kind ∉ {EndPhase, EndTurn}` fires per corpus position (build into `counters.rs` on Pass 3 startup), (b) if that count is meaningfully >0, implement extension guarded on non-{EndPhase,EndTurn} sole-legal-action, (c) additionally consider fractional extensions (0.5 ply, accumulated to integer) so multiple forced nodes on a line don't stack to full-tree explosion.
 
 ---
 

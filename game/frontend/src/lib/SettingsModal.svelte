@@ -159,16 +159,17 @@
       <span>Think time (ms)</span>
       <input
         type="number"
-        min="100"
+        min="0"
         max="30000"
         step="100"
         value={settings.p1ThinkTimeMs}
         oninput={(e) => {
           const v = parseInt((e.target as HTMLInputElement).value, 10);
-          if (!isNaN(v)) settings.p1ThinkTimeMs = clampInt(v, 100, 30000);
+          if (!isNaN(v)) settings.p1ThinkTimeMs = clampInt(v, 0, 30000);
         }}
       />
     </label>
+    <p class="hint">0 = no time limit; search runs to Max depth.</p>
     <label class="row">
       <span>Max depth</span>
       <select
@@ -191,16 +192,17 @@
       <span>Think time (ms)</span>
       <input
         type="number"
-        min="100"
+        min="0"
         max="30000"
         step="100"
         value={settings.p2ThinkTimeMs}
         oninput={(e) => {
           const v = parseInt((e.target as HTMLInputElement).value, 10);
-          if (!isNaN(v)) settings.p2ThinkTimeMs = clampInt(v, 100, 30000);
+          if (!isNaN(v)) settings.p2ThinkTimeMs = clampInt(v, 0, 30000);
         }}
       />
     </label>
+    <p class="hint">0 = no time limit; search runs to Max depth.</p>
     <label class="row">
       <span>Max depth</span>
       <select
@@ -306,6 +308,12 @@
     color: inherit;
     font: inherit;
     text-align: right;
+  }
+  .hint {
+    margin: -0.15rem 0 0.35rem;
+    font-size: 0.78rem;
+    opacity: 0.65;
+    font-style: italic;
   }
   .slider {
     flex: 1;
