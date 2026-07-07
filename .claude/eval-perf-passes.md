@@ -2,7 +2,7 @@
 
 *Living doc. Each perf pass on `core_engine/src/search/evaluator.rs` follows the same recipe: critique → plan → implement → bench → recritique. Track results here so we can see whether each pass actually helped and what's left to attack.*
 
-*Last updated: 2026-07-07 — Pass 2 in progress. Items 5+4 done; act0 short-circuit reverted. Item 1 (horizon fix) up next.*
+*Last updated: 2026-07-07 — Pass 2 in progress. Items 5+4+1 done (per-section counters, act0 revert, phase-gate drop). Items 2+3 (forced-move handling) up next.*
 
 ---
 
@@ -274,6 +274,25 @@ Confirmed: the short-circuit is the direct cause of 4/5 known regressions. skill
 **Item 4 fix (2026-07-07):** removed the `actions_remaining==0` side-to-move zeroing. Kept the `bump_actions_zero_hit()` counter for future diagnostic use. 392 tests pass. The `if pos.actions_remaining == 0 { … }` block now only bumps the counter and is a no-op otherwise.
 
 Not doing a full-corpus rerun yet — the 5-position probe already covers all known regressions and confirms the fix. The corpus-wide impact will be captured after item 1 lands (which needs its own bench anyway).
+
+**Item 1 (horizon-effect fix / drop MAEE + skill_activity phase gates) — DONE (2026-07-07).**
+
+Approach chosen: drop the phase gates entirely. Rationale: MAEE's inputs (bitboards, mailbox HP/armor, reachability primitives) are phase-invariant. Gating created a cliff at every phase transition. Ran a cross-phase-correctness audit first (task #73) — confirmed MAEE is bounded (~10k ops/leaf, no recursion, hard MAEE_MAX_PLIES=32 cutoff), respects Stack M rules (BFS-2 for guards, armor-then-HP damage, king exclusion), and has no phase-dependent inputs. Same treatment applied to `skill_activity` for symmetry — its inputs (money, range, occupancy) are also phase-invariant. Kept the `bump_maee_gate_pass` / `bump_skill_gate_pass` counters for diagnostic value; the skip counters will always read zero now.
+
+Verification:
+- 14 evaluator unit tests pass, full 392-test suite passes.
+- **Eval-only bench (100k iters × 30 positions):** geo-mean **2021 ns → 1853 ns (-8%)**, mean 5074 → 4721 ns (-7%), max 22504 → 21555 ns (-4%). Counterintuitively, unconditional MAEE is *cheaper* per eval than gated — the branch + skip-side counter bumps cost more than they saved on the ~40% of leaves that hit them. Result file: `bench/results/eval-post-pass2-nogate.json`.
+- **5-position d6 probe** vs post-item-4 baseline:
+
+  | Position | Item-4 baseline nodes | Item-1 (nogate) nodes | Δ |
+  |---|---|---|---|
+  | midgame-move-01 | 1.36 M | 1.70 M | +25% |
+  | midgame-move-02 | 231 K | 225 K | -3% |
+  | midgame-move-05 | 715 K | 668 K | -7% |
+  | **skill-phase-full-03** | 3.54 M | **1.98 M** | **-44%** |
+  | combo-loaded-04 | 48 K | 47 K | -2% |
+
+  The horizon-effect fix delivers the expected big win on skill-phase-full-03 (Skill-phase position where MAEE was previously blind). midgame-move-01 regresses (+25%) — unconditional MAEE reprices some moves the gate had left at zero, shifting move ordering. Net across the probe is positive; full-corpus impact deferred to after items 2+3 land.
 
 **Corpus-wide observations from item 5 counters that inform later items:**
 

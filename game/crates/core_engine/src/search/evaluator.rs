@@ -63,7 +63,7 @@
 //!      Bodyguard) — small bonuses, added last.
 
 use crate::state::Position;
-use crate::state::position::{GameResult, Phase, Player};
+use crate::state::position::{GameResult, Player};
 use crate::state::magic;
 use crate::search::counters;
 use crate::game_logic::skills::{
@@ -295,40 +295,29 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     b.money_p2 = MONEY_PER_UNIT * pos.p2_money as i32;
 
     // (d) Threat-symmetric term (MAEE): pre-priced net-of-exchange value for
-    // each capturable enemy piece. Only meaningful in the Move phase — move-
-    // attacks are illegal in Skill/Draft. Skipping in the wrong phase drops
-    // the term to zero for both sides symmetrically, which is honest: in the
-    // Skill phase there is no move-attack this turn to price.
+    // each capturable enemy piece. Priced unconditionally — the pricing is
+    // phase-invariant (it reads bitboards + mailbox HP/armor, no phase input),
+    // and gating it to Phase::Move created a horizon-effect cliff at every
+    // phase transition. Cost is bounded: ~12 targets × ~10 attacker enums
+    // × ~700 ops ≈ ~10k ops per side per leaf, no recursion, hard 32-ply cap.
+    // Audit: game/crates/core_engine/src/search/evaluator.rs MAEE section +
+    // .claude/eval-perf-passes.md Pass 2 log.
     //
-    // (e) Skill-activity: only meaningful in the Skill phase — skills are
-    // illegal in Move/Draft.
+    // (e) Skill-activity: same treatment — skill *potential* (has money, has
+    // range) is phase-invariant. Gating to Phase::Skill produced the same
+    // horizon cliff.
     //
     // NOTE: a Pass 1 short-circuit that zeroed the side-to-move's threat_*
     // and skill_act_* when actions_remaining == 0 was reverted in Pass 2 —
     // it caused ~30-70% node explosions on multiple positions because it
     // created a large asymmetric leaf-eval discontinuity that perturbed
     // move ordering.
-    if pos.current_phase == Phase::Move {
-        counters::bump_maee_gate_pass();
-        b.threat_p1 = maee_side(pos, Player::P1);
-        b.threat_p2 = maee_side(pos, Player::P2);
-    } else {
-        counters::bump_maee_gate_skip();
-    }
-    if pos.current_phase == Phase::Skill {
-        counters::bump_skill_gate_pass();
-        b.skill_act_p1 = skill_activity(pos, Player::P1);
-        b.skill_act_p2 = skill_activity(pos, Player::P2);
-    } else {
-        counters::bump_skill_gate_skip();
-    }
-    // NOTE: earlier Pass 1 also zeroed threat_* / skill_act_* for the side
-    // to move when actions_remaining == 0. That short-circuit created an
-    // asymmetric leaf-eval discontinuity that perturbed move ordering and
-    // caused 30-70% node explosions on midgame-move-02/05, combo-loaded-04,
-    // and skill-phase-full-03. Removed in Pass 2 (see .claude/eval-perf-passes.md).
-    // The `actions_zero_hit` counter is kept for future diagnostics of any
-    // successor optimisation.
+    counters::bump_maee_gate_pass();
+    b.threat_p1 = maee_side(pos, Player::P1);
+    b.threat_p2 = maee_side(pos, Player::P2);
+    counters::bump_skill_gate_pass();
+    b.skill_act_p1 = skill_activity(pos, Player::P1);
+    b.skill_act_p2 = skill_activity(pos, Player::P2);
     if pos.actions_remaining == 0 {
         counters::bump_actions_zero_hit();
     }
