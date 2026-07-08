@@ -470,7 +470,7 @@ fn run_corpus(entries: &[CorpusEntry], mode: Mode, runs: usize) -> (Vec<(String,
             0.0
         };
         println!(
-            "  counters:  eval={} ab={} qs={} leaf_ratio_qs={:.2}  maee_pass/skip={}/{} ({:.1}%)  skill_pass/skip={}/{}  act0_hit={}  maee_side={} maee_target={} enum_att={} att_mean={:.2}  skill_act={}",
+            "  counters:  eval={} ab={} qs={} leaf_ratio_qs={:.2}  maee_pass/skip={}/{} ({:.1}%)  skill_pass/skip={}/{}  act0_hit={}  maee_side={} maee_target={} enum_att={} att_mean={:.2}  skill_act={}  see_tables={} see_calls={} see_per_qs={:.2}",
             c.eval_calls,
             c.ab_nodes,
             c.qs_nodes,
@@ -486,6 +486,9 @@ fn run_corpus(entries: &[CorpusEntry], mode: Mode, runs: usize) -> (Vec<(String,
             c.enumerate_attackers_calls,
             attackers_mean,
             c.skill_activity_calls,
+            c.see_table_builds,
+            c.see_capture_calls,
+            if c.qs_nodes > 0 { c.see_capture_calls as f64 / c.qs_nodes as f64 } else { 0.0 },
         );
 
         results.push((entry.id.clone(), med));
@@ -524,6 +527,8 @@ fn write_counter_snapshot(s: &mut String, c: &CounterSnapshot, indent: &str) {
     s.push_str(&format!("{}  \"maee_side_calls\": {},\n", indent, c.maee_side_calls));
     s.push_str(&format!("{}  \"maee_target_calls\": {},\n", indent, c.maee_target_calls));
     s.push_str(&format!("{}  \"enumerate_attackers_calls\": {},\n", indent, c.enumerate_attackers_calls));
+    s.push_str(&format!("{}  \"see_table_builds\": {},\n", indent, c.see_table_builds));
+    s.push_str(&format!("{}  \"see_capture_calls\": {},\n", indent, c.see_capture_calls));
     s.push_str(&format!("{}  \"skill_activity_calls\": {},\n", indent, c.skill_activity_calls));
     s.push_str(&format!("{}  \"ab_nodes\": {},\n", indent, c.ab_nodes));
     s.push_str(&format!("{}  \"qs_nodes\": {},\n", indent, c.qs_nodes));
@@ -574,6 +579,8 @@ fn write_json(
         agg.maee_side_calls += m.counters.maee_side_calls;
         agg.maee_target_calls += m.counters.maee_target_calls;
         agg.enumerate_attackers_calls += m.counters.enumerate_attackers_calls;
+        agg.see_table_builds += m.counters.see_table_builds;
+        agg.see_capture_calls += m.counters.see_capture_calls;
         agg.skill_activity_calls += m.counters.skill_activity_calls;
         agg.ab_nodes += m.counters.ab_nodes;
         agg.qs_nodes += m.counters.qs_nodes;

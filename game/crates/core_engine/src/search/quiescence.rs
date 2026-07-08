@@ -36,7 +36,7 @@ use crate::time::now_ms;
 use super::alpha_beta::{SearchCtx, INF, TIME_CHECK_MASK};
 use super::evaluator::MATE_SCORE;
 use super::counters;
-use super::see::{build_attackers_table, see_capture, AttackersTable};
+use super::see::{build_attackers_table, see_capture, see_single_hit, AttackersTable};
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::skills::{
     skill_category, skill_cost, skill_default_range, skill_from_id, Skill, SkillCategory,
@@ -256,9 +256,22 @@ pub(super) fn quiesce(
                 counters::bump_see_capture_calls();
                 see_capture(pos, t, a.src(), target)
             }
+        } else if is_l && a.kind() == ActionKind::Skill {
+            // Strike/Blast skill: caster deals 1 damage to target but doesn't
+            // move onto the square. No exchange follow-up — score by the
+            // single-hit damage value (MVV-style: prefer skills that kill or
+            // hit low-HP/no-armor targets).
+            let target = a.target();
+            let target_bit = 1u64 << target;
+            if pos.kings.0 & target_bit != 0 {
+                MATE_SCORE
+            } else {
+                see_single_hit(pos, target)
+            }
         } else if is_l {
-            // Non-move-attack loud: Strike/Blast skills, BodyguardChoice.
-            // Rank below positive SEE captures, above losing ones.
+            // BodyguardChoice and other loud actions with no straightforward
+            // per-target victim: neutral key. Sorts between winning captures
+            // and losing captures.
             0
         } else {
             // Quiet move but in_check — search it, but after all loud moves.

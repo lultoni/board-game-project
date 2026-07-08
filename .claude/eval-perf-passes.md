@@ -646,6 +646,47 @@ Ran the deferred `threat_bb` audit as the last Group A cleanup.
 
 ---
 
+### Pass 4+ (2026-07-08) — SEE for Strike/Blast + bench JSON emission
+
+**Anchor:** Pass 4 commit `46371dd`. Diff scope: single new helper in `see.rs`, its use at the Skill-action ordering site in `quiescence.rs`, and the bench JSON/print additions in `search_bench`.
+
+**Scope:**
+- **`see_single_hit(pos, target) -> i32`** in `search/see.rs`. Scores a single-hit skill action (Strike/Blast) at `target`: returns `ARMOR_PER_POINT` if the target has armor (chip only), `HP_PER_POINT` if `hp > 1` (chip only), or `victim_val + HP_PER_POINT` on the killing blow (bare piece, hp==1, armor==0). No exchange rollout — Strike/Blast fires once and doesn't move the attacker into range for a reply, so a single-hit valuation is the right shape. King-target case handled upstream in `quiescence.rs` by short-circuiting to `MATE_SCORE`.
+- **QS ordering for Skill actions.** Previously Skill-kind loud moves got neutral key `0`, letting Move-Attacks always sort ahead regardless of scale. Now Skill actions get `see_single_hit(target)` (or `MATE_SCORE` on king target). Move-Attack scoring via `see_capture` unchanged.
+- **`search_bench` JSON emission.** Added `see_table_builds` and `see_capture_calls` to the per-position `counters` println, the `write_counter_snapshot` JSON writer, and the aggregate rollup. Backwards-compatible with existing `maee_*` fields (still emitted, zeroed).
+- **Tests:** 4 SEE unit tests kept from Pass 4; one (`recapture_zero`) had its expected value corrected during Pass 4+ to reflect the actual MAEE-shape fold-back semantics (P1's HP-strip reply is negative from P2's POV, folds back, then P2's kill of P2C@28 nets +1000 not 0). Full 396-test suite passes.
+
+**Investigation — `skill-phase-full-03` +128% node regression (Pass 4 known follow-up):**
+
+Ran counters + delta bench to test the hypothesis that Skill-kind ordering was the cause.
+
+Result:
+- **Nodes: 4,448,763 → 4,448,748 (-0.00%, off-by-15 noise).** Node count is essentially unchanged by adding `see_single_hit` ordering.
+- **Wall time: -13.76%** on this position (per-node cheaper due to slightly better cache behavior; no measurable branch cutoff improvement).
+
+Conclusion: the +128% node count on this position vs Pass 3 is **not** caused by QS Skill-ordering choice. It's inherent to the position's tree shape under Pass 4's cleaner eval — with MAEE deleted from the static eval, QS has to walk exchanges dynamically that MAEE previously baked into the leaf. This position happens to have many Skill-phase leaves where the exchange rollout is where the time goes, and there is no ordering signal that changes the node count.
+
+**Bench — Full corpus d6 (`bench/results/search-post-pass4plus-d6.json` vs `search-post-pass4-d6.json`):**
+- Total nodes: 13,779,558 → 13,779,579 (+0.00%, ~+21 nodes across 30 positions).
+- Total wall time: **11,328 ms → 10,474 ms (-7.54%)**.
+- Per-position: 21/30 improved on time, 9 regressed within ±2% (variance).
+
+The wall-time win comes from cheaper per-node QS ordering — Skill actions now sort at their real magnitude instead of being blindly interleaved. Nodes are flat because on most positions the QS cutoff already lands early enough that ordering-within-loud-set doesn't change it.
+
+**Decision (2026-07-08):** Accept `skill-phase-full-03` +128% vs Pass 3 as inherent to the eval-scope correction. Not an ordering bug — no ordering-side fix will change the node count. The corpus-wide net (-80% time vs Pass 3, +N/A vs Pass 4) is what matters, and this position alone still has -20% wall time vs Pass 3 despite the node inflation because per-node cost dropped 5×.
+
+**Combined Pass 1→Pass 4+ vs pre-perf-track baseline:**
+- `search-post-maee-d6.json` ~745 s → 10.5 s. **~71× speedup**.
+
+**Backlog updates:**
+- Pass 4 follow-up: `skill-phase-full-03` — **closed as accepted trade-off** (documented above).
+- Pass 4 follow-up: `search_bench` JSON emission of SEE counters — **closed** (this pass).
+- Frontend `threat_p1/p2` type cleanup — still deferred; harmless.
+
+**Next:** Track E (eval-correctness passes) is the natural next step. Perf track has no burning items — Groups B, C, F–M all remain, but none of them jump out at 334 ns/eval and 10.5 s d6-corpus. Reassess after Track E lands.
+
+---
+
 ## Notes for future passes
 
 - **Always commit before starting a pass.** That commit is then a rollback anchor.

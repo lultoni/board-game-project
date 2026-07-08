@@ -255,6 +255,38 @@ fn other(p: Player) -> Player {
 
 // ─── SEE per-capture rollout ─────────────────────────────────────────────
 
+/// Score a single-hit attack on `target` with no exchange follow-up.
+///
+/// Used for move-ordering of Strike/Blast skill actions in quiescence: the
+/// caster deals 1 damage to `target` but doesn't move onto its square, so
+/// no swap-off is possible. Returns the material value from stm's POV of
+/// the damage this hit deals:
+///
+/// - `armor > 0` → `ARMOR_PER_POINT` (small)
+/// - `hp > 1`    → `HP_PER_POINT`    (medium)
+/// - killing     → `piece_value + HP_PER_POINT + armor*ARMOR_PER_POINT`
+///
+/// Returns 0 for empty squares or king targets (callers handle king specially).
+/// Cheap — no AttackersTable needed.
+pub fn see_single_hit(pos: &Position, target: u8) -> i32 {
+    let target_bit = SQ_BIT[target as usize];
+    let victim_val = piece_material_of(pos, target);
+    if victim_val == 0 { return 0; }
+    let entry = pos.mailbox[target as usize];
+    let armor = entry.armor();
+    let hp    = entry.hp();
+    if armor > 0 {
+        return ARMOR_PER_POINT;
+    }
+    if hp > 1 {
+        return HP_PER_POINT;
+    }
+    // hp == 1, armor == 0 → killing blow.
+    // (armor is 0 here, so the armor*ARMOR_PER_POINT term is 0 too.)
+    let _ = target_bit;
+    victim_val + HP_PER_POINT
+}
+
 /// Score the exchange initiated by `src` capturing `target`.
 ///
 /// Returns net material change from the *initiator's* (side owning `src`)
