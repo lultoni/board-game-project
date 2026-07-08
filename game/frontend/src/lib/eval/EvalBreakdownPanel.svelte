@@ -46,10 +46,20 @@
                             prevDelta: prev ? dPrev(cur.armor_p1, cur.armor_p2, prev.armor_p1, prev.armor_p2) : null },
       { label: "Skills",    p1: cur.skills_p1,     p2: cur.skills_p2,
                             prevDelta: prev ? dPrev(cur.skills_p1, cur.skills_p2, prev.skills_p1, prev.skills_p2) : null },
-      { label: "Off reach", p1: cur.offensive_range_p1 * REACH_WEIGHT,
-                            p2: cur.offensive_range_p2 * REACH_WEIGHT,
-                            prevDelta: prev ? dPrev(cur.offensive_range_p1 * REACH_WEIGHT, cur.offensive_range_p2 * REACH_WEIGHT,
-                                                    prev.offensive_range_p1 * REACH_WEIGHT, prev.offensive_range_p2 * REACH_WEIGHT) : null },
+      // E9 renders as a differential-only row: whichever side has higher raw
+      // reach shows the weighted advantage, the other shows 0. The eval term
+      // itself is `(p1 - p2) * WEIGHT` so per-side magnitudes aren't
+      // meaningful in isolation — showing both sides at raw*WEIGHT was
+      // misleading (implied additive contribution). Reach flag has no
+      // per-side "score", only a differential.
+      { label: "Off reach", p1: Math.max(0, (cur.offensive_range_p1 - cur.offensive_range_p2)) * REACH_WEIGHT,
+                            p2: Math.max(0, (cur.offensive_range_p2 - cur.offensive_range_p1)) * REACH_WEIGHT,
+                            prevDelta: prev
+                              ? (Math.max(0, cur.offensive_range_p1 - cur.offensive_range_p2)
+                                 - Math.max(0, cur.offensive_range_p2 - cur.offensive_range_p1)) * REACH_WEIGHT
+                                - (Math.max(0, prev.offensive_range_p1 - prev.offensive_range_p2)
+                                   - Math.max(0, prev.offensive_range_p2 - prev.offensive_range_p1)) * REACH_WEIGHT
+                              : null },
       { label: "Money",     p1: cur.money_p1,      p2: cur.money_p2,
                             prevDelta: prev ? dPrev(cur.money_p1, cur.money_p2, prev.money_p1, prev.money_p2) : null },
       { label: "Reach",     p1: cur.mobility_p1,   p2: cur.mobility_p2,
