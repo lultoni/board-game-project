@@ -1,228 +1,158 @@
 # UI cleanup + perf plan
 
-*Written 2026-07-08. Anchor commit: `ec0cae4` (main). Rollback target if a phase misbehaves. See `.claude/eval-perf-passes.md` for the same doc-pattern used on the engine side.*
+*Written 2026-07-08. Anchor commit: `ec0cae4` (main). Rollback target if a phase misbehaves.*
 
-## Motivation
+## Status
 
-While AI is thinking, the UI slows down considerably — most visibly the ply renderer. Separately, sound effects stop working after the window has been open for a long time. Investigation (4 parallel Explore agents, 2026-07-08) established:
+- **PR 1 (Phases 1–3) — DONE 2026-07-08** (commit `1cc0010`). Audio pre-play resume + statechange listener + AudioNode disconnect on `ended`; renderer `dispose()` wired into `/match` and `/replay` onDestroy.
+- **PR 2 (Phase 4) — DONE 2026-07-08** (commit `a794fa9`). New `lib/state/ai-search.svelte.ts` rune-store; AI-transient state (thinking / depth / score / searchStartedAt / finishedAtPly + heuristic-eval fields) extracted from `/match`; PlayerPanel and EvalBreakdownPanel now read from store instead of props; `/replay` rewired to same store for eval panel.
+- **PR 3 phase 5 — DONE 2026-07-08** (commit `4ad0cdc`). `aiSearch.thinking` guard added to heuristic-eval `$effect`; poll no longer fires during search. Trailing poll on `thinking→false` transition is intended behaviour.
+- **PR 3 (Phases 6–8) — pending.** Phase 8 diagnostic in progress.
 
-- **Threading is fine.** `tauri_wrapper/src/lib.rs:375` uses `tokio::task::block_in_place`; the search does not block the invoke handler. Event volume from search is 1–8 depth events per search, throttled to 100 ms on the frontend (`match/+page.svelte:977`). Not the bottleneck.
-- **Ply renderer** itself (`lib/board/ply-renderer.svelte.ts`) is well-designed with proper `dispose()` — but the routes never call it, and depth-tick writes fan out to sibling components (`EvalBreakdownPanel`'s `$derived`, `PlayerPanel` re-renders) causing re-render cascades that visually manifest as ply-renderer stutter.
-- **Audio** dies because `AudioContext` gets suspended on macOS WKWebView after long inactivity with no `statechange` listener and no pre-play resume check. Also: every SFX creates fresh oscillator/gain/buffer-source nodes that are stopped but never `.disconnect()`'d — zombie graph nodes accumulate.
-
-Guiding principle from the user: **"clean up well after myself"** — window should minimize resources it holds, especially over long sessions.
-
-## Scope: three PRs, seven phases
-
-Ordered smallest/safest first. Each PR ships independently.
-
-### PR 1 — Audio + renderer leak (low-risk) — **DONE 2026-07-08**
-
-Landed together. svelte-check clean; test suite: no new failures (one pre-existing settings test failure inherited from `ec0cae4`, unrelated).
-
-#### Phase 1 — Audio pre-play resume + statechange listener — **DONE**
-
-Files: `game/frontend/src/lib/audio/sfx.ts`, `game/frontend/src/routes/+layout.svelte`.
-
-- `sfx.ts:41-54` (`ensureCtx`): after creating the context, attach `ctx.onstatechange`. When the context transitions to `suspended` while `document.visibilityState === "visible"`, call `void ctx.resume()`. Guard with a small backoff (skip if last resume attempt was <1 s ago) to prevent re-entrant loops.
-- `sfx.ts:93-99` (`playToneAt`): at the top, if `c.state === "suspended"`, fire `void c.resume()` before scheduling. First tone after resume may drop ~30 ms — acceptable.
-- `+layout.svelte:20-24`: keep the existing `visibilitychange` handler; sanity-check that its `onMount`-returned cleanup is still wired correctly (Svelte 5 pattern).
-
-Risk: minimal — `resume()` on a running context is a no-op.
-
-#### Phase 2 — Audio node disconnection — **DONE**
-
-File: `sfx.ts:97-160` (`playToneAt`).
-
-- For each voice's node chain (env gain, osc, osc2, v2env, noise buffer source, nGain, hp filter), attach an `ended` handler on the *terminating source* nodes (oscillator, bufferSource — only source-shaped nodes fire `ended`) that calls `.disconnect()` on the source and every downstream gain/filter it feeds. Bundle each voice's chain into a small local array so one `ended` handler iterates the array.
-- Wrap `.disconnect()` in try/catch — already-disconnected nodes throw in some engines.
-- **No pooling.** JS engines GC unreferenced AudioNode wrappers once the graph releases them via `.disconnect()`. Revisit only if profiling still shows churn.
-
-Risk: low. No tests today for `sfx.ts`; keep it that way.
-
-#### Phase 3 — Renderer disposal on route exit — **DONE**
-
-Files: `game/frontend/src/routes/match/+page.svelte:1574-1627` (existing `onDestroy`), `game/frontend/src/routes/replay/+page.svelte` (no `onDestroy` today).
-
-- match: extend the existing `onDestroy` to call `renderer?.dispose(); renderer = null;` before the mp teardown block. `dispose()` already exists at `ply-renderer.svelte.ts:1157` and cancels all shake/deferred-skill timers and empties `effectQueue`.
-- replay: add a full `onDestroy` block doing the same.
-- inspector already does exactly this at `inspector/+page.svelte:349-353` — pattern is well-established.
-
-Risk: near-zero.
+svelte-check clean across all landed PRs. Test suite: 1 pre-existing failure inherited from anchor (`settings.svelte.test.ts / rejects zero max-depth`), unrelated.
 
 ---
 
-### PR 2 — AI-transient state extraction — **DONE 2026-07-08**
+## Open symptom (2026-07-08, post-PR-2)
 
-Landed together. svelte-check clean; test suite: no new failures (same pre-existing `settings` test failure inherited from anchor). Extended to also rewire `/replay/` so `EvalBreakdownPanel` reads from the store uniformly across routes.
+**Fast-AIvAI ply-renderer stall.** During AIvAI with short think times (moves land faster than the piece animation can finish), the ply renderer visibly freezes mid-animation until the next move arrives. Not a search-thread problem — the pause happens *while* an animation is supposed to be running.
 
-#### Phase 4 — New dedicated store — **DONE**
+### Hypothesis
 
-Files:
-- **New:** `game/frontend/src/lib/state/ai-search.svelte.ts`
-- Edited: `game/frontend/src/routes/match/+page.svelte`, `game/frontend/src/lib/match/PlayerPanel.svelte`, `game/frontend/src/lib/eval/EvalBreakdownPanel.svelte`.
+The heuristic-eval `$effect` in `/match` (currently `match/+page.svelte:905-926`) reacts to `match.position` changes. `match.position` mutates inside `renderApplied()` *before* the piece animation completes (the ply-renderer writes the post-state to the positionSink to drive `<Board>`'s SVG animate elements). So during move N's animation:
 
-New module exports a `aiSearch` rune-store with fields:
-- `thinking: boolean`
-- `lastDepth: number | null`
-- `lastScore: number | null`
-- `searchStartedAt: number | null`
-- `finishedAtPly: number | null`
-- `heuristicEvalBreakdown: EvalBreakdown | null`
-- `heuristicEvalBySquare: EvalBreakdownBySquare | null`
-- `prevRoundBreakdown: EvalBreakdown | null`
-- `lastRoundSeen: number | null`
+1. `renderApplied` writes new `match.position` → `<Board>` starts SVG `<animate>` slides
+2. `$effect` sees `match.position` change → fires `heuristicEval()` IPC + `heuristicEvalBySquare()` IPC
+3. Responses arrive on main thread → `setHeuristic()` / `setHeuristicBySquare()` writes into the store
+4. `EvalBreakdownPanel`'s `rowVsPrev` $derived reruns (9 rows × several fields each)
+5. On short think times, move N+1's search *result* also arrives during move N's animation window (search runs in parallel with animation, gated only by `await animationDone()` before `endSearch` / `busy=false`). Result: heavy main-thread work bunched into the animation window.
 
-Plus helpers:
-- `beginSearch()` — sets `thinking=true`, `searchStartedAt=now`.
-- `updateDepth(d, s)` — 100 ms throttle **baked into the store** (currently at `match/+page.svelte:977`, moving it here so every consumer benefits automatically).
-- `endSearch(atPly)` — sets `thinking=false`, `finishedAtPly=atPly`.
-- `setHeuristic(...)` / `setHeuristicBySquare(...)` — writers used by the polling `$effect`.
-- `resetAiSearch()` — for route teardown or new match.
+SVG `<animate>` runs on the compositor, but the JS main thread must not stall long enough to miss the frame that *writes* the new `pieceMotion` map for the next move. When a heuristic-eval response, a store write, and a downstream $derived rerun all land in the same frame, that frame can slip and the animation visually pauses.
 
-Changes to `match/+page.svelte`:
-- Remove `aiLastDepth`, `aiLastScore`, `aiSearchStartedAt`, `aiThinking`, `aiFinishedAtPly`, `heuristicEvalBreakdown`, `heuristicEvalBySquare`, `prevRoundBreakdown`, `lastRoundSeen`, `lastDepthUpdateMs` (lines 79-110). Keep `plyCount`.
-- Depth callback at 974-980 becomes a single `aiSearch.updateDepth(d, s)` call.
-- Heuristic-eval polling at 927-940 writes to `aiSearch.setHeuristic(...)` / `setHeuristicBySquare(...)`.
-- Panel props at 1669-1681, 1751-1763, 1939 no longer pass these — panels read from the store directly.
+Note that the depth-tick throttle (100 ms) and the store isolation from PR 2 already keep `<Board>` and `<EffectsLayer>` out of the search-tick re-render cascade — those helped the "AI thinking slowness" case but not the fast-AIvAI stall.
 
-Changes to `PlayerPanel.svelte`:
-- Strip `aiLastDepth`, `aiLastScore`, `aiThinking`, `aiSearchStartedAt`, `aiFinishedAtPly` from `Props` and template. Read from `aiSearch.*`. Compute `p1Thinking` / `p2Thinking` inside the panel as `aiSearch.thinking && position?.toMove === (player === "p1" ? 0 : 1)`.
+### Diagnostic before fixing
 
-Changes to `EvalBreakdownPanel.svelte`:
-- Strip `breakdown` and `prevBreakdown` props (57, 63). Read from `aiSearch.heuristicEvalBreakdown` and `.prevRoundBreakdown`. Prop surface narrows to just `player`.
+Before implementing Phase 8, add temporary `console.time` markers around:
+- `renderApplied()` and `animationDone()` in `runAiStep`
+- The `heuristicEval()` IPC + response handler
+- `EvalBreakdownPanel`'s `rows` $derived
 
-Board and EffectsLayer already don't consume these props (verified at match:1684-1734, 1736). **No change needed** — this is what decouples them from search-tick reactivity.
-
-Risk: medium. Prop surface reduction touches multiple consumers. Before merging: grep `aiLastDepth\|heuristicEvalBreakdown` across the tree to catch any third reader.
+Record a 10 s AIvAI stall with Chrome Perf (frontend running in the browser build; Tauri devtools are limited). Confirm the frame drop lines up with the heuristic response, not the search return. Only then commit to the fix — if the profile disagrees, revisit the hypothesis.
 
 ---
 
-### PR 3 — Gating + cancellation + cleanup sweep
+## PR 3 — Gating + cancellation + cleanup sweep + fast-AIvAI fix
 
-#### Phase 5 — Gate `heuristicEval()` polling during AI search
+### Phase 5 — Gate `heuristicEval()` polling during AI search
 
-File: `match/+page.svelte:918-941`.
+File: `match/+page.svelte` (the `$effect` at ~905 that polls `heuristicEval` on `match.position` change).
 
-The `$effect` at 918 re-fires on every `match.position` change. During AI iterative-deepening `match.position` doesn't change mid-search (engine applies atomically at the end), so this is already low-frequency between plies — but rapid AIvAI with short think time can fire it back-to-back.
+- Add guard `if (aiSearch.thinking) return;` alongside existing early returns.
+- `afterApplied()` runs after `renderApplied()` → `match.position` update naturally re-triggers the effect once when `thinking` flips back to false. That single trailing poll is the intended behaviour.
 
-- Add guard `if (aiSearch.thinking) return;` at line 923 alongside existing early returns.
-- `afterApplied()` runs after `renderApplied()` on the AI ply → `match.position` update naturally follows the search end and re-triggers the effect once when `thinking` flips back to false. This is the intended behaviour.
+Risk: low. Complements Phase 8 — this stops the poll from firing *while the AI is thinking*, Phase 8 stops it from firing *during animation*.
 
-Risk: low.
+### Phase 6 — AI cancellation on route exit (cooperative)
 
-#### Phase 6 — AI cancellation on route exit (cooperative)
-
-Files: `match/+page.svelte:1574` (onDestroy), `1030` (finally block of `runAiStep`). `lib/engine/ai-hooks.ts` already supports a cancellation predicate.
+Files: `match/+page.svelte` onDestroy + `runAiStep` finally block. `lib/engine/ai-hooks.ts` already supports a cancellation predicate.
 
 - Add `let aiCancelRequested = false;` at module top.
 - In `onDestroy`: `aiCancelRequested = true;`.
-- In `runAiStep` at 974: `runAiCall(() => eng!.stepAi(...), { cancelled: () => aiCancelRequested })`.
+- Pass `{ cancelled: () => aiCancelRequested }` into `runAiCall(() => eng!.stepAi(...))`.
 
-Effect: search still runs to completion in the background, but result is discarded — no `renderApplied`, no `recordPly`, no state writes into a torn-down renderer. Matches the inspector pattern.
+Effect: search still runs to completion in the background, but result is discarded — no `renderApplied`, no `recordPly`, no state writes into a torn-down renderer.
 
-**Rust-side hard cancellation** (interrupt the search mid-loop) requires exposing an engine cancellation API through Tauri. Out of scope for this pass — flagged as a follow-up.
+**Rust-side hard cancellation** (interrupt the search mid-loop) is a follow-up — requires exposing an engine cancellation API through Tauri.
 
 Risk: low. `ai-hooks.test.ts` already covers the cancellation path.
 
-#### Phase 7 — Cleanup audit sweep
+### Phase 7 — Cleanup audit sweep
 
-Two-part: (a) fix concrete gaps, (b) document the inventory so future work can spot new leaks.
+Concrete gaps to fix:
 
-##### Concrete gaps to fix
+1. **Match toast timer** in `match/+page.svelte`: no `clearTimeout` in `onDestroy`. Add `if (toastTimer) clearTimeout(toastTimer);`.
+2. **Multiplayer inbox clearing** — `lib/multiplayer.svelte.ts` maintains module-level `inbox` and `rawInbox`. Audit the disconnect path; add `.clear()` calls if aborted lobby joins can leak buffered messages across sessions.
+3. **WebSocket close path** — `lib/multiplayer/websocket-transport.ts`. Trace every `disconnect()` code path; confirm each calls `socket.close()`.
+4. **Draft `pagehide` handler** in `routes/draft/+page.svelte`: verify `onDestroy` removes the listener.
 
-1. **Match toast timer** at `match/+page.svelte:1366`: no `clearTimeout` in `onDestroy`. Add `if (toastTimer) clearTimeout(toastTimer);`.
-2. **Multiplayer inbox clearing** — `lib/multiplayer.svelte.ts:107-138` maintains module-level `inbox` and `rawInbox`. Audit the disconnect path; add `.clear()` calls if aborted lobby joins can leak buffered messages across sessions.
-3. **WebSocket close path** — `lib/multiplayer/websocket-transport.ts:191`. Trace every `disconnect()` code path; confirm each calls `socket.close()`.
-4. **Draft `pagehide` handler** at `routes/draft/+page.svelte:807, 852`: verify `onDestroy` at :859 removes the listener.
-
-##### Long-lived subscription inventory (documented, no immediate fix needed)
-
-Kept as reference for future audits. Format: subscription — file:line — has cleanup?
+Long-lived subscription inventory (kept as reference for future audits, no immediate work):
 
 | # | Subscription | Location | Cleanup? |
 |---|---|---|---|
-| 1 | `visibilitychange` | `routes/+layout.svelte:22` | onMount return :23 ✓ |
-| 2 | `beforeunload` | `routes/match/+page.svelte:1570` | onDestroy :1578 ✓ |
-| 3 | `pagehide` | `routes/draft/+page.svelte:807, 852` | onDestroy :859 — **audit** |
-| 4 | EffectsLayer RAF | `lib/board/EffectsLayer.svelte:144, 153` | onMount return :312-316 ✓ |
-| 5 | PlayerPanel progress-bar RAF | `lib/match/PlayerPanel.svelte:101, 103` | $effect cleanup :104-106 ✓ |
-| 6 | Ply-renderer scheduler timers | `lib/board/ply-renderer.svelte.ts:403` | `dispose()` ✓ — **Phase 3 fixes call site** |
-| 7 | Pending skill-refresh setTimeout | `ply-renderer.svelte.ts:487-492` | via `dispose()` — same as #6 |
-| 8 | Match toast timer | `match/+page.svelte:1366` | **NO — Phase 7 fix** |
-| 9 | Heartbeat ping/now timers | `lib/multiplayer/heartbeat.ts:41, 61` | via `stopPings`/`stopTicking` from tearDown ✓ |
-| 10 | Lobby liveness refresh | `routes/multiplayer/+page.svelte:415` | onDestroy :443 ✓ |
-| 11 | Lobby mp raw/connected subs | `routes/multiplayer/+page.svelte:417-418` | onDestroy :434-441 ✓ |
-| 12 | Match mp connected/disconnected unsubs | `match/+page.svelte:744-746` | onDestroy :1609-1612 ✓ |
-| 13 | GraceBanner countdown interval | `lib/multiplayer/GraceBanner.svelte:42` | onDestroy :43 ✓ |
-| 14 | MultiplayerStatusStrip interval | `lib/multiplayer/MultiplayerStatusStrip.svelte:30` | onDestroy :31 ✓ |
-| 15 | mp module-level Sets/Maps + inbox | `lib/multiplayer.svelte.ts:107-138` | unsubscribers ✓, inbox clear — **audit (Phase 7)** |
-| 16 | WebSocket socket | `lib/multiplayer/websocket-transport.ts:191` | close on disconnect — **audit (Phase 7)** |
-| 17 | AudioContext | `lib/audio/sfx.ts:38-54` | app-lifetime singleton (intentional) |
-| 18 | Renderer's checkpoints Map, timers Set | `ply-renderer.svelte.ts:403, 411` | via `dispose()` — same as #6 |
-| 19 | Sandbox undo stack | `match/+page.svelte:131` | released on route exit ✓ |
+| 1 | `visibilitychange` | `routes/+layout.svelte` | onMount return ✓ |
+| 2 | `beforeunload` | `routes/match/+page.svelte` | onDestroy ✓ |
+| 3 | `pagehide` | `routes/draft/+page.svelte` | **audit** |
+| 4 | EffectsLayer RAF | `lib/board/EffectsLayer.svelte` | onMount return ✓ |
+| 5 | PlayerPanel progress-bar RAF | `lib/match/PlayerPanel.svelte` | $effect cleanup ✓ |
+| 6 | Ply-renderer scheduler timers | `lib/board/ply-renderer.svelte.ts` | `dispose()` ✓ (PR 1 wired call site) |
+| 7 | Pending skill-refresh setTimeout | `ply-renderer.svelte.ts` | via `dispose()` ✓ |
+| 8 | Match toast timer | `match/+page.svelte` | **NO — Phase 7 fix** |
+| 9 | Heartbeat ping/now timers | `lib/multiplayer/heartbeat.ts` | via `stopPings`/`stopTicking` ✓ |
+| 10 | Lobby liveness refresh | `routes/multiplayer/+page.svelte` | onDestroy ✓ |
+| 11 | Lobby mp raw/connected subs | `routes/multiplayer/+page.svelte` | onDestroy ✓ |
+| 12 | Match mp connected/disconnected unsubs | `match/+page.svelte` | onDestroy ✓ |
+| 13 | GraceBanner countdown interval | `lib/multiplayer/GraceBanner.svelte` | onDestroy ✓ |
+| 14 | MultiplayerStatusStrip interval | `lib/multiplayer/MultiplayerStatusStrip.svelte` | onDestroy ✓ |
+| 15 | mp module-level Sets/Maps + inbox | `lib/multiplayer.svelte.ts` | **audit (Phase 7)** |
+| 16 | WebSocket socket | `lib/multiplayer/websocket-transport.ts` | **audit (Phase 7)** |
+| 17 | AudioContext | `lib/audio/sfx.ts` | app-lifetime singleton (intentional) |
+| 18 | Renderer's checkpoints Map, timers Set | `ply-renderer.svelte.ts` | via `dispose()` ✓ |
+| 19 | Sandbox undo stack | `match/+page.svelte` | released on route exit ✓ |
 
-##### Route transitions
+### Phase 8 — Fast-AIvAI ply-renderer stall
 
-Existing route-ownership-token pattern (`route-lifecycle.ts`, `multiplayer.svelte.ts:80`) defends against late-onDestroy vs early-onMount races for multiplayer teardown. Extend the same discipline to renderer disposal (Phase 3) — no ownership token needed since the renderer is owned by the route instance, not module-global.
+**Only after diagnostic confirms the hypothesis above.**
+
+Two candidate fixes; pick one after the profile identifies the biggest offender:
+
+**Fix A — defer heuristic poll to after animation.** Remove the `$effect` reactive dependency on `match.position` for the eval poll. Instead, call an explicit `void pollHeuristic()` at the *end* of `afterApplied()` (after `plyCount += 1`). Keep the `$effect` only to watch `settings.showEvalPanel` / `settings.showHeuristicEval` for setting-flip cases. This decouples the IPC from the render frame that starts the piece animation, so the animation gets a clean frame budget.
+
+**Fix B — coalesce heuristic polls with a microtask.** Wrap `setHeuristic` / `setHeuristicBySquare` in a `requestIdleCallback` (fallback: `setTimeout(0)`). Cheaper to implement than Fix A but adds a small perceptual lag on the eval panel. Only choose this if Fix A ends up entangled with other consumers of the `match.position` reactivity.
+
+**Combined with Phase 5**, the poll will:
+- Skip entirely while `aiSearch.thinking` (Phase 5),
+- Fire only at ply boundaries via explicit call from `afterApplied()` (Fix A),
+- Never race with the animation start frame.
+
+Risk: medium. Fix A moves the poll trigger out of the reactive graph, which changes when it fires on setting toggles (need to also poll on toggle flip; add a second small `$effect` that watches settings only). Fix B is lower-risk but doesn't eliminate the underlying re-render churn — it just shifts timing.
+
+Verification (Phase 8): AIvAI with think time set below animation duration (e.g. `p1ThinkTimeMs=100`, `p2ThinkTimeMs=100`, `respectAnimation=on`). Piece animations should complete smoothly without visible mid-slide pauses. Chrome Perf: no long tasks >16 ms during animation windows.
 
 ---
 
 ## Approvals resolved 2026-07-08 (before starting)
 
-1. **New store module vs extend `match-store.svelte.ts`?** — **New module** (`match-store` is route-persistent; AI-search state is per-run transient and semantically distinct). Confirmed.
-2. **Rust-side AI cancellation** — **defer.** Phase 6 is cooperative-only (search finishes, result discarded). Hard cancellation via Tauri exposed engine API is a follow-up.
-3. **`AudioContext.close()` on very long idle** — **no.** Just `resume()` + node disconnect. Closing needs a re-create dance and burns master gain / user volume routing.
+1. **New store module vs extend `match-store.svelte.ts`?** — New module (`match-store` is route-persistent; AI-search state is per-run transient and semantically distinct).
+2. **Rust-side AI cancellation** — defer. Phase 6 is cooperative-only; hard cancellation via Tauri is a follow-up.
+3. **`AudioContext.close()` on very long idle** — no. Just `resume()` + node disconnect. Closing needs a re-create dance and burns master gain / user volume routing.
 
-## Verification approach
+## Verification approach (for PR 3)
 
-### Frontend re-render counts (Phase 4, 5)
+### Frontend re-render counts (Phase 5)
 - Svelte devtools: watch `<Board>`, `<EffectsLayer>`, `<PlayerPanel>` render counters during a 3-second AIvAI search with `showAiDepth` on.
-  - Board / EffectsLayer: should re-render only on `match.position` change or `effectQueue` push. Not per depth tick.
-  - PlayerPanel: re-renders per throttled depth tick (~10/sec).
-  - Baseline (pre-fix): full cascade every 100 ms.
-- Chrome Perf: record 10 s of AIvAI. Frame budget stable under 4 ms/frame outside ply-boundary spikes.
+  - Board / EffectsLayer: no re-renders per depth tick (already achieved by PR 2).
+  - PlayerPanel: re-renders per throttled depth tick (~10/sec) only.
+  - EvalBreakdownPanel: no re-renders during search (Phase 5 gate).
 
-### Audio (Phase 1, 2)
-- Manual: launch match, trigger a SFX, background window 15 min (reported failure window on macOS WKWebView), foreground, immediately click a piece. Should play with no user-visible latency.
-- Chrome DevTools > Memory: heap snapshot before + after 500 SFX plays. `GainNode` / `OscillatorNode` retained-object counts should not grow monotonically — may plateau near currently-scheduled tail (~5–10 nodes).
+### Fast-AIvAI stall (Phase 8)
+- Manual: AIvAI with `p1ThinkTimeMs=100` and `respectAnimation=on`. Piece animations complete smoothly, no visible mid-slide pauses.
+- Chrome Perf: 10 s recording. No long tasks >16 ms landing inside animation windows. `heuristicEval`-triggered work sits between plies, not during them.
 
-### Cleanup (Phase 3, 6, 7)
-- AIvAI, `p1ThinkTimeMs=500`, run 30 min. Heap snapshots at t=0/15/30. `PlyRenderer`, `Effect`, `Map`/`Set` retained-object counts flat between 15 and 30 (allowing noise from live state).
-- Rapid navigation: match → replay → inspector → match ×20. `PlyRenderer` retained count exactly 1 (current route), not 20.
-- Multiplayer mid-search Back button: engine's depth callbacks stop within seconds (natural search completion), no `[match]` telemetry warnings from torn-down route.
-
-## PR sequencing
-
-1. **PR 1 (Phases 1–3):** audio robustness + renderer leak fix. Low-risk, ships first.
-2. **PR 2 (Phase 4):** AI-transient store extraction. Larger surface — merge once PR 1 is stable.
-3. **PR 3 (Phases 5–7):** gating + cancellation + cleanup sweep. Small individual changes; can be one PR or split further if any phase surprises.
-
-## Files touched (summary)
-
-Heavy edits (~5 files):
-- `game/frontend/src/routes/match/+page.svelte`
-- `game/frontend/src/lib/audio/sfx.ts`
-- `game/frontend/src/lib/match/PlayerPanel.svelte`
-- `game/frontend/src/lib/eval/EvalBreakdownPanel.svelte`
-- **New:** `game/frontend/src/lib/state/ai-search.svelte.ts`
-
-Small edits:
-- `game/frontend/src/routes/replay/+page.svelte` (add onDestroy)
-- `game/frontend/src/routes/+layout.svelte` (statechange sanity check)
-- `game/frontend/src/lib/board/ply-renderer.svelte.ts` — no change; existing `dispose()` is called from routes
-- `game/frontend/src/lib/multiplayer.svelte.ts` (inbox clear on disconnect, pending audit)
-- `game/frontend/src/lib/multiplayer/websocket-transport.ts` (socket close audit)
-- `game/frontend/src/routes/draft/+page.svelte` (pagehide handler removal audit)
+### Cleanup (Phase 6, 7)
+- AIvAI, `p1ThinkTimeMs=500`, 30 min. Heap snapshots at t=0/15/30. `PlyRenderer`, `Effect`, `Map`/`Set` retained-object counts flat between 15 and 30.
+- Rapid navigation: match → replay → inspector → match ×20. `PlyRenderer` retained count exactly 1 (current route).
+- Multiplayer mid-search Back button: no `[match]` telemetry warnings from torn-down route.
 
 ## Follow-ups (not in this plan)
 
-- **Rust-side AI cancellation.** Expose a cancellation flag through the Tauri command surface so the search can be interrupted mid-loop rather than running to completion after route exit. Would require a shared `AtomicBool` in `tauri_wrapper` and per-node checks in `search/alpha_beta.rs`.
-- **Long-idle AudioContext close.** If profiling reveals that keeping the context alive for hours is itself a resource cost, add an idle-timer that fully closes and recreates on next SFX. Currently rejected — nice-to-have.
-- **Svelte-inspector-based automated re-render regression test.** Would require a headless setup that counts component renders per interaction. Manual check via devtools sufficient for now.
+- **Rust-side AI cancellation.** Expose a cancellation flag through Tauri so the search can be interrupted mid-loop. Requires a shared `AtomicBool` in `tauri_wrapper` and per-node checks in `search/alpha_beta.rs`.
+- **Long-idle AudioContext close.** If profiling reveals context lifetime cost, add an idle-timer that closes and recreates on next SFX. Currently rejected — nice-to-have.
+- **Svelte-inspector automated re-render regression test.** Would require a headless setup that counts renders per interaction. Manual check via devtools sufficient for now.
 
 ## Notes for the implementer
 
 - Always commit before starting a phase. That commit is the rollback anchor.
-- After each phase, verify: (a) tests still pass (`cd game/frontend && npm test`), (b) the specific behaviour improves visibly. Don't batch phases just because they're small.
-- Update this file's status ("Phase X — DONE") as phases land. Don't rewrite — append notes so the timeline is preserved.
+- After each phase: (a) `npm test` still passes, (b) the specific behaviour improves visibly. Don't batch phases just because they're small.
+- Phase 8 requires a diagnostic profile first — do not implement blind.
+- Update this file's status as phases land. Append notes rather than rewriting history.
