@@ -36,6 +36,7 @@ use crate::time::now_ms;
 use super::alpha_beta::{SearchCtx, INF, TIME_CHECK_MASK};
 use super::evaluator::MATE_SCORE;
 use super::counters;
+use super::see::{build_attackers_table, see_capture, AttackersTable};
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::skills::{
     skill_category, skill_cost, skill_default_range, skill_from_id, Skill, SkillCategory,
@@ -218,9 +219,69 @@ pub(super) fn quiesce(
         static_eval
     };
 
-    for a in moves {
-        if !in_check && !is_loud(a, pos) { continue; }
+    // Build a scored list of the moves we will actually search. For each
+    // loud Move-Attack we compute a SEE score (positive = winning capture);
+    // Strike/Blast skills and BodyguardChoice get a neutral MVV-style score.
+    // When in check we search everything; quiet moves get a below-zero key
+    // so they sort after all tactical moves.
+    //
+    // The AttackersTable is built lazily on first need — a QS node whose
+    // loud-move set is empty (rare: no Move-Attacks and no Strike range)
+    // pays nothing.
+    let mut ordered: [(i32, Action); 128] = [(0, Action(0)); 128];
+    let mut n_ordered = 0usize;
+    let mut table: Option<AttackersTable> = None;
 
+    for a in &moves {
+        let a = *a;
+        let is_l = is_loud(a, pos);
+        if !in_check && !is_l { continue; }
+        if n_ordered >= ordered.len() { break; }
+
+        let key = if is_l && a.kind() == ActionKind::Move && a.has_approach() {
+            // Move-Attack: SEE-score the exchange.
+            if table.is_none() {
+                counters::bump_see_table_builds();
+                let all_occ = (pos.p1_pieces | pos.p2_pieces).0;
+                table = Some(build_attackers_table(pos, all_occ));
+            }
+            let t = table.as_ref().unwrap();
+            let target = a.target();
+            let target_bit = 1u64 << target;
+            // King capture: rare (usually terminal), give it a huge key so
+            // it sorts first if it survived generation.
+            if pos.kings.0 & target_bit != 0 {
+                MATE_SCORE
+            } else {
+                counters::bump_see_capture_calls();
+                see_capture(pos, t, a.src(), target)
+            }
+        } else if is_l {
+            // Non-move-attack loud: Strike/Blast skills, BodyguardChoice.
+            // Rank below positive SEE captures, above losing ones.
+            0
+        } else {
+            // Quiet move but in_check — search it, but after all loud moves.
+            -1
+        };
+
+        ordered[n_ordered] = (key, a);
+        n_ordered += 1;
+    }
+
+    // Descending sort — simple insertion sort (small n, mostly presorted).
+    for i in 1..n_ordered {
+        let cur = ordered[i];
+        let mut j = i;
+        while j > 0 && ordered[j - 1].0 < cur.0 {
+            ordered[j] = ordered[j - 1];
+            j -= 1;
+        }
+        ordered[j] = cur;
+    }
+
+    for k in 0..n_ordered {
+        let a = ordered[k].1;
         let undo = make_unmake::make(pos, a);
         let s = quiesce(pos, alpha, beta, ply + 1, qs_ply + 1, ctx);
         make_unmake::unmake(pos, &undo);

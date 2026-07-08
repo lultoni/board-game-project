@@ -2,7 +2,7 @@
 
 *Living doc. Each perf pass on `core_engine/src/search/evaluator.rs` follows the same recipe: critique → plan → implement → bench → recritique. Track results here so we can see whether each pass actually helped and what's left to attack.*
 
-*Last updated: 2026-07-07 — **Group A complete.** Pass 3 chunks 1+2 landed the attackers-table, MAEE_MAX_PLIES 32→16, stand-pat single-pass, Guard geometry fix (item 4a — 5-6× per-node, also fixes a pre-existing over-approximation bug), incremental attackers-bitmask across kills (item 4b), and `threat_bb` audit + deletion (dead code). AttackerList head-cursor shelved (SROA regression at n~1.5). **Full-corpus d6: 364s → 59s (-84%)**; vs Pass 2: 740s → 59s (~12.6×). Node counts within 0.1%. Next focus: Group B (incremental state via make/unmake) or Group D (SEE for move ordering).*
+*Last updated: 2026-07-08 — Track split. Post-Pass-3 diagnostic (instrumented d6 bench, 2026-07-07) confirmed QS dominates eval calls at 84% aggregate and >90% on top-4 slow positions. Group E "quiescence redesign" was reframed after user identified play-quality symptoms (dash-zooming, wasted skills, guards-to-center) as eval scope-violation problems, not perf problems. **New track: `.claude/eval-correctness-passes.md`** — eval-as-pure-position-rater discipline. **Next perf pass: Pass 4 = Group D (SEE for move ordering)**, which is a prerequisite for the correctness track's E1 (comment out MAEE calls). Sequence: Pass 4 (SEE) → E1 (MAEE removed from eval calls) → E2..E8. Full Group A complete; other perf groups (B, C, F–M) deferred until the correctness track lands.*
 
 ---
 
@@ -404,6 +404,7 @@ Cross-cutting with Group D. Pass 3 Agent 5's central point: **MAEE-from-QS is wh
 #### Group I — Guard movement (BFS-2 rewrite)
 
 - **`movement_targets_speed2` shift-and-mask rewrite.** `magic.rs:299-330` allocates `dist[64]` / `front[64]` / `next[64]` scratch per call and uses branchy `(0..8).contains(&r)` clipping. Pure shift-and-mask BFS-2 would replace it. Alternatively, a **64 × 256 speed-2-by-ring-occupancy lookup table** (16 KB) would kill the BFS entirely.
+- **"Double-cut" cheby-1×2 BFS (user-proposed 2026-07-08).** Prior experiment showed ~4K distinct BFS-2 outcomes per origin but many collision-entry blocker configurations. PEXT ruled out (no ARM). Alternative: stage BFS-2 as two BFS-1 hops, precomputed per origin over cheby-1 blocker mask (256 entries × 64 = 16 KB), run twice with the intermediate landing set as the seed. Caveat: second hop's blocker view must reflect that the first-hop landing was itself unoccupied (was empty for us to land there) — needs a small adjustment. Verify hops are independent before shipping.
 - **Memoise BFS-2 across call sites.** Same Guard/occupancy recomputed from 3 call-sites per leaf (mobility loop, `enumerate_attackers`, `threat_bb`).
 - **Chebyshev-2 pre-reject** for Guard attacker enumeration — a Guard 6 squares away currently pays full BFS-2.
 - **`movement_attack_targets_speed2` reuse `move1_table`.** `magic.rs:341-369` recomputes neighbours from scratch when `move1_table[enemy]` already gives all 8.
@@ -590,6 +591,58 @@ Ran the deferred `threat_bb` audit as the last Group A cleanup.
 **Semantic note:** `threat_bb` used the same BFS-2 over-approximation for Guard reach that item 4a corrected in the attackers table. If it had still been in use, deletion would have shifted eval slightly. Being unused, the deletion is purely a code-hygiene change — no bench delta, all 392 tests still pass.
 
 **Group A is now fully closed.** Backlog entry above updated with strikethroughs and a summary of what remains open (Groups B–E untouched, and a shelved-but-documented note for the AttackerList head-cursor experiment).
+
+---
+
+### Pass 4 (2026-07-08) — SEE for QS move ordering + MAEE deletion from eval
+
+**Anchor:** `46371dd` (HEAD; MP-side changes on `main` unrelated to eval/search).
+
+**Track note:** This pass sits at the boundary between the perf track and the eval-correctness track (`.claude/eval-correctness-passes.md`). It's a perf pass by shape (bench-driven, corpus-tested) but its motivation was correctness: MAEE-in-eval was a scope violation ("eval is a pure position rater, no simulation"), and the same exchange-rollout math belongs at move-ordering time in QS. Track E (E1..E8, eval-correctness reforms) starts after this.
+
+**Scope (bundled, per user's explicit approval):**
+- Lift MAEE's per-target rollout into a shared `search::see::see_capture(pos, table, src, target) -> i32` API.
+- Delete all MAEE machinery from `evaluator.rs` (`maee`, `maee_side`, `AttackersTable`, `AttackerList`, `build_attackers_table`, `attackers_bb_from_table`, `build_attacker_list`, `attacker_cost`, `piece_material_of`, `king_expand`, `enumerate_attackers`, `SQ_BIT`, weight consts). Zero out `EvalBreakdown.threat_p1/p2` for frontend/bench backwards compatibility.
+- Order QS loud moves by SEE score (descending). Move-Attacks scored via `see_capture`; Strike/Blast/BodyguardChoice get a neutral key; quiet moves (only reached when in check) sort last. `AttackersTable` built once per QS node, lazily.
+- Add `bench_counters`-gated counters `see_table_builds` and `see_capture_calls`; keep legacy `maee_*` counter fields zeroed for `search_bench` JSON schema compat.
+
+**Files touched:**
+- `crates/core_engine/src/search/see.rs` (new, ~660 lines) — API + tests.
+- `crates/core_engine/src/search.rs` — register `see` module.
+- `crates/core_engine/src/search/evaluator.rs` — MAEE deletion, threat_p* zeroed.
+- `crates/core_engine/src/search/quiescence.rs` — scored move ordering.
+- `crates/core_engine/src/search/counters.rs` — SEE counters, legacy maee_* kept for schema.
+
+**Tests:** all 396 `cargo test -p core_engine` pass. 4 new SEE unit tests (`single_hit_kill_of_bare_champion`, `hp_only_hit_no_defenders`, `recapture_zero`, `losing_capture_negative`). Mate-in-1 and unmake-symmetry QS tests unchanged, still pass.
+
+**Bench 1 — Eval microbench (`bench/results/eval-post-pass4.json` vs `eval-post-pass3.json`):**
+- Geo mean **1719 ns → 334 ns (-80.6%, 5.15× faster)**.
+- Mean 3687 ns → 456 ns (-87.6%).
+- Max 15406 ns → 1016 ns (-93.4%). MAEE was the dominant cost by a wide margin.
+
+**Bench 2 — Search d6 (`bench/results/search-post-pass4-d6.json` vs `search-post-pass3-chunk2-d6.json`):**
+- Total wall time: **58.7 s → 11.3 s (-80.7%, 5.2× speedup)**.
+- Total nodes: **24.7 M → 13.8 M (-44.3%)**. The node reduction (not just per-node cost drop) is the interesting result — it means SEE-ordered QS captures produce better alpha-beta cutoffs than the MAEE-perturbed leaf ordering did. Best case `opening-with-skills-03`: nodes -80.2%, time -93.0%.
+- One position regressed in nodes: `skill-phase-full-03` +128% nodes, but still -20% wall time (per-eval is 5× cheaper). Flagging for a later look; likely SEE ordering disagrees with what the previous MAEE-inflated eval preferred.
+
+**Bench 3 — Endgame FEN verification:** deferred to playtest (user's next session). The corpus results across 30 positions cover most tactical patterns; the endgame FEN is a functional guard rail rather than a perf metric.
+
+**Combined Pass 1→Pass 4 vs baseline:**
+- Baseline was `search-post-maee-d6.json` @ ~745 s total. Now 11.3 s. **~66× speedup** over the pre-perf-track baseline.
+
+**Known follow-ups (deferred, not blocking):**
+- `skill-phase-full-03` node regression — investigate in a follow-up whether SEE ordering is missing a Strike/Blast score component that MAEE was implicitly providing.
+- `search_bench`'s JSON writer doesn't yet emit `see_table_builds`/`see_capture_calls`. Add if we want per-position SEE frequency data.
+- Frontend still declares `threat_p1/p2` types (`multiplayer-engine.test.ts`, `EvalBreakdownPanel.svelte`, `engine/types.ts`). Zeroed values are backwards-compatible; UI cleanup is separate.
+
+**Backlog updates:**
+- Group A: closed (was already closed at Pass 3 audit; this pass deletes the last MAEE code that Group A had noted as dead-work-in-place).
+- Group E (QS redesign): closed — the double-count problem is resolved by MAEE deletion; QS's ordering is now the SEE improvement itself.
+- Group D (SEE for move ordering): **this pass**. Closed.
+- Group F (TT under perturbed scores): likely obsolete now — eval no longer perturbs at forced-move / MAEE-heavy positions. Reassess after Track E lands.
+- Group C (Zobrist eval cache): lower priority — 334 ns eval doesn't cry out for caching.
+
+**Next:** Track E starts with **E1: gate MAEE calls at the ordering site behind a feature flag if we want reversibility.** MAEE was fully deleted this pass instead of commented-out (user's explicit direction: "delete it from eval"); rollback anchor is the commit before this pass.
 
 ---
 

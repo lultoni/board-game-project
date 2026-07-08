@@ -29,10 +29,17 @@ pub struct Snapshot {
     pub skill_gate_skip: u64,      // Phase::Move or Phase::Draft at eval entry
     pub actions_zero_hit: u64,     // actions_remaining == 0 short-circuit fired
 
-    // MAEE internals.
+    // MAEE internals — kept as fields for search_bench backwards compat
+    // after Pass 4 removed MAEE from eval. Always zero; bumps are dead code
+    // via the `#[cfg(not(feature = "bench_counters"))]` shim below.
     pub maee_side_calls: u64,      // maee_side() invocations (2 per eval when gate passes)
     pub maee_target_calls: u64,    // maee() invocations (one per candidate target square)
     pub enumerate_attackers_calls: u64,
+
+    // SEE internals (Pass 4). One `see_table_builds` per QS node, one
+    // `see_capture_calls` per loud move evaluated for ordering.
+    pub see_table_builds: u64,
+    pub see_capture_calls: u64,
 
     // AttackerList size histogram — bucket i is #enumerations that produced i attackers.
     pub attacker_list_hist: [u64; ATTACKER_LIST_HIST_BUCKETS],
@@ -79,6 +86,8 @@ mod imp {
             maee_side_calls: 0,
             maee_target_calls: 0,
             enumerate_attackers_calls: 0,
+            see_table_builds: 0,
+            see_capture_calls: 0,
             attacker_list_hist: [0; ATTACKER_LIST_HIST_BUCKETS],
             skill_activity_calls: 0,
             ab_nodes: 0,
@@ -104,6 +113,8 @@ mod imp {
     #[inline] pub fn bump_maee_side_calls()           { with_mut(|s| s.maee_side_calls += 1); }
     #[inline] pub fn bump_maee_target_calls()         { with_mut(|s| s.maee_target_calls += 1); }
     #[inline] pub fn bump_enumerate_attackers_calls() { with_mut(|s| s.enumerate_attackers_calls += 1); }
+    #[inline] pub fn bump_see_table_builds()          { with_mut(|s| s.see_table_builds += 1); }
+    #[inline] pub fn bump_see_capture_calls()         { with_mut(|s| s.see_capture_calls += 1); }
     #[inline] pub fn bump_skill_activity_calls()      { with_mut(|s| s.skill_activity_calls += 1); }
     #[inline] pub fn bump_ab_nodes()                  { with_mut(|s| s.ab_nodes += 1); }
     #[inline] pub fn bump_qs_nodes()                  { with_mut(|s| s.qs_nodes += 1); }
@@ -134,6 +145,8 @@ mod imp {
     #[inline] pub fn bump_maee_side_calls() {}
     #[inline] pub fn bump_maee_target_calls() {}
     #[inline] pub fn bump_enumerate_attackers_calls() {}
+    #[inline] pub fn bump_see_table_builds() {}
+    #[inline] pub fn bump_see_capture_calls() {}
     #[inline] pub fn bump_skill_activity_calls() {}
     #[inline] pub fn bump_ab_nodes() {}
     #[inline] pub fn bump_qs_nodes() {}
