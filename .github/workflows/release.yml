@@ -120,6 +120,25 @@ jobs:
       - name: Install tauri-cli
         run: cargo install tauri-cli --version "^2" --locked
 
+      # Tauri's AppImage bundler downloads four helper files from
+      # github.com / raw.githubusercontent.com with no retry on 429. Shared
+      # runner IPs get throttled; the build then fails with
+      # `Error failed to bundle project: http status: 429`. Pre-populate the
+      # bundler's cache with curl's own retry so we don't depend on Tauri
+      # gaining retry logic. Tracked upstream in tauri-apps/tauri#11468.
+      - name: Pre-cache Tauri AppImage tooling (avoid GitHub 429)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.cache/tauri"
+          cd "$HOME/.cache/tauri"
+          curl_dl() { curl --retry 5 --retry-delay 15 --retry-all-errors -fSL "$1" -o "$2"; }
+          curl_dl https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64 AppRun-x86_64
+          curl_dl https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage linuxdeploy-x86_64.AppImage
+          curl_dl https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh linuxdeploy-plugin-gtk.sh
+          curl_dl https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh linuxdeploy-plugin-gstreamer.sh
+          chmod +x AppRun-x86_64 linuxdeploy-x86_64.AppImage linuxdeploy-plugin-gtk.sh linuxdeploy-plugin-gstreamer.sh
+
       - name: Build desktop bundle
         working-directory: game/crates/tauri_wrapper
         shell: bash
