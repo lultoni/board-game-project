@@ -76,6 +76,7 @@ class FakeEngine implements EngineClient {
       total: 0,
     };
   }
+  async heuristicEvalBySquare(): Promise<never> { throw new Error("not used"); }
   async positionFen(): Promise<string> { return ""; }
   async snapshotJson(): Promise<string> { return this.snapshotBlob; }
   async restoreFromSnapshot(json: string): Promise<void> {

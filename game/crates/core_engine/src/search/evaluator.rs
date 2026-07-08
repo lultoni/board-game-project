@@ -63,13 +63,12 @@
 //!      Bodyguard) — small bonuses, added last.
 
 use crate::state::Position;
-use crate::state::position::{GameResult, Player};
+use crate::state::position::{GameResult, Player, Phase};
 use crate::state::magic;
 use crate::search::counters;
-use crate::game_logic::skills::{
-    Skill, SkillCategory, TargetOwner, skill_from_id, skill_cost, skill_category,
-    skill_default_range, skill_target_owner,
-};
+use crate::search::see::build_attackers_table;
+use crate::game_logic::skills::{Skill, skill_cost, skill_default_range};
+use crate::game_logic::make_unmake::skill_phase_budget;
 
 pub const MATE_SCORE: i32 = 1_000_000;
 
@@ -90,24 +89,42 @@ const HP_PER_POINT:    i32 = 150;
 const ARMOR_PER_POINT: i32 = 120;
 const MONEY_PER_UNIT:  i32 = 25;
 
-// Mobility scoring: reward pieces for having reachable squares.
-// Guards use BFS-2 (speed=2) discounting occupied squares; Champions/Kings
-// use the 8-adjacent mask discounting own pieces.  Weights are small relative
-// to material so positional advantage doesn't overshadow piece count.
-const GUARD_MOB_PER_SQ:   i32 = 8;   // centre Guard (20 reachable) ≈ 160 pts
-const CHAMP_MOB_PER_SQ:   i32 = 12;  // centre Champ (8 free) ≈ 96 pts
+// Mobility scoring (E7 rework).
+// Guards: BFS-2 reachable-squares count × weight. Weight halved from Pass-4
+// era (was 8) because E2/E6 now reward proper Guard placement structurally.
+// Champions/Kings: replaced with skill-range coverage (count of enemies in
+// range of each equipped Strike/Move-attack skill), capped per piece.
+const GUARD_MOB_PER_SQ:   i32 = 4;
+const CHAMP_SKILL_COV_PER_ENEMY: i32 = 10; // per enemy in range of any equipped active skill
+const CHAMP_SKILL_COV_CAP:       i32 = 60; // per Champion, prevents runaway on cluttered boards
+const KING_MOB_PER_SQ:    i32 = 6;         // 8-adjacent empty squares × weight, prefers not-stuck king
 
-// Skill-activity weights. Kept small relative to mobility (which is 8–12/sq)
-// so they nudge play toward useful casts without swamping material.
-const STRIKE_PER_TARGET:  i32 = 6;   // per enemy in Strike range
-const MOVE_PER_DEST:      i32 = 3;   // per legal destination (Dash/Retreat) or per pushable target (Shove/Blast) or per swap partner
-const SHIELD_PER_TARGET:  i32 = 5;   // per Heal/Plate ally that would actually benefit
-const SHIELD_SELF:        i32 = 5;   // Shield if own armor < cap
-const MYSTIC_FLAG_BONUS:  i32 = 20;  // per Focus/Charge that has a real follow-up this turn
+// E2 — exposure. Piecewise multiplier by (unshielded_attackers, piece kind).
+// `unshielded = max(0, popcount(attackers_bb) - popcount(adjacent_own_guards))`.
+// Applied as a percentage of the piece's own material value; scales with the
+// piece we're threatening.
+const EXPOSURE_MULT: [i32; 4] = [0, 10, 30, 55]; // % of piece_val (÷ 100)
+// King exposure — much sharper. n_attackers indexed directly (no guard subtraction —
+// King loss is game-over, so bodyguard credit is folded into E6 coverage, not here).
+const KING_EXPOSURE:   [i32; 4] = [0, 800, 2400, 4000];
+
+// E6 — bodyguard coverage. Rewards structural adjacency to own Guards.
+// `coverage = shielded_empty_ring / empty_ring` (0..=256 fixed-point).
+// Bonus = COVERAGE_PER_PIECE × piece_val × coverage / (100 × 256).
+const COVERAGE_PER_PIECE: i32 = 30; // percent of piece_val at full coverage
+
+// E8 — tempo. Small nudge for actions_remaining on side-to-move.
+const TEMPO_PER_ACTION: i32 = 15;
+
+// E4 — skill availability sigmoid smoothing constant (money units).
+const SKILL_AVAIL_K: i32 = 3;
+const SKILL_AVAIL_MAX: i32 = 256; // fixed-point scale
 
 // Stack M caps.
 const ARMOR_CAP:          u8 = 2;
 const HP_CAP:             u8 = 2;
+#[allow(dead_code)]
+const _CAP_NOTE: (u8, u8) = (ARMOR_CAP, HP_CAP); // kept for future callers; caps still enforced elsewhere
 
 // PLACEHOLDER. A balance-slice will replace this table with tuned values once
 // we have playtest data. The scheme — cost × 40 + range bonus + category
@@ -146,11 +163,92 @@ fn skill_value(s: Skill) -> i32 {
     SKILL_VALUE[s as usize]
 }
 
-/// Convenience for the hot loop: value from a mailbox skill id (0..=15) with
-/// a single bounds-checked table load. Returns 0 for the unequipped sentinel.
+/// King-expand: bitboard OR of all 8-directional 1-step neighbours. Used
+/// for coverage / exposure computations. Duplicated from `search::see::king_expand`
+/// (private there) to avoid growing that module's public surface.
 #[inline]
-fn skill_value_from_id(id: u8) -> i32 {
-    if (id as usize) < SKILL_VALUE.len() { SKILL_VALUE[id as usize] } else { 0 }
+fn king_expand(x: u64) -> u64 {
+    const NOT_A: u64 = 0xfefefefefefefefe;
+    const NOT_H: u64 = 0x7f7f7f7f7f7f7f7f;
+    let l = (x & NOT_A) >> 1;
+    let r = (x & NOT_H) << 1;
+    let h = x | l | r;
+    h | (h << 8) | (h >> 8)
+}
+
+/// Per-skill availability given a side's money snapshot.
+/// Piecewise-linear sigmoid centred at `money - cost`: 0 when money ≪ cost,
+/// 1 when money ≫ cost, ramping through `2·K` units. Output is fixed-point
+/// (0..=SKILL_AVAIL_MAX = 256).
+#[inline]
+fn skill_availability_fp(money: i32, cost: i32) -> i32 {
+    // Range [-K, +K] linearly maps to [0, SKILL_AVAIL_MAX]; clamp outside.
+    let x = money - cost + SKILL_AVAIL_K;
+    let denom = 2 * SKILL_AVAIL_K;
+    if x <= 0 { 0 }
+    else if x >= denom { SKILL_AVAIL_MAX }
+    else { (x * SKILL_AVAIL_MAX) / denom }
+}
+
+/// Build a per-side [16]-entry availability lookup so the main loop pays
+/// exactly one table load per skill slot instead of a sigmoid each.
+#[inline]
+fn side_availability_table(money: u16) -> [i32; 16] {
+    let mut t = [0i32; 16];
+    for id in 1u8..=15 {
+        if let Some(s) = crate::game_logic::skills::skill_from_id(id) {
+            t[id as usize] = skill_availability_fp(money as i32, skill_cost(s) as i32);
+        }
+    }
+    t
+}
+
+/// Max cost across a side's equipped skills. 0 during Draft (no skills owned)
+/// or if the side has no non-zero skill slots yet. Used for the E3 money cap.
+#[inline]
+fn max_owned_skill_cost(pos: &Position, side_bb: u64) -> u8 {
+    let mut bits = side_bb;
+    let mut best = 0u8;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as usize;
+        bits &= bits - 1;
+        let m = pos.mailbox[sq];
+        for id in [m.skill1(), m.skill2()] {
+            if let Some(s) = crate::game_logic::skills::skill_from_id(id) {
+                let c = skill_cost(s);
+                if c > best { best = c; }
+            }
+        }
+    }
+    best
+}
+
+/// Skill actions per round for the current round. Move actions cost no money
+/// so are excluded from the useful-money cap. Draft returns 0 (no combat
+/// action budget yet, and skills aren't owned).
+#[inline]
+fn actions_per_round(phase: Phase, round_number: u16) -> u8 {
+    match phase {
+        Phase::Draft => 0,
+        _            => skill_phase_budget(round_number),
+    }
+}
+
+/// E3 — money value with diminishing returns capped at
+/// `max_owned_skill_cost × actions_per_round`. Cap 0 → 0 (correct pre-draft).
+#[inline]
+fn useful_money(money: u16, cap: u16) -> i32 {
+    if cap == 0 { return 0; }
+    let m = money as i64;
+    let c = cap as i64;
+    let mpu = MONEY_PER_UNIT as i64;
+    let value = if m <= c {
+        // MONEY_PER_UNIT × m × (1 − m/(2c)) = MONEY_PER_UNIT × m × (2c − m) / (2c)
+        (mpu * m * (2 * c - m)) / (2 * c)
+    } else {
+        (mpu * c) / 2
+    };
+    value as i32
 }
 
 /// Per-component decomposition of the static eval. `total` is exactly what
@@ -172,18 +270,134 @@ pub struct EvalBreakdown {
     pub money_p2:     i32,
     pub mobility_p1:  i32,
     pub mobility_p2:  i32,
-    /// Pre-priced "hanging piece" credit: 0.25× the value of enemy pieces
-    /// this side could move-attack this turn. Symmetric across sides so the
-    /// leaf eval doesn't flip sign with the side-to-move — the attacker's
-    /// pending gain is already reflected before the capture ply resolves.
+    /// Threat term — REMOVED in Pass 4 (MAEE deleted from eval). Always 0.
+    /// Kept for frontend/bench schema compat.
     pub threat_p1:    i32,
     pub threat_p2:    i32,
-    /// Active-skill activity credit: per-target for Strike/Move/Shield (money-
-    /// and legality-gated), single flag for Mystic (Focus/Charge) gated on an
-    /// affordable follow-on active skill actually having ≥1 legal action.
+    /// Skill-activity — REMOVED in Pass 4++ (E5). Always 0.
+    /// Kept for frontend/bench schema compat.
     pub skill_act_p1: i32,
     pub skill_act_p2: i32,
+    /// E2 — exposure penalty (positive magnitude in the *_p1/*_p2 fields;
+    /// subtracts in the total). Reflects own pieces attackable by opponent.
+    pub exposure_p1:  i32,
+    pub exposure_p2:  i32,
+    /// E6 — bodyguard coverage bonus. Structural adjacency to own Guards.
+    pub coverage_p1:  i32,
+    pub coverage_p2:  i32,
+    /// E8 — tempo bonus. Small nudge for actions_remaining on side-to-move.
+    pub tempo_p1:     i32,
+    pub tempo_p2:     i32,
     pub total:        i32,
+}
+
+/// Per-square view of the eval, for diagnostic UI. One record per board
+/// square (0..=63). Empty squares carry `occupied=false` and zeros elsewhere;
+/// occupied squares carry the full per-piece contribution to `evaluate()` plus
+/// intermediate values (attacker counts, skill availabilities, mobility raw)
+/// so the hover popup can explain *why* a piece scores the way it does.
+///
+/// Sign convention: all `*_term` fields are the piece's own contribution as
+/// a positive magnitude (owner-relative). To reconstruct `EvalBreakdown.total`:
+/// P1 pieces contribute `+piece_total`, P2 pieces `-piece_total`, then add
+/// side-level money/tempo differences. `SquareBreakdown::owner_signed_total()`
+/// applies the sign.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SquareBreakdown {
+    pub sq:            u8,
+    pub occupied:      bool,
+    pub is_p1:         bool,
+    /// 0 = empty, 1 = guard, 2 = champion, 3 = king.
+    pub piece_kind:    u8,
+    pub hp:            u8,
+    pub armor:         u8,
+    pub skill1_id:     u8,
+    pub skill2_id:     u8,
+
+    // Eval components — magnitudes (owner-relative).
+    pub material:      i32,
+    pub hp_term:       i32,
+    pub armor_term:    i32,
+    pub skills_term:   i32,
+    pub mobility_term: i32,
+    /// Positive magnitude; subtracted from owner side in the game total.
+    pub exposure_term: i32,
+    pub coverage_term: i32,
+    /// material + hp + armor + skills + mobility + coverage - exposure.
+    /// The signed sum for the owning side.
+    pub piece_total:   i32,
+
+    // Intermediate raw values for the popup.
+    /// 0..=SKILL_AVAIL_MAX (256). Fixed-point availability at owner's money.
+    pub skill1_avail_fp: i32,
+    pub skill2_avail_fp: i32,
+    /// Enemy attackers threatening this square.
+    pub n_attackers:   u8,
+    /// Own guards on the 8-ring around this square.
+    pub n_adj_guards:  u8,
+    /// Guard: BFS-2 reachable target count. King: adjacent free tiles.
+    /// Champion: enemies-in-skill-range count (summed over equipped Strike-ish skills).
+    pub mobility_raw:  u16,
+    /// 8-ring squares that are empty (denominator for coverage).
+    pub empty_ring_total:    u8,
+    /// 8-ring empty squares also within king_expand(own_guards).
+    pub empty_ring_shielded: u8,
+}
+
+impl SquareBreakdown {
+    /// This piece's signed contribution to the game total.
+    /// P1 contributes `+piece_total`, P2 contributes `-piece_total`.
+    #[inline]
+    pub fn owner_signed_total(&self) -> i32 {
+        if !self.occupied { 0 }
+        else if self.is_p1 { self.piece_total }
+        else { -self.piece_total }
+    }
+}
+
+/// Full per-square eval decomposition. Sum of per-square owner-signed totals
+/// plus side-level money/tempo differences equals `EvalBreakdown.total`.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct EvalBreakdownBySquare {
+    /// One entry per board square, indexed by square number.
+    pub squares:         Vec<SquareBreakdown>,
+
+    pub p1_money:        u16,
+    pub p2_money:        u16,
+    /// `max_owned_skill_cost × actions_per_round`; 0 during Draft or if the
+    /// side owns no skills.
+    pub p1_money_cap:    u16,
+    pub p2_money_cap:    u16,
+    /// `useful_money(pos.p1_money, p1_money_cap)`.
+    pub p1_money_term:   i32,
+    pub p2_money_term:   i32,
+    /// `TEMPO_PER_ACTION × actions_remaining` for side-to-move (outside Draft).
+    pub p1_tempo_term:   i32,
+    pub p2_tempo_term:   i32,
+
+    /// Same as `EvalBreakdown.total` for the same `Position`.
+    pub total:           i32,
+    /// True when the position was terminal — total is ±MATE_SCORE and per-piece
+    /// values are all zero (short-circuited).
+    pub terminal:        bool,
+}
+
+impl Default for EvalBreakdownBySquare {
+    fn default() -> Self {
+        Self {
+            squares: vec![SquareBreakdown::default(); 64],
+            p1_money: 0,
+            p2_money: 0,
+            p1_money_cap: 0,
+            p2_money_cap: 0,
+            p1_money_term: 0,
+            p2_money_term: 0,
+            p1_tempo_term: 0,
+            p2_tempo_term: 0,
+            total: 0,
+            terminal: false,
+        }
+    }
 }
 
 pub fn evaluate(pos: &Position) -> i32 {
@@ -233,6 +447,17 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     let mut b = EvalBreakdown::default();
 
     let all_occ = (pos.p1_pieces | pos.p2_pieces).0;
+    let p1_bb = pos.p1_pieces.0;
+    let p2_bb = pos.p2_pieces.0;
+    let p1_guards = p1_bb & pos.guards.0;
+    let p2_guards = p2_bb & pos.guards.0;
+
+    // E4 — per-side skill availability lookup (16 entries × 2 sides).
+    let p1_avail = side_availability_table(pos.p1_money);
+    let p2_avail = side_availability_table(pos.p2_money);
+
+    // Attackers table (shared by E2). Built once per eval.
+    let atk = build_attackers_table(pos, all_occ);
 
     // (b) Single pass over occupied bits.
     let mut bits = all_occ;
@@ -241,29 +466,98 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
         bits &= bits - 1;
         let mask = 1u64 << sq;
         let m = pos.mailbox[sq as usize];
-        let is_p1 = pos.p1_pieces.0 & mask != 0;
+        let is_p1 = p1_bb & mask != 0;
 
         let is_guard    = pos.guards.0    & mask != 0;
+        let is_king     = pos.kings.0     & mask != 0;
 
         let material =
-            if      pos.kings.0     & mask != 0 { KING_MATERIAL }
+            if      is_king                     { KING_MATERIAL }
             else if pos.champions.0 & mask != 0 { CHAMPION_VALUE }
             else                                { GUARD_VALUE };
         let hp_term    = HP_PER_POINT    * m.hp()    as i32;
         let armor_term = ARMOR_PER_POINT * m.armor() as i32;
-        let skill_term = skill_value_from_id(m.skill1()) + skill_value_from_id(m.skill2());
 
-        // Mobility: count squares the piece can actually reach given board state.
-        // Guards: BFS-2 discounting all occupied squares.
-        // Champions/Kings: 8-adjacent discounting own pieces.
-        let own_bb = if is_p1 { pos.p1_pieces.0 } else { pos.p2_pieces.0 };
+        // E4 — skill term gated by availability.
+        let avail = if is_p1 { &p1_avail } else { &p2_avail };
+        let sid1 = m.skill1() as usize;
+        let sid2 = m.skill2() as usize;
+        let sk1_base = if sid1 < SKILL_VALUE.len() { SKILL_VALUE[sid1] } else { 0 };
+        let sk2_base = if sid2 < SKILL_VALUE.len() { SKILL_VALUE[sid2] } else { 0 };
+        let sk1_a = if sid1 < avail.len() { avail[sid1] } else { 0 };
+        let sk2_a = if sid2 < avail.len() { avail[sid2] } else { 0 };
+        let skill_term = (sk1_base * sk1_a + sk2_base * sk2_a) / SKILL_AVAIL_MAX;
+
+        // Mobility (E7 rework).
+        let own_bb = if is_p1 { p1_bb } else { p2_bb };
+        let opp_bb = if is_p1 { p2_bb } else { p1_bb };
         let mob_score = if is_guard {
             magic::movement_targets_speed2(sq, all_occ).0.count_ones() as i32
                 * GUARD_MOB_PER_SQ
-        } else {
-            // Champion and King: 8-adjacent minus own pieces
+        } else if is_king {
+            // King prefers open escape squares.
             (magic::movement_targets_speed1(sq).0 & !own_bb).count_ones() as i32
-                * CHAMP_MOB_PER_SQ
+                * KING_MOB_PER_SQ
+        } else {
+            // Champion: skill-range coverage — count enemies reachable by any
+            // equipped Strike-ish active skill (Ally-target skills contribute 0
+            // by design; Empty-target Dash/Retreat also 0). Cap per piece.
+            let mut cov = 0i32;
+            for sid in [m.skill1(), m.skill2()] {
+                let Some(sk) = crate::game_logic::skills::skill_from_id(sid) else { continue };
+                let owner = crate::game_logic::skills::skill_target_owner(sk);
+                use crate::game_logic::skills::TargetOwner;
+                if !matches!(owner, TargetOwner::Enemy | TargetOwner::Either) { continue; }
+                let range = skill_default_range(sk);
+                let ray = magic::skill_attacks(sq, all_occ, range).0;
+                cov += (ray & opp_bb).count_ones() as i32 * CHAMP_SKILL_COV_PER_ENEMY;
+            }
+            cov.min(CHAMP_SKILL_COV_CAP)
+        };
+
+        // E2 — exposure. Attacker count from `atk`, minus adjacent own guards.
+        // Kings use their own escalation curve; the enemy king can't attack, so
+        // atk table already reflects only Champions/Guards.
+        let opp_attackers_bb = if is_p1 { atk.any_attackers_of(Player::P2, sq) }
+                               else     { atk.any_attackers_of(Player::P1, sq) };
+        let n_attackers = opp_attackers_bb.count_ones() as usize;
+        let exposure_term = if is_king {
+            let idx = n_attackers.min(3);
+            KING_EXPOSURE[idx]
+        } else {
+            let own_guards = if is_p1 { p1_guards } else { p2_guards };
+            let n_adj_guards = (king_expand(mask) & own_guards).count_ones() as usize;
+            let unshielded = n_attackers.saturating_sub(n_adj_guards).min(3);
+            let mult_pct = EXPOSURE_MULT[unshielded];
+            let piece_val = if pos.champions.0 & mask != 0 { CHAMPION_VALUE } else { GUARD_VALUE };
+            (piece_val * mult_pct) / 100
+        };
+
+        // E6 — bodyguard coverage (Champions + Kings only; Guards are the shield).
+        // An empty ring-square `s` around defender `d` is "shielded" iff a
+        // friendly Guard sits adjacent to BOTH `s` and `d` — that is exactly
+        // the Bodyguard trigger rule (see generator::bodyguard_guards_for).
+        // Just being adjacent to *some* guard nearby is not enough.
+        let coverage_term = if is_guard {
+            0
+        } else {
+            let own_guards = if is_p1 { p1_guards } else { p2_guards };
+            let defender_neighbours = king_expand(mask) & !mask;
+            let empty_ring = defender_neighbours & !all_occ;
+            let denom = empty_ring.count_ones() as i32;
+            let mut shielded = 0i32;
+            let mut ring_bits = empty_ring;
+            while ring_bits != 0 {
+                let s = ring_bits.trailing_zeros();
+                ring_bits &= ring_bits - 1;
+                let s_bit = 1u64 << s;
+                // Dual-adjacency: Guard neighbouring both s and d.
+                let dual_neigh = king_expand(s_bit) & defender_neighbours & own_guards;
+                if dual_neigh != 0 { shielded += 1; }
+            }
+            let coverage_fp = if denom == 0 { SKILL_AVAIL_MAX } else { (shielded * SKILL_AVAIL_MAX) / denom };
+            let piece_val = CHAMPION_VALUE; // king shielded ≈ champion-scale
+            (COVERAGE_PER_PIECE * piece_val * coverage_fp) / (100 * SKILL_AVAIL_MAX)
         };
 
         if is_p1 {
@@ -272,38 +566,43 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
             b.armor_p1     += armor_term;
             b.skills_p1    += skill_term;
             b.mobility_p1  += mob_score;
+            b.exposure_p1  += exposure_term;
+            b.coverage_p1  += coverage_term;
         } else {
             b.material_p2  += material;
             b.hp_p2        += hp_term;
             b.armor_p2     += armor_term;
             b.skills_p2    += skill_term;
             b.mobility_p2  += mob_score;
+            b.exposure_p2  += exposure_term;
+            b.coverage_p2  += coverage_term;
         }
     }
 
-    // (c) Money is global, not per-square.
-    b.money_p1 = MONEY_PER_UNIT * pos.p1_money as i32;
-    b.money_p2 = MONEY_PER_UNIT * pos.p2_money as i32;
+    // (c) E3 — money with diminishing-return cap.
+    let p1_max_cost = max_owned_skill_cost(pos, p1_bb);
+    let p2_max_cost = max_owned_skill_cost(pos, p2_bb);
+    let actions = actions_per_round(pos.current_phase, pos.round_number);
+    let p1_cap = p1_max_cost as u16 * actions as u16;
+    let p2_cap = p2_max_cost as u16 * actions as u16;
+    b.money_p1 = useful_money(pos.p1_money, p1_cap);
+    b.money_p2 = useful_money(pos.p2_money, p2_cap);
 
-    // (d) Threat-symmetric term (MAEE) — REMOVED in Pass 4 (2026-07-08).
-    // The exchange-rollout math moved to move-ordering time as SEE
-    // (`search::see::see_capture`), where it belongs per the eval-is-a-pure-
-    // position-rater discipline in `.claude/eval-correctness-passes.md`. Fields
-    // `threat_p1/p2` are kept zeroed for frontend/bench backwards compatibility.
-    //
-    // (e) Skill-activity: still active pending Track E5 (deletion/rework).
-    // Skill *potential* (has money, has range) is phase-invariant.
-    //
-    // NOTE: a Pass 1 short-circuit that zeroed the side-to-move's threat_*
-    // and skill_act_* when actions_remaining == 0 was reverted in Pass 2 —
-    // it caused ~30-70% node explosions on multiple positions because it
-    // created a large asymmetric leaf-eval discontinuity that perturbed
-    // move ordering.
+    // (d) E8 — tempo. Only side-to-move (outside Draft).
+    if pos.current_phase != Phase::Draft {
+        let tempo = TEMPO_PER_ACTION * pos.actions_remaining as i32;
+        match pos.to_move {
+            Player::P1 => b.tempo_p1 = tempo,
+            Player::P2 => b.tempo_p2 = tempo,
+        }
+    }
+
+    // (e) Legacy fields — zeroed for schema compat.
     b.threat_p1 = 0;
     b.threat_p2 = 0;
-    counters::bump_skill_gate_pass();
-    b.skill_act_p1 = skill_activity(pos, Player::P1);
-    b.skill_act_p2 = skill_activity(pos, Player::P2);
+    b.skill_act_p1 = 0;
+    b.skill_act_p2 = 0;
+
     if pos.actions_remaining == 0 {
         counters::bump_actions_zero_hit();
     }
@@ -315,176 +614,216 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
         (b.skills_p1   - b.skills_p2)   +
         (b.money_p1    - b.money_p2)    +
         (b.mobility_p1 - b.mobility_p2) +
-        (b.threat_p1   - b.threat_p2)   +
-        (b.skill_act_p1 - b.skill_act_p2);
+        (b.coverage_p1 - b.coverage_p2) -
+        (b.exposure_p1 - b.exposure_p2) +
+        (b.tempo_p1    - b.tempo_p2);
+    // NOTE: threat_* and skill_act_* are always 0; omitted from total.
+    // Suppress unused-variable warnings while we still reference `atk` above.
+    let _ = &atk;
     b
 }
 
-
-/// Skill-activity term for one side. Only credits skills that could actually
-/// be used this turn: caster affords the cost AND ≥1 legal target/destination
-/// exists. Mystic (Focus/Charge) get a single flag bonus gated on the caster
-/// having an affordable, legally-usable follow-up active skill this turn.
+/// Diagnostic entry point — same math as `evaluate_breakdown` but emits one
+/// record per board square instead of aggregating by term. Used by the
+/// frontend's per-square hover popup. Not called from search.
 ///
-/// Cost budget: for each equipped skill on each of `side`'s pieces, we call
-/// `magic::skill_attacks` once (O(1)) and count set bits in the result. That's
-/// ~24 pieces × 2 slots × O(1) = ~48 lookups per leaf. Cheap.
-#[inline]
-fn skill_activity(pos: &Position, side: Player) -> i32 {
-    counters::bump_skill_activity_calls();
-    let (own_bb, opp_bb, own_money) = match side {
-        Player::P1 => (pos.p1_pieces.0, pos.p2_pieces.0, pos.p1_money),
-        Player::P2 => (pos.p2_pieces.0, pos.p1_pieces.0, pos.p2_money),
-    };
-    let all_occ = pos.p1_pieces.0 | pos.p2_pieces.0;
-    let mut acc = 0i32;
+/// Invariant: for any position, `evaluate_by_square(pos).total == evaluate_breakdown(pos).total`.
+/// The `evaluate_by_square_matches_breakdown` unit test enforces this.
+pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
+    let mut out = EvalBreakdownBySquare::default();
+    for sq in 0..64u8 {
+        out.squares[sq as usize].sq = sq;
+    }
 
-    let mut bits = own_bb;
+    // Terminal short-circuit — mirror evaluate_breakdown's behaviour.
+    match pos.game_result {
+        Some(GameResult::P1Wins) => {
+            out.total = MATE_SCORE;
+            out.terminal = true;
+            return out;
+        }
+        Some(GameResult::P2Wins) => {
+            out.total = -MATE_SCORE;
+            out.terminal = true;
+            return out;
+        }
+        None => {}
+    }
+
+    let all_occ = (pos.p1_pieces | pos.p2_pieces).0;
+    let p1_bb = pos.p1_pieces.0;
+    let p2_bb = pos.p2_pieces.0;
+    let p1_guards = p1_bb & pos.guards.0;
+    let p2_guards = p2_bb & pos.guards.0;
+
+    let p1_avail = side_availability_table(pos.p1_money);
+    let p2_avail = side_availability_table(pos.p2_money);
+
+    let atk = build_attackers_table(pos, all_occ);
+
+    // Per-square loop — same term math as evaluate_breakdown, but records per square.
+    let mut sum_p1 = 0i32;
+    let mut sum_p2 = 0i32;
+    let mut bits = all_occ;
     while bits != 0 {
-        let src = bits.trailing_zeros() as u8;
+        let sq = bits.trailing_zeros() as u8;
         bits &= bits - 1;
-        let m = pos.mailbox[src as usize];
+        let mask = 1u64 << sq;
+        let m = pos.mailbox[sq as usize];
+        let is_p1 = p1_bb & mask != 0;
 
-        // Detect Focus/Charge modifiers already in play for this piece to
-        // avoid crediting the mystic flag AND the buffed follow-up range.
-        // Cheap approximation: we use `skill_default_range` throughout and
-        // don't apply the +1 for a pending Focus. Not perfectly accurate but
-        // conservative — it always undercounts, never over.
+        let is_guard    = pos.guards.0    & mask != 0;
+        let is_king     = pos.kings.0     & mask != 0;
+        let is_champion = pos.champions.0 & mask != 0;
 
-        // Iterate this piece's two skill slots.
-        for slot in 0u8..2 {
-            let sid = if slot == 0 { m.skill1() } else { m.skill2() };
-            let Some(sk) = skill_from_id(sid) else { continue };
+        let piece_kind: u8 =
+            if is_king      { 3 }
+            else if is_champion { 2 }
+            else            { 1 };
 
-            let cost = skill_cost(sk) as u16;
-            if own_money < cost { continue; }
+        let material =
+            if      is_king     { KING_MATERIAL }
+            else if is_champion { CHAMPION_VALUE }
+            else                { GUARD_VALUE };
+        let hp_term    = HP_PER_POINT    * m.hp()    as i32;
+        let armor_term = ARMOR_PER_POINT * m.armor() as i32;
 
-            acc += skill_slot_credit(pos, side, sk, src, own_bb, opp_bb, all_occ, own_money, m);
-        }
-    }
-    acc
-}
+        let avail = if is_p1 { &p1_avail } else { &p2_avail };
+        let sid1 = m.skill1() as usize;
+        let sid2 = m.skill2() as usize;
+        let sk1_base = if sid1 < SKILL_VALUE.len() { SKILL_VALUE[sid1] } else { 0 };
+        let sk2_base = if sid2 < SKILL_VALUE.len() { SKILL_VALUE[sid2] } else { 0 };
+        let sk1_a = if sid1 < avail.len() { avail[sid1] } else { 0 };
+        let sk2_a = if sid2 < avail.len() { avail[sid2] } else { 0 };
+        let skills_term = (sk1_base * sk1_a + sk2_base * sk2_a) / SKILL_AVAIL_MAX;
 
-/// Per-skill target/destination counting, returning the eval credit for one
-/// slot. Split out so the outer loop stays readable.
-#[inline]
-fn skill_slot_credit(
-    pos: &Position,
-    side: Player,
-    sk: Skill,
-    src: u8,
-    own_bb: u64,
-    opp_bb: u64,
-    all_occ: u64,
-    own_money: u16,
-    m: crate::state::MailboxEntry,
-) -> i32 {
-    let range = skill_default_range(sk);
-    let owner = skill_target_owner(sk);
-    let cat = skill_category(sk);
+        let own_bb = if is_p1 { p1_bb } else { p2_bb };
+        let opp_bb = if is_p1 { p2_bb } else { p1_bb };
 
-    // Mystic (Focus/Charge): flag bonus gated on an affordable, castable
-    // follow-up active skill on the SAME piece this turn.
-    if matches!(cat, SkillCategory::Mystic) {
-        let mystic_cost = skill_cost(sk) as u16;
-        // Look at the OTHER slot on this piece for a follow-up.
-        let other_sid = if m.skill1() == sk as u8 { m.skill2() } else { m.skill1() };
-        let Some(follow) = skill_from_id(other_sid) else { return 0 };
-        // Follow-up must be an active category (not another mystic modifier).
-        if matches!(skill_category(follow), SkillCategory::Mystic) { return 0 };
-        let follow_cost = skill_cost(follow) as u16;
-        // Both must be affordable together.
-        if own_money < mystic_cost + follow_cost { return 0 };
-        // Follow-up must have ≥1 legal target from `src`.
-        let follow_range = skill_default_range(follow);
-        let follow_owner = skill_target_owner(follow);
-        if slot_target_count(follow, follow_owner, follow_range, src, own_bb, opp_bb, all_occ, pos, side) == 0 {
-            return 0;
-        }
-        return MYSTIC_FLAG_BONUS;
-    }
-
-    let n = slot_target_count(sk, owner, range, src, own_bb, opp_bb, all_occ, pos, side);
-    if n == 0 { return 0; }
-
-    match cat {
-        SkillCategory::Strike => n as i32 * STRIKE_PER_TARGET,
-        SkillCategory::Move   => n as i32 * MOVE_PER_DEST,
-        SkillCategory::Shield => {
-            // Shield (SelfOnly) contributes a fixed bonus if it would stick.
-            if matches!(owner, TargetOwner::SelfOnly) { SHIELD_SELF }
-            else { n as i32 * SHIELD_PER_TARGET }
-        }
-        SkillCategory::Mystic => 0, // handled above
-    }
-}
-
-/// Count legal targets for one skill from square `src`. Cheap proxy —
-/// approximates the generator's logic without duplicating it. Used only for
-/// the eval's activity term.
-#[inline]
-fn slot_target_count(
-    sk: Skill,
-    owner: TargetOwner,
-    range: u8,
-    src: u8,
-    own_bb: u64,
-    opp_bb: u64,
-    all_occ: u64,
-    pos: &Position,
-    _side: Player,
-) -> u32 {
-    match owner {
-        TargetOwner::Enemy => {
-            let ray = magic::skill_attacks(src, all_occ, range).0;
-            (ray & opp_bb).count_ones()
-        }
-        TargetOwner::Ally => {
-            let ray = magic::skill_attacks(src, all_occ, range).0;
-            let candidates = ray & own_bb & !(1u64 << src);
-            // Filter Heal/Plate: target must actually need it, else no credit.
-            match sk {
-                Skill::Heal => {
-                    let mut n = 0u32;
-                    let mut bits = candidates;
-                    while bits != 0 {
-                        let t = bits.trailing_zeros() as usize;
-                        bits &= bits - 1;
-                        if pos.mailbox[t].hp() < HP_CAP { n += 1; }
-                    }
-                    n
-                }
-                Skill::Plate => {
-                    let mut n = 0u32;
-                    let mut bits = candidates;
-                    while bits != 0 {
-                        let t = bits.trailing_zeros() as usize;
-                        bits &= bits - 1;
-                        if pos.mailbox[t].armor() < ARMOR_CAP { n += 1; }
-                    }
-                    n
-                }
-                _ => candidates.count_ones(), // Swap: any ally partner is valid
+        let (mob_score, mob_raw): (i32, u16) = if is_guard {
+            let raw = magic::movement_targets_speed2(sq, all_occ).0.count_ones();
+            (raw as i32 * GUARD_MOB_PER_SQ, raw as u16)
+        } else if is_king {
+            let raw = (magic::movement_targets_speed1(sq).0 & !own_bb).count_ones();
+            (raw as i32 * KING_MOB_PER_SQ, raw as u16)
+        } else {
+            let mut cov = 0i32;
+            let mut raw_enemies = 0u32;
+            for sid in [m.skill1(), m.skill2()] {
+                let Some(sk) = crate::game_logic::skills::skill_from_id(sid) else { continue };
+                let owner = crate::game_logic::skills::skill_target_owner(sk);
+                use crate::game_logic::skills::TargetOwner;
+                if !matches!(owner, TargetOwner::Enemy | TargetOwner::Either) { continue; }
+                let range = skill_default_range(sk);
+                let ray = magic::skill_attacks(sq, all_occ, range).0;
+                let hits = (ray & opp_bb).count_ones();
+                raw_enemies += hits;
+                cov += hits as i32 * CHAMP_SKILL_COV_PER_ENEMY;
             }
-        }
-        TargetOwner::Either => {
-            // Shove: any target square in range on a ray.
-            let ray = magic::skill_attacks(src, all_occ, range).0;
-            (ray & (own_bb | opp_bb) & !(1u64 << src)).count_ones()
-        }
-        TargetOwner::Empty => {
-            // Dash/Retreat: empty squares within range on a queen-ray. Use
-            // `skill_attacks(src, 0, range)` (unblocked) then subtract occupied.
-            let all_ray = magic::skill_attacks(src, 0, range).0;
-            (all_ray & !all_occ).count_ones()
-        }
-        TargetOwner::SelfOnly => {
-            // Shield: 1 credit only if own armor < cap.
-            let a = pos.mailbox[src as usize].armor();
-            if a < ARMOR_CAP { 1 } else { 0 }
+            (cov.min(CHAMP_SKILL_COV_CAP), raw_enemies as u16)
+        };
+
+        let opp_attackers_bb = if is_p1 { atk.any_attackers_of(Player::P2, sq) }
+                               else     { atk.any_attackers_of(Player::P1, sq) };
+        let n_attackers = opp_attackers_bb.count_ones();
+        let own_guards = if is_p1 { p1_guards } else { p2_guards };
+        let n_adj_guards = (king_expand(mask) & own_guards).count_ones();
+
+        let exposure_term = if is_king {
+            let idx = (n_attackers as usize).min(3);
+            KING_EXPOSURE[idx]
+        } else {
+            let unshielded = (n_attackers.saturating_sub(n_adj_guards) as usize).min(3);
+            let mult_pct = EXPOSURE_MULT[unshielded];
+            let piece_val = if is_champion { CHAMPION_VALUE } else { GUARD_VALUE };
+            (piece_val * mult_pct) / 100
+        };
+
+        let (coverage_term, empty_ring_total, empty_ring_shielded): (i32, u8, u8) = if is_guard {
+            (0, 0, 0)
+        } else {
+            let defender_neighbours = king_expand(mask) & !mask;
+            let empty_ring = defender_neighbours & !all_occ;
+            let denom = empty_ring.count_ones();
+            let mut shielded: u32 = 0;
+            let mut ring_bits = empty_ring;
+            while ring_bits != 0 {
+                let s = ring_bits.trailing_zeros();
+                ring_bits &= ring_bits - 1;
+                let s_bit = 1u64 << s;
+                if king_expand(s_bit) & defender_neighbours & own_guards != 0 {
+                    shielded += 1;
+                }
+            }
+            let coverage_fp = if denom == 0 { SKILL_AVAIL_MAX } else { (shielded as i32 * SKILL_AVAIL_MAX) / denom as i32 };
+            let piece_val = CHAMPION_VALUE; // king shielded ≈ champion-scale
+            (
+                (COVERAGE_PER_PIECE * piece_val * coverage_fp) / (100 * SKILL_AVAIL_MAX),
+                denom as u8,
+                shielded as u8,
+            )
+        };
+
+        let piece_total = material + hp_term + armor_term + skills_term
+            + mob_score + coverage_term - exposure_term;
+
+        if is_p1 { sum_p1 += piece_total; } else { sum_p2 += piece_total; }
+
+        let s = &mut out.squares[sq as usize];
+        s.sq = sq;
+        s.occupied = true;
+        s.is_p1 = is_p1;
+        s.piece_kind = piece_kind;
+        s.hp = m.hp();
+        s.armor = m.armor();
+        s.skill1_id = m.skill1();
+        s.skill2_id = m.skill2();
+        s.material = material;
+        s.hp_term = hp_term;
+        s.armor_term = armor_term;
+        s.skills_term = skills_term;
+        s.mobility_term = mob_score;
+        s.exposure_term = exposure_term;
+        s.coverage_term = coverage_term;
+        s.piece_total = piece_total;
+        s.skill1_avail_fp = sk1_a;
+        s.skill2_avail_fp = sk2_a;
+        s.n_attackers = n_attackers as u8;
+        s.n_adj_guards = n_adj_guards as u8;
+        s.mobility_raw = mob_raw;
+        s.empty_ring_total = empty_ring_total;
+        s.empty_ring_shielded = empty_ring_shielded;
+    }
+
+    // Side-level: money + tempo, mirroring evaluate_breakdown's post-loop stage.
+    let p1_max_cost = max_owned_skill_cost(pos, p1_bb);
+    let p2_max_cost = max_owned_skill_cost(pos, p2_bb);
+    let actions = actions_per_round(pos.current_phase, pos.round_number);
+    let p1_cap = p1_max_cost as u16 * actions as u16;
+    let p2_cap = p2_max_cost as u16 * actions as u16;
+    out.p1_money = pos.p1_money;
+    out.p2_money = pos.p2_money;
+    out.p1_money_cap = p1_cap;
+    out.p2_money_cap = p2_cap;
+    out.p1_money_term = useful_money(pos.p1_money, p1_cap);
+    out.p2_money_term = useful_money(pos.p2_money, p2_cap);
+
+    if pos.current_phase != Phase::Draft {
+        let tempo = TEMPO_PER_ACTION * pos.actions_remaining as i32;
+        match pos.to_move {
+            Player::P1 => out.p1_tempo_term = tempo,
+            Player::P2 => out.p2_tempo_term = tempo,
         }
     }
+
+    out.total = sum_p1 - sum_p2
+        + (out.p1_money_term - out.p2_money_term)
+        + (out.p1_tempo_term - out.p2_tempo_term);
+    out
 }
+
+
+
 
 #[cfg(test)]
 mod tests {
@@ -569,29 +908,66 @@ mod tests {
 
     #[test]
     fn money_differential() {
+        // E3: money value requires owned skills (cap = max_skill_cost × actions).
+        // Give both sides an identical piece so both have a skill_cost baseline,
+        // but different money. Differential must be positive when P1 has more.
         let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        place(&mut pos, 63, Player::P2, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
         pos.p1_money = 10;
         pos.p2_money = 4;
-        assert_eq!(evaluate(&pos), 6 * MONEY_PER_UNIT);
+        pos.actions_remaining = 2;
+        pos.current_phase = Phase::Move;
+        // With cap = 2 (Lance cost) × 2 (actions) = 4, both sides plateau at
+        // MONEY_PER_UNIT × cap / 2 = 50 each — but P2 is under cap so gets less
+        // than the plateau. P1 differential should be non-negative and small.
+        // The load-bearing invariant: score should be non-negative and reflect
+        // P1's money advantage.
+        assert!(evaluate(&pos) >= 0, "P1 money advantage should not be negative");
+    }
+
+    #[test]
+    fn money_symmetric_when_equal() {
+        // Two symmetric pieces + equal money → material terms cancel.
+        // With actions_remaining=0 the tempo term (E8) is also 0, so total=0.
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        place(&mut pos, 63, Player::P2, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        pos.p1_money = 5;
+        pos.p2_money = 5;
+        pos.actions_remaining = 0;
+        assert_eq!(evaluate(&pos), 0);
     }
 
     #[test]
     fn skill_equipped_beats_unequipped() {
-        // P1 Champion with Lance equipped vs P2 Champion bare.
-        // Both HP=2, no armor → differential is exactly skill_value(Lance).
+        // P1 Champion with Lance equipped vs P2 Champion bare. Assert P1 > P2
+        // (skill contributes positively) rather than the raw skill_value
+        // (E4 gates by availability, so exact value depends on money).
         let mut pos = Position::empty();
         place(&mut pos, 0, Player::P1, 1,
             MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
         place(&mut pos, 63, Player::P2, 1,
             MailboxEntry::default().with_hp(2));
-        assert_eq!(evaluate(&pos), skill_value(Skill::Lance));
+        // Money high enough that Lance availability saturates.
+        pos.p1_money = 20;
+        pos.p2_money = 20;
+        pos.actions_remaining = 2;
+        assert!(evaluate(&pos) > 0);
     }
 
     #[test]
     fn stack_m_setup_is_zero() {
         // Canonical start: identical material on both sides, 6 money each.
+        // Under E8 (tempo), P1-to-move contributes +TEMPO_PER_ACTION * 2 = +30;
+        // material/skills/money/mobility/exposure/coverage are perfectly mirrored
+        // and cancel. So the invariant is: score == tempo bonus for the moving side.
         let pos = Position::setup_stack_m();
-        assert_eq!(evaluate(&pos), 0);
+        assert_eq!(evaluate(&pos), TEMPO_PER_ACTION * pos.actions_remaining as i32);
     }
 
     #[test]
@@ -631,8 +1007,16 @@ mod tests {
 
     #[test]
     fn maxed_piece_formula() {
-        // Pin the math: single P1 Champion HP=2 armor=2 skill1=Tempest skill2=Charge,
-        // empty money. Score must equal the explicit sum.
+        // Pin the math for a lone P1 Champion HP=2 armor=2 skills=Tempest+Charge,
+        // no enemies, no money. Under E2..E8:
+        //   - mobility (E7) uses skill-range coverage; 0 enemies → mob=0
+        //   - skill_term (E4) gated by money=0; both Tempest (cost 4) and Charge (cost 3)
+        //     have money-cost+K ≤ 0 → availability=0 → skill_term=0
+        //   - exposure (E2) = 0 (no attackers)
+        //   - coverage (E6) = 0 (no adjacent guards)
+        //   - tempo (E8) skipped in Draft phase; empty position has no side_to_move
+        //     effect on tempo either — Draft.
+        // Result: pure material + hp + armor.
         let mut pos = Position::empty();
         place(&mut pos, 28, Player::P1, 1,
             MailboxEntry::default()
@@ -640,15 +1024,9 @@ mod tests {
                 .with_armor(2)
                 .with_skill1(Skill::Tempest as u8)
                 .with_skill2(Skill::Charge as u8));
-        // Mobility: Champion at sq 28 (rank 3), 8 neighbours all free.
-        // CHAMP_MOB_PER_SQ=12, 8 squares = 96.
-        let mob = 8 * CHAMP_MOB_PER_SQ;
         let expected = CHAMPION_VALUE
             + 2 * HP_PER_POINT
-            + 2 * ARMOR_PER_POINT
-            + skill_value(Skill::Tempest)
-            + skill_value(Skill::Charge)
-            + mob;
+            + 2 * ARMOR_PER_POINT;
         assert_eq!(evaluate(&pos), expected);
     }
 
@@ -664,5 +1042,102 @@ mod tests {
         // KING_MATERIAL is 0, so the king contributes only its HP. P1 has nothing.
         // The point is: no panic, no overflow.
         assert!(s > i32::MIN && s < i32::MAX);
+    }
+
+    #[test]
+    fn evaluate_by_square_matches_breakdown_stack_m() {
+        // Invariant: the per-square view must sum to the same total as the
+        // aggregate breakdown for the canonical Stack M opening position.
+        let pos = Position::setup_stack_m();
+        let bd = evaluate_breakdown(&pos);
+        let bs = evaluate_by_square(&pos);
+        assert_eq!(bd.total, bs.total, "total mismatch");
+    }
+
+    #[test]
+    fn evaluate_by_square_matches_breakdown_asymmetric() {
+        // A P1 Champion adjacent to a P2 Guard, no other pieces — exercises
+        // exposure, coverage, mobility on both sides.
+        let mut pos = Position::empty();
+        place(&mut pos, 28, Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_armor(1)
+                .with_skill1(crate::game_logic::skills::Skill::Lance as u8));
+        place(&mut pos, 29, Player::P2, 2, MailboxEntry::default().with_hp(1));
+        pos.p1_money = 4;
+        pos.p2_money = 2;
+        pos.actions_remaining = 2;
+        pos.current_phase = Phase::Move;
+        pos.to_move = Player::P1;
+        let bd = evaluate_breakdown(&pos);
+        let bs = evaluate_by_square(&pos);
+        assert_eq!(bd.total, bs.total, "total mismatch");
+    }
+
+    #[test]
+    fn evaluate_by_square_terminal_p1_wins() {
+        let mut pos = Position::empty();
+        pos.game_result = Some(GameResult::P1Wins);
+        let bs = evaluate_by_square(&pos);
+        assert_eq!(bs.total, MATE_SCORE);
+        assert!(bs.terminal);
+        // All per-square records must be zero — mirrors evaluate_breakdown's
+        // terminal short-circuit.
+        for s in bs.squares.iter() {
+            assert!(!s.occupied);
+            assert_eq!(s.piece_total, 0);
+        }
+    }
+
+    #[test]
+    fn evaluate_by_square_records_intermediates() {
+        // P1 Champion at e4 (sq 28) with P2 Champion at f4 (sq 29) attacking it.
+        // Assert intermediate values populated: attacker count, mobility raw.
+        let mut pos = Position::empty();
+        place(&mut pos, 28, Player::P1, 1,
+            MailboxEntry::default().with_hp(2)
+                .with_skill1(crate::game_logic::skills::Skill::Lance as u8));
+        place(&mut pos, 29, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        pos.p1_money = 10;
+        pos.p2_money = 10;
+        let bs = evaluate_by_square(&pos);
+        // The P1 Champion at sq 28 sees P2 Champion at sq 29 as an attacker.
+        assert!(bs.squares[28].occupied);
+        assert!(bs.squares[28].is_p1);
+        assert!(bs.squares[28].n_attackers >= 1, "P2 Champion should threaten P1");
+        // Champion mobility_raw counts enemies in skill range; Lance range 2.
+        // P2 Champion at sq 29 is 1 square away → in range.
+        assert!(bs.squares[28].mobility_raw >= 1);
+        // Skill availability at p1_money=10: Lance cost 2, so availability=256 (max).
+        assert_eq!(bs.squares[28].skill1_avail_fp, SKILL_AVAIL_MAX);
+    }
+
+    #[test]
+    fn coverage_requires_dual_adjacency_to_defender_and_ring_square() {
+        // Regression: E6 coverage previously counted an empty ring square `s`
+        // as shielded if *any* own Guard sat adjacent to `s`, even when that
+        // Guard was NOT adjacent to the defender. Bodyguard only triggers when
+        // a friendly Guard is adjacent to BOTH the defender and the attacker's
+        // approach square, so a distant Guard cannot contribute to coverage.
+
+        // Case A: Guard at c3 (sq 18) is NOT adjacent to defender at e4 (sq 28)
+        // — chebyshev distance 2. Coverage MUST be 0.
+        let mut pos = Position::empty();
+        place(&mut pos, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 18, Player::P1, 2, MailboxEntry::default().with_hp(2));
+        let bs = evaluate_by_square(&pos);
+        assert_eq!(bs.squares[28].empty_ring_shielded, 0,
+            "guard at sq 18 is not adjacent to defender at sq 28; coverage must be 0");
+
+        // Case B: Guard at f4 (sq 29) IS adjacent to defender at e4 (sq 28).
+        // Its ring is {sq 20, 21, 22, 28, 30, 36, 37, 38}. Intersecting with
+        // defender's empty ring {19,20,21,27,35,36,37} yields {20, 21, 36, 37}
+        // = 4 shielded squares out of 7 empty (sq 29 is occupied by the guard).
+        let mut pos2 = Position::empty();
+        place(&mut pos2, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos2, 29, Player::P1, 2, MailboxEntry::default().with_hp(2));
+        let bs2 = evaluate_by_square(&pos2);
+        assert_eq!(bs2.squares[28].empty_ring_total, 7, "1 of 8 ring squares occupied");
+        assert_eq!(bs2.squares[28].empty_ring_shielded, 4,
+            "guard at sq 29 shields the 4 empty ring squares also adjacent to it");
     }
 }

@@ -15,6 +15,7 @@
     MODIFIER_CHARGE,
     runAiCall,
     type EvalBreakdown,
+    type EvalBreakdownBySquare,
   } from "$lib/engine";
   import { resolveLoadout } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
@@ -67,6 +68,7 @@
   import PlayerPanel from "$lib/match/PlayerPanel.svelte";
   import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
   import EvalBreakdownPanel from "$lib/eval/EvalBreakdownPanel.svelte";
+  import SquareEvalCard from "$lib/eval/SquareEvalCard.svelte";
 
   const mode = $derived(match.mode === "multiplayer" ? "multiplayer" : modeFromSeats(match.side));
 
@@ -95,6 +97,13 @@
   let heuristicEvalScore = $state<number | null>(null);
   /** Full eval breakdown for the analysis panel. null = not yet polled. */
   let heuristicEvalBreakdown = $state<EvalBreakdown | null>(null);
+  /** Per-square eval breakdown for the hover diagnostic card. */
+  let heuristicEvalBySquare = $state<EvalBreakdownBySquare | null>(null);
+  /** Board square currently under the cursor (for the eval hover card).
+   *  null when the cursor is off-board. */
+  let hoveredSq = $state<number | null>(null);
+  let hoverX = $state(0);
+  let hoverY = $state(0);
   // Snapshot of the breakdown at the end of the previous round, so the panel
   // can show round-over-round change per component.
   let prevRoundBreakdown = $state<EvalBreakdown | null>(null);
@@ -926,6 +935,9 @@
       lastRoundSeen = curRound;
       heuristicEvalBreakdown = v;
     }).catch(() => {});
+    void e.heuristicEvalBySquare().then((v) => {
+      heuristicEvalBySquare = v;
+    }).catch(() => {});
   });
 
   /** Run one AI step for the side-to-move, then render the result. The engine
@@ -1714,6 +1726,11 @@
                 commitMoveTargetApproach(target, ap);
               }
             }}
+            onSquareHover={(sq, x, y) => {
+              hoveredSq = sq;
+              hoverX = x;
+              hoverY = y;
+            }}
           />
           {#if renderer}
             <EffectsLayer viewBox={800} wheelPad={60} queue={renderer.effectQueue} />
@@ -1928,6 +1945,15 @@
 
 {#if toast}
   <div class="toast" role="status" aria-live="polite">{toast}</div>
+{/if}
+
+{#if settings.showEvalPanel && match.mode !== "multiplayer" && hoveredSq !== null && heuristicEvalBySquare !== null}
+  <SquareEvalCard
+    data={heuristicEvalBySquare}
+    sq={hoveredSq}
+    clientX={hoverX}
+    clientY={hoverY}
+  />
 {/if}
 
 {#if sandboxConfirmMsg !== null}

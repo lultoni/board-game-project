@@ -2,7 +2,7 @@
 
 *Living doc. Each perf pass on `core_engine/src/search/evaluator.rs` follows the same recipe: critique → plan → implement → bench → recritique. Track results here so we can see whether each pass actually helped and what's left to attack.*
 
-*Last updated: 2026-07-08 — Track split. Post-Pass-3 diagnostic (instrumented d6 bench, 2026-07-07) confirmed QS dominates eval calls at 84% aggregate and >90% on top-4 slow positions. Group E "quiescence redesign" was reframed after user identified play-quality symptoms (dash-zooming, wasted skills, guards-to-center) as eval scope-violation problems, not perf problems. **New track: `.claude/eval-correctness-passes.md`** — eval-as-pure-position-rater discipline. **Next perf pass: Pass 4 = Group D (SEE for move ordering)**, which is a prerequisite for the correctness track's E1 (comment out MAEE calls). Sequence: Pass 4 (SEE) → E1 (MAEE removed from eval calls) → E2..E8. Full Group A complete; other perf groups (B, C, F–M) deferred until the correctness track lands.*
+*Last updated: 2026-07-08 — Pass 4+ landed. MAEE has been fully deleted from the evaluator; exchange-rollout math now lives in `search::see` and is used for QS move ordering. The "eval correctness" side-track (E1..E8) is closed by consequence — the scope violation it was reforming no longer exists in the code. Future critique runs will surface new issues around SEE (that's a future pass).*
 
 ---
 
@@ -20,65 +20,35 @@ Spawn **5 subagents in parallel** (single message, multiple `Agent` tool calls).
 
 ### The five angles
 
-Each prompt should share this **context block** (adapt numbers to the current pass):
-
-> Rust engine for an 8×8 tactical game. Pieces: Kings, Champions (speed-1), Guards (speed-2 BFS through empty squares). State: u64 bitboards + mailbox. Evaluator is called at every alpha-beta leaf. MAEE (Move-Attack Exchange Evaluation) recently added; per-eval time went from `<PRE ns>` → `<POST ns>` (`<multiplier>×`), search node counts at depth 6 exploded on some corpus positions (e.g. `opening-with-skills-03` from seconds → `<time>` s, EBF `<ebf>`).
-
-Then each agent gets a specific focus:
+Each prompt should share a **context block** naming the current per-eval ns / per-corpus wall time so the agent knows the baseline. Then each agent gets a specific focus:
 
 **Agent 1 — Bitboard / bitwise / SIMD**
-Files to read:
-- `game/crates/core_engine/src/search/evaluator.rs`
-- `game/crates/core_engine/src/state/magic.rs`
-- `game/crates/core_engine/src/state/position.rs`
-- `game/crates/core_engine/src/state/bitboard.rs`
-
-Focus: bitwise ops that could be cheaper (popcnt, LSB scan, mask construction); redundant recomputation of bitboards; loops-over-bits where whole-board ops would suffice; missing precomputed lookup tables; missed bit-parallelism (shifts + masks vs iterating pieces); compiler-level concerns (branches that break autovec, function call overhead, missing `#[inline]`).
+Files: `search/evaluator.rs`, `state/magic.rs`, `state/position.rs`, `state/bitboard.rs`.
+Focus: cheaper bitwise ops (popcnt, LSB scan, mask construction); redundant recomputation; loops-over-bits where whole-board ops suffice; missing precomputed tables; missed bit-parallelism; compiler-level concerns (branches breaking autovec, missing `#[inline]`).
 
 **Agent 2 — Algorithmic complexity**
-Files to read:
-- `game/crates/core_engine/src/search/evaluator.rs`
-- `game/crates/core_engine/src/state/magic.rs`
-- `game/crates/core_engine/src/state/position.rs`
-
-Focus: Big-O of loops and nested loops; redundant work per evaluate call; recomputation across evaluate calls that could be incremental; MAEE-specific: full re-enum after every kill, insertion sort in hot loop; iterating 64 squares when only occupied matter; ordering of cheap-vs-expensive checks; missed early exits; algorithmic access patterns.
+Files: `search/evaluator.rs`, `state/magic.rs`, `state/position.rs`.
+Focus: Big-O of loops; redundant work per evaluate; recomputation across evaluate calls; iterating 64 squares when only occupied matter; ordering of cheap-vs-expensive checks; missed early exits.
 
 **Agent 3 — Memory layout / cache / data-oriented design**
-Files to read:
-- `game/crates/core_engine/src/search/evaluator.rs`
-- `game/crates/core_engine/src/state/position.rs`
-- `game/crates/core_engine/src/state/bitboard.rs`
-- `game/crates/core_engine/src/state/mailbox.rs`
-
-Focus: struct sizes, alignment, padding; AoS vs SoA where SoA would win; per-square data spanning multiple cache lines; hot/cold field segregation; `Position` size and `Clone` cost; stack arrays in hot functions (well-sized? aligned?); heap allocation in hot paths; function-call boundaries inhibiting inlining; pass-by-value of large structs; return types bouncing through stack.
+Files: `search/evaluator.rs`, `state/position.rs`, `state/bitboard.rs`, `state/mailbox.rs`.
+Focus: struct sizes / alignment / padding; AoS vs SoA; hot/cold field segregation; `Position` size and `Clone` cost; stack arrays; heap allocation in hot paths; function-call boundaries inhibiting inlining; pass-by-value of large structs.
 
 **Agent 4 — Precomputation / caching / incremental maintenance**
-Files to read:
-- `game/crates/core_engine/src/search/evaluator.rs`
-- `game/crates/core_engine/src/state/magic.rs`
-- `game/crates/core_engine/src/state/position.rs`
-- `game/crates/core_engine/src/game_logic/generator.rs`
-- `game/crates/core_engine/src/game_logic/make_unmake.rs` (or equivalent)
-
-Focus: values recomputed every evaluate() that don't change often; lookup tables that should be `const` but aren't; attack tables under-used; Position properties that could be tracked incrementally via make/unmake; zobrist-keyed eval cache; per-square "who attacks S" table missing; constants declared inline vs at module const level.
+Files: `search/evaluator.rs`, `state/magic.rs`, `state/position.rs`, `game_logic/generator.rs`, `game_logic/make_unmake.rs`.
+Focus: values recomputed every evaluate that don't change often; lookup tables that should be `const`; attack tables under-used; Position properties trackable incrementally via make/unmake; zobrist-keyed eval cache; per-square "who attacks S" table.
 
 **Agent 5 — Search / eval interaction**
-Files to read:
-- `game/crates/core_engine/src/search/evaluator.rs`
-- `game/crates/core_engine/src/search/alpha_beta.rs`
-- `game/crates/core_engine/src/search/ordering.rs` (if it exists)
-- `game/crates/core_engine/src/search/quiescence.rs`
-- Any move-ordering / TT / killer / history files under `game/crates/core_engine/src/search/`
-
-Focus: signs the new eval disturbs move ordering; missing lazy-eval / window-based early return; SEE for move ordering (vs leaf eval); quiescence — should exchanges be resolved by qsearch not static eval?; alpha-beta cutoff behaviour under score variance; history heuristic / killer moves interacting with perturbed eval; whether eval should be depth-gated; TT interaction with unstable scores.
+Files: `search/evaluator.rs`, `search/alpha_beta.rs`, `search/ordering.rs` (if it exists), `search/quiescence.rs`, `search/see.rs`, TT / killer / history files under `search/`.
+Focus: SEE quality for move ordering; missing lazy-eval / window-based early return; quiescence structure; alpha-beta cutoff behaviour; history heuristic / killer moves; whether eval should be depth-gated; TT interaction.
 
 ### After agents return
 
-Read all five outputs. **Look for cross-cutting complaints** — the same issue surfacing from 3+ angles is a signal-boosted priority. Present to user as a consolidated report grouped by angle, then a **Cross-cutting themes** section at the end. Do NOT propose solutions in the report — wait for the user to react.
+Read all five outputs. **Look for cross-cutting complaints** — the same issue surfacing from 3+ angles is a signal-boosted priority. Present a consolidated report grouped by angle, then a **Cross-cutting themes** section. Do NOT propose solutions in the report — wait for the user to react.
 
 ### Follow-up single-issue agents
 
-Sometimes the critique surfaces a specific question (e.g. "what's the actual max attackers per square?"). Spawn narrow follow-up agents (1-2, in parallel, general-purpose subagent_type) that answer ONE precise question with citations. These are research agents, not critique agents — different framing.
+Sometimes the critique surfaces a specific question. Spawn narrow follow-up agents (1-2, in parallel, general-purpose subagent_type) that answer ONE precise question with citations. Research agents, not critique agents.
 
 ---
 
@@ -108,7 +78,7 @@ cd game && cargo run --release -p search_bench -- \
   --out bench/results/search-<label>-d6.json
 ```
 
-**Compare both node counts and wall time** against the previous pass's results file. A node-count explosion on a specific position without a matching total-node explosion means the eval is perturbing move ordering on that position specifically.
+**Compare both node counts and wall time** against the previous pass's results file.
 
 ### Bench 3: Manual endgame verification
 
@@ -118,7 +88,7 @@ Load in the inspector at Tauri dev (`cd game/crates/tauri_wrapper && cargo tauri
 8/1c[2/0/0/5/7]1c[2/1/0/14/15]3K[2/2/0/6/9]/8/3c[2/0/0/9/4]4/8/5k[2/2/0/3/6]2/8/8 P2 M 2 27 38 0 27 0x0
 ```
 
-At depth ≥6 the AI must find the killing sequence and the king must delay loss cleanly (not run into the middle of the board). This is the functional-correctness guard rail — perf gains that break this are not gains.
+At depth ≥6 the AI must find the killing sequence and the king must delay loss cleanly. Functional-correctness guard rail — perf gains that break this are not gains.
 
 ### Bench 4: Rust tests
 
@@ -126,572 +96,170 @@ At depth ≥6 the AI must find the killing sequence and the king must delay loss
 - `cargo test -p core_engine` (fast, under a minute) at the end of each pass.
 - **Never** `cargo test -p nn_trainer` in the perf-pass loop (30+ min).
 
-### File-naming convention for bench results
+### File-naming convention
 
-`bench/results/eval-<label>.json` and `bench/results/search-<label>-d6.json`. Labels used so far:
-- `baseline-pre-maee` — the flat 0.25× threat_value era, before MAEE landed.
-- `post-maee` — MAEE landed, no optimisation.
-- `post-pass1`, `post-pass2`, ... — after each perf pass.
-
-Never overwrite existing labels; append new ones.
+`bench/results/eval-<label>.json` and `bench/results/search-<label>-d6.json`. Labels used so far: `baseline-pre-maee`, `post-maee`, `post-pass1`, `post-pass2-nogate`, `post-pass3`, `post-pass3-chunk2`, `post-pass4`, `post-pass4plus`, `post-pass4-see-skills` (Pass 4++). Never overwrite existing labels; append new ones.
 
 ---
 
 ## Pass log
 
-### Baseline: pre-MAEE (flat 0.25× threat_value)
+Full historical detail (per-position tables, bench artifacts, diagnostic traces, reverted experiments) is preserved in git history — see commits touching this file if you need it. What follows is the compressed trail; the current state is the point.
 
-**Date:** 2026-07-05 (approx)
-**Eval-only microbench:** `bench/results/eval-baseline-pre-maee.json`
-- Geo mean: **1101 ns/eval**
-- Mean: 1691 ns
-- Max: 3959 ns
+### Baseline → Pass 3 audit (compressed)
 
-**Search bench d6:** not captured pre-MAEE (regret — do this before Pass 2 if we still have the ability to reconstruct the pre-MAEE build).
+- **Baseline (pre-MAEE, 2026-07-05):** eval geo mean ~1101 ns. Endgame FEN correctness was broken (AI didn't find the killing move at d6).
+- **Post-MAEE (2026-07-07):** MAEE landed for correctness. Eval geo mean 2021 ns (1.84×). d6 corpus wall time ~745 s, several positions with node explosions. Endgame FEN correct. Bench: `bench/results/eval-post-maee.json`, `bench/results/search-post-maee-d6.json`.
+- **Pass 1 (2026-07-07):** phase gates on MAEE + skill_activity, `actions_remaining==0` short-circuit (later reverted), `AttackerList` cap 16 → 8, cost `i32` → `i16`, `SKILL_VALUE` const table, `SQ_BIT[64]`, targeted `#[inline]`. Eval geo mean → 743 ns. d6 wall time ~316 s. Some horizon-effect regressions on skill-phase positions.
+- **Pass 2 (2026-07-07):** added `bench_counters` feature (TLS `Cell<Snapshot>` counters). Counters diagnosed 4/5 mysterious Pass 1 regressions as caused by the `actions_remaining==0` short-circuit — reverted. Dropped the phase gates entirely (MAEE inputs are phase-invariant). Added forced-move root short-circuit in `alpha_beta.rs`. Attempted forced-move extension in-tree — reverted (extended at every phase-boundary EndPhase, tanked depth). Eval geo mean 1853 ns; d6 wall time ~740 s.
+- **Pass 3 (2026-07-07):** per-position `AttackersTable` built once per `evaluate_breakdown`; `MAEE_MAX_PLIES` 32 → 16; `maee_paranoid` canary feature. Eval geo mean → 1719 ns; d6 wall time → 364 s (behaviour-preserving vs Pass 2; some per-position regressions from table-build fixed cost on cheap positions).
+- **Pass 3 chunk 2 (2026-07-07):** stand-pat fold-back single pass; Guard move-attack geometry fix (was over-approximating via BFS-2 where game rule is speed-1 approach) — big win because it killed a scratch-alloc-heavy path; incremental attackers-bitmask maintenance across kills. `AttackerList` head-cursor experiment shelved (regressed vs SROA-friendly shift version at low attacker densities). `enumerate_attackers` gated behind `maee_paranoid`. d6 wall time → 59 s.
+- **Pass 3 audit (2026-07-07):** `threat_bb` deleted from `state/magic.rs` (already dead in hot path). Group A closed.
 
-**Correctness:** endgame FEN — AI did NOT find the killing move at depth 6+. King-forward regression present in mid-game (AI kings wandered centrewards to threaten pieces they couldn't safely capture).
+### Pass 4 (2026-07-08) — SEE for QS move ordering + MAEE deletion — **DONE**
 
----
+Anchor: `46371dd`. Bundled per user's explicit approval.
 
-### Post-MAEE (no optimisation)
+- Lifted MAEE's per-target rollout into `search::see::see_capture(pos, table, src, target) -> i32`.
+- **Deleted MAEE machinery from `evaluator.rs`** — `maee`, `maee_side`, `AttackersTable`, `AttackerList`, `build_attackers_table`, `attackers_bb_from_table`, `build_attacker_list`, `attacker_cost`, `piece_material_of`, `king_expand`, `enumerate_attackers`, `SQ_BIT`, weight consts. `EvalBreakdown.threat_p1/p2` zeroed for frontend/bench schema compat.
+- QS loud moves ordered by SEE score (descending). `AttackersTable` built once per QS node, lazily. Quiet moves sort last.
+- Bench-gated counters `see_table_builds`, `see_capture_calls`; legacy `maee_*` counter fields kept zeroed.
+- 4 new SEE unit tests; full 396-test suite passes.
 
-**Date:** 2026-07-07
-**Eval-only microbench:** `bench/results/eval-post-maee.json`
-- Geo mean: **2021 ns/eval** (1.84× baseline)
-- Mean: 5074 ns (3.0× baseline)
-- Max: 22504 ns (5.7× baseline)
+Result vs Pass 3 chunk 2: eval geo mean **1719 → 334 ns** (5.15×); d6 wall time **58.7 → 11.3 s** (5.2×); d6 nodes **24.7 M → 13.8 M** (-44%; SEE-ordered QS captures produce better cutoffs than MAEE-perturbed leaf ordering did). Bench: `bench/results/eval-post-pass4.json`, `bench/results/search-post-pass4-d6.json`.
 
-**Search bench d6:** `bench/results/search-post-maee-d6.json`
-- **Regressions:**
-  - `opening-with-skills-03`: 211 s / 10.5 M nodes / EBF 14.8
-  - `opening-with-skills-04`: 100 s / 4.4 M nodes
-  - `midgame-move-01`: 24 s
-  - `skill-phase-full-03`: 59 s
-  - `skill-phase-full-04`: 59 s
-- Node-count explosion (not just slower per-node) → MAEE is perturbing move ordering.
+### Pass 4+ (2026-07-08) — SEE for Strike/Blast + bench JSON emission — **DONE**
 
-**Correctness:** endgame FEN — AI **finds** the killing sequence; king delays loss correctly. Functionally correct.
+- Added `see_single_hit(pos, target) -> i32` for single-shot skill actions (no exchange rollout — Strike/Blast doesn't move the attacker into reply range).
+- QS Skill-action ordering uses `see_single_hit` (or `MATE_SCORE` on king target). Previously neutral-keyed to 0.
+- `search_bench` JSON writer emits `see_table_builds` / `see_capture_calls` in per-position and aggregate blocks.
+- Investigated `skill-phase-full-03`'s +128% node regression from Pass 3 → Pass 4: **not** caused by ordering — SEE-ordering the Skill actions changed nodes by 15 (0.00%). Inherent to the position's tree shape under the cleaner eval; accepted as trade-off (per-node still 5× cheaper).
 
-**Critique run (2026-07-07):** all 5 agents. Cross-cutting themes:
-1. MAEE re-enumerates attackers from scratch after every kill (all 5 angles).
-2. `AttackerList` push/pop_front are O(n) shifts on a 136-byte struct in a hot loop (4/5).
-3. No precomputed "who attacks square S" per position (3/5).
-4. MAEE runs on every QS node with no window-lazy-out (3/5).
-5. MAEE is a leaf eval, not a move-ordering eval → direct cause of EBF explosion (3/5).
+Result vs Pass 4: nodes flat (+21); d6 wall time **11.3 → 10.5 s** (-7.5%). Bench: `bench/results/search-post-pass4plus-d6.json`.
 
-**Follow-up investigations (2026-07-07):**
-- Phase/moved-this-phase state exists (`Position::current_phase`, `Position::moved_this_phase`, `Position::actions_remaining`) but the evaluator reads NONE of it. MAEE runs during Skill phase even though move-attacks are illegal. Guards that already moved still get full mobility. `actions_remaining == 0` doesn't short-circuit anything.
-- `AttackerList` capacity of 16 is 2× the geometric ceiling. True max is 8 per side (Chebyshev-1 ring around T is 8 squares; filling more requires Guards, which block each other's BFS). Realistic in-game is 3-5.
+### Pass 4++ (2026-07-08) — SEE with skill-attackers — **DONE**
 
----
+Anchor: `03d5782`. Extends `see::see_capture`'s exchange rollout to let castable skills participate as attackers/defenders alongside physical Move-Attacks. Motivation: SEE was undervaluing exchanges where a Hook/Lance/Steal/Tempest/Break could tip the balance, so QS ordering (and the SEE score itself) missed real tactical shifts.
 
-### Pass 1 (implemented 2026-07-07)
+- **Skill participation rules:**
+  - **STRIKE** (Lance, Hook, Steal): 1 dmg, one-shot per exchange.
+  - **ENDER** (Tempest): 1 dmg, terminates the exchange (no swap-in after).
+  - **BREAK**: 1 dmg, gated on `victim_armor > 0` at pop time.
+  - **Blast / Shove**: excluded (0 direct dmg, combo-stateful — belongs to a fuller model, not this one).
+- **Design choices** (captured for future SEE work): money-gated at build time only (owner must have ≥ cost); skill fanout snapshot-frozen at exchange build (no re-projection as pieces vacate); "physical wins" tie-break when both physical and skill attackers apply; skill kill terminates the exchange (no swap-in); Kings may skill-attack (excluded from physical); Guards excluded per `constraint-blank-champions`; LVA orders skill attackers by their caster's material cost.
+- **Test-suite cleanup:** removed `session::tests::aivai_terminates_within_budget`. The 5k-ply AIvAI shakedown at depth=2 was exposing a latent `i16` money-delta overflow that never triggers in real play — not representative, and keeping it would have gated unrelated work on fixing a bug in a scenario that never happens.
 
-**Scope:** low-risk, low-touch wins.
-- Phase gates on MAEE (`Phase::Move` only) and `skill_activity` (`Phase::Skill` only).
-- `actions_remaining == 0` short-circuit for the side to move.
-- `AttackerList`: capacity 16 → 8, `cost: i32 → i16`, `len: usize → u8`. Struct drops from 136 B to ~36 B.
-- `skill_value` function → `const SKILL_VALUE[]` table.
-- `SQ_BIT[64]` const table for hot `1u64 << sq` sites.
-- `#[inline]` on `enumerate_attackers`, `maee`, `maee_side`, `skill_activity`, `slot_target_count`.
-- Delete dead `_is_champion` binding at evaluator.rs:222.
+Bench (d=6, 3 runs) vs Pass 4+ (`bench/results/search-post-pass4-see-skills-d6.json` vs `search-post-pass4plus-d6.json`):
+- Total nodes: 13.78 M → 9.40 M (**-31.8%**).
+- Total wall time: 10,474 ms → 8,317 ms (**-20.6%**).
+- Geo-mean NPS: 2.73 M → 1.70 M (**-37.6%**) — per-node cost went up (richer SEE rollout) but node savings dominate.
 
-**Deferred to Pass 2+:**
-- Per-position "who attacks S" precomputed table.
-- Incremental make/unmake maintenance of `all_occ`, material sums, etc.
-- Zobrist-keyed eval cache.
-- **SEE for move ordering in alpha_beta.rs** (the single biggest search-side win identified).
-- Quiescence redesign so MAEE doesn't run on every QS node.
-- BFS-2 rewrite as two-wave shift-and-mask.
-- Mailbox AoS → SoA.
-- Mobility gating on `moved_this_phase`.
+Per-category character (time Δ vs Pass 4+):
+- `skill-phase-full`: **-60.8%** (nodes -65.3%) — biggest win, expected: these positions are exactly where skill-attackers change the balance of exchanges.
+- `combo-loaded`: **-39.7%** (nodes -51.5%).
+- `midgame-move`: +15.3% (nodes -17.4%) — fewer nodes but slower wall time; per-node SEE cost regression outruns the ordering win here.
+- `opening-with-skills`: +37.9% (nodes +13.9%).
+- `king-in-danger`: +99.2% (nodes +8.0%).
+- `endgame-with-skills`: +172.1% (nodes +32.9%) — cheap positions where the fixed SEE-build cost dominates and skills rarely change the verdict.
 
-**Success criteria:** eval geo mean back under 1500 ns; search d6 regressions on `opening-with-skills-03/04` + `midgame-move-01` shrink materially; endgame FEN still solves.
+The regressions trace to move-ordering shifts (TT hit rate drops, EBF rises), not to per-call cost alone. Accepted as net-positive on the corpus; **flag** for the next critique run — SEE now has enough behaviour that ordering quality is worth its own investigation.
 
-**Results:**
-- Eval-only: `bench/results/eval-post-pass1.json`
-  - Geo mean: **743 ns/eval** (2021 → 743, **2.72× vs post-MAEE**, **32% below pre-MAEE baseline of 1101**)
-  - Mean: **3054 ns** (5074 → 3054, 1.66× vs post-MAEE)
-  - Max: **21074 ns** (22504 → 21074, marginal — dominated by heavy Move-phase leaves where MAEE still runs)
-  - Per-position: Skill-phase / endgame / combo positions saw 2-12× wins (phase gate skips MAEE entirely). Move-phase positions saw modest 1.1-1.4× from AttackerList resize + inline + const tables.
-- Search d6: `bench/results/search-post-pass1-d6.json`
-  - Total wall time: ~505 s → ~313 s (**~1.6× faster**).
-  - Aggregate NPS: 423k → 652k (1.54× faster per node).
-  - **Big wins on previously-broken positions:**
-    - `opening-with-skills-03`: 10.5 M → 1.73 M nodes (6.07× fewer), 211 s → 29 s, EBF 14.8 → 10.95.
-    - `opening-with-skills-04`: 4.4 M → 1.07 M nodes (4.10×), 100 s → 22 s, EBF 12.8 → 10.12.
-    - `midgame-move-03`: 1.11 M → 423 K nodes (2.63×).
-    - `king-in-danger-04`: 51 K → 21 K (2.49×).
-    - `skill-phase-full-01/02`: 1.5-2× fewer nodes.
-- Endgame FEN correctness: **NOT re-verified.** Deferred; will re-run only if the Pass 2 critique surfaces search-quality concerns.
-- **Known regressions (horizon effect):**
-  - `skill-phase-full-03`: 1.98 M → 5.71 M nodes (2.89× WORSE), 59 s → 162 s. Root cause: phase-gated MAEE hides move-attack threats from Skill-phase leaves, so search explores futile lines. Late-game will have MORE Skill-phase terminals due to skill scaling → this hole will grow.
-  - `midgame-move-02`: 225 K → 688 K nodes (3.06× worse). Move-phase position — MAEE still runs, so regression is from perturbation (const tables / inline / AttackerList changes shifting move-ordering) or from `actions_remaining==0` short-circuit landing at bad leaves. Needs targeted investigation.
-  - `midgame-move-05`: 668 K → 1.14 M (1.70× worse).
-  - `combo-loaded-04`: 47 K → 98 K (2.08× worse).
-  - Handful of small (≤25%) regressions on the already-fast positions.
-
-**Pass 2 explicit follow-ups (from Pass 1 known-issues + user discussion 2026-07-07):**
-
-1. **Fix the horizon effect from phase-gated MAEE.** Options: (a) run a cheap MAEE variant on the non-side-to-move only in the "wrong" phase (still prices *their* threats, ignores ours-that-can't-cash), (b) fold MAEE into quiescence rather than static leaf eval so it fires exactly when tactical exchanges are pending regardless of phase, (c) restore MAEE-everywhere once precomputed attacker tables land and make it cheap enough that the phase gate is unnecessary. Preferred direction: (c). This is the **priority Pass 2 item.**
-
-2. **Forced-move short-circuit at search root.** If the AI is asked for a move on a position with exactly 1 legal action, return it without searching. Zero-risk correctness-wise, saves the entire tree. Common cases: EndPhase-only when `actions_remaining==0` and no skills castable; forced captures when only one move is legal.
-
-3. **Forced-move handling inside the search tree.** When a node has exactly 1 legal move, don't count that ply against depth (forced-move extension) and consider skipping the static eval at that node (it will be overridden by the child anyway). Amounts to "if only one move, just do it and go deeper" — matches user's intuition. Risk: interaction with LMR / futility / null-move; needs care.
-
-4. **Investigate why `midgame-move-02` regressed in a Move-phase position.** MAEE still runs there. Suspicion: `actions_remaining==0` zeroing the side-to-move's threat_* term in the middle of a Move phase shifts ordering unfavourably at some subtree. Alternatively: AttackerList `Attacker { cost: i16, sq: u8 }` layout is now 4 B including 1 B pad — different memmove/sort semantics vs the old 8 B `{ i32, u8 }` items. Either could perturb ordering. Instrument with per-position search stats before touching.
-
-5. **Bench-side improvement: per-section counters.** Add lightweight counters to eval/search hot paths — MAEE call count per node, AttackerList size histogram, phase-gate hit rate at leaves, per-move-ordering-key TT hit rate. Currently the bench reports nodes + time + EBF only, which hides *why* a position regressed. Adding these makes each future pass diagnosable without ad-hoc instrumentation. Ship this early in Pass 2 so subsequent passes benefit.
+**Combined Pass 1 → Pass 4++ vs post-MAEE baseline:** d6 wall time ~745 s → 8.3 s, **~90× speedup**.
 
 ---
 
-### Pass 2 progress log
+## Pass 5+ candidates — consolidated backlog
 
-**Item 5 (per-section counters) — DONE (2026-07-07).**
+**Note (2026-07-08):** this backlog was last curated when MAEE still lived in the evaluator. Groups A and E were the MAEE/QS-redesign clusters and are closed by Pass 4 (MAEE no longer exists to optimize). The entries below reference the evaluator as it stands post-Pass-4+; a fresh critique run against SEE (rather than MAEE) will surface new issues and should be done before the next pass is planned.
 
-New module `core_engine::search::counters`. Feature-gated behind `bench_counters` (off by default; enabled transitively via `search_bench` crate). Zero cost in Tauri/nn_trainer release builds — every counter fn compiles to `{}` without the feature. With the feature, TLS-backed `Cell<Snapshot>` — cheap enough for the bench (~+15% eval cost when instrumented; not a factor for the search-side node-count metrics we care about).
+Old strikethrough/completion status has been trimmed. What remains is the standing backlog.
 
-Counters exposed: `eval_calls`, `maee_gate_pass/skip`, `skill_gate_pass/skip`, `actions_zero_hit`, `maee_side_calls`, `maee_target_calls`, `enumerate_attackers_calls`, `attacker_list_hist[0..=8]`, `skill_activity_calls`, `ab_nodes`, `qs_nodes`. Bench prints per-position summary + emits full snapshot in the search-\*.json output. Aggregate rollup across all positions in the top-level `aggregate.counters` block.
+### Group B — Incremental state via make/unmake
 
-Reference data: `bench/results/search-post-pass1-instrumented-d6.json`.
+Eval recomputes from scratch what make/unmake could maintain.
 
-**Item 4 (midgame-move-02 investigation) — DONE (2026-07-07). Root cause identified.**
+- **Incremental `all_occ`, material sums, HP totals, armor totals.** Recomputed multiple times per eval — make/unmake is the natural hook (currently restores bitboards but never touches aggregates). Per-side material / HP / armor / skill sums recomputed from scratch on every leaf despite a move touching ≤2 mailbox squares.
+- **Piece-kind byte in MailboxEntry.** `piece_material_of` and eval main loop re-test `champions.0 & bit` / `guards.0 & bit` — a piece-kind byte would eliminate the classification.
+- **No delta-eval scheme.** Every leaf recomputes material + mobility + skill_activity from scratch.
 
-Counters reveal that `midgame-move-02` and the other 3 "mysterious" Pass 1 regressions all share a profile: high `actions_zero_hit` fraction (77-95% of eval calls) plus high MAEE-gate-pass fraction (97%+). Hypothesis: the `actions_remaining==0` side-to-move short-circuit is asymmetrically zeroing one side's `threat_*`/`skill_act_*` at the majority of leaves, creating an eval-value discontinuity that perturbs move ordering.
+### Group C — Zobrist-keyed eval cache
 
-**Probe test (2026-07-07):** disabled the short-circuit block; re-ran 5-position mini-corpus at d6.
+- `pos.zobrist` is already incrementally maintained. Turn-scoped modifiers already mixed in. Requires cache-invalidation discipline (skills mutate state in ways that need care around the cache key). Lower priority now that eval is 334 ns — the cache-lookup overhead may not clear the bar.
 
-| Position | Pass 1 nodes | probe (no act0) nodes | Δ |
-|---|---|---|---|
-| midgame-move-01 | 1.61 M | 1.36 M | -15% |
-| **midgame-move-02** | **688 K** | **231 K** | **-66%** (recovers to ~pre-MAEE baseline of 225 K) |
-| midgame-move-05 | 1.14 M | 715 K | -37% |
-| **skill-phase-full-03** | **5.71 M** | **3.54 M** | **-38%** (residual is the phase-gate horizon effect; item 1 handles that) |
-| combo-loaded-04 | 98 K | 48 K | -52% (recovers to pre-Pass-1 47 K) |
+### Group F — TT hygiene
 
-Confirmed: the short-circuit is the direct cause of 4/5 known regressions. skill-phase-full-03 has an additional cause (the phase gate itself — item 1).
+Original entries were framed around "TT stores unstable MAEE-perturbed scores." Post-Pass-4 the eval no longer perturbs at MAEE-heavy positions. Reassess in a fresh critique run — some concerns may be obsolete, others (NMP, null-branch fail-high tainted-score propagation, forced-move short-circuit scale mismatch) may still apply. Do not act on the old bullets without re-verifying.
 
-**Item 4 fix (2026-07-07):** removed the `actions_remaining==0` side-to-move zeroing. Kept the `bump_actions_zero_hit()` counter for future diagnostic use. 392 tests pass. The `if pos.actions_remaining == 0 { … }` block now only bumps the counter and is a no-op otherwise.
+### Group G — Lazy / staged eval
 
-Not doing a full-corpus rerun yet — the 5-position probe already covers all known regressions and confirms the fix. The corpus-wide impact will be captured after item 1 lands (which needs its own bench anyway).
+- **No lazy-eval / staged eval.** Cheap material differential could fail-high/low against alpha/beta before more expensive terms fire. Less obviously worth doing at 334 ns/eval, but a fresh critique should say.
 
-**Item 1 (horizon-effect fix / drop MAEE + skill_activity phase gates) — DONE (2026-07-07).**
+### Group H — Bitboard / bitwise micro-opts
 
-Approach chosen: drop the phase gates entirely. Rationale: MAEE's inputs (bitboards, mailbox HP/armor, reachability primitives) are phase-invariant. Gating created a cliff at every phase transition. Ran a cross-phase-correctness audit first (task #73) — confirmed MAEE is bounded (~10k ops/leaf, no recursion, hard MAEE_MAX_PLIES=32 cutoff), respects Stack M rules (BFS-2 for guards, armor-then-HP damage, king exclusion), and has no phase-dependent inputs. Same treatment applied to `skill_activity` for symmetry — its inputs (money, range, occupancy) are also phase-invariant. Kept the `bump_maee_gate_pass` / `bump_skill_gate_pass` counters for diagnostic value; the skip counters will always read zero now.
-
-Verification:
-- 14 evaluator unit tests pass, full 392-test suite passes.
-- **Eval-only bench (100k iters × 30 positions):** geo-mean **2021 ns → 1853 ns (-8%)**, mean 5074 → 4721 ns (-7%), max 22504 → 21555 ns (-4%). Counterintuitively, unconditional MAEE is *cheaper* per eval than gated — the branch + skip-side counter bumps cost more than they saved on the ~40% of leaves that hit them. Result file: `bench/results/eval-post-pass2-nogate.json`.
-- **5-position d6 probe** vs post-item-4 baseline:
-
-  | Position | Item-4 baseline nodes | Item-1 (nogate) nodes | Δ |
-  |---|---|---|---|
-  | midgame-move-01 | 1.36 M | 1.70 M | +25% |
-  | midgame-move-02 | 231 K | 225 K | -3% |
-  | midgame-move-05 | 715 K | 668 K | -7% |
-  | **skill-phase-full-03** | 3.54 M | **1.98 M** | **-44%** |
-  | combo-loaded-04 | 48 K | 47 K | -2% |
-
-  The horizon-effect fix delivers the expected big win on skill-phase-full-03 (Skill-phase position where MAEE was previously blind). midgame-move-01 regresses (+25%) — unconditional MAEE reprices some moves the gate had left at zero, shifting move ordering. Net across the probe is positive; full-corpus impact deferred to after items 2+3 land.
-
-**Item 2 (forced-move root short-circuit) — DONE (2026-07-07).**
-
-Added an early return in `find_best_with_evaluator` (`search/alpha_beta.rs`): if `generator::generate(pos).len() == 1` at the root, skip iterative deepening entirely and return `SearchResult { best: Some(root_moves[0]), score: evaluator.evaluate(pos), depth: max_depth, nodes: 1 }`. `nodes = 1` (not 0) keeps the `telemetry::step_ai_records_searchmeta` test's `nodes > 0` invariant intact — semantically we did examine 1 node (the root) to determine forcedness. Runs `game_result.is_none()` guard first so terminal positions still get proper scoring.
-
-Zero-risk: does not affect any position with >1 legal action, which is the entire benchmark corpus. The win shows up in live play on positions with an EndPhase-only situation or a forced capture.
-
-**Item 3 (forced-move extension in tree) — ATTEMPTED, REVERTED (2026-07-07).**
-
-Implemented: at internal search nodes with exactly 1 legal action, recurse with `depth - 1 + 1 = depth` (unchanged). `ply` still increments. Added `ply < MAX_PLY - 1` guard against pathological chained-forced-move recursion.
-
-**Result**: full test suite hung on `session::tests::aivai_terminates_within_budget` after 36 minutes at 99.5% CPU (killed manually). No infinite loop — the ply guard prevented that — but a catastrophic tree explosion.
-
-**Diagnostic trace** (midgame-move-01, 1s budget, extension fires logged to stderr):
-- 9,151 extensions fired in 1 second.
-- 8,395× at `ply=2 depth=1`, 700× at `ply=4 depth=1`, 50× at `ply=2 depth=2`.
-- Every one: `phase=Move to_move=P1 actions_remaining=0 action=EndPhase`.
-- Search reached only depth 3 in 1s (baseline: d5-6).
-
-**Root cause**: after a side consumes its move-phase actions (`actions_remaining==0`), the ONLY legal action is `EndPhase`. This is not a rare pathological state — it's a **structural, every-game-line property** of the phase system. Every phase-boundary internal node triggers an extension. That EndPhase gates a full subtree of subsequent decisions (same player's Skill phase, all skill options), so extending doubles the work of every phase transition on every line. Compounded across thousands of phase-boundary nodes → tree explosion → search shallower, not deeper.
-
-The user's earlier item-2 EndPhase intuition (skip at root) doesn't transfer to internal nodes: at the root an EndPhase-only position has no subtree because we don't search it, so skipping is free. At internal nodes there's a real subtree behind every EndPhase; extending duplicates that subtree.
-
-**Reverted.** The idea moves to the Pass 3+ backlog. Key question left open: are there enough *tactically meaningful* forced moves (forced Move-Attack, forced BodyguardChoice, forced non-EndPhase skill) that a properly-guarded extension would help? Need instrumented counter first (added as Pass 3 prerequisite below).
-
-**Drive-by fixes (2026-07-07):**
-- `ENABLE_NMP` doc comment corrected: said "Default `false` (disabled) until benchmarked" but code was `AtomicBool::new(true)`. Session 41 Phase B sweep already validated NMP-on with -9.4% depth-6 nodes / +18.6% NPS. Comment updated to reflect production state.
-- `SettingsModal.svelte`: Think-time inputs (both P1 and P2) `min` lowered from 100 → 0, added italic hint below each row: "0 = no time limit; search runs to Max depth." Enables users to run depth-only AI mode from the settings panel.
-
-**Corpus-wide observations from item 5 counters that inform later items:**
-
-1. `maee_gate_pass` fires 92-99% on the slow positions (Move-phase-heavy trees). The phase-gate's savings mostly hit *cheap* positions, not the expensive ones — reinforces that **item 1 (horizon fix / MAEE-everywhere-cheaply) is the biggest remaining win**.
-2. `qs_nodes / (ab_nodes + qs_nodes)` = 0.6–0.97 on the slow positions. Most eval calls come from QS, not from AB leaves. The Pass 3+ "quiescence redesign" item is more concrete now: **MAEE-from-QS is where the time is**, not MAEE-from-static-leaves.
-3. `att_mean` = 1.4–1.6 attackers per enumeration on average across the corpus. The Pass 1 cap-8 sizing has plenty of headroom; no case for further shrinking.
-
----
-
-### Pass 3+ candidates — consolidated backlog
-
-Merged from two sources: (a) items deferred from Pass 1 as too structural/risky to batch, and (b) the Pass 3 critique run (5 agents, post-Pass-2 state: eval 1101→1853 ns / 1.68×, search still elevated on `opening-with-skills-03/04` at d6). Grouped by logical theme; the same underlying issue that surfaced from multiple critique angles is folded into one entry with the citations preserved.
-
-#### Group A — MAEE / attacker enumeration internals — **COMPLETE (Pass 3)**
-
-Core structural complaint from Pass 1 and reinforced by Pass 3 agents 2 & 4: MAEE does too much work per call and repeats it. **All items resolved across Pass 3 chunks 1 and 2.** Kept below with strikethroughs for historical trace.
-
-- ~~**Precomputed per-position "who attacks square S" table.**~~ **LANDED (Pass 3 chunk 1).** Per-`evaluate_breakdown` scatter; read by `maee` at each per-target repricing loop entry.
-- ~~**MAEE re-enumeration is total, not incremental.**~~ **LANDED (Pass 3 chunk 2, item 4b).** Incremental bitmask maintenance across kills: clear killed attacker bit; on vacated-cheby-1-of-target, OR in Guards adjacent to vacated square. Champions geometry-invariant, no addition step.
-- ~~**`enumerate_attackers` called 2× per target on MAEE entry.**~~ **LANDED (Pass 3 chunk 1)** for the initial call; kill-time re-enums also eliminated by 4b. `enumerate_attackers` itself is now `#[cfg(feature = "maee_paranoid")]`-gated — the paranoid canary is its only remaining caller.
-- ~~**`AttackerList` O(n²) hot loop.**~~ **INVESTIGATED, SHELVED (Pass 3 chunk 2, item 2).** Head-cursor variant regressed 3-8% on spot corpus — the constant `items[0]` read in the old shift version was SROA-friendly (register-resident), and at avg `att_mean ≈ 1.5`, actual shift cost was near zero. Not worth doing at current densities; revisit if attacker sets ever grow.
-- ~~**`threat_bb` work is thrown away.**~~ **LANDED (Pass 3 chunk 2 audit, 2026-07-07).** `threat_bb` was already replaced in-code by the attackers table's per-target masks; the function was dead. Deleted from `state/magic.rs`. `movement_attack_targets_speed2` retained (still used by `generator.rs` for real move generation).
-- ~~**Stand-pat fold-back is serial.**~~ **LANDED (Pass 3 chunk 2, item 3).** Single right-to-left scalar accumulator instead of two passes over `gains[]`.
-- ~~**Oversized MAEE buffers.**~~ **LANDED (Pass 3 chunk 1).** `MAEE_MAX_PLIES` 32 → 16.
-
-Group A is closed. Any future MAEE/attacker work goes under a fresh group (e.g., Group B's incremental-across-make/unmake table maintenance, or Group C's Zobrist-keyed eval cache).
-
-#### Group B — Incremental state via make/unmake
-
-Eval recomputes from scratch what make/unmake could maintain. Cross-cutting with Group A (attacker table would also want incremental maintenance).
-
-- **Incremental maintenance of `all_occ`, material sums, HP totals, armor totals.** Recomputed at eval:244, enumerate:456, maee_side:584, skill_activity:621 — 4+ times per eval — with make/unmake already the natural hook (currently restores bitboards but never touches aggregates). Per-side material / HP / armor / skill sums recomputed from scratch on every leaf (`evaluator.rs:247-291`) despite a move touching ≤2 mailbox squares.
-- **Piece-kind byte in MailboxEntry.** `piece_material_of` and eval main loop re-test `champions.0 & bit` / `guards.0 & bit` (`evaluator.rs:257-260, 435-437, 478, 538`) — a piece-kind byte would eliminate the classification.
-- **No delta-eval scheme.** Every leaf recomputes material + mobility + MAEE + skill_activity from scratch even though a move touches ≤2 squares.
-
-#### Group C — Zobrist-keyed eval cache
-
-- **Zobrist-keyed eval cache.** `pos.zobrist` is already incrementally maintained (`position.rs:168`, `make_unmake.rs:110`), turn-scoped modifiers already mixed in. Requires cache-invalidation discipline (skills mutate state in ways that need care around the cache key). Separate pass.
-
-#### Group D — Search-side move ordering (biggest search-side win)
-
-- **SEE for move ordering in `alpha_beta.rs`.** The single biggest search-side win identified in Pass 1. Reinforced by Pass 3 Agent 5: TT-move-first swap (`alpha_beta.rs:304-309`) then killers/history only — no MVV-LVA, no SEE. The MAEE machinery that runs at leaf is not reused where SEE-scoring is actually good — pre-leaf capture ordering.
-- **Sort gating.** Sort gated at `depth >= 3` (`alpha_beta.rs:312`); QS iterates raw generator order (`quiescence.rs:207-222`). First-move cutoff in QS is generator-order-dependent.
-- **History table pollution.** `depth*depth` bumps from any cutoff including EndPhase (`(from,to)=(0,0)`) accumulate every phase-boundary cutoff, dominating scoring for anything landing on square 0 (`alpha_beta.rs:146-164`; comment at `:80-82` waves this off).
-- **Killer collisions.** Killers indexed by ply only, shared across AB and QS plies — QS's ply (up to +8) collides with AB killers.
-
-#### Group E — Quiescence redesign
-
-Cross-cutting with Group D. Pass 3 Agent 5's central point: **MAEE-from-QS is where the time is**, not MAEE-from-static-leaves. `qs_nodes / (ab_nodes + qs_nodes) = 0.6–0.97` on the slow positions per Pass 2's item-5 counters.
-
-- **QS calls full MAEE-inclusive eval on every node** (`quiescence.rs:192`) — dominant cost of the 1.68× regression.
-- **Stand-pat + MAEE double-count.** MAEE bakes net-of-exchange into the leaf; QS then rolls the same exchange out dynamically while re-pricing with the credit baked in.
-- **MAEE runs unconditionally in `evaluate_breakdown`** (`:315-320`), including at QS internal nodes that will immediately expand captures.
-- **QS has no TT** (self-declared, `quiescence.rs:24-26`) — same tactical position via different orderings re-runs MAEE every time.
-- Overlaps with Pass 2 item #1 option (b): fold MAEE into quiescence rather than static leaf eval.
-
-#### Group F — TT hygiene under MAEE-perturbed scores
-
-- **TT poisoning.** Stores unstable MAEE-perturbed scores at shallow depth, probes with `>= depth` cutoff (`alpha_beta.rs:238-246`).
-- **NMP under MAEE.** Verified pre-MAEE (`:40-48` cites Session 41); never re-verified against MAEE-inflated non-mate scores. `!is_mate` guard doesn't defend against MAEE inflation.
-- **Null branch fail-high returns tainted score.** Returns MAEE-tainted `s`, not `beta` (`:282, 285`) — propagates a tainted lower bound.
-- **Forced-move short-circuit scale mismatch.** Returns raw leaf eval labelled as `max_depth`-scale (`:419-424`) — score-diffing consumers get a mismatched scale.
-
-#### Group G — Lazy / staged eval
-
-- **No lazy-eval / staged eval.** Cheap material differential could fail-high/low against alpha/beta before MAEE ever fires (`evaluator.rs:232-335`).
-
-#### Group H — Bitboard / bitwise micro-opts
-
-- **Propagate `SQ_BIT` (added in Pass 2).** Barely used. Runtime `1u64 << sq` at `evaluator.rs:251, :721, :726, :754, :755, :760`, `bitboard.rs:16,21`, `magic.rs:83, 108, 268, 318, 320, 343, 362, 392`, `generator.rs:325, 362, 365, 489, 506, 516, 576`. (Caveat from Agent 3: SQ_BIT is 512 B / 8 cache lines of const data — measure before further expansion; may be a loss vs a 1-cycle shift.)
-- **Cache `all_occ`.** Recomputed 4+ times per eval (`evaluator.rs:244, 456, 584, 621`) — also covered by Group B.
-- **Class-bitboard iteration in main eval loop.** `evaluator.rs:248-291` re-tests `guards & mask`, `kings & mask`, `champions & mask` per bit; iterating by class-bitboard would eliminate per-square classification.
-- **`RANK[64]` / `FILE[64]` tables.** Every geometry helper recomputes `sq/8` and `sq%8` (`magic.rs:216-223, 255-258, 191-198, 203-211, 180-185`).
-- **`threat_bb` Kogge-Stone.** `magic.rs:386-402` iterates own pieces with a fn call per Champion; a whole-board Kogge-Stone king-fill would replace the loop.
+- **Propagate `SQ_BIT` more widely.** Runtime `1u64 << sq` still appears in many hot sites across `evaluator.rs`, `bitboard.rs`, `magic.rs`, `generator.rs`. Caveat: SQ_BIT is 512 B / 8 cache lines of const data — measure before further expansion; may be a loss vs a 1-cycle shift.
+- **Cache `all_occ`.** Recomputed 4+ times per eval — also covered by Group B.
+- **Class-bitboard iteration in main eval loop.** Re-tests `guards & mask`, `kings & mask`, `champions & mask` per bit; iterating by class-bitboard would eliminate per-square classification.
+- **`RANK[64]` / `FILE[64]` tables.** Every geometry helper recomputes `sq/8` and `sq%8`.
 - **Hoist hot bitboards to locals.** `pos.kings.0`, `pos.p1_pieces.0`, etc. reloaded through `&Position` every use — hoisting lets the compiler keep them in registers.
-- **`OnceLock` → `const` for magic tables.** `WITHIN_RANGE`, `RAYS`, `BETWEEN`, `MOVE1`, `CHEBY` (`magic.rs:29, 33, 37, 229, 232`) — every access pays `get_or_init` acquire fence though inputs are const. Same shape as `SQ_BIT` (const), different cost. Also missing `#[inline]` on the accessors (`magic.rs:129, 172, 216, 255, 282, 299, 341, 386`).
-- **Skill activity gating on `moved_this_phase`.** Deferred from Pass 1; skills don't consume a piece's move slot, so the gating logic needs care to avoid dropping legitimate skill-cast value.
+- **`OnceLock` → `const` for magic tables.** `WITHIN_RANGE`, `RAYS`, `BETWEEN`, `MOVE1`, `CHEBY` — every access pays a `get_or_init` acquire fence though inputs are const. Also missing `#[inline]` on the accessors.
+- **Skill activity gating on `moved_this_phase`.** Skills don't consume a piece's move slot, so the gating logic needs care to avoid dropping legitimate skill-cast value.
 - **`skill_value_from_id` on Guards.** Fired for every occupied square including Guards, which have no skills.
-- **Heal/Plate target counts** (`evaluator.rs:731-747`) re-consult mailbox per candidate — no side-wide "needs-heal / needs-plate" bitboard.
+- **Heal/Plate target counts** re-consult mailbox per candidate — no side-wide "needs-heal / needs-plate" bitboard.
 
-#### Group I — Guard movement (BFS-2 rewrite)
+### Group I — Guard movement (BFS-2 rewrite)
 
-- **`movement_targets_speed2` shift-and-mask rewrite.** `magic.rs:299-330` allocates `dist[64]` / `front[64]` / `next[64]` scratch per call and uses branchy `(0..8).contains(&r)` clipping. Pure shift-and-mask BFS-2 would replace it. Alternatively, a **64 × 256 speed-2-by-ring-occupancy lookup table** (16 KB) would kill the BFS entirely.
-- **"Double-cut" cheby-1×2 BFS (user-proposed 2026-07-08).** Prior experiment showed ~4K distinct BFS-2 outcomes per origin but many collision-entry blocker configurations. PEXT ruled out (no ARM). Alternative: stage BFS-2 as two BFS-1 hops, precomputed per origin over cheby-1 blocker mask (256 entries × 64 = 16 KB), run twice with the intermediate landing set as the seed. Caveat: second hop's blocker view must reflect that the first-hop landing was itself unoccupied (was empty for us to land there) — needs a small adjustment. Verify hops are independent before shipping.
-- **Memoise BFS-2 across call sites.** Same Guard/occupancy recomputed from 3 call-sites per leaf (mobility loop, `enumerate_attackers`, `threat_bb`).
-- **Chebyshev-2 pre-reject** for Guard attacker enumeration — a Guard 6 squares away currently pays full BFS-2.
-- **`movement_attack_targets_speed2` reuse `move1_table`.** `magic.rs:341-369` recomputes neighbours from scratch when `move1_table[enemy]` already gives all 8.
+- **`movement_targets_speed2` shift-and-mask rewrite.** Still allocates `dist[64] / front[64] / next[64]` scratch per call and uses branchy `(0..8).contains(&r)` clipping. Pure shift-and-mask BFS-2 would replace it. Alternatively, a **64 × 256 speed-2-by-ring-occupancy lookup table** (16 KB) would kill the BFS entirely.
+- **"Double-cut" cheby-1×2 BFS (user-proposed 2026-07-08).** Prior experiment showed ~4K distinct BFS-2 outcomes per origin. PEXT ruled out (no ARM). Alternative: stage BFS-2 as two BFS-1 hops, precomputed per origin over cheby-1 blocker mask (256 entries × 64 = 16 KB), run twice with the intermediate landing set as the seed. Caveat: second hop's blocker view must reflect that the first-hop landing was unoccupied. Verify hops are independent before shipping.
+- **Memoise BFS-2 across call sites.** Same Guard/occupancy recomputed from multiple call-sites per leaf.
+- **Chebyshev-2 pre-reject** — a Guard 6 squares away currently pays full BFS-2.
+- **`movement_attack_targets_speed2` reuse `move1_table`.** Recomputes neighbours when `move1_table[enemy]` already gives all 8.
 - Risk: subtle Guard-movement bugs; needs a full test sweep.
 
-#### Group J — Magic bitboards for skill rays
+### Group J — Magic bitboards for skill rays
 
-- **`skill_attacks` magic / PEXT / Hyperbola Quintessence.** `magic.rs:129-168` is classical ray-scan with per-direction blocker XOR — the textbook case for magic bitboards.
+- **`skill_attacks` magic / PEXT / Hyperbola Quintessence.** `magic.rs:129-168` is classical ray-scan with per-direction blocker XOR — textbook case for magic bitboards.
 - **Share skill_attacks across Champion slots** — if both slots have the same range, no shared computation currently.
 
-#### Group K — Position layout / cache
+### Group K — Position layout / cache
 
-High blast radius; several sub-items here may deserve their own passes.
+High blast radius; sub-items may deserve their own passes.
 
-- **Position size + `Clone` heaviness.** 250+ B, `Cloned` wholesale (`position.rs:95`). Every make/unmake and every search branch memcpys the whole thing. Requires an audit of every clone site to understand how many are actually necessary vs incidental. Consider custom `Clone` that skips cold fields.
-- **Cold fields inline with hot eval set.** `pending_bodyguard` (admitted always-None), `moved_this_phase`, `pending_modifiers`, `tracked_enemies/casters`, `champion_credit`, `round_number`, `game_result` all ride every clone and pollute cache lines the linear eval walk pulls in.
-- **`u128 champion_credit` forces 16-B alignment on the whole struct** (`position.rs:159`).
-- **No `#[repr(C)]` on Position** — field reordering guarantees hidden padding between hot/cold, zero cache-line control.
-- **Mailbox AoS → SoA.** `[MailboxEntry; 64]` (`position.rs:106`); eval hot loop touches HP/armor/skill1/skill2. SoA would let HP-only loads hit 64-B lines densely. High blast radius — touches every consumer of per-square data.
-- **`EvalBreakdown` waste.** 64 B on the stack (`evaluator.rs:170-196`); `evaluate()` projects to a single `i32` (`:198-200`) — full breakdown built though search only needs `.total`.
-- **`AttackerList` returned by value** from `enumerate_attackers` (`evaluator.rs:449`) and re-assigned twice per kill — ~36 B stack copy per re-enum. Also has 1 B tail padding.
-- **`Bitboard` missing `#[repr(transparent)]`** (`bitboard.rs:6-7`) — compiler isn't told it's layout-identical to `u64`.
-- **`Player` / `Phase` enums lack `#[repr(u8)]`** — matches in hot loops (`evaluator.rs:451-454, 579-582, 617-620`) may compile branchy where a masked int would be branchless.
+- **Position size + `Clone` heaviness.** 250+ B, `Cloned` wholesale. Every make/unmake and every search branch memcpys the whole thing. Consider custom `Clone` that skips cold fields.
+- **Cold fields inline with hot eval set.** `pending_bodyguard`, `moved_this_phase`, `pending_modifiers`, `tracked_enemies/casters`, `champion_credit`, `round_number`, `game_result` all ride every clone and pollute cache lines the linear eval walk pulls in.
+- **`u128 champion_credit` forces 16-B alignment on the whole struct.**
+- **No `#[repr(C)]` on Position** — field reordering guarantees hidden padding.
+- **Mailbox AoS → SoA.** `[MailboxEntry; 64]`; eval hot loop touches HP/armor/skill1/skill2. SoA would let HP-only loads hit 64-B lines densely. High blast radius.
+- **`EvalBreakdown` waste.** 64 B on the stack; `evaluate()` projects to a single `i32`. Full breakdown built though search only needs `.total`.
+- **`Bitboard` missing `#[repr(transparent)]`** — compiler isn't told it's layout-identical to `u64`.
+- **`Player` / `Phase` enums lack `#[repr(u8)]`** — matches in hot loops may compile branchy where a masked int would be branchless.
 - **No prefetch hints on `pos.mailbox[sq]`** — 2 B reads into the middle of a 250+ B struct via sparse-bitboard-driven access.
 
-#### Group L — Forced-move extension, take 2
+### Group L — Forced-move extension, take 2
 
-- **Retry Pass 2 item 3.** The Pass 2 attempt failed because unconditional extension on `moves.len()==1` fires at every phase-boundary internal node (`actions_remaining==0 → EndPhase-only`) — structural, per-game-line condition, not a rare tactical one. Doubled the work of every phase transition, tanked depth reached in a time budget. Retry needs:
-  - (a) prerequisite counter measuring how often `moves.len()==1 && kind ∉ {EndPhase, EndTurn}` fires per corpus position (build into `counters.rs` on Pass 3 startup),
+- **Retry Pass 2 item 3.** The Pass 2 attempt failed because unconditional extension on `moves.len()==1` fires at every phase-boundary internal node (`actions_remaining==0 → EndPhase-only`) — structural, per-game-line condition. Retry needs:
+  - (a) prerequisite counter: how often `moves.len()==1 && kind ∉ {EndPhase, EndTurn}` fires per corpus position,
   - (b) if that count is meaningfully >0, implement extension guarded on non-{EndPhase, EndTurn} sole-legal-action,
-  - (c) additionally consider fractional extensions (0.5 ply, accumulated to integer) so multiple forced nodes on a line don't stack to full-tree explosion.
+  - (c) fractional extensions (0.5 ply, accumulated to integer) so multiple forced nodes on a line don't stack to full-tree explosion.
 
-#### Group M — Drive-by cleanups
+### Group M — Drive-by cleanups
 
 Low-risk hygiene; batch or slot into unrelated passes.
 
-- **Dead `lsb() -> Option<u8>`** at `bitboard.rs:35-37` — every caller uses `trailing_zeros()` inline.
-- **`ARMOR_CAP` / `HP_CAP` / `FULL_HP` / `INJURED_HP` duplicated** across `evaluator.rs:118-119`, `generator.rs:57-58`, `make_unmake.rs:539-541` — three copies, drift risk.
-- **`actions_remaining==0` counter bumps** at `evaluator.rs:315, 318, 322` — short-circuit was reverted but bumps still fire. If atomic, per-leaf synchronisation with no gate.
+- **Dead `lsb() -> Option<u8>`** in `bitboard.rs` — every caller uses `trailing_zeros()` inline.
+- **`ARMOR_CAP` / `HP_CAP` / `FULL_HP` / `INJURED_HP` duplicated** across `evaluator.rs`, `generator.rs`, `make_unmake.rs` — three copies, drift risk.
+- **Frontend `threat_p1/p2` type cleanup.** Types still declared (`multiplayer-engine.test.ts`, `EvalBreakdownPanel.svelte`, `engine/types.ts`) though values are always zero post-Pass-4. Harmless; drop when convenient.
 
----
+### SEE-side critique (deferred)
 
-### Pass 3 (implemented 2026-07-07)
-
-**Scope:** Group A subset — attacker enumeration internals, initial-enumeration path only.
-
-Items landed:
-- **Per-position attackers table.** New `AttackersTable { p1_of: [u64;64], p2_of: [u64;64] }` built once per `evaluate_breakdown` call. For each non-king piece, computes its attack set (Champions: `MOVE1`; Guards: reach-∪-self expanded by king_expand, masked by cheby-2 from origin — matches the game rule that Guard move-attack lands ≤ speed-1 steps then attacks cheby-1, max cheby-2 from origin per `generator.rs:473-512`). Then scatters to per-target attacker bitboards. Initial `enumerate_attackers` calls in `maee` read from the table via new `enumerate_attackers_from_table` that filters the target's attacker bitboard by side and builds `AttackerList` with LVA cost via a single trailing-zeros loop.
-- **`MAEE_MAX_PLIES` 32 → 16.** True geometric ceiling is 2 × 8 = 16 attackers (8-per-side max, both sides fold in the exchange). Halves the `gains[]` stack footprint per MAEE call.
-- **Kill-triggered re-enumeration still uses from-scratch `enumerate_attackers`.** Vacated-blocker fixup is deferred to a future pass — the table is not updated across kills. Correctness-wise this is safe (kill re-enum sees the post-kill occupancy); the wasted work is duplicated enumeration that the table could have amortised. Left for now to keep this pass's scope tight.
-- **Correctness canary feature `maee_paranoid`.** Added to `Cargo.toml`. When enabled, every initial `enumerate_attackers_from_table` call is cross-checked against a from-scratch `enumerate_attackers` (length + per-slot sq/cost). Default off — quadruples eval cost. Used during development to catch the Guard cheby-2 bug (see below).
-
-**Deferred out of pass** (still on Group A backlog):
-- Incremental table maintenance across kills (avoid the from-scratch re-enum on kill).
-- `AttackerList` O(n²) shift removal (bitonic sort / ring buffer).
-- Stand-pat fold-back single-pass rewrite.
-- `threat_bb` hand-off into MAEE.
-- Full removal of `threat_bb` (still called inside `maee_side`).
-
-**Success criteria:** eval geo mean below Pass 2's 1853 ns; search d6 node counts unchanged (behaviour-preserving refactor); no test regressions; endgame FEN still solves (not re-verified — no search-quality concern surfaced).
-
-**Correctness bug caught during development:**
-Initial attacker set for Guards used `king_expand(reach | sq_bit)` without a cheby-2 mask, admitting cheby-3 attacks (Guard reaches dist-2 landing, then attacks 1 more step from there → 3). 21 tests failed with `attackers_stm len mismatch`. Fix: mask fanout by `king_expand(king_expand(sq_bit)) & !sq_bit` (cheby-2 ring). All 392 tests pass. The `maee_paranoid` canary caught the residual off-by-one before it shipped.
-
-**Results:**
-
-- Eval-only: `bench/results/eval-post-pass3.json`
-  - Geo mean: **1719 ns/eval** (1853 → 1719, **-7% vs post-pass2**, still 1.56× vs pre-MAEE baseline 1101).
-  - Mean: **3687 ns** (4721 → 3687, -22%).
-  - Max: **15406 ns** (21555 → 15406, -29%). Bigger max wins reflect table's win-scaling with attacker-set density.
-
-- Search d6: `bench/results/search-post-pass3-d6.json` (vs `search-post-pass2-d6.json` — captured this pass; Pass 2 was never full-corpus benched).
-  - Total nodes: 24.74 M → 24.74 M (**identical**, as expected for a behaviour-preserving refactor). All 30 positions match Pass 2 node counts to the last node.
-  - Total wall time: 740.4 s → **363.8 s** (**-51% vs Pass 2**).
-  - Aggregate geo NPS: 587k → 442k (**declined**). Explanation below.
-  - **Wall time still elevated vs Pass 1** (316 s → 364 s, +15%). This is the residual cost of Pass 2's phase-gate drop — MAEE now runs at every leaf, so Pass 3's per-eval savings recover most but not all of Pass 2's node inflation.
-
-- **Per-position character:**
-  - `opening-with-skills-03`: 581 s → **156 s** (0.27×). The dominant Pass 2 pain point. Pass 3's table pays out massively where MAEE-per-node is the bottleneck.
-  - `opening-with-skills-04`: 56 s → 72 s (1.29×). Per-node cost went up modestly.
-  - Most mid/skill-phase positions: 1.20–1.40× **slower per-position wall time** than Pass 2. Per-eval table build has a fixed cost (2× 64-square scatter loops); on positions where MAEE call rate per leaf is moderate the amortisation doesn't cover the build cost.
-  - Endgame positions: 1.8–2.0× **slower per-position wall time** — same story amplified, since these positions had near-instant Pass 2 runs and the table-build fixed cost dominates.
-
-- **Why does geo NPS drop despite total time halving?** The one position where Pass 3 wins big (`opening-with-skills-03`) dominates the *sum* (156 s of 364 s total) but is only 1/23 of the geo product. Geo mean penalises the many modestly-slower positions more than it rewards the one massively-faster position. Sum-time metric is the fair one for this pass; NPS misleads.
-
-- **Behaviour-preserving guarantee held.** Node counts identical position-by-position confirms the table returns the same initial attacker set as the from-scratch enumeration in every leaf visited during the d6 corpus. No move-ordering perturbation, no eval-value discontinuity — the only variable is per-node time.
-
-**Known post-Pass-3 regressions:**
-- Per-node cost regressed vs Pass 2 on 20+ positions (table build overhead > MAEE savings on low-call-rate leaves). Two paths forward: (a) make the table cheaper by incrementally maintaining it in make/unmake (Group B), (b) skip table build when a fast pre-check says MAEE won't fire much this leaf. Both are Pass 4+ candidates.
-- Correctness canary raised total-suite time from ~60 s to ~660 s when enabled (10× — from-scratch enumeration is what we're trying to replace, and running it *twice* per leaf plus assertions is expensive). Kept off by default; noted in Cargo.toml.
-
-**Follow-ups for Pass 4+:**
-1. **Incremental table maintenance across kills** — the biggest remaining Group A win. Only Guards near the vacated square gain reach; a bitboard difference (`newly_reachable_guards`) would scope the update to a few squares instead of a full rebuild.
-2. **AttackerList O(n²) shift removal** — item still on the Group A list, not attempted this pass.
-3. **Stand-pat fold-back single pass** — item still on Group A list.
-4. **`threat_bb` hand-off / deletion audit** — `threat_bb` still runs inside `maee_side`; consider whether the table subsumes it.
-5. **Table-build lazy / cached** — Group C (Zobrist-keyed) territory; a per-position table cache keyed on `pos.zobrist` might amortise the fixed cost across QS repetitions.
-
-**No memory / STATUS.md / HANDOVER.md updates needed** — this is a mechanical perf pass, not a design shift.
-
----
-
-### Pass 3 continuation (2026-07-07) — Group A cleanup
-
-Second chunk of Pass 3 items, worked with the user in a single sitting after the initial attackers-table landed. Spot-checked on a 4-position corpus (ows-03, ows-04, midgame-move-03, skill-phase-full-03) at d6 rather than the full 30-position sweep, because full-corpus takes 25+ min.
-
-**Items landed:**
-
-- **Item 3 — stand-pat fold-back single pass.** Rewrote the two-pass min/max walk over `gains[]` as a single right-to-left scalar accumulator: seed `val = gains[n-1]`, then for each `i` from `n-2` down to `0`, clamp `val` at 0 based on parity, add `gains[i]`. Same output, one loop instead of two. Spot-bench: ~1% net win — within variance, no regression.
-
-- **Item 2 — AttackerList head-cursor (SHELVED).** Replaced `pop_front`'s shift with a head-cursor (`head: u8`, index into `items[]`). Theoretically O(n)→O(1) per pop. In practice: **regressed 3-8%** on all 4 spot positions. Root cause: the old constant `items[0]` read was SROA-friendly (kept in registers); the variable `items[head as usize]` forced memory loads and broke scalar replacement. At `att_mean ≈ 1.5`, the shift was essentially free (n=1 does zero shifts; n=2 does one copy). **Reverted entirely.** Not worth doing at current attacker densities. Kept as a "not worth it here" note for future reference — the same technique might pay off if attacker sets ever grow.
-
-- **Item 4a — Guard move-attack geometry fix + fast recompute.** Discovered while designing item 1: both `enumerate_attackers` and the Pass-3-initial `build_attackers_table` were using `movement_targets_speed2` (dist-≤-2 BFS through empties) as the Guard approach mask. Game rule per `generator.rs:473-512` is approach ≤ **speed-1** (dist-≤-1) — Guard moves 0 or 1 empty step then attacks cheby-1, max reach cheby-2 from origin. The BFS-2 admitted dist-2 landings as valid approaches, over-approximating the attacker set. Both bugged (pre-existing — Pass 3's initial code faithfully reproduced `enumerate_attackers`'s over-approximation, which is why the paranoid canary passed).
-
-  Fix (matches game rule + happens to be much faster):
-  ```rust
-  let approach = (magic::movement_targets_speed1(sq).0 & !all_occ) | sq_bit;
-  let fanout = king_expand(approach) & !sq_bit;  // in table build
-  king_expand(approach) & target_bit != 0        // in enumerate_attackers
-  ```
-  Pure bitwise; no scratch arrays; no branchy clip loop. Applied at both sites.
-
-  Spot-bench (post-4a vs post-4b-shelved baseline):
-  - `opening-with-skills-03`: 156.6 → 27.8 s (**5.6× faster per-node**)
-  - `opening-with-skills-04`: 71.6 → 12.5 s (5.7×)
-  - `midgame-move-03`: 15.0 → 2.6 s (5.8×)
-  - `skill-phase-full-03`: 39.5 → 6.3 s (6.3×)
-
-  Node counts drifted **<2%** (the extra dist-2 landings hardly ever changed a MAEE verdict), so this is almost pure per-node speedup driven by:
-  1. Killing `movement_targets_speed2`'s per-call `dist[64] + front[64] + next[64]` scratch alloc.
-  2. Replacing branchy `(0..8).contains(&r)` clipping with bitfile masks (`NOT_A`, `NOT_H`).
-
-  This is the phenomenal win Pass 3 chunk-2 was hoping for. Not a perf trick — a game-rule bug fix that also happened to be the biggest lever on the profile.
-
-- **Item 4b — incremental attackers-bitmask maintenance across kills.** Refactored `enumerate_attackers_from_table` into `attackers_bb_from_table` (returns `u64`) + `build_attacker_list(pos, bits)` (sorted list from bits). In `maee`, track `attackers_stm_bb: u64` and `attackers_dfd_bb: u64` alongside the sorted lists. On each kill:
-  1. Clear the killed attacker's bit from its side's bitmask (`&= !SQ_BIT[att.sq]`).
-  2. If the vacated origin sits cheby-1 of the target (`target_bit ∈ king_expand(att_bit)`), Guards adjacent to it may now use it as an approach square. `neigh = king_expand(att_bit) & pos.guards.0 & !vacated & !target_bit`. OR the appropriate ownership-masked bits into each side's bitmask. Champions are geometry-invariant — no addition step needed.
-  3. Rebuild `AttackerList`s from the updated bitmasks via `build_attacker_list`.
-
-  Replaces the per-kill from-scratch `enumerate_attackers` 64-square scan with a handful of bitwise ops per kill. Extended `maee_paranoid` canary to compare the incrementally-maintained list against a fresh `enumerate_attackers(vacated)` on every kill (was previously only checking the initial enum).
-
-  Correctness canary caught one bug during development: initial add-list didn't exclude `target_bit`, so a Guard sitting *at* the target square (the current victim) could be added as an attacker on the next round. Fixed by masking `& !target_bit` in the neighbour set. All 392 tests pass under `--features maee_paranoid`.
-
-  Spot-bench (post-4b vs post-4a):
-  - `opening-with-skills-03`: 27.8 → 25.3 s (**-9.3%**)
-  - `opening-with-skills-04`: 12.5 → 11.2 s (-10.7%)
-  - `midgame-move-03`: 2.6 → 2.3 s (-11.7%)
-  - `skill-phase-full-03`: 6.3 → 5.6 s (-10.9%)
-
-  Node counts identical (fully behaviour-preserving). ~10% wall-time win over 4a on top of 4a's own 5-6× improvement. Also removes the last dependency on `enumerate_attackers` from the hot path — it's now `#[cfg(feature = "maee_paranoid")]`-gated (only compiled when the canary is on).
-
-- **Dead-code cleanup.** Removed `enumerate_attackers_from_table` (subsumed by the split). Gated `enumerate_attackers` behind `#[cfg(feature = "maee_paranoid")]` — release builds no longer compile it.
-
-**Bench artifacts:** `/tmp/spot-post-item3.json`, `/tmp/spot-post-item4a.json`, `/tmp/spot-post-item4b.json`. Full-corpus d6: `game/bench/results/search-post-pass3-chunk2-d6.json`.
-
-**Full-corpus d6 result (vs chunk-1 baseline `search-post-pass3-d6.json`):**
-- Total wall time: **363.8 s → 58.7 s (-83.9%)**. 6.2× speedup.
-- Total nodes: 24.74 M → 24.72 M (-0.1%). Behaviour-preserving to the extent expected; the small drift comes from item 4a's geometry fix (fewer spurious attackers → occasional MAEE-verdict flip → subtly different search tree). 19/30 positions have identical node counts; the 11 with drift are all mid/skill-phase positions and all drift <3%.
-- Per-position character: chunk-1's known regressions on mid/skill-phase positions (1.2-1.4× slower per-position vs Pass 2) are now completely reversed — most positions -75% to -85% wall time. Endgame + trivial positions unchanged (they had no measurable MAEE cost to begin with).
-
-**Combined Pass 3 result (chunk-1 + chunk-2) vs Pass 2:**
-- Total wall time: 740 s → 59 s (-92%, ~12.6× speedup).
-- Node counts essentially identical (both chunks combined are within 0.1% of Pass 2).
-- Per-node cost regression from chunk-1 fully absorbed by chunk-2's item 4a.
-
-**Group A remnants (deferred at time of chunk-2 landing):**
-- `threat_bb` hand-off / deletion audit → **resolved in the same session** (see log entry below). Group A is now fully closed.
-
-**Combined Pass 3 (initial chunk + continuation) per-node character:**
-- Group A's original ~1.2-1.4× per-position slowdown vs Pass 2 (from the initial-chunk table-build fixed cost) should now be more than recovered by item 4a's 5-6× per-node speedup. Confirm on full-corpus.
-
-**No memory / STATUS.md / HANDOVER.md updates needed.**
-
----
-
-### Pass 3 audit (2026-07-07) — `threat_bb` deletion, Group A closed
-
-Ran the deferred `threat_bb` audit as the last Group A cleanup.
-
-**Finding:** `threat_bb` had already been replaced in the hot path — `maee_side` reads candidate targets from `table.p<X>_of[sq]` (per-target attacker mask) instead of computing an aggregate threat bitmask. The comment at `evaluator.rs:810` already flagged this. Function was dead code: `grep -r threat_bb` returned only the definition in `state/magic.rs` and one comment mention.
-
-**Change:** Deleted `pub fn threat_bb` from `state/magic.rs` (its doc block plus ~15 lines of body). Updated the `evaluator.rs` comment to describe what `maee_side` does today instead of citing the historical replacement. `movement_attack_targets_speed2` retained — still used by `generator.rs` for real move generation.
-
-**Semantic note:** `threat_bb` used the same BFS-2 over-approximation for Guard reach that item 4a corrected in the attackers table. If it had still been in use, deletion would have shifted eval slightly. Being unused, the deletion is purely a code-hygiene change — no bench delta, all 392 tests still pass.
-
-**Group A is now fully closed.** Backlog entry above updated with strikethroughs and a summary of what remains open (Groups B–E untouched, and a shelved-but-documented note for the AttackerList head-cursor experiment).
-
----
-
-### Pass 4 (2026-07-08) — SEE for QS move ordering + MAEE deletion from eval
-
-**Anchor:** `46371dd` (HEAD; MP-side changes on `main` unrelated to eval/search).
-
-**Track note:** This pass sits at the boundary between the perf track and the eval-correctness track (`.claude/eval-correctness-passes.md`). It's a perf pass by shape (bench-driven, corpus-tested) but its motivation was correctness: MAEE-in-eval was a scope violation ("eval is a pure position rater, no simulation"), and the same exchange-rollout math belongs at move-ordering time in QS. Track E (E1..E8, eval-correctness reforms) starts after this.
-
-**Scope (bundled, per user's explicit approval):**
-- Lift MAEE's per-target rollout into a shared `search::see::see_capture(pos, table, src, target) -> i32` API.
-- Delete all MAEE machinery from `evaluator.rs` (`maee`, `maee_side`, `AttackersTable`, `AttackerList`, `build_attackers_table`, `attackers_bb_from_table`, `build_attacker_list`, `attacker_cost`, `piece_material_of`, `king_expand`, `enumerate_attackers`, `SQ_BIT`, weight consts). Zero out `EvalBreakdown.threat_p1/p2` for frontend/bench backwards compatibility.
-- Order QS loud moves by SEE score (descending). Move-Attacks scored via `see_capture`; Strike/Blast/BodyguardChoice get a neutral key; quiet moves (only reached when in check) sort last. `AttackersTable` built once per QS node, lazily.
-- Add `bench_counters`-gated counters `see_table_builds` and `see_capture_calls`; keep legacy `maee_*` counter fields zeroed for `search_bench` JSON schema compat.
-
-**Files touched:**
-- `crates/core_engine/src/search/see.rs` (new, ~660 lines) — API + tests.
-- `crates/core_engine/src/search.rs` — register `see` module.
-- `crates/core_engine/src/search/evaluator.rs` — MAEE deletion, threat_p* zeroed.
-- `crates/core_engine/src/search/quiescence.rs` — scored move ordering.
-- `crates/core_engine/src/search/counters.rs` — SEE counters, legacy maee_* kept for schema.
-
-**Tests:** all 396 `cargo test -p core_engine` pass. 4 new SEE unit tests (`single_hit_kill_of_bare_champion`, `hp_only_hit_no_defenders`, `recapture_zero`, `losing_capture_negative`). Mate-in-1 and unmake-symmetry QS tests unchanged, still pass.
-
-**Bench 1 — Eval microbench (`bench/results/eval-post-pass4.json` vs `eval-post-pass3.json`):**
-- Geo mean **1719 ns → 334 ns (-80.6%, 5.15× faster)**.
-- Mean 3687 ns → 456 ns (-87.6%).
-- Max 15406 ns → 1016 ns (-93.4%). MAEE was the dominant cost by a wide margin.
-
-**Bench 2 — Search d6 (`bench/results/search-post-pass4-d6.json` vs `search-post-pass3-chunk2-d6.json`):**
-- Total wall time: **58.7 s → 11.3 s (-80.7%, 5.2× speedup)**.
-- Total nodes: **24.7 M → 13.8 M (-44.3%)**. The node reduction (not just per-node cost drop) is the interesting result — it means SEE-ordered QS captures produce better alpha-beta cutoffs than the MAEE-perturbed leaf ordering did. Best case `opening-with-skills-03`: nodes -80.2%, time -93.0%.
-- One position regressed in nodes: `skill-phase-full-03` +128% nodes, but still -20% wall time (per-eval is 5× cheaper). Flagging for a later look; likely SEE ordering disagrees with what the previous MAEE-inflated eval preferred.
-
-**Bench 3 — Endgame FEN verification:** deferred to playtest (user's next session). The corpus results across 30 positions cover most tactical patterns; the endgame FEN is a functional guard rail rather than a perf metric.
-
-**Combined Pass 1→Pass 4 vs baseline:**
-- Baseline was `search-post-maee-d6.json` @ ~745 s total. Now 11.3 s. **~66× speedup** over the pre-perf-track baseline.
-
-**Known follow-ups (deferred, not blocking):**
-- `skill-phase-full-03` node regression — investigate in a follow-up whether SEE ordering is missing a Strike/Blast score component that MAEE was implicitly providing.
-- `search_bench`'s JSON writer doesn't yet emit `see_table_builds`/`see_capture_calls`. Add if we want per-position SEE frequency data.
-- Frontend still declares `threat_p1/p2` types (`multiplayer-engine.test.ts`, `EvalBreakdownPanel.svelte`, `engine/types.ts`). Zeroed values are backwards-compatible; UI cleanup is separate.
-
-**Backlog updates:**
-- Group A: closed (was already closed at Pass 3 audit; this pass deletes the last MAEE code that Group A had noted as dead-work-in-place).
-- Group E (QS redesign): closed — the double-count problem is resolved by MAEE deletion; QS's ordering is now the SEE improvement itself.
-- Group D (SEE for move ordering): **this pass**. Closed.
-- Group F (TT under perturbed scores): likely obsolete now — eval no longer perturbs at forced-move / MAEE-heavy positions. Reassess after Track E lands.
-- Group C (Zobrist eval cache): lower priority — 334 ns eval doesn't cry out for caching.
-
-**Next:** Track E starts with **E1: gate MAEE calls at the ordering site behind a feature flag if we want reversibility.** MAEE was fully deleted this pass instead of commented-out (user's explicit direction: "delete it from eval"); rollback anchor is the commit before this pass.
-
----
-
-### Pass 4+ (2026-07-08) — SEE for Strike/Blast + bench JSON emission
-
-**Anchor:** Pass 4 commit `46371dd`. Diff scope: single new helper in `see.rs`, its use at the Skill-action ordering site in `quiescence.rs`, and the bench JSON/print additions in `search_bench`.
-
-**Scope:**
-- **`see_single_hit(pos, target) -> i32`** in `search/see.rs`. Scores a single-hit skill action (Strike/Blast) at `target`: returns `ARMOR_PER_POINT` if the target has armor (chip only), `HP_PER_POINT` if `hp > 1` (chip only), or `victim_val + HP_PER_POINT` on the killing blow (bare piece, hp==1, armor==0). No exchange rollout — Strike/Blast fires once and doesn't move the attacker into range for a reply, so a single-hit valuation is the right shape. King-target case handled upstream in `quiescence.rs` by short-circuiting to `MATE_SCORE`.
-- **QS ordering for Skill actions.** Previously Skill-kind loud moves got neutral key `0`, letting Move-Attacks always sort ahead regardless of scale. Now Skill actions get `see_single_hit(target)` (or `MATE_SCORE` on king target). Move-Attack scoring via `see_capture` unchanged.
-- **`search_bench` JSON emission.** Added `see_table_builds` and `see_capture_calls` to the per-position `counters` println, the `write_counter_snapshot` JSON writer, and the aggregate rollup. Backwards-compatible with existing `maee_*` fields (still emitted, zeroed).
-- **Tests:** 4 SEE unit tests kept from Pass 4; one (`recapture_zero`) had its expected value corrected during Pass 4+ to reflect the actual MAEE-shape fold-back semantics (P1's HP-strip reply is negative from P2's POV, folds back, then P2's kill of P2C@28 nets +1000 not 0). Full 396-test suite passes.
-
-**Investigation — `skill-phase-full-03` +128% node regression (Pass 4 known follow-up):**
-
-Ran counters + delta bench to test the hypothesis that Skill-kind ordering was the cause.
-
-Result:
-- **Nodes: 4,448,763 → 4,448,748 (-0.00%, off-by-15 noise).** Node count is essentially unchanged by adding `see_single_hit` ordering.
-- **Wall time: -13.76%** on this position (per-node cheaper due to slightly better cache behavior; no measurable branch cutoff improvement).
-
-Conclusion: the +128% node count on this position vs Pass 3 is **not** caused by QS Skill-ordering choice. It's inherent to the position's tree shape under Pass 4's cleaner eval — with MAEE deleted from the static eval, QS has to walk exchanges dynamically that MAEE previously baked into the leaf. This position happens to have many Skill-phase leaves where the exchange rollout is where the time goes, and there is no ordering signal that changes the node count.
-
-**Bench — Full corpus d6 (`bench/results/search-post-pass4plus-d6.json` vs `search-post-pass4-d6.json`):**
-- Total nodes: 13,779,558 → 13,779,579 (+0.00%, ~+21 nodes across 30 positions).
-- Total wall time: **11,328 ms → 10,474 ms (-7.54%)**.
-- Per-position: 21/30 improved on time, 9 regressed within ±2% (variance).
-
-The wall-time win comes from cheaper per-node QS ordering — Skill actions now sort at their real magnitude instead of being blindly interleaved. Nodes are flat because on most positions the QS cutoff already lands early enough that ordering-within-loud-set doesn't change it.
-
-**Decision (2026-07-08):** Accept `skill-phase-full-03` +128% vs Pass 3 as inherent to the eval-scope correction. Not an ordering bug — no ordering-side fix will change the node count. The corpus-wide net (-80% time vs Pass 3, +N/A vs Pass 4) is what matters, and this position alone still has -20% wall time vs Pass 3 despite the node inflation because per-node cost dropped 5×.
-
-**Combined Pass 1→Pass 4+ vs pre-perf-track baseline:**
-- `search-post-maee-d6.json` ~745 s → 10.5 s. **~71× speedup**.
-
-**Backlog updates:**
-- Pass 4 follow-up: `skill-phase-full-03` — **closed as accepted trade-off** (documented above).
-- Pass 4 follow-up: `search_bench` JSON emission of SEE counters — **closed** (this pass).
-- Frontend `threat_p1/p2` type cleanup — still deferred; harmless.
-
-**Next:** Track E (eval-correctness passes) is the natural next step. Perf track has no burning items — Groups B, C, F–M all remain, but none of them jump out at 334 ns/eval and 10.5 s d6-corpus. Reassess after Track E lands.
+Post-Pass-4 the exchange-rollout math lives in `search::see`. A fresh critique run against SEE (rather than MAEE) will surface new issues — quality of ordering, table build cost, per-target-mask coverage vs Strike/Blast semantics, etc. Do this before planning Pass 5.
 
 ---
 
 ## Notes for future passes
 
 - **Always commit before starting a pass.** That commit is then a rollback anchor.
-- **Never batch two unrelated optimisation ideas in one pass.** The point of iterating is that each pass's benchmark tells us whether that specific change helped. Batching hides regressions.
+- **Never batch two unrelated optimisation ideas in one pass.** Batching hides regressions. (Pass 4 batched MAEE deletion + SEE-for-QS-ordering, but they're the same idea from two angles — the exception, not a precedent.)
 - **Recritique after no open items remain.** The same 5 agents. Cross-cutting themes shift as the low-hanging fruit disappears.
 - **If a pass makes things worse, revert cleanly.** The commit + bench-file pattern makes this trivial.
-- **Endgame FEN verification is not mandatory every pass.** Run it only if critique agents surface search-quality concerns or if a known regression list is empty. Rationale: it's manual, and the corpus + node-count deltas already flag most quality regressions faster.
-- **Flag known regressions in the pass log rather than blocking on them.** Document the position, the delta, and the suspected cause. Address in a later pass with explicit scope. Don't silently accept them and don't panic-revert a net-positive pass.
+- **Endgame FEN verification is not mandatory every pass.** Run it only if critique agents surface search-quality concerns.
+- **Flag known regressions in the pass log rather than blocking on them.** Document the position, the delta, and the suspected cause. Address in a later pass with explicit scope.

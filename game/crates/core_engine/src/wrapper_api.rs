@@ -345,6 +345,10 @@ pub fn heuristic_eval(m: &Match) -> crate::search::evaluator::EvalBreakdown {
     crate::search::evaluator::evaluate_breakdown(m.position())
 }
 
+pub fn heuristic_eval_by_square(m: &Match) -> crate::search::evaluator::EvalBreakdownBySquare {
+    crate::search::evaluator::evaluate_by_square(m.position())
+}
+
 impl core::fmt::Display for SnapshotErrorOrParse {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {

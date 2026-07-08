@@ -7,6 +7,7 @@ import type {
   DraftStateView,
   EngineClient,
   EvalBreakdown,
+  EvalBreakdownBySquare,
   FinalResultByte,
   PositionView,
   SideLoadout,
@@ -201,6 +202,10 @@ export class TauriClient implements EngineClient {
 
   async heuristicEval(): Promise<EvalBreakdown> {
     return await invoke<EvalBreakdown>("heuristic_eval", { handle: this.#requireHandle() });
+  }
+
+  async heuristicEvalBySquare(): Promise<EvalBreakdownBySquare> {
+    return await invoke<EvalBreakdownBySquare>("heuristic_eval_by_square", { handle: this.#requireHandle() });
   }
 
   async requestAiMoveAtDepth(maxDepth: number): Promise<StepResult> {

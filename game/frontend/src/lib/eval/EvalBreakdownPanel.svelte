@@ -45,7 +45,7 @@
                             prevDelta: prev ? dPrev(cur.skills_p1, cur.skills_p2, prev.skills_p1, prev.skills_p2) : null },
       { label: "Money",     p1: cur.money_p1,      p2: cur.money_p2,
                             prevDelta: prev ? dPrev(cur.money_p1, cur.money_p2, prev.money_p1, prev.money_p2) : null },
-      { label: "Mobility",  p1: cur.mobility_p1,   p2: cur.mobility_p2,
+      { label: "Reach",     p1: cur.mobility_p1,   p2: cur.mobility_p2,
                             prevDelta: prev ? dPrev(cur.mobility_p1, cur.mobility_p2, prev.mobility_p1, prev.mobility_p2) : null },
       { label: "Threat",    p1: cur.threat_p1,     p2: cur.threat_p2,
                             prevDelta: prev ? dPrev(cur.threat_p1, cur.threat_p2, prev.threat_p1, prev.threat_p2) : null },

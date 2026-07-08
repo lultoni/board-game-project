@@ -12,6 +12,8 @@ export type {
   DraftStateView,
   SideLoadout,
   EvalBreakdown,
+  SquareBreakdown,
+  EvalBreakdownBySquare,
 } from "./types";
 export { ActionKind, decodeAction, actionKindName, encodeDraftTurn, decodeDraftTurn, isDraftTurn, DRAFT_TURN_TAG, ACTION_BG_CHOICE_TAG, MAX_BODYGUARD_ELIGIBLE, isBodyguardChoice, bgGuardIdx, encodeBodyguardChoice } from "./action";
 export type { ActionDecoded, ActionKindValue, DraftTurnDecoded } from "./action";

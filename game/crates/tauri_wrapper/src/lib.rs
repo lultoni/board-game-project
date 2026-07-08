@@ -333,6 +333,14 @@ fn heuristic_eval(
 }
 
 #[tauri::command]
+fn heuristic_eval_by_square(
+    handle:   u64,
+    registry: State<'_, EngineRegistry>,
+) -> Result<core_engine::search::evaluator::EvalBreakdownBySquare, String> {
+    registry.with(handle, |e| api::heuristic_eval_by_square(&e.m))
+}
+
+#[tauri::command]
 fn legal_actions(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Vec<u32>, String> {
     registry.with(handle, |e| {
         api::legal_actions_into(&e.m, &mut e.legal_buf);
@@ -896,6 +904,7 @@ pub fn run() {
             try_apply,
             step_ai,
             heuristic_eval,
+            heuristic_eval_by_square,
             request_ai_move_forced,
             request_ai_move_at_depth,
             match_log_json,

@@ -96,6 +96,55 @@ export interface EvalBreakdown {
   total:        number;
 }
 
+/** Per-square eval breakdown — one entry per board square (0..63). Empty
+ *  squares carry `occupied: false` with all terms zero. Piece kinds:
+ *  0=empty, 1=guard, 2=champion, 3=king. Skill availabilities are
+ *  fixed-point on `SKILL_AVAIL_MAX = 256` (percent = fp * 100 / 256). */
+export interface SquareBreakdown {
+  sq: number;
+  occupied: boolean;
+  is_p1: boolean;
+  piece_kind: number;
+  hp: number;
+  armor: number;
+  skill1_id: number;
+  skill2_id: number;
+
+  material: number;
+  hp_term: number;
+  armor_term: number;
+  skills_term: number;
+  mobility_term: number;
+  exposure_term: number;
+  coverage_term: number;
+  piece_total: number;
+
+  skill1_avail_fp: number;
+  skill2_avail_fp: number;
+  n_attackers: number;
+  n_adj_guards: number;
+  mobility_raw: number;
+  empty_ring_total: number;
+  empty_ring_shielded: number;
+}
+
+/** Full per-square breakdown plus side-level context (money, tempo,
+ *  reconciled total). Sum of all squares' owner-signed totals + side
+ *  money/tempo terms equals `total` for non-terminal positions. */
+export interface EvalBreakdownBySquare {
+  squares: SquareBreakdown[];
+  p1_money: number;
+  p2_money: number;
+  p1_money_cap: number;
+  p2_money_cap: number;
+  p1_money_term: number;
+  p2_money_term: number;
+  p1_tempo_term: number;
+  p2_tempo_term: number;
+  total: number;
+  terminal: boolean;
+}
+
 export interface EngineClient {
   version(): Promise<string>;
   createEngine(configJson?: string): Promise<void>;
@@ -122,6 +171,9 @@ export interface EngineClient {
    *  Returns the full per-component breakdown; `total` is P1-POV
    *  (positive = P1 ahead). */
   heuristicEval(): Promise<EvalBreakdown>;
+  /** Per-square variant: returns the full 64-square breakdown plus side-
+   *  level money/tempo terms. Used by the eval-diagnostic hover overlay. */
+  heuristicEvalBySquare(): Promise<EvalBreakdownBySquare>;
   /** Inspector variant: runs the search regardless of seat kind so HvH
    *  positions can also ask "what would the AI play here?". The seat-
    *  restricted variant was removed as dead surface — match uses `stepAi`. */

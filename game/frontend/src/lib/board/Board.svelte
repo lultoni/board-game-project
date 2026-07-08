@@ -119,6 +119,10 @@
     /** Whose turn it is: 0 = P1, 1 = P2, null = game over / unknown.
      *  Renders a coloured accent strip on the active player's board edge. */
     toMove?: number | null;
+    /** Diagnostic hover overlay. Fires with the square under the cursor
+     *  (0..63) or null when the cursor leaves the board. `(clientX, clientY)`
+     *  are viewport-space coordinates so the parent can position a popup. */
+    onSquareHover?: (sq: number | null, clientX: number, clientY: number) => void;
   }
 
   let {
@@ -162,6 +166,7 @@
     lungeSquares = new Map<number, { dx: number; dy: number; dist: number }>(),
     pieceMotion = new Map<number, PieceMotion>(),
     toMove = null,
+    onSquareHover,
   }: Props = $props();
 
   const SIZE = $derived(viewBox / 8);
@@ -830,7 +835,7 @@
   <!-- Hit-test overlay — invisible rects on top to catch pointer events.
        Pointer-down on a selectable square begins a drag; up routes to drop
        (if the cursor crossed squares) or click (if it stayed put). -->
-  <g class="hits" role="presentation" onpointerleave={() => { approachHovered = null; }}>
+  <g class="hits" role="presentation" onpointerleave={(e) => { approachHovered = null; onSquareHover?.(null, e.clientX, e.clientY); }}>
     {#each squares as { sq, x, y } (sq)}
       {@const isMoveTarget = moveTargets.has(sq)}
       {@const isSelectable = selectable.has(sq)}
@@ -848,7 +853,7 @@
         aria-label={`square ${sq}`}
         class:hot={isHot}
         class:grab={interactive && draggable.has(sq) && !usedSquares.has(sq)}
-        onpointermove={() => { if (approachChoices.length > 0 && approachChoices.includes(sq)) approachHovered = sq; else if (approachChoices.length > 0) approachHovered = null; }}
+        onpointermove={(e) => { if (approachChoices.length > 0 && approachChoices.includes(sq)) approachHovered = sq; else if (approachChoices.length > 0) approachHovered = null; onSquareHover?.(sq, e.clientX, e.clientY); }}
         onpointerdown={(e) => handleSquarePointerDown(sq, e)}
         onkeydown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
