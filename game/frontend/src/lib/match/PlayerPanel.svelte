@@ -19,18 +19,18 @@
     aiThinkBudgetMs = 1000,
   }: Props = $props();
 
-  // Per-seat thinking flag: the AI is thinking AND it's this seat's turn.
-  // Computed inside the panel so the two PlayerPanel instances only re-render
-  // on toggles that affect them specifically, not on every unrelated store
-  // write.
-  const seatToMove = $derived(player === "p1" ? 0 : 1);
-  const aiThinking = $derived(aiSearch.thinking && position?.toMove === seatToMove);
+  // Per-seat thinking flag: reads the seat's own slot in the store, no need
+  // to gate on position?.toMove — the store already splits by side, and a
+  // seat's `thinking` flag is only true while that seat's search is running.
+  const seatSide = $derived(player);
+  const seatState = $derived(aiSearch[seatSide]);
+  const aiThinking = $derived(seatState.thinking);
   // Route sets `searchStartedAt` on beginSearch()/clears on endSearch(); we
   // only surface it to the progress bar while this seat is actually the one
-  // thinking, otherwise the other seat's start time would leak in.
-  const aiSearchStartedAt = $derived(aiThinking ? aiSearch.searchStartedAt : null);
-  const aiLastDepth = $derived(aiSearch.lastDepth ?? 0);
-  const aiLastScore = $derived(aiSearch.lastScore ?? 0);
+  // thinking.
+  const aiSearchStartedAt = $derived(aiThinking ? seatState.searchStartedAt : null);
+  const aiLastDepth = $derived(seatState.lastDepth ?? 0);
+  const aiLastScore = $derived(seatState.lastScore ?? 0);
 
   function popcount(bb: bigint): number {
     let n = 0;

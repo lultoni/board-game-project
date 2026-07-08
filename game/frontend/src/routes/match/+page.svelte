@@ -909,7 +909,7 @@
     void settings.showEvalPanel;
     if (!(settings.showHeuristicEval || settings.showEvalPanel)) return;
     if (!eng || match.mode === "multiplayer" || !match.position) return;
-    if (aiSearch.thinking) return;
+    if (aiSearch.anyThinking) return;
     const e = eng;
     const priorBreakdown = aiSearch.heuristicEvalBreakdown;
     const priorRound = aiSearch.lastRoundSeen;
@@ -943,6 +943,10 @@
     if (match.mode === "multiplayer") return;
     if (!match.position) return;
     if (match.position.gameResult !== 0) return;
+    // Capture side up-front — match.position advances during renderApplied(),
+    // so endSearch() at the end of this call needs the side that was to move
+    // when the search STARTED, not the (now next) side.
+    const side: "p1" | "p2" = match.position.toMove === 0 ? "p1" : "p2";
     busy = true;
     // Do NOT reset lastDepth / lastScore / finishedAtPly here. The prior
     // values stay visible until the streaming depth callback overwrites them
@@ -950,7 +954,7 @@
     // spinner already visually takes over from the linger badge, so there's no
     // risk of confusion — and this avoids the "d0 +0" flash the user reported
     // when quick shallow depths report before the deeper ones catch up.
-    beginSearch();
+    beginSearch(side);
     try {
       // Drain any deferred Skill refresh before snapshotting pre-state — see
       // applyRaw for rationale.
@@ -959,10 +963,10 @@
         ? new Promise<void>((r) => setTimeout(r, minDelayMs))
         : Promise.resolve();
       const [result] = await Promise.all([runAiCall(() => eng!.stepAi((d, s) => {
-        updateDepth(d, s);
+        updateDepth(side, d, s);
       })), delayP]);
       const raw = result.appliedAction;
-      setFinalDepth(result.depth);
+      setFinalDepth(side, result.depth);
       if (raw === 0) {
         // AI returned no move. Two cases:
         //   - match.position.gameResult !== 0 → terminal (mate/stalemate),
@@ -1013,7 +1017,7 @@
       // greyed-out linger for exactly one opponent turn (until `plyCount`
       // advances past this snapshot). afterApplied already bumped plyCount
       // on the applied AI ply, so `plyCount` at this point == "AI just moved".
-      endSearch(plyCount);
+      endSearch(side, plyCount);
       busy = false;
     }
   }
@@ -1427,7 +1431,7 @@
   }
 
   async function enterSandbox(): Promise<void> {
-    if (!eng || busy || aiSearch.thinking) return;
+    if (!eng || busy || aiSearch.anyThinking) return;
     if (match.mode === "sandbox") return;
     busy = true;
     sfx.play("sandboxEnter");
@@ -1883,7 +1887,7 @@
           <button
             type="button"
             class="sandbox-toggle"
-            disabled={busy || (match.mode !== "sandbox" && aiSearch.thinking)}
+            disabled={busy || (match.mode !== "sandbox" && aiSearch.anyThinking)}
             onclick={() => void (match.mode === "sandbox" ? exitSandbox() : enterSandbox())}
           >{match.mode === "sandbox" ? t("controls.exitSandbox") : t("controls.sandbox")}</button>
           {#if match.mode === "sandbox"}
