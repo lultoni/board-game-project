@@ -909,6 +909,7 @@
     void settings.showEvalPanel;
     if (!(settings.showHeuristicEval || settings.showEvalPanel)) return;
     if (!eng || match.mode === "multiplayer" || !match.position) return;
+    if (aiSearch.thinking) return;
     const e = eng;
     const priorBreakdown = aiSearch.heuristicEvalBreakdown;
     const priorRound = aiSearch.lastRoundSeen;
