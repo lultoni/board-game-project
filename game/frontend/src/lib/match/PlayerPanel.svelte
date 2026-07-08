@@ -1,37 +1,36 @@
 <script lang="ts">
   import type { PositionView } from "$lib/engine";
   import { settings } from "$lib/state/settings.svelte";
+  import { aiSearch } from "$lib/state/ai-search.svelte";
 
   interface Props {
     player: "p1" | "p2";
     position: PositionView | null;
-    /** True when the AI is currently thinking for this player's seat. */
-    aiThinking: boolean;
-    /** Depth reached by the last completed or in-progress AI search (0 = none yet). */
-    aiLastDepth: number;
-    /** Score from the last depth iteration (P1 POV). */
-    aiLastScore: number;
     /** Configured max depth limit (0 = ∞). */
     aiMaxDepth: number;
     /** Whether this seat is controlled by an AI (drives indicator visibility). */
     isAiSeat: boolean;
-    /** `Date.now()` snapshot when the current search started, or null. */
-    aiSearchStartedAt?: number | null;
     /** Configured think-time budget for this seat (ms). */
     aiThinkBudgetMs?: number;
-    /** Ply counter at which the last search finished; used to time the linger. */
-    aiFinishedAtPly?: number | null;
-    /** Live ply counter; controls when the linger indicator hides. */
-    plyCount?: number;
   }
 
   let {
-    player, position, aiThinking, aiLastDepth, aiLastScore, aiMaxDepth, isAiSeat,
-    aiSearchStartedAt = null,
+    player, position, aiMaxDepth, isAiSeat,
     aiThinkBudgetMs = 1000,
-    aiFinishedAtPly = null,
-    plyCount = 0,
   }: Props = $props();
+
+  // Per-seat thinking flag: the AI is thinking AND it's this seat's turn.
+  // Computed inside the panel so the two PlayerPanel instances only re-render
+  // on toggles that affect them specifically, not on every unrelated store
+  // write.
+  const seatToMove = $derived(player === "p1" ? 0 : 1);
+  const aiThinking = $derived(aiSearch.thinking && position?.toMove === seatToMove);
+  // Route sets `searchStartedAt` on beginSearch()/clears on endSearch(); we
+  // only surface it to the progress bar while this seat is actually the one
+  // thinking, otherwise the other seat's start time would leak in.
+  const aiSearchStartedAt = $derived(aiThinking ? aiSearch.searchStartedAt : null);
+  const aiLastDepth = $derived(aiSearch.lastDepth ?? 0);
+  const aiLastScore = $derived(aiSearch.lastScore ?? 0);
 
   function popcount(bb: bigint): number {
     let n = 0;
@@ -109,9 +108,8 @@
   // The prior search's depth/score stays visible until the next search's
   // streaming callback overwrites the numbers. Prevents flicker between plies
   // and lets the user actually read the last result before it disappears.
-  // `aiFinishedAtPly` is retained on the state, but the display no longer
-  // gates on ply-count matching — the badge is sticky until a new search
-  // starts (aiThinking becomes true) or until aiLastDepth is cleared.
+  // Badge is sticky until a new search starts (thinking flips true) or until
+  // aiSearch.lastDepth is cleared.
   const showLinger = $derived(
     isAiSeat && !aiThinking && aiLastDepth > 0
   );

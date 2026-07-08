@@ -14,8 +14,6 @@
     MODIFIER_FOCUS,
     MODIFIER_CHARGE,
     runAiCall,
-    type EvalBreakdown,
-    type EvalBreakdownBySquare,
   } from "$lib/engine";
   import { resolveLoadout } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
@@ -69,45 +67,33 @@
   import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
   import EvalBreakdownPanel from "$lib/eval/EvalBreakdownPanel.svelte";
   import SquareEvalCard from "$lib/eval/SquareEvalCard.svelte";
+  import {
+    aiSearch,
+    beginSearch,
+    updateDepth,
+    endSearch,
+    setFinalDepth,
+    setHeuristic,
+    setHeuristicBySquare,
+    setPrevRoundBreakdown,
+    setLastRoundSeen,
+    resetAiSearch,
+  } from "$lib/state/ai-search.svelte";
 
   const mode = $derived(match.mode === "multiplayer" ? "multiplayer" : modeFromSeats(match.side));
 
   let bootError = $state<string | null>(null);
   let ready = $state(false);
   let busy = $state(false);
-  /** True while a `stepAi` call is in flight. Drives the "AI is thinking…" overlay. */
-  let aiThinking = $state(false);
-  /** Search depth reached by the last completed AI move. 0 = none yet. */
-  let aiLastDepth = $state(0);
-  /** Score (centipawns, P1 POV) from the last completed or in-progress AI depth iteration. */
-  let aiLastScore = $state(0);
-  /** Timestamp of last depth-update UI flush — used to throttle reactive writes to 100ms. */
-  let lastDepthUpdateMs = 0;
-  /** `Date.now()` when the current AI search started. null when idle. Drives
-   *  the time-based progress bar in PlayerPanel. */
-  let aiSearchStartedAt = $state<number | null>(null);
   /** Monotonic ply counter — incremented after every successful apply. Used
    *  to time the AI thinking indicator's post-search linger: the indicator
    *  stays visible for one opponent turn after the search finished. */
   let plyCount = $state(0);
-  /** `plyCount` snapshot captured when the last AI search finished. null
-   *  when no search has ever run this match, or after the linger has hidden. */
-  let aiFinishedAtPly = $state<number | null>(null);
-  /** Static heuristic eval of the current board (P1 POV). null = not yet polled. */
-  let heuristicEvalScore = $state<number | null>(null);
-  /** Full eval breakdown for the analysis panel. null = not yet polled. */
-  let heuristicEvalBreakdown = $state<EvalBreakdown | null>(null);
-  /** Per-square eval breakdown for the hover diagnostic card. */
-  let heuristicEvalBySquare = $state<EvalBreakdownBySquare | null>(null);
   /** Board square currently under the cursor (for the eval hover card).
    *  null when the cursor is off-board. */
   let hoveredSq = $state<number | null>(null);
   let hoverX = $state(0);
   let hoverY = $state(0);
-  // Snapshot of the breakdown at the end of the previous round, so the panel
-  // can show round-over-round change per component.
-  let prevRoundBreakdown = $state<EvalBreakdown | null>(null);
-  let lastRoundSeen = $state<number | null>(null);
 
   /** Role-aware ply renderer. Owns the effects/SFX pipeline, pieceIds,
    *  shakingSquares, effectQueue, and the deferred-skill-refresh state. Both
@@ -167,9 +153,6 @@
 
   const p1IsAi = $derived(match.side.p1 === "ai");
   const p2IsAi = $derived(match.side.p2 === "ai");
-  // AI thinking indicator targets the seat that is currently thinking.
-  const p1Thinking = $derived(aiThinking && match.position?.toMove === 0);
-  const p2Thinking = $derived(aiThinking && match.position?.toMove === 1);
 
   // Track which squares used their Move action this phase. Stored as the
   // attacker's final square (target for plain Move, approach_sq for
@@ -581,6 +564,11 @@
 
   onMount(async () => {
     ownershipToken = claimRouteOwnership();
+    // Wipe any AI-search transients left over from a previous /match/ session.
+    // Route teardown does the same on exit, but resetting on entry too covers
+    // navigation paths where a prior route bypassed onDestroy (e.g. hard
+    // refresh mid-search).
+    resetAiSearch();
     console.log(`[mp] /match/ mounted (mode=${match.mode}, role=${mpState.role}, localSeat=${match.localSeat}, status=${mpState.status})`);
     try {
       eng = await getEngine();
@@ -922,21 +910,20 @@
     if (!(settings.showHeuristicEval || settings.showEvalPanel)) return;
     if (!eng || match.mode === "multiplayer" || !match.position) return;
     const e = eng;
-    const priorBreakdown = heuristicEvalBreakdown;
-    const priorRound = lastRoundSeen;
+    const priorBreakdown = aiSearch.heuristicEvalBreakdown;
+    const priorRound = aiSearch.lastRoundSeen;
     void e.heuristicEval().then((v) => {
-      heuristicEvalScore = v.total;
       const curRound = match.position?.roundNumber ?? null;
       // On round transition, freeze the last-seen breakdown as the "previous"
       // reference so the panel can display the round-over-round change.
       if (curRound !== null && priorRound !== null && curRound !== priorRound && priorBreakdown !== null) {
-        prevRoundBreakdown = priorBreakdown;
+        setPrevRoundBreakdown(priorBreakdown);
       }
-      lastRoundSeen = curRound;
-      heuristicEvalBreakdown = v;
+      setLastRoundSeen(curRound);
+      setHeuristic(v);
     }).catch(() => {});
     void e.heuristicEvalBySquare().then((v) => {
-      heuristicEvalBySquare = v;
+      setHeuristicBySquare(v);
     }).catch(() => {});
   });
 
@@ -956,14 +943,13 @@
     if (!match.position) return;
     if (match.position.gameResult !== 0) return;
     busy = true;
-    aiThinking = true;
-    // Do NOT reset aiLastDepth / aiLastScore / aiFinishedAtPly here. The prior
+    // Do NOT reset lastDepth / lastScore / finishedAtPly here. The prior
     // values stay visible until the streaming depth callback overwrites them
     // (typically within a few frames) or the search completes. The `thinking`
     // spinner already visually takes over from the linger badge, so there's no
     // risk of confusion — and this avoids the "d0 +0" flash the user reported
     // when quick shallow depths report before the deeper ones catch up.
-    aiSearchStartedAt = Date.now();
+    beginSearch();
     try {
       // Drain any deferred Skill refresh before snapshotting pre-state — see
       // applyRaw for rationale.
@@ -972,15 +958,10 @@
         ? new Promise<void>((r) => setTimeout(r, minDelayMs))
         : Promise.resolve();
       const [result] = await Promise.all([runAiCall(() => eng!.stepAi((d, s) => {
-        const now = Date.now();
-        if (now - lastDepthUpdateMs >= 100) {
-          lastDepthUpdateMs = now;
-          aiLastDepth = d;
-          aiLastScore = s;
-        }
+        updateDepth(d, s);
       })), delayP]);
       const raw = result.appliedAction;
-      aiLastDepth = result.depth;
+      setFinalDepth(result.depth);
       if (raw === 0) {
         // AI returned no move. Two cases:
         //   - match.position.gameResult !== 0 → terminal (mate/stalemate),
@@ -1027,13 +1008,11 @@
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
-      aiThinking = false;
-      aiSearchStartedAt = null;
       // Capture the ply the search finished on so PlayerPanel can render the
       // greyed-out linger for exactly one opponent turn (until `plyCount`
       // advances past this snapshot). afterApplied already bumped plyCount
       // on the applied AI ply, so `plyCount` at this point == "AI just moved".
-      aiFinishedAtPly = plyCount;
+      endSearch(plyCount);
       busy = false;
     }
   }
@@ -1447,7 +1426,7 @@
   }
 
   async function enterSandbox(): Promise<void> {
-    if (!eng || busy || aiThinking) return;
+    if (!eng || busy || aiSearch.thinking) return;
     if (match.mode === "sandbox") return;
     busy = true;
     sfx.play("sandboxEnter");
@@ -1629,6 +1608,9 @@
     // long AIvAI sessions don't leak PlyRenderer instances across route churn.
     renderer?.dispose();
     renderer = null;
+    // Clear AI-search transients so the next match doesn't inherit stale depth
+    // / breakdown / linger state from a previous session.
+    resetAiSearch();
   });
 </script>
 
@@ -1674,15 +1656,9 @@
         <PlayerPanel
           player="p2"
           position={match.position}
-          aiThinking={p2Thinking}
-          aiLastDepth={aiLastDepth}
-          aiLastScore={aiLastScore}
           aiMaxDepth={settings.p2MaxDepth}
           isAiSeat={p2IsAi}
-          aiSearchStartedAt={p2Thinking ? aiSearchStartedAt : null}
           aiThinkBudgetMs={settings.p2ThinkTimeMs}
-          aiFinishedAtPly={aiFinishedAtPly}
-          plyCount={plyCount}
         />
 
         <div class="board-stack" class:sandbox-mode={match.mode === "sandbox"}>
@@ -1756,15 +1732,9 @@
         <PlayerPanel
           player="p1"
           position={match.position}
-          aiThinking={p1Thinking}
-          aiLastDepth={aiLastDepth}
-          aiLastScore={aiLastScore}
           aiMaxDepth={settings.p1MaxDepth}
           isAiSeat={p1IsAi}
-          aiSearchStartedAt={p1Thinking ? aiSearchStartedAt : null}
           aiThinkBudgetMs={settings.p1ThinkTimeMs}
-          aiFinishedAtPly={aiFinishedAtPly}
-          plyCount={plyCount}
         />
       </div>
 
@@ -1912,7 +1882,7 @@
           <button
             type="button"
             class="sandbox-toggle"
-            disabled={busy || (match.mode !== "sandbox" && aiThinking)}
+            disabled={busy || (match.mode !== "sandbox" && aiSearch.thinking)}
             onclick={() => void (match.mode === "sandbox" ? exitSandbox() : enterSandbox())}
           >{match.mode === "sandbox" ? t("controls.exitSandbox") : t("controls.sandbox")}</button>
           {#if match.mode === "sandbox"}
@@ -1923,11 +1893,12 @@
             >{t("controls.undo")}</button>
           {/if}
         </div>
-        {#if settings.showHeuristicEval && heuristicEvalScore !== null && match.mode !== "multiplayer"}
+        {#if settings.showHeuristicEval && aiSearch.heuristicEvalBreakdown !== null && match.mode !== "multiplayer"}
+          {@const evalScore = aiSearch.heuristicEvalBreakdown.total}
           <div class="eval-bar-row">
             <span class="eval-label">Eval</span>
-            <span class="eval-score" class:positive={heuristicEvalScore > 0} class:negative={heuristicEvalScore < 0}>
-              {heuristicEvalScore > 0 ? '+' : ''}{heuristicEvalScore}
+            <span class="eval-score" class:positive={evalScore > 0} class:negative={evalScore < 0}>
+              {evalScore > 0 ? '+' : ''}{evalScore}
             </span>
           </div>
         {/if}
@@ -1941,7 +1912,7 @@
 
       {#if settings.showEvalPanel && match.mode !== "multiplayer"}
         <div class="eval-column">
-          <EvalBreakdownPanel breakdown={heuristicEvalBreakdown} prevBreakdown={prevRoundBreakdown} />
+          <EvalBreakdownPanel />
         </div>
       {/if}
     </div>
@@ -1952,9 +1923,9 @@
   <div class="toast" role="status" aria-live="polite">{toast}</div>
 {/if}
 
-{#if settings.showEvalPanel && match.mode !== "multiplayer" && hoveredSq !== null && heuristicEvalBySquare !== null}
+{#if settings.showEvalPanel && match.mode !== "multiplayer" && hoveredSq !== null && aiSearch.heuristicEvalBySquare !== null}
   <SquareEvalCard
-    data={heuristicEvalBySquare}
+    data={aiSearch.heuristicEvalBySquare}
     sq={hoveredSq}
     clientX={hoverX}
     clientY={hoverY}

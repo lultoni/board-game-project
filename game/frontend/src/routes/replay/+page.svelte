@@ -14,7 +14,6 @@
     SnapshotValidationError,
     validateMatchLog,
     type EngineClient,
-    type EvalBreakdown,
   } from "$lib/engine";
   import { consumePendingMatchLog } from "$lib/storage/library-handoff";
   import { snapshotJsonFromMatchLog } from "$lib/multiplayer-resume";
@@ -25,6 +24,13 @@
   import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
   import EvalBreakdownPanel from "$lib/eval/EvalBreakdownPanel.svelte";
   import BackButton from "$lib/ui/BackButton.svelte";
+  import {
+    aiSearch,
+    setHeuristic,
+    setPrevRoundBreakdown,
+    setLastRoundSeen,
+    resetAiSearch,
+  } from "$lib/state/ai-search.svelte";
 
   // Empty snapshot used to reset the engine before replaying from ply 0.
   // We keep the original log's start_fen + config and only zero `actions`.
@@ -39,11 +45,10 @@
   let playing = $state(false);
   let busy = $state(false);
   let loaded = $state(false);
-  let heuristicEvalBreakdown = $state<EvalBreakdown | null>(null);
-  // Snapshot of the breakdown at the end of the previous round, so the panel
-  // can show round-over-round change per component.
-  let prevRoundBreakdown = $state<EvalBreakdown | null>(null);
-  let lastRoundSeen = $state<number | null>(null);
+  // Heuristic breakdown + prior-round snapshot live in the shared ai-search
+  // store so `EvalBreakdownPanel` can read them without prop plumbing. Replay
+  // has no AI search, so `aiSearch.thinking` stays false; only the heuristic
+  // fields are used here.
 
   const actionLabel = $derived(
     currentPly > 0 && currentPly <= plies.length
@@ -65,6 +70,10 @@
   });
 
   onMount(async () => {
+    // Wipe leftover heuristic breakdown from a prior route session so the
+    // eval panel doesn't briefly show stale numbers before the first poll
+    // returns.
+    resetAiSearch();
     eng = await getEngine();
     renderer = createPlyRenderer(eng, { sfxEnabled: true });
     const pending = consumePendingMatchLog();
@@ -79,6 +88,7 @@
     // sessions leaked renderer state on route exit.
     renderer?.dispose();
     renderer = null;
+    resetAiSearch();
   });
 
   async function loadFromJson(json: string): Promise<void> {
@@ -204,23 +214,23 @@
     void currentPly;
     void loaded;
     if (!settings.showEvalPanel || !eng || !loaded) {
-      heuristicEvalBreakdown = null;
-      prevRoundBreakdown = null;
-      lastRoundSeen = null;
+      setHeuristic(null);
+      setPrevRoundBreakdown(null);
+      setLastRoundSeen(null);
       return;
     }
     const e = eng;
-    const priorBreakdown = heuristicEvalBreakdown;
-    const priorRound = lastRoundSeen;
+    const priorBreakdown = aiSearch.heuristicEvalBreakdown;
+    const priorRound = aiSearch.lastRoundSeen;
     void e.heuristicEval().then((v) => {
       const curRound = renderer?.position?.roundNumber ?? null;
       // When the round advances, freeze the last-seen breakdown as the "previous"
       // reference so the panel can display the round-over-round change.
       if (curRound !== null && priorRound !== null && curRound !== priorRound && priorBreakdown !== null) {
-        prevRoundBreakdown = priorBreakdown;
+        setPrevRoundBreakdown(priorBreakdown);
       }
-      lastRoundSeen = curRound;
-      heuristicEvalBreakdown = v;
+      setLastRoundSeen(curRound);
+      setHeuristic(v);
     }).catch(() => {});
   });
 
@@ -312,9 +322,6 @@
           <PlayerPanel
             player="p2"
             position={renderer.position}
-            aiThinking={false}
-            aiLastDepth={0}
-            aiLastScore={0}
             aiMaxDepth={0}
             isAiSeat={false}
           />
@@ -335,9 +342,6 @@
           <PlayerPanel
             player="p1"
             position={renderer.position}
-            aiThinking={false}
-            aiLastDepth={0}
-            aiLastScore={0}
             aiMaxDepth={0}
             isAiSeat={false}
           />
@@ -371,7 +375,7 @@
 
           {#if settings.showEvalPanel}
             <div class="eval-below">
-              <EvalBreakdownPanel breakdown={heuristicEvalBreakdown} prevBreakdown={prevRoundBreakdown} />
+              <EvalBreakdownPanel />
             </div>
           {/if}
         </div>

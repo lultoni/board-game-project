@@ -1,15 +1,14 @@
 <script lang="ts">
   import type { EvalBreakdown } from "$lib/engine";
+  import { aiSearch } from "$lib/state/ai-search.svelte";
 
-  interface Props {
-    breakdown: EvalBreakdown | null;
-    /** Snapshot from the previous round, if any. When present each row also
-     *  shows the round-over-round change of that row's Δ, so the analyst can
-     *  see which components moved and by how much. */
-    prevBreakdown?: EvalBreakdown | null;
-  }
-
-  const { breakdown, prevBreakdown = null }: Props = $props();
+  // Reads the current heuristic breakdown and prior-round snapshot from the
+  // ai-search store. Previously these came in as props from /match/, which
+  // meant every unrelated re-render on the route (depth-tick during a search,
+  // hover-square updates) also fired this component's $derived chain. Reading
+  // straight from the store isolates re-renders to the fields we actually use.
+  const breakdown = $derived<EvalBreakdown | null>(aiSearch.heuristicEvalBreakdown);
+  const prevBreakdown = $derived<EvalBreakdown | null>(aiSearch.prevRoundBreakdown);
 
   const SATURATION = 1000;
 

@@ -52,9 +52,11 @@ Risk: near-zero.
 
 ---
 
-### PR 2 — AI-transient state extraction
+### PR 2 — AI-transient state extraction — **DONE 2026-07-08**
 
-#### Phase 4 — New dedicated store
+Landed together. svelte-check clean; test suite: no new failures (same pre-existing `settings` test failure inherited from anchor). Extended to also rewire `/replay/` so `EvalBreakdownPanel` reads from the store uniformly across routes.
+
+#### Phase 4 — New dedicated store — **DONE**
 
 Files:
 - **New:** `game/frontend/src/lib/state/ai-search.svelte.ts`
