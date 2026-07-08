@@ -46,6 +46,7 @@
   // disconnect-on-exit) still runs first when the user uses those paths;
   // this onMount is the safety net for the Back-link case.
   onMount(() => {
+    console.log(`[mp] /setup/ mounted (mode=${match.mode}, role=${multiplayerRole()}, localSeat=${match.localSeat}, status=${mpState.status})`);
     const status = mpState.status;
     const liveMp =
       status === "connected"
@@ -54,6 +55,7 @@
       || status === "joining";
     if (!liveMp && multiplayerRole() !== null) {
       mpDisconnect();
+      console.log(`[mp] seat write: ${match.localSeat} → null (source: setup.safetyNet)`);
       match.localSeat = null;
       if (match.mode === "multiplayer") match.mode = "idle";
     }

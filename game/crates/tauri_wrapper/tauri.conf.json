@@ -22,7 +22,8 @@
         "title": "(GAME NAME)",
         "width": 1024,
         "height": 768,
-        "resizable": true
+        "resizable": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {

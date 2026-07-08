@@ -146,11 +146,14 @@
     try {
       resetMatchState();
       hostNavigated = false;
+      console.log(`[mp] lobby view: ${view} → hosting (source: startHost)`);
       view = "hosting";
       await mpHost();
+      console.log(`[mp] seat write: ${match.localSeat} → 0 (source: startHost)`);
       match.localSeat = 0;
     } catch (e) {
       codeError = (e as Error)?.message ?? String(e);
+      console.log(`[mp] lobby view: ${view} → choose (source: startHost.catch)`);
       view = "choose";
     } finally {
       busy = false;
@@ -202,7 +205,11 @@
       // gone, requires the seat to survive the relay's role assignment —
       // otherwise identities swap. Seat is a game-identity, role is a
       // network concept; they must not be inferred from each other on rejoin.
-      if (opts.pinSeat !== undefined) match.localSeat = opts.pinSeat;
+      if (opts.pinSeat !== undefined) {
+        console.log(`[mp] seat write: ${match.localSeat} → ${opts.pinSeat} (source: startJoin.pinSeat)`);
+        match.localSeat = opts.pinSeat;
+      }
+      console.log(`[mp] lobby view: ${view} → joining (source: startJoin)`);
       view = "joining";
       if (opts.keepState) {
         await mpJoinKeepState(code);
@@ -218,7 +225,10 @@
       // match.localSeat — a pinned seat from rejoinFromRow must survive
       // promotion (an ex-joiner promoted to host still plays seat 1).
       if (mpState.role === "host") {
-        if (match.localSeat === null) match.localSeat = 0;
+        if (match.localSeat === null) {
+          console.log(`[mp] seat write: null → 0 (source: startJoin.promotedHost)`);
+          match.localSeat = 0;
+        }
         const { route, matchId } = await resumeFromOwnRow(code);
         if (matchId) {
           try {
@@ -231,7 +241,10 @@
       }
 
       // Fresh-joiner default seat (only if no pin was applied above).
-      if (match.localSeat === null) match.localSeat = 1;
+      if (match.localSeat === null) {
+        console.log(`[mp] seat write: null → 1 (source: startJoin.freshJoiner)`);
+        match.localSeat = 1;
+      }
       // Prefer our own matches row for phase derivation (has plies +
       // matchLogJson). If none exists yet (setup-phase drop), fall through
       // to `joined_codes` + /setup/ so the code shows up in the lobby.
@@ -248,6 +261,7 @@
       codeError = /peer-unavailable/i.test(msg)
         ? t("multiplayer.noSuchSession")
         : t("multiplayer.connectionError", { msg });
+      console.log(`[mp] lobby view: ${view} → choose (source: startJoin.catch)`);
       view = "choose";
     } finally {
       busy = false;
@@ -332,7 +346,9 @@
 
   function cancel(): void {
     mpDisconnect();
+    console.log(`[mp] seat write: ${match.localSeat} → null (source: cancel)`);
     match.localSeat = null;
+    console.log(`[mp] lobby view: ${view} → choose (source: cancel)`);
     view = "choose";
   }
 
@@ -357,11 +373,15 @@
   // Part 2 §2. Registered in onMount and disposed in onDestroy.
   let unsubConnected: (() => void) | null = null;
   function handleHostConnected(): void {
+    console.log(`[mp] handleHostConnected fired (view=${view}, role=${mpState.role}, localSeat=${match.localSeat}) → navigating=${view === "hosting" && !hostNavigated}`);
     if (view !== "hosting") return;
     if (hostNavigated) return;
     match.side = { p1: "human", p2: "human" };
     match.mode = "multiplayer";
-    if (match.localSeat === null) match.localSeat = 0;
+    if (match.localSeat === null) {
+      console.log(`[mp] seat write: null → 0 (source: handleHostConnected)`);
+      match.localSeat = 0;
+    }
     hostNavigated = true;
     void goto("../setup/");
   }
@@ -379,7 +399,9 @@
     if (msg.kind === "error" && msg.reason === "session-full") {
       codeError = t("multiplayer.sessionFull");
       mpDisconnect();
+      console.log(`[mp] seat write: ${match.localSeat} → null (source: session-full)`);
       match.localSeat = null;
+      console.log(`[mp] lobby view: ${view} → choose (source: session-full)`);
       view = "choose";
       return;
     }

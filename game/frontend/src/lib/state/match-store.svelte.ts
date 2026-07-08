@@ -244,6 +244,9 @@ export function computeClaimResultByte(
   role: "host" | "joiner" | null,
 ): 0 | 1 {
   const seat = localSeat ?? (role === "host" ? 0 : 1);
+  if (localSeat === null) {
+    console.warn(`[mp] seat fallback used at match-store:246 (localSeat=null, role=${role}) → seat=${seat}`);
+  }
   return seat === 0 ? 0 : 1;
 }
 

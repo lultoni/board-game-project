@@ -152,6 +152,30 @@ One layer per playtest. Decompose, identify coupling, order from independent to 
 
 **Note**: Skill definitions in `.claude/skills/` were written for the paper-pipeline era and still reference deleted MD paths. They need a rewrite to query the DB instead. Until then, expect skills to fail on the old paths — fall back to direct DB queries.
 
+## Release / GitHub Actions
+
+The build workflow (`.github/workflows/release.yml`) triggers on any `v*` tag push. To cut a release:
+
+```bash
+git push origin main        # push commits first
+git tag v0.x.y              # tag the current commit
+git push origin v0.x.y      # push tag — triggers the workflow
+```
+
+If you need to redo a tag (e.g. tag already exists): delete it locally (`git tag -d v0.x.y`), delete it on the remote (`git push origin :refs/tags/v0.x.y`), then recreate and push as above.
+
+**IMPORTANT**: Never push commits or tags without explicit user approval. Always show the commands and confirm before running `git push`.
+
+## Session Start — Read Current Rules First
+
+At the start of any fresh session (before doing any design or implementation work), read the current full ruleset:
+
+```
+design/raw/paper-pipeline-archive/test-scenarios/stack-m-game-length-cut/stack-m-game-length-cut.typ
+```
+
+This is the authoritative Stack M rule sheet. Read it in full before touching any design question or game code.
+
 ## Stack M (current Active stack)
 
 Stack M is the active design (Session 25-26). Six bundled simultaneous changes from the paper baseline:

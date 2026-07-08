@@ -237,12 +237,14 @@ export function onDisconnected(cb: () => void): () => void {
 }
 
 function fireConnected(): void {
+  console.log(`[mp] fireConnected → ${connectedHandlers.size} handlers (status=${mpState.status}, role=${mpState.role})`);
   for (const h of connectedHandlers) {
     try { h(); } catch { /* subscriber crash must not poison the fan-out */ }
   }
 }
 
 function fireDisconnected(): void {
+  console.log(`[mp] fireDisconnected → ${disconnectedHandlers.size} handlers (status=${mpState.status}, role=${mpState.role})`);
   for (const h of disconnectedHandlers) {
     try { h(); } catch { /* subscriber crash must not poison the fan-out */ }
   }
@@ -364,6 +366,7 @@ const transport = createWebSocketTransport({
   },
   onPromotedToHost: () => {
     // Relay assigned us the host role (we joined but the host slot was empty).
+    console.log(`[mp] role write: ${mpState.role} → host (source: onPromotedToHost)`);
     mpState.role = "host";
   },
 });
@@ -375,6 +378,7 @@ const transport = createWebSocketTransport({
 export function host(): Promise<string> {
   disconnect();
   mpState.disconnectedSince = null;
+  console.log(`[mp] role write: ${mpState.role} → host (source: host)`);
   mpState.role = "host";
   mpState.sessionEpoch++;
   return transport.host();
@@ -387,6 +391,7 @@ export function host(): Promise<string> {
 export function hostWithCode(code: string): Promise<string> {
   disconnect();
   mpState.disconnectedSince = null;
+  console.log(`[mp] role write: ${mpState.role} → host (source: hostWithCode)`);
   mpState.role = "host";
   mpState.sessionEpoch++;
   return transport.hostWithCode(code);
@@ -400,6 +405,7 @@ export function hostWithCode(code: string): Promise<string> {
  *  survive the rebind. */
 export function hostWithCodeKeepState(code: string): Promise<string> {
   destroyPeerKeepState();
+  console.log(`[mp] role write: ${mpState.role} → host (source: hostWithCodeKeepState)`);
   mpState.role = "host";
   mpState.sessionEpoch++;
   return transport.hostWithCode(code);
@@ -411,6 +417,7 @@ export function join(code: string): Promise<void> {
   console.log("[mp] wrapper.join", code);
   disconnect();
   mpState.disconnectedSince = null;
+  console.log(`[mp] role write: ${mpState.role} → joiner (source: join)`);
   mpState.role = "joiner";
   mpState.sessionEpoch++;
   return transport.join(code);
@@ -424,6 +431,7 @@ export function joinKeepState(code: string): Promise<void> {
   // eslint-disable-next-line no-console
   console.log("[mp] wrapper.joinKeepState", code);
   destroyPeerKeepState();
+  console.log(`[mp] role write: ${mpState.role} → joiner (source: joinKeepState)`);
   mpState.role = "joiner";
   mpState.sessionEpoch++;
   return transport.join(code);
@@ -438,6 +446,7 @@ export function disconnect(): void {
   transport.disconnect();
   mpState.status = "idle";
   mpState.code = null;
+  console.log(`[mp] role write: ${mpState.role} → null (source: disconnect)`);
   mpState.role = null;
   mpState.lastPongAt = null;
   mpState.peerEverPaired = false;

@@ -141,6 +141,8 @@
 
   /** True iff (in multiplayer) the side currently to move is ours. Outside
    *  multiplayer this is always true — both seats are local. */
+  let __loggedSeatFallback150 = false;
+  let __loggedSeatFallback526 = false;
   const currentSeatIsLocal = $derived.by(() => {
     if (match.mode !== "multiplayer") return true;
     if (!match.position) return false;
@@ -148,6 +150,10 @@
     // Seat-by-localSeat, NOT by role: post-handoff the role flips but the
     // peer's board seat stays the same. See match-store.svelte.ts/localSeat.
     const seat = match.localSeat ?? (multiplayerRole() === "host" ? 0 : 1);
+    if (match.localSeat === null && !__loggedSeatFallback150) {
+      __loggedSeatFallback150 = true;
+      console.warn(`[mp] seat fallback used at match:150 (localSeat=null, role=${multiplayerRole()}) → seat=${seat}`);
+    }
     return toMove === seat;
   });
 
@@ -524,6 +530,11 @@
         sfx.play("gameEnd");
       } else {
         const localSeat = match.localSeat ?? (match.side.p1 === "human" ? 0 : 1);
+        if (match.localSeat === null && !__loggedSeatFallback526) {
+          __loggedSeatFallback526 = true;
+          // WARNING: this fallback uses match.side.p1 === "human" instead of role — likely wrong in HvH-MP.
+          console.warn(`[mp] seat fallback used at match:526 [suspect] (localSeat=null, side.p1=${match.side.p1}, role=${multiplayerRole()}) → seat=${localSeat}`);
+        }
         const localWon = (result === 1 && localSeat === 0) || (result === 2 && localSeat === 1);
         sfx.play(localWon ? "victory" : "defeat");
       }
@@ -562,8 +573,7 @@
 
   onMount(async () => {
     ownershipToken = claimRouteOwnership();
-    // eslint-disable-next-line no-console
-    console.log("[match] onMount", { mode: match.mode, role: mpState.role, status: mpState.status, lastPongAt: mpState.lastPongAt, code: mpState.code, ownershipToken });
+    console.log(`[mp] /match/ mounted (mode=${match.mode}, role=${mpState.role}, localSeat=${match.localSeat}, status=${mpState.status})`);
     try {
       eng = await getEngine();
       renderer = createPlyRenderer(eng, {

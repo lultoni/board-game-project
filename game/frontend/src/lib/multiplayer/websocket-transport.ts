@@ -199,12 +199,22 @@ export function createWebSocketTransport(
     socket.onmessage = (ev) => {
       const raw = typeof ev.data === "string" ? ev.data : null;
       if (!raw) return;
-      log("ws.message", { raw });
       const relay = parseRelay(raw);
       if (relay) {
-        log("relay.envelope", { type: relay.type });
+        console.log(`[mp][transport] recv envelope: relay/${relay.type} (paired=${paired}, role=${cbs.getRole()})`);
         const consumed = onRelayMsg(socket, relay);
         if (consumed) return;
+      } else {
+        // Cheap kind peek — game envelopes are JSON with a top-level `kind`.
+        // Avoid full parse noise; just skim the field name.
+        let kind = "?";
+        try {
+          const m = raw.match(/"kind"\s*:\s*"([^"]+)"/);
+          if (m) kind = m[1];
+        } catch { /* noop */ }
+        if (kind !== "ping" && kind !== "pong") {
+          console.log(`[mp][transport] recv envelope: ${kind} (paired=${paired}, role=${cbs.getRole()})`);
+        }
       }
       // Game message — forward to wrapper.
       cbs.onData(raw);

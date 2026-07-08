@@ -34,6 +34,8 @@ interface Session {
 interface WsData {
   sessionCode: string | null;
   role: "host" | "joiner" | null;
+  peerId: string;
+  openedAt: number;
 }
 
 const sessions = new Map<string, Session>();
@@ -75,6 +77,13 @@ function generateUniqueCode(): string {
   return code;
 }
 
+function generatePeerId(): string {
+  // Short random ID for correlating log lines to a specific peer socket.
+  // 4 hex chars = 16 bits — plenty for a relay whose peer count is bounded
+  // by concurrent sessions.
+  return Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
+}
+
 // --- Relay helpers -----------------------------------------------------------
 
 type RelayMsg = Record<string, unknown>;
@@ -101,6 +110,7 @@ function forward(from: ServerWebSocket<WsData>, session: Session, raw: string): 
 // --- Message handler ---------------------------------------------------------
 
 function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
+  const peer = ws.data.peerId;
   let msg: RelayMsg;
   try {
     const parsed = JSON.parse(raw);
@@ -117,6 +127,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
   if (code) {
     const session = sessions.get(code);
     if (!session) {
+      console.log(`[relay][peer=${peer}] reject: session-gone (code=${code})`);
       send(ws, { type: "error", reason: "session-gone" });
       return;
     }
@@ -128,6 +139,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
       return;
     }
     // Peer tried to create/join while already in a session — ignore.
+    console.log(`[relay][peer=${peer}] ignored ${String(t)} while in session ${code}`);
     return;
   }
 
@@ -137,6 +149,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
   if (type === "create") {
     // Optionally honour a preferred code (for hostWithCode / rejoin path).
     const prefer = typeof msg.preferCode === "string" ? msg.preferCode : null;
+    console.log(`[relay][peer=${peer}] recv create${prefer ? ` preferCode=${prefer}` : ""}`);
     let code: string;
     if (prefer && /^[1-9][0-9]{5}$/.test(prefer)) {
       const existing = sessions.get(prefer);
@@ -150,11 +163,12 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
           ws.data.sessionCode = code;
           ws.data.role = "host";
           send(ws, { type: "created", code });
-          console.log(`[relay] session ${code} reclaimed by host`);
+          console.log(`[relay] session ${code} sent created → peer=${peer} (host, reclaimed empty)`);
           return;
         }
       } else {
         // Preferred code is taken — fall through to generate a new one.
+        console.log(`[relay][peer=${peer}] preferCode=${prefer} taken — allocating new`);
         code = generateUniqueCode();
       }
     } else {
@@ -170,13 +184,15 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
     ws.data.sessionCode = code;
     ws.data.role = "host";
     send(ws, { type: "created", code });
-    console.log(`[relay] session ${code} created`);
+    console.log(`[relay] session ${code} sent created → peer=${peer} (host, fresh)`);
     return;
   }
 
   if (type === "join") {
     const joinCode = typeof msg.code === "string" ? msg.code : null;
+    console.log(`[relay][peer=${peer}] recv join code=${joinCode}`);
     if (!joinCode || !/^[1-9][0-9]{5}$/.test(joinCode)) {
+      console.log(`[relay][peer=${peer}] reject: invalid-code`);
       send(ws, { type: "error", reason: "invalid-code" });
       return;
     }
@@ -198,7 +214,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
       // Reply with "created" so the transport's bindHost resolver fires and
       // the peer is put in the correct host state.
       send(ws, { type: "created", code: joinCode });
-      console.log(`[relay] session ${joinCode} recreated via join`);
+      console.log(`[relay] session ${joinCode} sent created → peer=${peer} (host, recreated-via-join)`);
       return;
     }
 
@@ -206,27 +222,33 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
     const hostAlive = session.host !== null && (session.host as ServerWebSocket<WsData>).readyState === 1;
     if (!hostAlive) {
       // Host slot is empty or stale — this peer becomes the host.
+      const displacedPeer = session.host?.data.peerId ?? null;
       if (session.host) { try { session.host.close(); } catch { /* noop */ } }
       session.host = ws;
       session.bothAbsentSince = null;
       ws.data.sessionCode = joinCode;
       ws.data.role = "host";
       send(ws, { type: "created", code: joinCode });
+      console.log(`[relay] session ${joinCode} sent created → peer=${peer} (host, took stale slot${displacedPeer ? ` from peer=${displacedPeer}` : ""})`);
       if (session.joiner && (session.joiner as ServerWebSocket<WsData>).readyState === 1) {
+        const joinerPeer = session.joiner.data.peerId;
         send(session.joiner, { type: "peer-connected" });
         send(ws, { type: "peer-connected" });
+        console.log(`[relay] session ${joinCode} sent peer-connected → peer=${joinerPeer} (joiner)`);
+        console.log(`[relay] session ${joinCode} sent peer-connected → peer=${peer} (new host)`);
       }
-      console.log(`[relay] session ${joinCode} host slot taken by rejoining peer`);
       return;
     }
 
     // Host slot is live — this peer is the joiner.
     const joinerAlive = session.joiner !== null && (session.joiner as ServerWebSocket<WsData>).readyState === 1;
     if (joinerAlive) {
+      console.log(`[relay][peer=${peer}] reject: session-full (code=${joinCode}, existing joiner=${session.joiner!.data.peerId})`);
       send(ws, { type: "error", reason: "session-full" });
       return;
     }
     // Accept (or replace a stale joiner slot).
+    const displacedPeer = session.joiner?.data.peerId ?? null;
     if (session.joiner) { try { session.joiner.close(); } catch { /* noop */ } }
     session.joiner = ws;
     session.bothAbsentSince = null;
@@ -234,18 +256,26 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
     ws.data.role = "joiner";
     send(ws, { type: "joined" });
     send(session.host!, { type: "peer-connected" });
-    console.log(`[relay] session ${joinCode} joined`);
+    const hostPeer = session.host!.data.peerId;
+    console.log(`[relay] session ${joinCode} sent joined → peer=${peer} (joiner${displacedPeer ? `, replaced stale peer=${displacedPeer}` : ""})`);
+    console.log(`[relay] session ${joinCode} sent peer-connected → peer=${hostPeer} (host)`);
     return;
   }
 
   // Unknown envelope — drop silently.
+  console.log(`[relay][peer=${peer}] recv unknown kind=${String(type)}`);
 }
 
 // --- Disconnect handler ------------------------------------------------------
 
 function handleClose(ws: ServerWebSocket<WsData>): void {
+  const peer = ws.data.peerId;
   const code = ws.data.sessionCode;
-  if (!code) return;
+  const elapsedMs = Date.now() - ws.data.openedAt;
+  if (!code) {
+    console.log(`[relay][peer=${peer}] disconnected (no session, elapsed=${elapsedMs}ms)`);
+    return;
+  }
   const session = sessions.get(code);
   if (!session) return;
 
@@ -256,19 +286,25 @@ function handleClose(ws: ServerWebSocket<WsData>): void {
     // which would fire this handler for the old socket. Sending
     // peer-disconnected for a socket that's no longer in the session would
     // be a spurious drop notification to the joiner.
-    if (session.host !== ws) return;
+    if (session.host !== ws) {
+      console.log(`[relay][peer=${peer}] disconnected (stale host socket for ${code}, elapsed=${elapsedMs}ms)`);
+      return;
+    }
     session.host = null;
     if (session.joiner) {
       send(session.joiner, { type: "peer-disconnected" });
     }
-    console.log(`[relay] session ${code} host disconnected`);
+    console.log(`[relay] session ${code} host disconnected → peer=${peer} (elapsed=${elapsedMs}ms)`);
   } else if (role === "joiner") {
-    if (session.joiner !== ws) return;
+    if (session.joiner !== ws) {
+      console.log(`[relay][peer=${peer}] disconnected (stale joiner socket for ${code}, elapsed=${elapsedMs}ms)`);
+      return;
+    }
     session.joiner = null;
     if (session.host) {
       send(session.host, { type: "peer-disconnected" });
     }
-    console.log(`[relay] session ${code} joiner disconnected`);
+    console.log(`[relay] session ${code} joiner disconnected → peer=${peer} (elapsed=${elapsedMs}ms)`);
   }
 }
 
@@ -319,7 +355,12 @@ const server = Bun.serve<WsData>({
     // WebSocket upgrade.
     if (url.pathname === "/ws") {
       const upgraded = server.upgrade(req, {
-        data: { sessionCode: null, role: null } satisfies WsData,
+        data: {
+          sessionCode: null,
+          role: null,
+          peerId: generatePeerId(),
+          openedAt: Date.now(),
+        } satisfies WsData,
       });
       if (upgraded) return undefined;
       return new Response("WebSocket upgrade failed", { status: 400 });
@@ -328,8 +369,8 @@ const server = Bun.serve<WsData>({
     return new Response("Not found", { status: 404 });
   },
   websocket: {
-    open(_ws) {
-      // Nothing to do — peer must send "create" or "join" first.
+    open(ws) {
+      console.log(`[relay][peer=${ws.data.peerId}] ws.open`);
     },
     message(ws, message) {
       if (typeof message !== "string") return;

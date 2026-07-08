@@ -96,6 +96,7 @@
   let mpEngine = $state<MpEngineHandle | null>(null);
   let mpPaused = $state(false);
   let mpConnectedUnsub: (() => void) | null = null;
+  let __loggedSeatFallback = false;
   const localCanDraft = $derived.by(() => {
     if (currentSeatIsAi) return false;
     if (!isMultiplayer) return true;
@@ -105,6 +106,10 @@
     // and the displaced peer who rejoins still occupies seat 0 (P1). Mapping
     // off role would swap the players' identities mid-game.
     const seat = match.localSeat ?? (multiplayerRole() === "host" ? 0 : 1);
+    if (match.localSeat === null && !__loggedSeatFallback) {
+      __loggedSeatFallback = true;
+      console.warn(`[mp] seat fallback used at draft:107 (localSeat=null, role=${multiplayerRole()}) → seat=${seat}`);
+    }
     if (seat === 0 &&  isP1Turn) return true;
     if (seat === 1 && !isP1Turn) return true;
     return false;
@@ -375,35 +380,57 @@
 
   function dragEnd(): void { dragPayload = null; }
 
+  // Placement/move attempt for the current dragPayload. Returns true on
+  // success. Does NOT null dragPayload — the caller does that so a failed
+  // direct-hit can bubble to dropOnPiecesCol's proximity retry.
+  function tryDrop(sq: number, slot: number): boolean {
+    const p = dragPayload;
+    if (!p) return false;
+    if (p.kind === "skill") return placePick(p.id, sq, slot);
+    return movePick(p.sq, p.slot, sq, slot);
+  }
+
   function dropOnSlot(ev: DragEvent, sq: number, slot: number): void {
     ev.preventDefault();
-    const p = dragPayload;
-    dragPayload = null;
-    if (!p) return;
-    if (p.kind === "skill") {
-      if (placePick(p.id, sq, slot)) sfx.play("draftPick");
-    } else {
-      if (movePick(p.sq, p.slot, sq, slot)) sfx.play("draftPick");
+    // Clear payload only on success so a failed direct-hit bubbles to
+    // dropOnPiecesCol with the payload intact for proximity retry.
+    if (tryDrop(sq, slot)) {
+      sfx.play("draftPick");
+      dragPayload = null;
     }
   }
 
   function dropOnPiecesCol(ev: DragEvent): void {
-    if (!dragPayload) return;
+    // No-op if dropOnSlot already succeeded (payload cleared). Otherwise
+    // find the nearest LEGAL slot for the current payload and retry.
+    // Filtering by legality (not geometric nearest alone) is what stops
+    // the retry from landing on an enemy or occupied slot.
+    const p = dragPayload;
+    if (!p) return;
+    ev.preventDefault();
     const slots = (ev.currentTarget as HTMLElement).querySelectorAll<HTMLElement>(".slot");
-    let best: HTMLElement | null = null;
+    let best: { sq: number; slot: number } | null = null;
     let bestDist = Infinity;
     for (const el of slots) {
+      const sq = Number(el.dataset.sq);
+      const slot = Number(el.dataset.slot);
+      if (isNaN(sq) || isNaN(slot)) continue;
+      if (p.kind === "skill") {
+        if (!canDropSkillOn(p.id, sq, slot)) continue;
+      } else {
+        if (p.sq === sq && p.slot === slot) continue;
+        const skillId = skillIdOfPick(p);
+        if (skillId === 0) continue;
+        if (!canDropSkillOn(skillId, sq, slot)) continue;
+      }
       const r = el.getBoundingClientRect();
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
       const d = Math.hypot(ev.clientX - cx, ev.clientY - cy);
-      if (d < bestDist) { bestDist = d; best = el; }
+      if (d < bestDist) { bestDist = d; best = { sq, slot }; }
     }
-    if (!best) return;
-    const sq = Number(best.dataset.sq);
-    const slot = Number(best.dataset.slot);
-    if (isNaN(sq) || isNaN(slot)) return;
-    dropOnSlot(ev, sq, slot);
+    if (best !== null && tryDrop(best.sq, best.slot)) sfx.play("draftPick");
+    dragPayload = null;
   }
 
   function dropOnTrash(ev: DragEvent): void {
@@ -718,6 +745,7 @@
 
   onMount(async () => {
     ownershipToken = claimRouteOwnership();
+    console.log(`[mp] /draft/ mounted (mode=${match.mode}, role=${multiplayerRole()}, localSeat=${match.localSeat}, status=${mpState.status})`);
     try {
       // Use multiplayerRole (not match.mode) as the multiplayer indicator —
       // resetMatchState() doesn't clear multiplayerRole, but it does flip mode

@@ -144,6 +144,7 @@ export async function takeoverAsHost(
   // `multiplayerCode` (the $derived constants in match-store) read "host" /
   // code reactively across the UI, and the wrapper's `getRole()`/`getCode()`
   // deps pick the new values up on every send/decide-branch.
+  console.log(`[mp] role write: ${mpState.role} → host (source: handoff.takeoverAsHost)`);
   mpState.role = "host";
   mpState.code = deps.code;
 
