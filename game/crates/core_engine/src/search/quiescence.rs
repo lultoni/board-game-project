@@ -33,7 +33,7 @@
 
 use crate::time::now_ms;
 
-use super::alpha_beta::{SearchCtx, INF, TIME_CHECK_MASK};
+use super::alpha_beta::{SearchCtx, INF, TIME_CHECK_MASK, adjust_for_ply};
 use super::evaluator::MATE_SCORE;
 use super::counters;
 use super::see::{build_attackers_table, see_capture, see_single_hit, AttackersTable};
@@ -186,11 +186,11 @@ pub(super) fn quiesce(
     }
 
     if qs_ply >= MAX_QS_PLY || ply >= MAX_PLY {
-        return ctx.evaluator.evaluate(pos);
+        return adjust_for_ply(ctx.evaluator.evaluate(pos), ply);
     }
 
     let in_check = is_king_threatened(pos, pos.to_move);
-    let static_eval = ctx.evaluator.evaluate(pos);
+    let static_eval = adjust_for_ply(ctx.evaluator.evaluate(pos), ply);
     let maximising = pos.to_move == Player::P1;
 
     // Stand-pat — skip when in check (otherwise side-to-move can "stand still"

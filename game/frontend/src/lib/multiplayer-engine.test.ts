@@ -73,6 +73,7 @@ class FakeEngine implements EngineClient {
       mobility_p1: 0, mobility_p2: 0,
       threat_p1: 0, threat_p2: 0,
       skill_act_p1: 0, skill_act_p2: 0,
+      offensive_range_p1: 0, offensive_range_p2: 0,
       total: 0,
     };
   }

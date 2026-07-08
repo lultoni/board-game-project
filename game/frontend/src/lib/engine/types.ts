@@ -93,6 +93,10 @@ export interface EvalBreakdown {
   threat_p2:    number;
   skill_act_p1: number;
   skill_act_p2: number;
+  /** E9 — max castable offensive range flag (raw, e.g. 2..=4). Weighted
+   *  into `total` by OFFENSIVE_RANGE_WEIGHT (500) on the Rust side. */
+  offensive_range_p1: number;
+  offensive_range_p2: number;
   total:        number;
 }
 

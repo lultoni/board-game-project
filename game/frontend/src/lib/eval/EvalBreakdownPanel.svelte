@@ -25,11 +25,15 @@
     if (cur === null) return [];
     const dPrev = (a1: number, a2: number, b1: number, b2: number): number =>
       (a1 - a2) - (b1 - b2);
-    const totalCurP1 = cur.material_p1 + cur.hp_p1 + cur.armor_p1 + cur.skills_p1 + cur.money_p1 + cur.mobility_p1 + cur.threat_p1 + cur.skill_act_p1;
-    const totalCurP2 = cur.material_p2 + cur.hp_p2 + cur.armor_p2 + cur.skills_p2 + cur.money_p2 + cur.mobility_p2 + cur.threat_p2 + cur.skill_act_p2;
+    // E9 shown as raw range (0..=4); its weighted contribution to total is
+    // (p1 - p2) * 500 on the Rust side. The Δ column here reflects that weight
+    // so the row's contribution is legible against the other rows.
+    const REACH_WEIGHT = 500;
+    const totalCurP1 = cur.material_p1 + cur.hp_p1 + cur.armor_p1 + cur.skills_p1 + cur.money_p1 + cur.mobility_p1 + cur.threat_p1 + cur.skill_act_p1 + cur.offensive_range_p1 * REACH_WEIGHT;
+    const totalCurP2 = cur.material_p2 + cur.hp_p2 + cur.armor_p2 + cur.skills_p2 + cur.money_p2 + cur.mobility_p2 + cur.threat_p2 + cur.skill_act_p2 + cur.offensive_range_p2 * REACH_WEIGHT;
     const totalPrev = prev === null ? null :
-      (prev.material_p1 + prev.hp_p1 + prev.armor_p1 + prev.skills_p1 + prev.money_p1 + prev.mobility_p1 + prev.threat_p1 + prev.skill_act_p1)
-      - (prev.material_p2 + prev.hp_p2 + prev.armor_p2 + prev.skills_p2 + prev.money_p2 + prev.mobility_p2 + prev.threat_p2 + prev.skill_act_p2);
+      (prev.material_p1 + prev.hp_p1 + prev.armor_p1 + prev.skills_p1 + prev.money_p1 + prev.mobility_p1 + prev.threat_p1 + prev.skill_act_p1 + prev.offensive_range_p1 * REACH_WEIGHT)
+      - (prev.material_p2 + prev.hp_p2 + prev.armor_p2 + prev.skills_p2 + prev.money_p2 + prev.mobility_p2 + prev.threat_p2 + prev.skill_act_p2 + prev.offensive_range_p2 * REACH_WEIGHT);
     return [
       { label: "Total",     p1: totalCurP1, p2: totalCurP2,
                             prevDelta: totalPrev === null ? null : (totalCurP1 - totalCurP2) - totalPrev,
@@ -42,6 +46,10 @@
                             prevDelta: prev ? dPrev(cur.armor_p1, cur.armor_p2, prev.armor_p1, prev.armor_p2) : null },
       { label: "Skills",    p1: cur.skills_p1,     p2: cur.skills_p2,
                             prevDelta: prev ? dPrev(cur.skills_p1, cur.skills_p2, prev.skills_p1, prev.skills_p2) : null },
+      { label: "Off reach", p1: cur.offensive_range_p1 * REACH_WEIGHT,
+                            p2: cur.offensive_range_p2 * REACH_WEIGHT,
+                            prevDelta: prev ? dPrev(cur.offensive_range_p1 * REACH_WEIGHT, cur.offensive_range_p2 * REACH_WEIGHT,
+                                                    prev.offensive_range_p1 * REACH_WEIGHT, prev.offensive_range_p2 * REACH_WEIGHT) : null },
       { label: "Money",     p1: cur.money_p1,      p2: cur.money_p2,
                             prevDelta: prev ? dPrev(cur.money_p1, cur.money_p2, prev.money_p1, prev.money_p2) : null },
       { label: "Reach",     p1: cur.mobility_p1,   p2: cur.mobility_p2,

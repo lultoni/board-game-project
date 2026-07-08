@@ -47,8 +47,8 @@
   let loaded = $state(false);
   // Heuristic breakdown + prior-round snapshot live in the shared ai-search
   // store so `EvalBreakdownPanel` can read them without prop plumbing. Replay
-  // has no AI search, so `aiSearch.thinking` stays false; only the heuristic
-  // fields are used here.
+  // has no AI search, so both `aiSearch.p1.thinking` and `.p2.thinking` stay
+  // false; only the heuristic fields are used here.
 
   const actionLabel = $derived(
     currentPly > 0 && currentPly <= plies.length

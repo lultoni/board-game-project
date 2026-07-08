@@ -176,18 +176,50 @@ pub struct SearchResult {
 #[inline]
 fn is_mate(s: i32) -> bool { s.abs() > MATE_THRESHOLD }
 
+/// Ply-prefer band for non-mate scores. When a leaf returns an eval whose
+/// magnitude is ≥ SIGNIFICANT_SCORE, we shrink it by 1 per ply so the search
+/// prefers reaching the same winning-or-losing eval sooner (and stalling on
+/// bad ones later). Mirrors the mate-scoring convention but at a lower
+/// threshold — orthogonal to `is_mate`.
+///
+/// The leaf-side adjustment is CLAMPED so no ply-adjusted score can cross
+/// under SIGNIFICANT_SCORE. That keeps the TT round-trip clean: the "in the
+/// significant band" test is identical at leaf and TT, so scores that were
+/// never adjusted (raw magnitude < 500) never accidentally re-inflate on
+/// retrieval.
+const SIGNIFICANT_SCORE: i32 = 500;
+
+/// Applied at leaf returns (`search` depth-0 → eval / QS boundary, `quiesce`
+/// stand-pat and horizon-cap returns). Mate scores are already ply-adjusted
+/// at the terminal return; guard against double-adjustment.
+///
+/// For positive `s ≥ SIGNIFICANT_SCORE`, returns `max(s - ply, SIGNIFICANT_SCORE)`.
+/// For negative `s ≤ -SIGNIFICANT_SCORE`, returns `min(s + ply, -SIGNIFICANT_SCORE)`.
+/// The clamp preserves band membership so TT's `is_significant` check agrees.
+#[inline]
+pub(super) fn adjust_for_ply(s: i32, ply: i32) -> i32 {
+    if is_mate(s) { return s; }
+    if s >=  SIGNIFICANT_SCORE { return (s - ply).max( SIGNIFICANT_SCORE); }
+    if s <= -SIGNIFICANT_SCORE { return (s + ply).min(-SIGNIFICANT_SCORE); }
+    s
+}
+
 #[inline]
 fn score_to_tt(s: i32, ply: i32) -> i32 {
-    if      s >  MATE_THRESHOLD { s + ply }
-    else if s < -MATE_THRESHOLD { s - ply }
-    else                         { s }
+    if      s >  MATE_THRESHOLD     { s + ply }
+    else if s < -MATE_THRESHOLD     { s - ply }
+    else if s >=  SIGNIFICANT_SCORE { s + ply }
+    else if s <= -SIGNIFICANT_SCORE { s - ply }
+    else                            { s }
 }
 
 #[inline]
 fn score_from_tt(s: i32, ply: i32) -> i32 {
-    if      s >  MATE_THRESHOLD { s - ply }
-    else if s < -MATE_THRESHOLD { s + ply }
-    else                         { s }
+    if      s >  MATE_THRESHOLD     { s - ply }
+    else if s < -MATE_THRESHOLD     { s + ply }
+    else if s >=  SIGNIFICANT_SCORE { s - ply }
+    else if s <= -SIGNIFICANT_SCORE { s + ply }
+    else                            { s }
 }
 
 pub(super) struct SearchCtx<'a> {
@@ -222,7 +254,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 
     if depth <= 0 {
         if DISABLE_QS.load(AtomicOrdering::Relaxed) {
-            return ctx.evaluator.evaluate(pos);
+            return adjust_for_ply(ctx.evaluator.evaluate(pos), ply);
         }
         return super::quiescence::quiesce(pos, alpha, beta, ply, 0, ctx);
     }
@@ -487,14 +519,42 @@ mod tests {
 
     #[test]
     fn mate_score_helpers_roundtrip() {
+        // Mate band and neutral band round-trip cleanly for any ply.
         for &s in &[0_i32, 100, -100, MATE_SCORE - 3, -MATE_SCORE + 3, MATE_SCORE - 1, -MATE_SCORE + 1] {
             for &p in &[0_i32, 5, 17] {
                 assert_eq!(score_from_tt(score_to_tt(s, p), p), s,
                     "roundtrip failed for s={} p={}", s, p);
             }
         }
+        // Significant band (±500 upward). Values ≥ SIGNIFICANT_SCORE are stored
+        // ply-invariant and re-adjusted on retrieval — same shape as mate.
+        for &s in &[SIGNIFICANT_SCORE, SIGNIFICANT_SCORE + 3, 1000, -SIGNIFICANT_SCORE, -SIGNIFICANT_SCORE - 3, -1000] {
+            for &p in &[0_i32, 5, 17] {
+                assert_eq!(score_from_tt(score_to_tt(s, p), p), s,
+                    "significant-band roundtrip failed for s={} p={}", s, p);
+            }
+        }
         assert_eq!(score_to_tt(42, 5), 42);
         assert_eq!(score_from_tt(42, 5), 42);
+        // Boundary: 499 is neutral, never adjusted.
+        assert_eq!(score_to_tt(499, 5), 499);
+        assert_eq!(score_from_tt(499, 5), 499);
+    }
+
+    #[test]
+    fn adjust_for_ply_clamps_at_band_boundary() {
+        // Positive band: 505 at ply 10 would go to 495 (below band) — clamped to 500.
+        assert_eq!(adjust_for_ply(505, 10), SIGNIFICANT_SCORE);
+        // 600 at ply 10 stays inside the band → 590.
+        assert_eq!(adjust_for_ply(600, 10), 590);
+        // Negative band mirror.
+        assert_eq!(adjust_for_ply(-505, 10), -SIGNIFICANT_SCORE);
+        assert_eq!(adjust_for_ply(-600, 10), -590);
+        // Neutral band unchanged.
+        assert_eq!(adjust_for_ply(100, 10), 100);
+        assert_eq!(adjust_for_ply(-100, 10), -100);
+        // Mate untouched (guarded by is_mate).
+        assert_eq!(adjust_for_ply(MATE_SCORE - 5, 3), MATE_SCORE - 5);
     }
 
     #[test]
@@ -627,9 +687,9 @@ mod tests {
                 GameResult::P2Wins => -MATE_SCORE + ply,
             };
         }
-        if depth <= 0 { return evaluate(pos); }
+        if depth <= 0 { return adjust_for_ply(evaluate(pos), ply); }
         let moves = generator::generate(pos);
-        if moves.is_empty() { return evaluate(pos); }
+        if moves.is_empty() { return adjust_for_ply(evaluate(pos), ply); }
         let maximising = pos.to_move == Player::P1;
         let mut best = if maximising { -INF } else { INF };
         for a in moves {

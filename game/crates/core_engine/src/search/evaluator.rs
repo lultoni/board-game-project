@@ -67,7 +67,7 @@ use crate::state::position::{GameResult, Player, Phase};
 use crate::state::magic;
 use crate::search::counters;
 use crate::search::see::build_attackers_table;
-use crate::game_logic::skills::{Skill, skill_cost, skill_default_range};
+use crate::game_logic::skills::{Skill, SkillCategory, skill_cost, skill_default_range, skill_category};
 use crate::game_logic::make_unmake::skill_phase_budget;
 
 pub const MATE_SCORE: i32 = 1_000_000;
@@ -115,6 +115,12 @@ const COVERAGE_PER_PIECE: i32 = 30; // percent of piece_val at full coverage
 
 // E8 — tempo. Small nudge for actions_remaining on side-to-move.
 const TEMPO_PER_ACTION: i32 = 15;
+
+// E9 — offensive-range differential. Whichever side has the higher usable
+// max offensive range (across castable strikes + Shove, +1 if Focus is also
+// castable) gets OFFENSIVE_RANGE_WEIGHT per point of differential. Only counted
+// as a flag per side ("does this side have reach X"), not per-piece.
+const OFFENSIVE_RANGE_WEIGHT: i32 = 500;
 
 // E4 — skill availability sigmoid smoothing constant (money units).
 const SKILL_AVAIL_K: i32 = 3;
@@ -251,6 +257,73 @@ fn useful_money(money: u16, cap: u16) -> i32 {
     value as i32
 }
 
+/// E9 — side's max offensive range across castable strike + Shove skills.
+/// "Castable" here = piece alive + skill equipped + side has enough money for
+/// the skill's cost. Focus availability grants +1 to non-Mystic offensives when
+/// the side can also afford Focus (Focus costs 1) — because Focus buffs range
+/// for the next skill action, the +1 only matters when the side has enough
+/// money to also cast the buffed skill AND the actions-per-round supports two
+/// skill actions this round.
+///
+/// Only counted once per side ("does this side have reach X"), not per-piece.
+/// Returns 0 during Draft (no skills owned) or when money can't afford the
+/// cheapest offensive skill (Lance @ 2).
+fn max_offensive_range(pos: &Position, side_bb: u64, money: u16) -> u8 {
+    if pos.current_phase == Phase::Draft { return 0; }
+    if money < 2 { return 0; } // cheapest offensive is Lance@2
+
+    let actions = actions_per_round(pos.current_phase, pos.round_number);
+    let focus_bonus_possible = actions >= 2; // needs Focus + a follow-up cast
+
+    // Single pass: track raw best (affordable at current money) and boosted best
+    // (affordable at money − 1, i.e. after paying Focus). Also track whether the
+    // side owns a Focus anywhere. The final +1 is applied only if Focus is
+    // castable AND owned AND the +1 actually beats the raw best.
+    //
+    // Upper bound: highest offensive range in Stack M is Shove=3. With Focus +1,
+    // best possible boosted result = 4. Short-circuit when we hit that.
+    let mut raw_best: u8 = 0;
+    let mut boosted_best: u8 = 0;
+    let mut owns_focus = false;
+    let focus_reserve = if focus_bonus_possible { 1u16 } else { u16::MAX };
+
+    let mut bits = side_bb;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as usize;
+        bits &= bits - 1;
+        let m = pos.mailbox[sq];
+        let ids = [m.skill1(), m.skill2()];
+        for id in ids {
+            let Some(s) = crate::game_logic::skills::skill_from_id(id) else { continue };
+            if matches!(s, Skill::Focus) {
+                owns_focus = true;
+                continue;
+            }
+            let is_offensive = matches!(skill_category(s), SkillCategory::Strike)
+                || matches!(s, Skill::Shove);
+            if !is_offensive { continue; }
+            let cost = skill_cost(s) as u16;
+            let range = skill_default_range(s);
+            if money >= cost && range > raw_best { raw_best = range; }
+            if focus_bonus_possible
+                && money >= cost.saturating_add(focus_reserve)
+                && range > boosted_best
+            {
+                boosted_best = range;
+            }
+        }
+        // Early exit: once raw hits 3 (Shove) and boosted hits 3 (which becomes 4
+        // after +1), we cannot improve further.
+        if raw_best >= 3 && boosted_best >= 3 && owns_focus { break; }
+    }
+
+    if focus_bonus_possible && owns_focus && boosted_best > 0 {
+        (boosted_best + 1).max(raw_best)
+    } else {
+        raw_best
+    }
+}
+
 /// Per-component decomposition of the static eval. `total` is exactly what
 /// `evaluate()` returns (so L3 sees zero behaviour change). The per-bucket
 /// fields are sign-corrected: P1 contributions go to `*_p1`, P2 to `*_p2`,
@@ -288,6 +361,10 @@ pub struct EvalBreakdown {
     /// E8 — tempo bonus. Small nudge for actions_remaining on side-to-move.
     pub tempo_p1:     i32,
     pub tempo_p2:     i32,
+    /// E9 — offensive-range flag (raw max range, e.g. 2..=4). Signed with
+    /// OFFENSIVE_RANGE_WEIGHT in `total`. See const doc.
+    pub offensive_range_p1: i32,
+    pub offensive_range_p2: i32,
     pub total:        i32,
 }
 
@@ -597,6 +674,10 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
         }
     }
 
+    // (d2) E9 — offensive-range flag.
+    b.offensive_range_p1 = max_offensive_range(pos, p1_bb, pos.p1_money) as i32;
+    b.offensive_range_p2 = max_offensive_range(pos, p2_bb, pos.p2_money) as i32;
+
     // (e) Legacy fields — zeroed for schema compat.
     b.threat_p1 = 0;
     b.threat_p2 = 0;
@@ -616,7 +697,8 @@ pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
         (b.mobility_p1 - b.mobility_p2) +
         (b.coverage_p1 - b.coverage_p2) -
         (b.exposure_p1 - b.exposure_p2) +
-        (b.tempo_p1    - b.tempo_p2);
+        (b.tempo_p1    - b.tempo_p2)    +
+        (b.offensive_range_p1 - b.offensive_range_p2) * OFFENSIVE_RANGE_WEIGHT;
     // NOTE: threat_* and skill_act_* are always 0; omitted from total.
     // Suppress unused-variable warnings while we still reference `atk` above.
     let _ = &atk;
@@ -816,9 +898,15 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
         }
     }
 
+    // E9 — offensive-range flag. Only enters `total`, not stored on the
+    // per-square view (side-level term, no per-square attribution).
+    let off_p1 = max_offensive_range(pos, p1_bb, pos.p1_money) as i32;
+    let off_p2 = max_offensive_range(pos, p2_bb, pos.p2_money) as i32;
+
     out.total = sum_p1 - sum_p2
         + (out.p1_money_term - out.p2_money_term)
-        + (out.p1_tempo_term - out.p2_tempo_term);
+        + (out.p1_tempo_term - out.p2_tempo_term)
+        + (off_p1 - off_p2) * OFFENSIVE_RANGE_WEIGHT;
     out
 }
 
