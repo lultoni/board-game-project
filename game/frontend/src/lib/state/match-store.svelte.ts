@@ -74,6 +74,11 @@ export interface MatchState {
   trueSnapshotJson: string | null;
   /** Count of player/AI applications since sandbox-mode was entered. */
   sandboxMovesApplied: number;
+  /** Mode the match was in immediately before sandbox was entered. Restored
+   *  by `exitSandbox()`. Necessary because `modeFromSeats()` cannot recover
+   *  `"multiplayer"` from the seat pair (both seats are `"human"` in MP too).
+   *  Null when not in / not returning from sandbox. */
+  preSandboxMode: MatchMode | null;
   /** Active telemetry session ID (ULID) — null when not logging (sandbox,
    *  inspector, or before startTelemetrySession is called). */
   telemetryMatchId: string | null;
@@ -103,6 +108,7 @@ export const match = $state<MatchState>({
   pendingSnapshotJson: null,
   trueSnapshotJson: null,
   sandboxMovesApplied: 0,
+  preSandboxMode: null,
   telemetryMatchId: null,
   localSeat: null,
   telemetryFinalised: false,
@@ -138,6 +144,7 @@ export function resetMatchState(): void {
   match.pendingSnapshotJson = null;
   match.trueSnapshotJson = null;
   match.sandboxMovesApplied = 0;
+  match.preSandboxMode = null;
   match.telemetryMatchId = null;
   match.telemetryFinalised = false;
   // MP role/code now live in `mpState` (single source) and are exposed here

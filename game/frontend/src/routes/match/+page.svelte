@@ -28,7 +28,6 @@
     startTelemetrySession,
     recordPly,
     finalizeTelemetrySession,
-    abandonTelemetrySession,
     networkLostTelemetrySession,
     multiplayerRole,
     multiplayerCode,
@@ -1446,14 +1445,17 @@
       // mode-flip.
       const snap = await eng.snapshotJson();
       clearAllPickers();
-      // Pause telemetry while in sandbox. The session is "abandoned" from
-      // storage's perspective, but the per-ply records up to this point
-      // remain on disk. Exiting sandbox does NOT resume the old session —
-      // the user would have already seen analysis-mode entry as a fork.
-      await abandonTelemetrySession(eng);
+      // Sandbox is a purely local fork — the underlying match (including MP
+      // transport and telemetry) continues to exist. We do NOT abandon the
+      // telemetry session on entry: the exploratory plies never touch the
+      // engine's true state (they roll back on exit), so nothing spurious is
+      // logged, and keeping the telemetry row live means a subsequent
+      // leave-during-sandbox still fires markNetworkLost / markAbandoned and
+      // surfaces the "you left a game" card in the lobby.
       match.trueSnapshotJson = snap;
       match.sandboxMovesApplied = 0;
       sandboxUndoStack = [];
+      match.preSandboxMode = match.mode;
       match.mode = "sandbox";
     } finally {
       busy = false;
@@ -1495,7 +1497,12 @@
       match.trueSnapshotJson = null;
       match.sandboxMovesApplied = 0;
       sandboxUndoStack = [];
-      match.mode = modeFromSeats(match.side);
+      // Restore the mode we entered sandbox from. `modeFromSeats()` can't
+      // round-trip "multiplayer" (both seats are "human" in MP too), so we
+      // rely on the stashed value; fall back to seat-derivation only if
+      // preSandboxMode was somehow lost.
+      match.mode = match.preSandboxMode ?? modeFromSeats(match.side);
+      match.preSandboxMode = null;
       clearAllPickers();
       await syncFromEngine();
     } catch (e) {
@@ -1564,7 +1571,9 @@
     // uses markNetworkLost via a separate reactive effect. markAbandoned is
     // idempotent (only flips when status === "in-progress"), so a finalized
     // row is unaffected.
-    if (match.mode !== "multiplayer"
+    // Gate off role rather than `match.mode` so that leaving from inside
+    // sandbox during an MP match still routes to the MP teardown below.
+    if (multiplayerRole() === null
         && match.telemetryMatchId
         && !match.telemetryFinalised) {
       const id = match.telemetryMatchId;
@@ -1594,7 +1603,9 @@
     // our carrier state (code, peerEverPaired, disconnectedSince) survives —
     // GraceBanner then stays visible when the user clicks Rejoin from the
     // lobby. On a natural end, hard disconnect together.
-    if (match.mode === "multiplayer") {
+    // Gate off role rather than `match.mode` so leaving from inside sandbox
+    // (mode === "sandbox") still tears down the MP session correctly.
+    if (multiplayerRole() !== null) {
       tearDownMultiplayerOnLeave({
         navigatingForward: false,
         telemetryFinalised: match.telemetryFinalised ?? false,
