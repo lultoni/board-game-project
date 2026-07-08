@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { t } from "$lib/state/i18n";
   import { settings } from "$lib/state/settings.svelte";
   import { sfx } from "$lib/audio/sfx";
@@ -71,6 +71,14 @@
     if (pending !== null) {
       await loadFromJson(pending);
     }
+  });
+
+  onDestroy(() => {
+    // Cancel timers, empty effectQueue, clear checkpoints. Same shape as
+    // inspector/match — replay had none until now, so long-lived replay
+    // sessions leaked renderer state on route exit.
+    renderer?.dispose();
+    renderer = null;
   });
 
   async function loadFromJson(json: string): Promise<void> {

@@ -37,6 +37,11 @@ export interface PlayOpts {
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
+// Last time we auto-called ctx.resume() in response to a `statechange` event.
+// WKWebView on macOS will occasionally suspend the context silently after a
+// long idle window; the `statechange` listener re-resumes but we back off to
+// avoid a tight loop if resume() itself keeps failing.
+let lastAutoResumeMs = 0;
 
 function ensureCtx(): AudioContext | null {
   if (ctx) return ctx;
@@ -47,6 +52,18 @@ function ensureCtx(): AudioContext | null {
     master = ctx.createGain();
     master.gain.value = settings.audioVolume;
     master.connect(ctx.destination);
+    // WKWebView (Tauri on macOS) can transition the context to "suspended"
+    // after long inactivity without firing `visibilitychange`. Watch for it
+    // and re-resume while the tab is visible.
+    ctx.addEventListener("statechange", () => {
+      if (!ctx) return;
+      if (ctx.state !== "suspended") return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastAutoResumeMs < 1000) return;
+      lastAutoResumeMs = now;
+      void ctx.resume().catch(() => { /* wait for next user gesture */ });
+    });
     return ctx;
   } catch {
     return null;
@@ -98,8 +115,24 @@ function playToneAt(spec: ToneSpec, delaySeconds: number): void {
   const c = ensureCtx();
   if (!c || !master) return;
   if (settings.audioVolume <= 0) return;
+  // If the context suspended itself (WKWebView idle behaviour), wake it up
+  // before scheduling. resume() is idempotent on a running context. The
+  // first tone after resume may drop ~30 ms while the context spins up.
+  if (c.state === "suspended") {
+    void c.resume().catch(() => { /* fall through — schedule anyway */ });
+  }
   const t0 = c.currentTime + delaySeconds;
   const dur = spec.attack + spec.release;
+
+  // Every voice bundles its nodes into a single chain; the source's `ended`
+  // event tears the chain down. Without this, stopped oscillators / gains /
+  // biquads sit in the AudioContext graph forever, and long sessions leak
+  // hundreds of zombie nodes.
+  function tearDown(chain: AudioNode[]): void {
+    for (const n of chain) {
+      try { n.disconnect(); } catch { /* already disconnected */ }
+    }
+  }
 
   const env = c.createGain();
   env.gain.setValueAtTime(0, t0);
@@ -116,6 +149,8 @@ function playToneAt(spec: ToneSpec, delaySeconds: number): void {
   osc.connect(env);
   osc.start(t0);
   osc.stop(t0 + dur + 0.02);
+  const oscChain: AudioNode[] = [osc, env];
+  osc.addEventListener("ended", () => tearDown(oscChain));
 
   if (spec.voice2) {
     const osc2 = c.createOscillator();
@@ -134,6 +169,8 @@ function playToneAt(spec: ToneSpec, delaySeconds: number): void {
     osc2.connect(v2env);
     osc2.start(t0);
     osc2.stop(t0 + dur + 0.02);
+    const osc2Chain: AudioNode[] = [osc2, v2env];
+    osc2.addEventListener("ended", () => tearDown(osc2Chain));
   }
 
   if (spec.noise !== undefined && spec.noise > 0) {
@@ -156,6 +193,8 @@ function playToneAt(spec: ToneSpec, delaySeconds: number): void {
     nGain.connect(master);
     src.start(t0);
     src.stop(t0 + dur + 0.02);
+    const noiseChain: AudioNode[] = [src, hp, nGain];
+    src.addEventListener("ended", () => tearDown(noiseChain));
   }
 }
 

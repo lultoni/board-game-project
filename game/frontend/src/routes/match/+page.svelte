@@ -1624,6 +1624,11 @@
         ownershipToken,
       });
     }
+    // Renderer teardown last: cancels shake/deferred-skill timers and empties
+    // effectQueue. inspector already does this — matching the pattern here so
+    // long AIvAI sessions don't leak PlyRenderer instances across route churn.
+    renderer?.dispose();
+    renderer = null;
   });
 </script>
 
