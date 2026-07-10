@@ -27,6 +27,11 @@
     cinematic: "Cinematic",
   };
 
+  const LOCALE_LABELS: Record<"en" | "de", string> = {
+    en: "English",
+    de: "Deutsch",
+  };
+
   function clampInt(v: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, Math.round(v)));
   }
@@ -88,6 +93,23 @@
         oninput={() => sfx.play("tick")}
         class="slider"
       />
+    </label>
+  </section>
+
+  <div class="divider"></div>
+
+  <section>
+    <h3>Language</h3>
+    <label class="row">
+      <span>Language</span>
+      <div class="segmented">
+        {#each (["en", "de"] as const) as loc}
+          <button
+            class:active={settings.locale === loc}
+            onclick={() => { sfx.play("click"); settings.locale = loc; }}
+          >{LOCALE_LABELS[loc]}</button>
+        {/each}
+      </div>
     </label>
   </section>
 

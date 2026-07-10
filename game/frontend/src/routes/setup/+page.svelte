@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
-  import { invoke } from "@tauri-apps/api/core";
   import { t } from "$lib/state/i18n";
   import { sfx } from "$lib/audio/sfx";
   import BackButton from "$lib/ui/BackButton.svelte";
@@ -14,7 +13,7 @@
     type LoadoutRef,
     type PreMadeLoadoutId,
   } from "$lib/state/match-store.svelte";
-  import { settings, type EvaluatorChoice, type EvaluatorSource } from "$lib/state/settings.svelte";
+  import { settings } from "$lib/state/settings.svelte";
   import { isPreMadeLoadoutReady } from "$lib/state/draft";
   import type { SavedLoadout } from "$lib/storage/types";
   import {
@@ -236,49 +235,6 @@
       await goto("../draft/");
     }
   }
-
-  // Per-seat evaluator picker. Raters get listed lazily: `default_run_dir`
-  // resolves the repo-relative active run, then `list_available_raters` walks
-  // both that dir and `raters/blessed/`.
-  interface RaterListing { source: EvaluatorSource; id: string; acceptedAt: number; parentId: string | null; }
-  let availableRaters = $state<RaterListing[]>([]);
-  let raterLoadError = $state<string | null>(null);
-  onMount(async () => {
-    try {
-      const runDir = await invoke<string>("default_run_dir");
-      const raw = await invoke<Array<{ source: string; id: string; accepted_at: number; parent_id: string | null }>>(
-        "list_available_raters",
-        { runDir },
-      );
-      availableRaters = raw.map((r) => ({
-        source: r.source as EvaluatorSource,
-        id: r.id,
-        acceptedAt: r.accepted_at,
-        parentId: r.parent_id,
-      }));
-    } catch (e) {
-      raterLoadError = String(e);
-    }
-  });
-
-  const ratersBySource = $derived<Record<EvaluatorSource, RaterListing[]>>({
-    heuristic: [],
-    run: availableRaters.filter((r) => r.source === "run"),
-    blessed: availableRaters.filter((r) => r.source === "blessed"),
-  });
-
-  function pickEval(seat: "p1" | "p2", choice: EvaluatorChoice) {
-    if (seat === "p1") settings.p1Evaluator = choice;
-    else                settings.p2Evaluator = choice;
-  }
-  function onSourceChange(seat: "p1" | "p2", source: EvaluatorSource) {
-    if (source === "heuristic") {
-      pickEval(seat, { source: "heuristic", id: null });
-    } else {
-      const first = ratersBySource[source][0]?.id ?? null;
-      pickEval(seat, { source, id: first });
-    }
-  }
 </script>
 
 <main>
@@ -351,36 +307,6 @@
             />
             <output>{settings.p1MaxDepth}</output>
           </label>
-          <label class="row">
-              <span class="rowLabel">P1 · Evaluator</span>
-              <select
-                value={settings.p1Evaluator.source}
-                onchange={(e) => {
-                  sfx.play("tick");
-                  onSourceChange("p1", (e.currentTarget as HTMLSelectElement).value as EvaluatorSource);
-                }}
-              >
-                <option value="heuristic">Heuristic</option>
-                <option value="run" disabled={ratersBySource.run.length === 0}>Run</option>
-                <option value="blessed" disabled={ratersBySource.blessed.length === 0}>Blessed</option>
-              </select>
-              {#if settings.p1Evaluator.source !== "heuristic"}
-                <select
-                  value={settings.p1Evaluator.id ?? ""}
-                  onchange={(e) => {
-                    sfx.play("tick");
-                    pickEval("p1", {
-                      source: settings.p1Evaluator.source,
-                      id: (e.currentTarget as HTMLSelectElement).value || null,
-                    });
-                  }}
-                >
-                  {#each ratersBySource[settings.p1Evaluator.source] as r}
-                    <option value={r.id}>{r.id}</option>
-                  {/each}
-                </select>
-              {/if}
-            </label>
         {/if}
         {#if p2 === "ai"}
           <label class="row">
@@ -407,36 +333,6 @@
             />
             <output>{settings.p2MaxDepth}</output>
           </label>
-          <label class="row">
-              <span class="rowLabel">P2 · Evaluator</span>
-              <select
-                value={settings.p2Evaluator.source}
-                onchange={(e) => {
-                  sfx.play("tick");
-                  onSourceChange("p2", (e.currentTarget as HTMLSelectElement).value as EvaluatorSource);
-                }}
-              >
-                <option value="heuristic">Heuristic</option>
-                <option value="run" disabled={ratersBySource.run.length === 0}>Run</option>
-                <option value="blessed" disabled={ratersBySource.blessed.length === 0}>Blessed</option>
-              </select>
-              {#if settings.p2Evaluator.source !== "heuristic"}
-                <select
-                  value={settings.p2Evaluator.id ?? ""}
-                  onchange={(e) => {
-                    sfx.play("tick");
-                    pickEval("p2", {
-                      source: settings.p2Evaluator.source,
-                      id: (e.currentTarget as HTMLSelectElement).value || null,
-                    });
-                  }}
-                >
-                  {#each ratersBySource[settings.p2Evaluator.source] as r}
-                    <option value={r.id}>{r.id}</option>
-                  {/each}
-                </select>
-              {/if}
-            </label>
         {/if}
         {#if isAivAi}
           <label class="row">

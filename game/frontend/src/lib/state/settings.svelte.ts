@@ -2,7 +2,10 @@
 // the key `game-settings`. Defaults apply when no entry exists. Each rune
 // write triggers a persist via $effect at the call site.
 
+import { setLocale } from "./i18n";
+
 const STORAGE_KEY = "game-settings";
+
 
 export type AnimationSpeed = "off" | "normal" | "fast" | "cinematic";
 
@@ -83,11 +86,11 @@ const DEFAULTS: Settings = {
   p1Evaluator: { source: "heuristic", id: null },
   p2Evaluator: { source: "heuristic", id: null },
   animationSpeed: "normal",
-  replayStepDelayMs: 600,
+  replayStepDelayMs: 300,
   replayLoopOnEnd: false,
   respectAnimation: true,
   showAiDepth: true,
-  showThinkProgressBar: true,
+  showThinkProgressBar: false,
   showHeuristicEval: false,
   showEvalPanel: false,
 };
@@ -191,6 +194,11 @@ export const _validateSettings = validate;
 
 export const settings = $state<Settings>(load());
 
+// Apply the persisted locale to the i18n layer at module load, before any
+// component renders — otherwise the first paint would be English regardless
+// of the saved preference. initSettingsPersistence() keeps it in sync after.
+setLocale(settings.locale);
+
 function persist() {
   if (typeof localStorage === "undefined") return;
   try {
@@ -258,6 +266,9 @@ export function initSettingsPersistence() {
     void settings.showThinkProgressBar;
     void settings.showHeuristicEval;
     void settings.showEvalPanel;
+    // Mirror the persisted locale into the i18n layer so switching the
+    // language dropdown re-renders all t() text live.
+    setLocale(settings.locale);
     persist();
   });
 }

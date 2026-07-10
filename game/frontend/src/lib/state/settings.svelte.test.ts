@@ -64,9 +64,9 @@ describe("validateSettings", () => {
     expect(s.p1MaxDepth).toBe(6);
   });
 
-  it("rejects zero max-depth (must be positive)", () => {
+  it("accepts zero max-depth (0 = ∞, no depth limit)", () => {
     const s = _validateSettings({ p1MaxDepth: 0 });
-    expect(s.p1MaxDepth).toBe(6);
+    expect(s.p1MaxDepth).toBe(0);
   });
 
   it("rejects negative max-depth", () => {
