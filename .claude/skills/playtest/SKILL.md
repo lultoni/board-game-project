@@ -41,7 +41,22 @@ Transcription rules:
 
 ### Digital mode
 
-Parse the log file. Expected structure (the Rust binary will define this; treat as forward spec): per-turn records with player, phase, action, resource state, board diff. Extract automatically — no transcription needed. Convert to the same internal representation as paper mode for Block A/B (below).
+The digital export is a `boardgame-bundle-v1` JSON blob (the "send to designer" button in the library UI bundles N recent matches). **It is one giant single line — do NOT `Read` or `cat` it; it will blow your context.** Instead run the analyzer:
+
+```bash
+python3 game/tools/analyze_playtest.py <bundle.json>                 # all games, full report
+python3 game/tools/analyze_playtest.py <bundle.json> --game N        # one game
+python3 game/tools/analyze_playtest.py <bundle.json> --combo-trace   # audit combo-bonus application
+python3 game/tools/analyze_playtest.py <bundle.json> --json          # machine-readable
+```
+
+The analyzer decodes the FEN grammar (`game/crates/core_engine/src/state/fen.rs`) and per-ply schema (`game/crates/core_engine/src/telemetry.rs`) and emits, per game and per side: result + round count, material arc (piece census start→final via FEN diffs), capture timeline, first-Guard/first-Champion death rounds, move-attack vs skill-activation balance, per-skill usage counts + round ranges + drafted-but-never-used, draft loadouts, money-on-skills estimate, branching factor (legal_count) by phase, and a combo-bonus audit (tracks `tracked_enemies`/`tracked_casters` + per-square combo counter to flag where the +counter bonus should apply).
+
+**Known telemetry gaps (state them in the analysis, don't infer around them):**
+- **Wall-clock is NOT in the log** — human plies record `thought_ms=0` (only AI plies are timed). Get game duration from the designer's `notes.md`, never from telemetry.
+- **Preset (first-game) loadouts have no `DraftTurn` plies** — the draft-loadout section is empty for preset games; the skills live in the `start_fen` instead (parse that if you need them).
+
+If the analyzer is missing a metric a specific playtest needs, extend `game/tools/analyze_playtest.py` (it imports cleanly: `from analyze_playtest import parse_fen_board, combo_trace, ...`) rather than hand-parsing the blob. Feed its output into the same Block A/B templates as paper mode. **The multi-agent parallel extraction below is paper-mode only — digital mode is already structured, so skip it.**
 
 ## Step 3: Structured Extraction (Per Player)
 
