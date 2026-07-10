@@ -127,3 +127,20 @@ export async function resolveLoadout(ref: LoadoutRef): Promise<SideLoadout | nul
   const row = await getTelemetryStore().getLoadout(ref.id);
   return row ? row.loadout : null;
 }
+
+/** Convert a `SideLoadout` authored in P1's frame into the P2 loadout that
+ *  produces a 180°-rotated (point-symmetric) board. Parity with
+ *  `core_engine::game_logic::skills::mirror_loadout`.
+ *
+ *  The engine places each side's loadout in that side's own ascending-square
+ *  frame, but the two back rows are not file-aligned (P1 King d1, P2 King e8).
+ *  A point mirror (`sq' = 63 - sq`) maps P1's Champion squares [b,c,e,f,g]
+ *  onto P2's [g,f,e,d,c] — i.e. the Champion order REVERSED — while the King
+ *  (index 0) maps d1→e8 and stays put. So a preset's file-b Champion and the
+ *  mirrored file-g Champion share skills, matching the visually rotated board.
+ *
+ *  Apply this to the P2 loadout in a mirror match (both sides same preset);
+ *  do NOT apply it to independently-authored per-side custom loadouts. */
+export function mirrorLoadout(l: SideLoadout): SideLoadout {
+  return [l[0], l[5], l[4], l[3], l[2], l[1]];
+}

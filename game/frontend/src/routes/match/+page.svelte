@@ -15,7 +15,7 @@
     MODIFIER_CHARGE,
     runAiCall,
   } from "$lib/engine";
-  import { resolveLoadout } from "$lib/state/draft";
+  import { resolveLoadout, mirrorLoadout } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
   import BackButton from "$lib/ui/BackButton.svelte";
   import {
@@ -600,7 +600,19 @@
       match.side = sideAtBoot;
       if (sideLoadouts) {
         const p1Loadout = await resolveLoadout(sideLoadouts.p1);
-        const p2Loadout = await resolveLoadout(sideLoadouts.p2);
+        let p2Loadout = await resolveLoadout(sideLoadouts.p2);
+        // Mirror match: when both sides use the SAME pre-made loadout, P2's
+        // skills must be placed as a 180° rotation of P1's (b1 → g8), not
+        // file-aligned. Point-mirror the P2 array so the engine's per-side
+        // ascending placement yields a symmetric board. Per-side custom mixes
+        // are authored independently and must NOT be mirrored.
+        const isMirrorMatch =
+          sideLoadouts.p1.kind === "preMade" &&
+          sideLoadouts.p2.kind === "preMade" &&
+          sideLoadouts.p1.id === sideLoadouts.p2.id;
+        if (isMirrorMatch && p2Loadout) {
+          p2Loadout = mirrorLoadout(p2Loadout);
+        }
         if (p1Loadout && p2Loadout) {
           const configJson = buildEngineConfigJson(sideAtBoot);
           await eng.createEngineWithLoadouts(configJson, p1Loadout, p2Loadout);

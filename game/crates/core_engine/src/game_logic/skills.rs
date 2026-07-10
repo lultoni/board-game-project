@@ -199,9 +199,39 @@ pub fn validate_loadout(l: &SideLoadout) -> Result<(), DraftError> {
     Ok(())
 }
 
+/// Convert a `SideLoadout` authored in **P1's** frame into the equivalent
+/// **P2** loadout that produces a 180°-rotated board.
+///
+/// A `SideLoadout` is expressed in its own side's ascending-square frame
+/// (index 0 = King, 1..6 = Champions b→g with the King's file skipped). The
+/// two back rows are NOT file-aligned: P1's King sits on d1, P2's on e8, so a
+/// point-symmetric board (`sq' = 63 - sq`) maps P1's Champion squares
+/// [1,2,4,5,6] onto P2's squares [62,61,59,58,57] — which, read back in P2's
+/// own ascending frame [57,58,59,61,62], is the Champion order REVERSED.
+/// The King (index 0) maps d1→e8 and stays at index 0.
+///
+/// Use this at the preset boundary: when the same loadout is chosen for both
+/// sides, pass `mirror_loadout(&preset)` as the P2 argument to
+/// `setup_stack_m_with_loadouts` so P1's file-b Champion and P2's file-g
+/// Champion share skills (matching the visually rotated board).
+pub fn mirror_loadout(l: &SideLoadout) -> SideLoadout {
+    // King unchanged; Champion indices 1..=5 reverse (1↔5, 2↔4, 3 fixed).
+    [l[0], l[5], l[4], l[3], l[2], l[1]]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mirror_loadout_reverses_champions_keeps_king() {
+        // King (index 0) fixed; Champions 1..5 reversed (1↔5, 2↔4, 3 fixed).
+        let l: SideLoadout = [(1,1), (2,2), (3,3), (4,4), (5,5), (6,6)];
+        let m = mirror_loadout(&l);
+        assert_eq!(m, [(1,1), (6,6), (5,5), (4,4), (3,3), (2,2)]);
+        // Mirror is an involution: applying it twice returns the original.
+        assert_eq!(mirror_loadout(&m), l);
+    }
 
     #[test]
     fn skill_from_id_roundtrip() {

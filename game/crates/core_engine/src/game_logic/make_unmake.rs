@@ -557,13 +557,14 @@ fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
     if charge_active { clear_pending(pos, undo, modifier_bits::CHARGE); }
     let existing_combo = prev.combo();
 
-    // Tick first (gated by caster identity). Combo bonus only applies when
-    // THIS caster has not yet ticked THIS target this turn — same champion
-    // firing Break twice does not capitalise on its own first tick.
+    // Tick first. Combo-bonus ruling (see apply_strike_damage): a NEW champion
+    // deals +counter and advances it; a RETURNING champion deals +(counter-1)
+    // and does not advance. `combo_tick` true = new (bonus = pre-tick N),
+    // false = returning (bonus = N-1).
     let combo_bonus = if combo_tick(pos, src, tgt, undo) {
         existing_combo
     } else {
-        0
+        existing_combo.saturating_sub(1)
     };
 
     // Armor reduction — applies regardless of HP-damage gating. Read the
@@ -575,7 +576,7 @@ fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
     // HP-damage gate: Stack-M says Break "does not deal HP-Damage unless
     // boosted by Charge." But the universal combo bonus ("any skill that
     // affects a target with counter > 0 deals +counter damage") still
-    // applies on top — gated as above so the same caster doesn't double-dip.
+    // applies on top, per the new-vs-returning ruling above.
     let dmg = (if charge_active { 1u8 } else { 0 }) + combo_bonus;
     if dmg > 0 { deal_damage(pos, tgt, dmg, undo); }
 
@@ -711,8 +712,11 @@ fn apply_blast(pos: &mut Position, action: Action, undo: &mut Undo) {
     let tgt = action.target();
     let pre_tick_combo = pos.mailbox[tgt as usize].combo();
     let ticked = combo_tick(pos, src, tgt, undo);
-    if ticked && pre_tick_combo > 0 {
-        deal_damage(pos, tgt, pre_tick_combo, undo);
+    // Combo-bonus ruling (see apply_strike_damage): new champion (ticked) deals
+    // +pre_tick_combo; returning champion deals +(pre_tick_combo - 1).
+    let combo_bonus = if ticked { pre_tick_combo } else { pre_tick_combo.saturating_sub(1) };
+    if combo_bonus > 0 {
+        deal_damage(pos, tgt, combo_bonus, undo);
     }
     if pos.is_occupied(tgt) {
         if let Some(step1) = magic::step_away(src, tgt) {
@@ -774,8 +778,11 @@ fn apply_shove(pos: &mut Position, action: Action, undo: &mut Undo) {
     if target_is_enemy {
         let pre_tick_combo = pos.mailbox[tgt as usize].combo();
         let ticked = combo_tick(pos, src, tgt, undo);
-        if ticked && pre_tick_combo > 0 {
-            deal_damage(pos, tgt, pre_tick_combo, undo);
+        // Combo-bonus ruling (see apply_strike_damage): new champion (ticked)
+        // deals +pre_tick_combo; returning champion deals +(pre_tick_combo - 1).
+        let combo_bonus = if ticked { pre_tick_combo } else { pre_tick_combo.saturating_sub(1) };
+        if combo_bonus > 0 {
+            deal_damage(pos, tgt, combo_bonus, undo);
         }
     }
     if pos.is_occupied(tgt) {
@@ -913,14 +920,17 @@ fn apply_strike_damage(pos: &mut Position, src_sq: u8, tgt_sq: u8,
     let existing_combo = prev.combo();
 
     // Tick BEFORE damage so the post-state reflects the combo bump even if
-    // the piece is removed. The bonus damage is gated on combo_tick actually
-    // ticking — same caster firing again at the same target does NOT cash in
-    // the counter it built itself ("Multi-Champion Combo Bonus" means a new
-    // champion must be the one capitalising on the buildup).
+    // the piece is removed. Combo-bonus ruling (designer, authoritative):
+    // a NEW champion striking a target with counter N deals +N and advances
+    // the counter to N+1; a RETURNING champion (one that already ticked this
+    // target this turn) still capitalises, but only for +(N-1) and does not
+    // advance the counter. `combo_tick` returns true for the new-champion case
+    // (counter unchanged in `existing_combo` = pre-tick N) and false for the
+    // returning case (counter still N, bonus N-1).
     let combo_bonus = if combo_tick(pos, src_sq, tgt_sq, undo) {
         existing_combo
     } else {
-        0
+        existing_combo.saturating_sub(1)
     };
 
     let total = base + combo_bonus + charge_bonus;
@@ -2628,8 +2638,11 @@ mod tests {
     #[test]
     fn hook_same_caster_twice_no_combo_bonus_after_pull() {
         // Regression: after Hook pulls the target, the target occupies a new
-        // square. tracked_enemies must follow the piece so the same caster
-        // firing a second Hook does NOT get the combo bonus it built itself.
+        // square. tracked_enemies must follow the piece so the second Hook from
+        // the same caster is recognised as a RETURNING champion on the same
+        // victim. Combo-bonus ruling: returning champ at counter 1 gets
+        // +(1-1)=0 bonus (and no tick), so this second hit collects nothing
+        // extra — identical numbers to the old "gated" behaviour at counter 1.
         //
         // Setup: P1 Champion A at e4 (sq 28), P2 target at e6 (sq 44).
         // Hook pulls e6 → e5 (sq 36). Second Hook from sq 28 targets sq 36.
@@ -2649,13 +2662,12 @@ mod tests {
         assert_eq!(pos.mailbox[36].armor(), 1);
         assert_eq!(pos.mailbox[36].combo(), 1);
 
-        // Second Hook: same caster (sq 28) → tgt sq 36.
-        // combo_tick must recognise this as the same (caster, victim) pair and
-        // return false → combo_bonus = 0. Total damage = base 1 only.
-        // Armor absorbs it (1→0). HP stays at 2.
+        // Second Hook: same caster (sq 28) → tgt sq 36. Recognised as the same
+        // (caster, victim) pair → returning champ, no re-tick, bonus = (1-1)=0.
+        // Total damage = base 1 only. Armor absorbs it (1→0). HP stays at 2.
         let _ = make(&mut pos, skill_action(28, 36, Skill::Hook));
         assert!(pos.is_occupied(36) || !pos.is_occupied(36)); // survives or dies — we check HP
-        // If still alive: HP must be 2 (no combo bonus was collected).
+        // If still alive: HP must be 2 (returning bonus at counter 1 is 0).
         if pos.is_occupied(36) || pos.is_occupied(28) {
             // Target may have been pulled to sq 28's neighbour; find where it went.
             // The key assertion: combo counter is now 1 (no second tick from same caster).
@@ -2666,9 +2678,9 @@ mod tests {
                     !pos.p1_pieces.contains(s)).unwrap_or(36)
             };
             assert_eq!(pos.mailbox[tgt_sq as usize].combo(), 1,
-                "combo must remain 1 — same caster cannot earn a bonus from its own prior tick");
+                "combo must remain 1 — same caster does not re-tick its own victim");
             assert_eq!(pos.mailbox[tgt_sq as usize].hp(), 2,
-                "HP unchanged — only 1 base dmg absorbed by remaining Armor, no combo bonus damage");
+                "HP unchanged — 1 base dmg absorbed by remaining Armor, returning bonus (1-1)=0");
         }
     }
 
@@ -2809,14 +2821,17 @@ mod tests {
     }
 
     #[test]
-    fn combo_no_double_tick_same_caster() {
+    fn combo_returning_caster_bonus_is_counter_minus_one() {
         let mut pos = skill_phase_pos(4);
         pos.p1_money = 20;
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 28, Skill::Lance as u8);
-        // First cast: 1 base dmg. Second cast from same caster: still 1 base
-        // dmg — the combo bonus is gated on combo_tick succeeding (i.e. a NEW
-        // caster), so the same champion does NOT cash in its own prior tick.
+        // Same caster casts Lance twice on the same target. Combo-bonus ruling:
+        // hit 1 is a NEW champion at counter 0 → +0 bonus, ticks to 1.
+        // hit 2 is a RETURNING champion at counter 1 → +(1-1)=0 bonus, no tick.
+        // So both casts deal 1 base dmg each; the returning champ does NOT cash
+        // in the counter it built itself. (The difference from the new-champion
+        // path shows up in combo_new_vs_returning_capitalise below.)
         place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 2);
 
         let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
@@ -2826,10 +2841,55 @@ mod tests {
 
         let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
         assert_eq!(pos.mailbox[36].combo(), 1, "same caster does not re-tick");
-        // Second cast: 1 base + 0 combo bonus (same caster) = 1 dmg.
-        // Armor 1→0, HP unchanged.
+        // Second cast: 1 base + (counter-1 = 0) = 1 dmg. Armor 1→0, HP unchanged.
         assert_eq!(pos.mailbox[36].armor(), 0);
-        assert_eq!(pos.mailbox[36].hp(), 2, "same-caster bonus suppressed");
+        assert_eq!(pos.mailbox[36].hp(), 2, "returning champ at counter 1 gets +0");
+    }
+
+    #[test]
+    fn combo_new_vs_returning_capitalise() {
+        // Three casters A, B, C all strike target T (counter starts 0).
+        // Ruling: a NEW champion at counter N deals +N and ticks to N+1;
+        // a RETURNING champion at counter N deals +(N-1) and does not tick.
+        //   A→T: counter 0, new    → +0, base 1 → 1 dmg, counter→1
+        //   B→T: counter 1, new    → +1, base 1 → 2 dmg, counter→2
+        //   A→T: counter 2, return → +1, base 1 → 2 dmg, counter stays 2
+        //   C→T: counter 2, new    → +2, base 1 → 3 dmg, counter→3
+        // Track total damage via a high-HP/high-armor target proxy: we assert
+        // the combo counter progression and per-hit damage through armor/hp.
+        let mut pos = skill_phase_pos(8);
+        pos.p1_money = 40;
+        // Four P1 Lance champions diagonally adjacent to T at sq 27.
+        // sq 27 neighbours (range 1): 18,19,20,26,28,34,35,36.
+        place(&mut pos, 18, Player::P1, PieceKind::Champion, 2, 0); // A
+        equip(&mut pos, 18, Skill::Lance as u8);
+        place(&mut pos, 20, Player::P1, PieceKind::Champion, 2, 0); // B
+        equip(&mut pos, 20, Skill::Lance as u8);
+        place(&mut pos, 34, Player::P1, PieceKind::Champion, 2, 0); // C
+        equip(&mut pos, 34, Skill::Lance as u8);
+        // Target with lots of armor so damage is absorbed by armor (armor cap
+        // is enforced only by generators; tests place directly). Use armor 2
+        // + hp 2 and check counter + survival.
+        place(&mut pos, 27, Player::P2, PieceKind::Champion, 2, 2);
+
+        // A→T: 1 dmg. counter 0→1. armor 2→1.
+        let _ = make(&mut pos, skill_action(18, 27, Skill::Lance));
+        assert_eq!(pos.mailbox[27].combo(), 1, "A ticks to 1");
+        assert_eq!(pos.mailbox[27].armor(), 1, "A: 1 base dmg, +0 bonus");
+        assert_eq!(pos.mailbox[27].hp(), 2);
+
+        // B→T: new at counter 1 → +1. base 1 + 1 = 2 dmg. counter 1→2.
+        // armor 1→0 (1), then hp 2→1 (1).
+        let _ = make(&mut pos, skill_action(20, 27, Skill::Lance));
+        assert_eq!(pos.mailbox[27].combo(), 2, "B ticks to 2");
+        assert_eq!(pos.mailbox[27].armor(), 0, "B: 2 dmg total (bonus +1)");
+        assert_eq!(pos.mailbox[27].hp(), 1, "B: overflow damages hp by 1");
+
+        // A→T again: returning at counter 2 → +(2-1)=+1. base 1 + 1 = 2 dmg.
+        // counter stays 2. armor 0, hp 1→ removed (2 dmg on 1 hp).
+        let _ = make(&mut pos, skill_action(18, 27, Skill::Lance));
+        assert!(!pos.is_occupied(27),
+                "A returning at counter 2 deals base 1 + bonus 1 = 2, removing the 1-hp target");
     }
 
     #[test]
@@ -2865,8 +2925,8 @@ mod tests {
         assert_eq!(pos.pending_modifiers & modifier_bits::CHARGE, 0);
 
         let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
-        // Second cast: same caster as first → combo_tick is no-op, combo
-        // bonus = 0. 1 base + 0 = 1 dmg. Armor 0 already, HP 2→1.
+        // Second cast: same caster, returning at counter 1 → bonus = (1-1) = 0.
+        // 1 base + 0 = 1 dmg. Armor 0 already, HP 2→1.
         assert_eq!(pos.mailbox[36].hp(), 1, "1 base + 0 combo bonus = 1 dmg");
         assert!(pos.is_occupied(36));
     }

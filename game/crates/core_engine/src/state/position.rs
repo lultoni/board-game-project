@@ -274,7 +274,12 @@ impl Position {
         p2: &crate::game_logic::skills::SideLoadout,
     ) -> Self {
         let mut p = Self::setup_stack_m();
-        // P1 King is on file 3, P2 King is on file 4 (per setup_stack_m).
+        // P1 King is on file 3 (d1), P2 King is on file 4 (e8). Each side's
+        // `SideLoadout` is expressed in that side's own ascending-square frame
+        // (index 0 = King, 1..6 = Champions b→g with the King's file skipped),
+        // so P1 and P2 are applied independently — no cross-side mirroring here.
+        // Preset (same-array-for-both) mirroring is handled by the caller that
+        // builds the P2 loadout; see `mirror_loadout`.
         apply_back_row_loadout(&mut p, /*rank=*/ 0, /*king_file=*/ 3, p1);
         apply_back_row_loadout(&mut p, /*rank=*/ 7, /*king_file=*/ 4, p2);
         // The mailbox entries changed but the bitboards didn't — recompute the
@@ -386,7 +391,9 @@ fn place_front_row(p: &mut Position, rank: u8, player: Player) {
 /// Apply a `SideLoadout` to a back row that's already been populated by
 /// `place_back_row`. Index 0 of the loadout is the King; indices 1..6 are
 /// Champions in starting-square ascending order — matching the file iteration
-/// (files b..g with the King's file skipped for Champion ordering).
+/// (files b..g with the King's file skipped for Champion ordering). Both sides
+/// are expressed in their own ascending-square frame; see `mirror_loadout` for
+/// the preset case where P2 must be a 180° rotation of P1.
 fn apply_back_row_loadout(
     p: &mut Position,
     rank: u8,
@@ -449,8 +456,48 @@ mod tests {
             assert_eq!(pos.mailbox[sq as usize].skill2(), s2, "P1 champ file {} slot2", file);
         }
 
+        // P2 is placed in its OWN ascending-square frame (no cross-side mirror
+        // in the constructor): King index 0 → e8 (sq 60), Champions index 1..5
+        // → P2 files [b,c,d,f,g] of rank 7 = squares [57,58,59,61,62].
+        let p2_king_sq = (pos.p2_pieces & pos.kings).lsb().unwrap();
+        assert_eq!(p2_king_sq, 60, "P2 King on e8");
+        assert_eq!(pos.mailbox[60].skill1(), p2[0].0, "P2 King slot1");
+        assert_eq!(pos.mailbox[60].skill2(), p2[0].1, "P2 King slot2");
+        let p2_champ_sqs = [57u8, 58, 59, 61, 62];
+        for (idx, &sq) in p2_champ_sqs.iter().enumerate() {
+            let (s1, s2) = p2[idx + 1];
+            assert_eq!(pos.mailbox[sq as usize].skill1(), s1, "P2 champ sq {} slot1", sq);
+            assert_eq!(pos.mailbox[sq as usize].skill2(), s2, "P2 champ sq {} slot2", sq);
+        }
+
         // Hash is recomputed from scratch — sanity-check it matches full_recompute.
         assert_eq!(pos.zobrist, super::super::zobrist::full_recompute(&pos));
+    }
+
+    #[test]
+    fn mirror_loadout_produces_point_symmetric_board() {
+        // Regression for the preset-mirroring bug: a preset is authored in P1's
+        // frame; feeding `mirror_loadout(&preset)` as the P2 argument must make
+        // P2 a 180° rotation of P1 — a P1 file-b Champion (Lance+Shield) and a
+        // P2 file-g Champion must share skills.
+        use crate::game_logic::skills::mirror_loadout;
+        let preset: SideLoadout = [(1,2), (3,4), (5,6), (7,8), (9,10), (11,12)];
+        let pos = Position::setup_stack_m_with_loadouts(&preset, &mirror_loadout(&preset));
+
+        // Every P1 back-rank piece at sq must share skills with the P2 piece at
+        // its 180° mirror (63 - sq).
+        for sq in 1u8..=6 {
+            let p1e = pos.mailbox[sq as usize];
+            let p2e = pos.mailbox[(63 - sq) as usize];
+            assert_eq!(p1e.skill1(), p2e.skill1(),
+                "P1 sq {} and P2 sq {} must share skill1", sq, 63 - sq);
+            assert_eq!(p1e.skill2(), p2e.skill2(),
+                "P1 sq {} and P2 sq {} must share skill2", sq, 63 - sq);
+        }
+        // Designer's example: P1 file b (sq 1) skills land on P2 file g (sq 62),
+        // NOT on P2 file b (sq 57).
+        assert_eq!(pos.mailbox[1].skill1(), pos.mailbox[62].skill1(), "b1 → g8 slot1");
+        assert_eq!(pos.mailbox[1].skill2(), pos.mailbox[62].skill2(), "b1 → g8 slot2");
     }
 
     #[test]
