@@ -39,7 +39,7 @@
   let recentLostSessions = $state<MatchMeta[]>([]);
   let recentJoinedCodes = $state<JoinedCodeEntry[]>([]);
   let recentError = $state<string | null>(null);
-  // Per-code liveness from a one-shot PeerJS probe. Keyed by 6-digit code.
+  // Per-code liveness from a one-shot relay probe. Keyed by 6-digit code.
   let recentLiveness = $state<Record<string, "probing" | "live" | "dead">>({});
   let livenessRefreshTimer: ReturnType<typeof setInterval> | null = null;
   const PROBE_LIMIT = 5;

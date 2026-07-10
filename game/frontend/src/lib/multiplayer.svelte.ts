@@ -1,7 +1,7 @@
 // Side-effecting multiplayer wrapper. Owns the reactive `mpState` carrier,
 // the message inbox/buffering, the heartbeat timers, and the V1 decode +
-// ping/pong handling. PeerJS lifecycle + auto-redial ladder live in
-// `./multiplayer/transport.ts` so they can be unit-tested without runes.
+// ping/pong handling. WebSocket relay lifecycle + auto-redial ladder live in
+// `./multiplayer/websocket-transport.ts` so they can be unit-tested without runes.
 //
 // Out of scope (deferred to L7b):
 //   - Reconnect handshake / Zobrist verification
@@ -24,7 +24,7 @@ export type { WireMessage, PillState, MpStatus };
 
 interface MpState {
   status: MpStatus;
-  /** The 6-digit code (host's PeerJS ID suffix). Null until host/join resolves. */
+  /** The 6-digit code (relay session code). Null until host/join resolves. */
   code: string | null;
   role: "host" | "joiner" | null;
   lastPongAt: number | null;
@@ -142,9 +142,9 @@ let nowTick = $state(Date.now());
 // stay in this module because they touch mpState (pong-age-out bridge writes
 // `disconnectedSince` + `status`, ping emits a V1 frame via `sendData`).
 //
-// The now-tick doubles as the pong-age-out → status bridge: PeerJS's
-// DataConnection `close` event is unreliable when the remote peer dies
-// without an explicit `peer.destroy()` call. Without this bridge,
+// The now-tick doubles as the pong-age-out → status bridge: the relay's
+// close signal is unreliable when the remote peer dies
+// without an explicit disconnect. Without this bridge,
 // `mpState.status` stays "connected" forever and the GraceBanner never
 // appears. Once we cross the threshold, flip status so every downstream
 // listener (wrapper, GraceBanner via pill, /match/ network-lost effect)
@@ -374,7 +374,7 @@ const transport = createWebSocketTransport({
 // === Public facade ======================================================
 
 /** Host a session. Picks a random 6-digit code and registers with the
- *  PeerJS broker; retries on collision. Resolves with the chosen code. */
+ *  relay server; retries on collision. Resolves with the chosen code. */
 export function host(): Promise<string> {
   disconnect();
   mpState.disconnectedSince = null;
@@ -385,8 +385,8 @@ export function host(): Promise<string> {
 }
 
 /** Re-host a session under a specific code. Used by the lobby's Rejoin flow
- *  to reclaim the same PeerJS ID we held before the tab closed, and by the
- *  leader-handoff path where the broker may still hold the dying host's
+ *  to reclaim the same relay session code we held before the tab closed, and by the
+ *  leader-handoff path where the relay may still hold the dying host's
  *  registration for several seconds. */
 export function hostWithCode(code: string): Promise<string> {
   disconnect();
@@ -456,8 +456,8 @@ export function disconnect(): void {
   if (wasConnected) fireDisconnected();
 }
 
-/** Soft teardown used by the leader-handoff path. Drops the PeerJS object and
- *  the open DataConnection synchronously but PRESERVES the carrier fields the
+/** Soft teardown used by the leader-handoff path. Drops the relay connection and
+ *  the open socket synchronously but PRESERVES the carrier fields the
  *  takeover flow needs to remain stable: `code` (so hostWithCode can reclaim
  *  the same id), `role`/`peerEverPaired` (so GraceBanner stays visible during
  *  the swap), `disconnectedSince` (so the countdown doesn't reset).
@@ -482,7 +482,7 @@ export function isActive(): boolean {
   return transport.isActive();
 }
 
-/** Liveness probe: open a throwaway Peer + DataConnection to `code` and
+/** Liveness probe: open a throwaway relay connection to `code` and
  *  resolve `true` if the channel opens AND the host doesn't kick us with a
  *  `session-full` error within a 500ms confirmation window. Else `false`.
  *  Used by the lobby to show 🟢/⚫ dots on recent-sessions cards. */

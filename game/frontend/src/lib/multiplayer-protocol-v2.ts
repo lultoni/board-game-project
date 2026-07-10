@@ -5,7 +5,7 @@
 // audit. Every committed action is sequenced; out-of-order arrivals trigger
 // a snapshot request rather than partial application.
 //
-// Pure types + codec. No PeerJS, no DOM, no runes. Sister module
+// Pure types + codec. No transport, no DOM, no runes. Sister module
 // `multiplayer-protocol.ts` still holds the legacy union while routes are
 // migrated; this file is the eventual replacement. Both files re-export
 // `derivePillState`, `generateCode`, `isValidCode`, `GRACE_MS` — those are
@@ -32,7 +32,7 @@ export type WireMessageV2 =
   | { kind: "ping"; t: number }
   | { kind: "pong"; t: number }
 
-  // Host → joiner immediately after the DataConnection opens. Tells the
+  // Host → joiner immediately after the relay connection opens. Tells the
   // joiner who's authoritative, which IDB row id the host has adopted, what
   // phase play is in, and the current committed seq. If `seq > 0` the joiner
   // follows up with `request-snapshot{reason:"reconnect"}` to fetch state.

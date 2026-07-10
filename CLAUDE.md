@@ -152,6 +152,18 @@ One layer per playtest. Decompose, identify coupling, order from independent to 
 
 **Note**: Skill definitions in `.claude/skills/` were written for the paper-pipeline era and still reference deleted MD paths. They need a rewrite to query the DB instead. Until then, expect skills to fail on the old paths — fall back to direct DB queries.
 
+## Git branching — HARD RULE (MANDATORY, NO EXCEPTIONS)
+
+**NEVER create git branches. NEVER switch to a non-`main` branch to do work. All work happens on `main`.**
+
+- Do **not** run `git branch <name>`, `git checkout -b <name>`, `git switch -c <name>`, `git worktree add`, or any command that creates a new branch — under any circumstance, for any reason, without a direct explicit request from the user naming the branch.
+- Do **not** use the EnterWorktree tool (it creates a branch). Do not use `isolation: "worktree"` on agents.
+- If a task "would be cleaner on a branch," it is still done on `main`. The user does not want branches.
+- If branches or extra branches ever exist, the correct action is to get their commits onto `main` (fast-forward or merge) and **delete the branch**, then work on `main`.
+- Committing directly to `main` is the expected, approved workflow. (Pushing still requires explicit approval — see below.)
+
+Violating this rule is a serious error. The user has stated this in the strongest possible terms.
+
 ## Release / GitHub Actions
 
 The build workflow (`.github/workflows/release.yml`) triggers on any `v*` tag push. To cut a release:

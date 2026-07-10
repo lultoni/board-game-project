@@ -1,6 +1,6 @@
 // Unit tests for the multiplayer wire protocol helpers.
 //
-// All four exported helpers are pure functions — no PeerJS, no DOM. Run
+// All four exported helpers are pure functions — no transport, no DOM. Run
 // under the default node env via `npm test`.
 
 import { describe, it, expect } from "vitest";

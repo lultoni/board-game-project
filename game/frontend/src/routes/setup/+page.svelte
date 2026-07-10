@@ -37,7 +37,7 @@
   //
   // We can't key the multiplayer UI off `match.mode` because, post-L7c, the
   // lobby Back link (a plain href, not the cancel button) leaves `match.mode`
-  // and `multiplayerRole` set without a live PeerJS connection — and the
+  // and `multiplayerRole` set without a live relay connection — and the
   // /draft/ route then boots in MP mode and reports "disconnected".
   //
   // Treat the live `mpState.status` as the source of truth: if there's no

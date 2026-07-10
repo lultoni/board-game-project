@@ -689,6 +689,7 @@
           eng,
           getRole: () => (isMp ? ((mpState.role ?? "joiner") as Role) : "solo"),
           getCode: () => mpState.code,
+          ensureLiveEngine: ensureLiveEngineOnTrueLine,
           send: (m: WireMessageV2) => mpSendRaw(encodeMessageV2(m)),
           subscribe: (cb) => mpOnRawData((raw) => {
             const decoded = decodeMessageV2(raw);
@@ -1485,6 +1486,38 @@
     }
   }
 
+  /** Restore the engine to the true authoritative line captured at sandbox
+   *  entry and clear all sandbox carrier state. This is the shared core of
+   *  leaving sandbox — it does NOT own `busy`, the confirm-discard dialog, or
+   *  sfx; each caller layers those on:
+   *    - `exitSandbox` (user-initiated): confirm dialog + busy + sfx, then this.
+   *    - `ensureLiveEngine` (auto, ns-37): no dialog — an incoming opponent
+   *      move can't wait on a modal and the exploration is discarded by design.
+   *  No-op when not in sandbox (idempotent: flips `match.mode` out of sandbox),
+   *  so a double-call (e.g. two wire messages back-to-back) is safe. */
+  async function restoreTrueLineFromSandbox(): Promise<void> {
+    if (!eng) return;
+    if (match.mode !== "sandbox" || !match.trueSnapshotJson) return;
+    validateSnapshot(match.trueSnapshotJson, {
+      maxActions: SNAPSHOT_BUDGETS.RESUME_MAX_ACTIONS,
+      maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+      requireConfig: true,
+      source: "sandbox-restore",
+    });
+    await eng.restoreFromSnapshot(match.trueSnapshotJson);
+    match.trueSnapshotJson = null;
+    match.sandboxMovesApplied = 0;
+    sandboxUndoStack = [];
+    // Restore the mode we entered sandbox from. `modeFromSeats()` can't
+    // round-trip "multiplayer" (both seats are "human" in MP too), so we
+    // rely on the stashed value; fall back to seat-derivation only if
+    // preSandboxMode was somehow lost.
+    match.mode = match.preSandboxMode ?? modeFromSeats(match.side);
+    match.preSandboxMode = null;
+    clearAllPickers();
+    await syncFromEngine();
+  }
+
   async function exitSandbox(): Promise<void> {
     if (!eng || busy) return;
     if (match.mode !== "sandbox" || !match.trueSnapshotJson) return;
@@ -1495,29 +1528,24 @@
     sfx.play("click");
     busy = true;
     try {
-      validateSnapshot(match.trueSnapshotJson, {
-        maxActions: SNAPSHOT_BUDGETS.RESUME_MAX_ACTIONS,
-        maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
-        requireConfig: true,
-        source: "sandbox-restore",
-      });
-      await eng.restoreFromSnapshot(match.trueSnapshotJson);
-      match.trueSnapshotJson = null;
-      match.sandboxMovesApplied = 0;
-      sandboxUndoStack = [];
-      // Restore the mode we entered sandbox from. `modeFromSeats()` can't
-      // round-trip "multiplayer" (both seats are "human" in MP too), so we
-      // rely on the stashed value; fall back to seat-derivation only if
-      // preSandboxMode was somehow lost.
-      match.mode = match.preSandboxMode ?? modeFromSeats(match.side);
-      match.preSandboxMode = null;
-      clearAllPickers();
-      await syncFromEngine();
+      await restoreTrueLineFromSandbox();
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
       busy = false;
     }
+  }
+
+  /** Wire-path hook (ns-37): before the mp wrapper validates/applies an
+   *  incoming opponent action on the shared engine, guarantee we're on the
+   *  true authoritative line. If this peer is mid-sandbox, auto-exit it now —
+   *  otherwise the wrapper would tryApply the opponent's real move against our
+   *  sandbox-forked state and falsely cry "engine disagreed". Skips the
+   *  confirm-discard dialog on purpose. Runs outside applyRaw's `busy` window
+   *  (fired from the wire handler), so it does not touch `busy`. */
+  async function ensureLiveEngineOnTrueLine(): Promise<void> {
+    if (match.mode !== "sandbox") return;
+    await restoreTrueLineFromSandbox();
   }
 
   // Watch for natural game-end and finalise the telemetry session exactly

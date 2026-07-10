@@ -1,5 +1,5 @@
 // Unit tests for the role-aware multiplayer engine wrapper.
-// Pure: uses a fake engine + an in-memory wire bus. No PeerJS, no IDB.
+// Pure: uses a fake engine + an in-memory wire bus. No transport, no IDB.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMpEngine, type MpEngineHandle } from "./multiplayer-engine";
@@ -183,7 +183,11 @@ beforeEach(() => {
   nonceCounter = 0;
 });
 
-function build(role: "host" | "joiner" | "solo", phase: WirePhase = "draft"): {
+function build(
+  role: "host" | "joiner" | "solo",
+  phase: WirePhase = "draft",
+  opts?: { ensureLiveEngine?: () => Promise<void> | void },
+): {
   eng: FakeEngine;
   bus: Bus;
   listeners: ReturnType<typeof makeListeners>;
@@ -202,6 +206,7 @@ function build(role: "host" | "joiner" | "solo", phase: WirePhase = "draft"): {
       eng,
       getRole: () => currentRole,
       getCode: () => currentCode,
+      ensureLiveEngine: opts?.ensureLiveEngine,
       send: bus.send,
       subscribe: bus.subscribe,
       onApplied: listeners.onApplied,
@@ -797,5 +802,167 @@ describe("promoteToHost", () => {
 
     handle.promoteToHost({ matchId: "x" });
     expect(handle.getSeq()).toBe(3);
+  });
+});
+
+// =========================================================================
+// SANDBOX / ns-37 — auto-exit to the true line before touching the engine
+// with incoming REAL traffic, so a local sandbox fork never mis-validates
+// the opponent's move (the false "engine disagreed" bug).
+// =========================================================================
+
+describe("sandbox auto-exit (ns-37)", () => {
+  it("joiner in sandbox: committed audits cleanly, no false cheat/resync", async () => {
+    // Simulate: joiner forks its engine into a sandbox line ([777]). The
+    // ensureLiveEngine hook restores the true line ([]) before the audit,
+    // exactly as the route's restoreTrueLineFromSandbox does.
+    const calls: string[] = [];
+    const eng = new FakeEngine();
+    let inSandbox = true;
+    const bus = makeBus();
+    const listeners = makeListeners();
+    const handle = createMpEngine(
+      { phase: "play", matchId: null, nonceFactory: deterministicNonce, warn: () => {} },
+      {
+        eng,
+        getRole: () => "joiner",
+        getCode: () => null,
+        ensureLiveEngine: async () => {
+          calls.push("ensure");
+          if (inSandbox) {
+            eng.applied = []; // restore true line
+            inSandbox = false;
+          }
+        },
+        send: bus.send,
+        subscribe: bus.subscribe,
+        onApplied: (raw, phase) => { calls.push(`apply:${raw}`); listeners.onApplied(raw, phase); },
+        onSnapshotApplied: listeners.onSnapshotApplied,
+        onPhaseChange: listeners.onPhaseChange,
+        onCheatDetected: listeners.onCheatDetected,
+        onPausedChange: listeners.onPausedChange,
+        onHostCommitted: listeners.onHostCommitted,
+        onResyncFailed: listeners.onResyncFailed,
+      },
+    );
+    // Fork the engine as sandbox exploration would.
+    eng.applied = [777];
+    // Host commits raw 42 on the TRUE line → postZobrist = 1*31 + 42 = 73.
+    bus.push({ kind: "committed", seq: 1, phase: "play", raw: 42, postZobrist: "73", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(bus.sent.filter((m) => m.kind === "cheat-detected")).toEqual([]);
+    expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toEqual([]);
+    expect(listeners.cheats).toEqual([]);
+    expect(handle.getSeq()).toBe(1);
+    expect(eng.applied).toEqual([42]); // clean true-line apply
+    // ensure ran BEFORE the apply.
+    expect(calls).toEqual(["ensure", "apply:42"]);
+  });
+
+  it("host in sandbox: incoming joiner intent is accepted, committed broadcast", async () => {
+    const calls: string[] = [];
+    const eng = new FakeEngine();
+    let inSandbox = true;
+    const bus = makeBus();
+    const listeners = makeListeners();
+    createMpEngine(
+      { phase: "play", matchId: "host-match-1", nonceFactory: deterministicNonce, warn: () => {} },
+      {
+        eng,
+        getRole: () => "host",
+        getCode: () => "281947",
+        ensureLiveEngine: async () => {
+          calls.push("ensure");
+          if (inSandbox) { eng.applied = []; inSandbox = false; }
+        },
+        send: bus.send,
+        subscribe: bus.subscribe,
+        onApplied: (raw, phase) => { calls.push(`apply:${raw}`); listeners.onApplied(raw, phase); },
+        onSnapshotApplied: listeners.onSnapshotApplied,
+        onPhaseChange: listeners.onPhaseChange,
+        onCheatDetected: listeners.onCheatDetected,
+        onPausedChange: listeners.onPausedChange,
+        onHostCommitted: listeners.onHostCommitted,
+        onResyncFailed: listeners.onResyncFailed,
+      },
+    );
+    eng.applied = [777]; // host forked into sandbox
+    bus.push({ kind: "intent", phase: "play", nonce: "j-1", raw: 42 });
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+
+    const committed = bus.sent.filter((m) => m.kind === "committed");
+    expect(committed).toHaveLength(1);
+    expect(committed[0]).toMatchObject({ seq: 1, raw: 42, postZobrist: "73", originNonce: "j-1" });
+    expect(bus.sent.filter((m) => m.kind === "intent-rejected")).toEqual([]);
+    expect(calls[0]).toBe("ensure"); // ensure ran before validation/apply
+  });
+
+  it("no hook wired: normal apply path still works (solo)", async () => {
+    const { eng, handle } = build("solo");
+    const r = await handle.submitAction(42);
+    expect(r.accepted).toBe(true);
+    expect(eng.applied).toEqual([42]);
+  });
+
+  it("not in sandbox: hook is a no-op and does NOT mask a real Zobrist mismatch", async () => {
+    // Hook wired but reports not-in-sandbox (no restore). A genuinely wrong
+    // postZobrist must still trigger the audit-mismatch resync.
+    const { bus, handle } = build("joiner", "play", {
+      ensureLiveEngine: () => { /* not in sandbox: no-op */ },
+    });
+    bus.push({ kind: "committed", seq: 1, phase: "play", raw: 42, postZobrist: "99999", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    const req = bus.sent.find((m) => m.kind === "request-snapshot");
+    expect(req).toMatchObject({ reason: "audit-mismatch" });
+  });
+
+  it("not in sandbox: hook does NOT mask a genuinely illegal action (cheat-detected still fires)", async () => {
+    const { bus, handle, listeners, eng } = build("joiner", "play", {
+      ensureLiveEngine: () => { /* no-op */ },
+    });
+    eng.illegalRaws.add(42);
+    bus.push({ kind: "committed", seq: 1, phase: "play", raw: 42, postZobrist: "73", originNonce: null });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(bus.sent.filter((m) => m.kind === "cheat-detected")).toHaveLength(1);
+    expect(listeners.cheats).toEqual([{ seq: 1, raw: 42, side: "host" }]);
+    void handle;
+  });
+
+  it("snapshot branch awaits the hook before restoreFromSnapshot", async () => {
+    const order: string[] = [];
+    const eng = new FakeEngine();
+    // Minimal valid snapshot the validator accepts. Reuse the FakeEngine's
+    // restoreSpy to observe the restore call ordering.
+    const snapshotJson = JSON.stringify({ start_fen: "x", config: {}, actions: [] });
+    const bus = makeBus();
+    const listeners = makeListeners();
+    createMpEngine(
+      { phase: "play", matchId: null, nonceFactory: deterministicNonce, warn: () => {} },
+      {
+        eng,
+        getRole: () => "joiner",
+        getCode: () => null,
+        ensureLiveEngine: () => { order.push("ensure"); },
+        send: bus.send,
+        subscribe: bus.subscribe,
+        onApplied: listeners.onApplied,
+        onSnapshotApplied: listeners.onSnapshotApplied,
+        onPhaseChange: listeners.onPhaseChange,
+        onCheatDetected: listeners.onCheatDetected,
+        onPausedChange: listeners.onPausedChange,
+        onHostCommitted: listeners.onHostCommitted,
+        onResyncFailed: listeners.onResyncFailed,
+      },
+    );
+    const origRestore = eng.restoreFromSnapshot.bind(eng);
+    eng.restoreFromSnapshot = async (j: string) => { order.push("restore"); return origRestore(j); };
+    bus.push({ kind: "snapshot", snapshotJson, seq: 3, phase: "play", matchId: "m1" });
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    // Ordering: ensure must precede restore. (If validateSnapshot rejects the
+    // stub, neither runs — guard against that by asserting both present.)
+    expect(order).toContain("ensure");
+    expect(order).toContain("restore");
+    expect(order.indexOf("ensure")).toBeLessThan(order.indexOf("restore"));
   });
 });

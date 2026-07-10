@@ -17,7 +17,7 @@
 //
 // Dependencies are injected (engine, send, onData, telemetry store, the
 // reactive match carrier) so the test file can drive the wrapper with fakes
-// and the runtime file can wire it to the real PeerJS/WASM/IDB.
+// and the runtime file can wire it to the real WebSocket relay/WASM/IDB.
 
 import {
   SNAPSHOT_BUDGETS,
@@ -103,6 +103,17 @@ export interface MpEngineDeps {
   /** Live code accessor. Used by `session-hello` emission. The handoff path
    *  writes `mpState.code = newCode` and this read sees it on the next emit. */
   getCode: () => string | null;
+  /** Called by the wrapper immediately BEFORE it touches the shared engine
+   *  with INCOMING REAL traffic (host: a joiner `intent`; joiner: a host
+   *  `committed`/`snapshot`/`phase-change`). The route uses it to guarantee
+   *  the shared engine is on the true authoritative line before validation —
+   *  specifically, to auto-exit sandbox (restore the entry snapshot) so an
+   *  in-progress local exploration can't mis-validate the opponent's real
+   *  move (the false "engine disagreed" anti-cheat bug, ns-37). Awaited; must
+   *  resolve before the wrapper calls tryApply / restoreFromSnapshot. Expected
+   *  to be a cheap no-op when not in sandbox. Optional — defaults to a no-op
+   *  for solo and for tests that don't wire it. */
+  ensureLiveEngine?: () => Promise<void> | void;
 }
 
 export interface MpEngineOpts {
@@ -130,7 +141,7 @@ export interface MpEngineHandle {
 
   /** Host: tell the wrapper that the channel just opened / closed so it can
    *  send `session-hello`, pause/resume, etc. Joiner: notify of reconnect so
-   *  it re-requests a snapshot. The runtime calls this from its PeerJS
+   *  it re-requests a snapshot. The runtime calls this from its WebSocket relay
    *  lifecycle handlers; tests call it directly. */
   notifyConnectionOpen(): void;
   notifyConnectionLost(): void;
@@ -323,6 +334,10 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
             requireConfig: true,
             source: "host-snapshot",
           });
+          // Auto-exit any local sandbox fork before we overwrite the engine,
+          // so the sandbox carrier state (match.mode etc.) stays consistent
+          // and we never restore onto a mid-exploration fork (ns-37).
+          if (deps.ensureLiveEngine) await deps.ensureLiveEngine();
           await deps.eng.restoreFromSnapshot(m.snapshotJson);
           matchId = m.matchId;
           phase = m.phase;
@@ -352,6 +367,9 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
             requireConfig: true,
             source: "phase-change",
           });
+          // Auto-exit any local sandbox fork before overwriting the engine
+          // (ns-37) — same rationale as the `snapshot` case.
+          if (deps.ensureLiveEngine) await deps.ensureLiveEngine();
           await deps.eng.restoreFromSnapshot(m.snapshotJson);
           phase = m.to;
           seq = m.seq;
@@ -389,6 +407,11 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           return;
         }
         // Validate via tryApply — engine's deterministic rule check.
+        // First ensure the shared engine is on the true authoritative line:
+        // if this host is exploring a sandbox fork, auto-exit it now, else
+        // tryApply would validate the joiner's real intent against the
+        // sandbox-altered position and falsely reject it (ns-37).
+        if (deps.ensureLiveEngine) await deps.ensureLiveEngine();
         let prePositionView: PositionView;
         let postZobrist: bigint;
         try {
@@ -445,6 +468,12 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         // we delete, the .has() check would return false and we'd misreport
         // joiner-originated commits as remote-driven.
         const isLocalEcho = !!(m.originNonce && pendingIntents.has(m.originNonce));
+        // Ensure the mirror engine is on the true authoritative line before
+        // the audit re-apply: if this joiner is exploring a sandbox fork,
+        // auto-exit it now, else tryApply below runs against the sandbox-
+        // altered state and produces a divergent Zobrist → a false
+        // cheat-detected / resync (ns-37).
+        if (deps.ensureLiveEngine) await deps.ensureLiveEngine();
         // Audit: re-apply on the mirror engine.
         let prePositionView: PositionView;
         let mirrorZobrist: bigint;

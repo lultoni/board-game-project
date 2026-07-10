@@ -101,7 +101,9 @@ export interface MatchFilter {
 export interface JoinedCodeEntry {
   code: string;
   lastJoinedAtUnixMs: number;
-  /** PeerJS ID the joiner used to dial in. Kept for debugging only. */
+  /** Relay session id the joiner used to dial in. Kept for debugging only.
+   *  (Field name is legacy from the PeerJS era; the transport is now the
+   *  WebSocket relay.) */
   hostPeerId?: string | null;
   /** Most recent committed seq the joiner observed for this code. Lets the
    *  lobby decide whether to show "you were mid-game" vs. a stale code. */

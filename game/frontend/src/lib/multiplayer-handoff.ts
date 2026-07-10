@@ -1,5 +1,5 @@
 // Leader-handoff orchestrator. When the host vanishes mid-match, the joiner
-// can promote itself to host by reclaiming the same PeerJS code and flipping
+// can promote itself to host by reclaiming the same relay session code and flipping
 // its wrapper role in place. This module owns the ordering of operations —
 // kept out of the banner component so the policy is testable with fakes.
 //

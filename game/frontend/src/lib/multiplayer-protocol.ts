@@ -12,7 +12,7 @@ export type WireMessage =
   | { kind: "pong"; t: number }
   | { kind: "error"; reason: string };
 
-/** 6-digit code in [100000, 999999]. Used as the PeerJS host ID so the
+/** 6-digit code in [100000, 999999]. Used as the relay session code so the
  *  joiner can dial it without a discovery service. */
 export function generateCode(): string {
   return String(100000 + Math.floor(Math.random() * 900000));
@@ -62,7 +62,7 @@ export type MpStatus =
 
 /** Display state of the connectivity pill — derived purely from `status`
  *  and how recently we last heard back from the peer. The pill is the user
- *  signal, kept separate from the underlying PeerJS state so the UI can
+ *  signal, kept separate from the underlying transport state so the UI can
  *  show "🟡 unstable" before the peer is formally disconnected.
  *
  *  Thresholds (ADR-006):

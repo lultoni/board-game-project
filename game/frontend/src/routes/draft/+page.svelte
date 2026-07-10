@@ -603,7 +603,7 @@
   }
 
   // True while navigating forward into /match/. Used by the teardown paths to
-  // decide whether to tear down the PeerJS connection (back-button → home)
+  // decide whether to tear down the relay connection (back-button → home)
   // or keep it alive (draft → match handoff). The peer must persist across
   // the route change so the post-draft snapshot exchange / phase-change
   // envelope can land on /match/.

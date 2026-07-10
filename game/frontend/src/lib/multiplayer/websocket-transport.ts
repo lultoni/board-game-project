@@ -1,9 +1,8 @@
-// WebSocket relay transport — drop-in replacement for the PeerJS transport.
+// WebSocket relay transport — the multiplayer transport for this app.
 //
-// Implements the same `Transport` interface. The relay server owns session
+// Implements the `Transport` interface. The relay server owns session
 // routing; this module owns the WebSocket lifecycle, relay-envelope handling,
-// and the joiner-side auto-redial ladder (identical policy to the PeerJS
-// version).
+// and the joiner-side auto-redial ladder.
 //
 // Relay control frames use `type`; game messages use `kind` — zero collision.
 // Control frames are consumed here and never reach the wrapper's onData.

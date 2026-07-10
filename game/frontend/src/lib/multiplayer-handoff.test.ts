@@ -1,5 +1,5 @@
 // Unit tests for the leader-handoff orchestrator. Pure: every dependency
-// (PeerJS, telemetry, IDB) is injected via the hooks parameter.
+// (transport, telemetry, IDB) is injected via the hooks parameter.
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { takeoverAsHost, type HandoffCarrier } from "./multiplayer-handoff";
