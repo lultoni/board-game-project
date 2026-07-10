@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-07-06 — Session 42 end (Task 8 shipped).*
+*Last updated: 2026-07-10 — Session 43 end (P6 analysis + B1/B2 fixes + idea-capture sweep).*
 
 ---
 
@@ -30,49 +30,48 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 42 end, 2026-07-06)
+### Where We Are (Session 43 end, 2026-07-10)
 
-- **Task 8 shipped.** Custom loadout manager complete: `/loadouts/` route (list/editor/import/export), IDB v3 `loadouts` store, `L1:` base64url share codes + JSON, dedupe on skill tuple, per-side setup pickers (`sideLoadouts` refactor of match-store), draft-from-custom dropdown with compatibility filter + auto-fill, read-only mini-board preview on draft screen. Shared `BackButton.svelte` rolled out across seven routes.
-- **v0.1.0 is still built and waiting.** Draft release from Session 40 has not yet been tested on real hardware. WS relay (Fly.io) still the multiplayer transport.
-- **Engine unchanged this session.** No design decisions; no OQs resolved. Pure feature engineering on the frontend.
+- **P6 (Elias vs Dorian) is analysed and its ideas are all captured.** Combo widening accepted and combo mechanic is now **done/closed**. Game length substantially met. New live pattern: mid-game **first-mover-loses** standoff (oq-58) — a tempo problem, NOT a draw problem.
+- **Two engine bugs fixed** on branch `fix/combo-bonus-and-preset-mirror` (committed, **NOT merged, NOT pushed**): B1 combo-bonus ruling, B2 preset P2 loadout mirror.
+- **Focus is now the sequencing pivot:** the designer wants to **clean up broken/bugged UI first**, THEN decide the next game change for the next playtest. This session did no release-testing.
 
 ### Immediate Next Action
 
-**Test the v0.1.0 release artefacts on actual hardware** (unchanged from Session 40 end):
-1. Download from the GitHub draft release, install/run on each target platform.
-2. Verify multiplayer via WS relay works end-to-end (host create → guest join → move relay → game completion).
-3. Smoke-test the MP setup path (single shared picker branch — code touched by Session 42's `sideLoadouts` refactor).
-4. If all platforms pass: publish the draft release.
+**UI cleanup first, in priority order:**
+1. **ns-37** — fix the sandbox-in-MP false anti-cheat "engine disagreed" bug. Sandbox exploration must be isolated from the authoritative MP-validation engine (or re-sync from last `committed`/`snapshot` on sandbox exit). Surface: `multiplayer-engine.ts`, sandbox entry/exit in `/match/`.
+2. **ns-35** — build the in-game help/reference surface (button next to settings, reachable from any screen) AND unify duplicated UI components (skill cards/tooltips/buttons). Feed ns-13/ns-14 tooltip work into shared primitives.
+3. **ns-36** is the low-priority QoL grab-bag — defer unless it shares components with ns-35.
+4. **Then** (separate design mode): pick the next game change for the next playtest. Candidate levers: ns-32 (Focus 1→2), ns-34/oq-58 (first-mover tempo), oq-86 (loser-gets-money rebate).
+5. Ask the designer whether to merge/push `fix/combo-bonus-and-preset-mirror`.
 
 ### Open methodological loose ends
 
-- A5: Replay page parity (PlayerPanels, turn strip) — deferred
-- ETA field in status snapshot always null — not computed yet
-- MP loadout fairness story (custom loadouts disabled in MP) — deferred; noted in code
-- v0.1.0 draft release — needs publish after cross-platform testing
+- Branch `fix/combo-bonus-and-preset-mirror` — committed, not merged, not pushed (awaiting designer OK)
+- v0.1.0 cross-platform release smoke test — still outstanding from Session 40/42
+- A5 replay parity; ETA field null; MP loadout fairness — all still deferred
 
 ### Key DB Queries
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM sessions WHERE id='session-42';` | Task 8 — Custom Loadout Manager |
-| `SELECT body FROM sessions WHERE id='session-41';` | Task batch + Phase A/B search sweep |
-| `SELECT body FROM sessions WHERE id='session-40';` | WS relay + v0.1.0 release |
+| `SELECT body FROM sessions WHERE id='session-43';` | This session — P6 + B1/B2 + idea sweep |
+| `SELECT body FROM essays WHERE id='essay-playtest-6-analysis';` | Full P6 analysis |
+| `SELECT body FROM next_steps WHERE id IN ('35','36','37');` | UI cleanup work items |
+| `SELECT body FROM open_questions WHERE id='oq-86';` | Loser-gets-money design question |
+| `SELECT body FROM open_questions WHERE id='oq-58';` | First-mover-loses standoff |
 | `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance |
 
 ### Key Files
 
 | Path | Purpose |
 |------|---------|
-| `game/frontend/src/routes/loadouts/+page.svelte` | Loadout editor route |
-| `game/frontend/src/lib/board/LoadoutBoard.svelte` | Mini-board (viewBox-croppable) |
-| `game/frontend/src/lib/board/SkillPicker.svelte` | Shared 15-skill grid (drag + click modes) |
-| `game/frontend/src/lib/storage/loadout-codec.ts` | `L1:` share code + JSON codec |
-| `game/frontend/src/lib/storage/loadout-dedupe.ts` | Skill-tuple dedupe |
-| `game/frontend/src/lib/ui/BackButton.svelte` | Shared back button |
-| `game/frontend/src/lib/state/match-store.svelte.ts` | `sideLoadouts: { p1, p2 }` |
-| `game/relay/` | WS relay server (Fly.io) |
-| `game/PROTOCOL_TRACE.md` | WS relay protocol |
-| `.github/workflows/release.yml` | Release matrix |
+| `game/frontend/src/lib/multiplayer-engine.ts` | Role-aware MP wrapper (anti-cheat validation path — ns-37) |
+| `game/frontend/src/routes/match/+page.svelte` | Match route; sandbox entry/exit lives here |
+| `game/frontend/src/lib/ui/BackButton.svelte` | Existing shared component (model for unification — ns-35) |
+| `game/frontend/src/lib/board/SkillPicker.svelte` | 15-skill grid (candidate shared primitive) |
+| `game/crates/core_engine/src/game_logic/skills.rs` | `mirror_loadout` (B2 fix) |
+| `game/crates/core_engine/src/game_logic/make_unmake.rs` | combo-bonus ruling (B1 fix) |
+| `game/frontend/src/lib/state/draft.ts` | `mirrorLoadout` parity + presets |
 | `design/design.db` | Source of truth (binary; committed) |
 | `.claude/STATUS.md` | One-screen re-entry summary |
