@@ -621,14 +621,17 @@ mod tests {
     #[test]
     fn guard_isolation_ignores_champions_and_kings() {
         // A lone P1 CHAMPION surrounded by enemies must NOT be penalised by this
-        // guard-only term (champion_threat/exposure handle champions).
+        // guard-only term (champion_threat/exposure handle champions). With no
+        // guards on the board the term is skipped entirely (is_active=false) —
+        // absent ⇔ zero contribution, which is exactly what we require.
         let mut p = Position::empty();
         place(&mut p, 27, Player::P1, 1, MailboxEntry::default().with_hp(2));
         place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2));
         place(&mut p, 29, Player::P2, 1, MailboxEntry::default().with_hp(2));
         let bd = evaluate_dyn(&p);
-        let iso = bd.terms.iter().find(|t| t.name == "guard_isolation").unwrap();
-        assert_eq!(iso.p1, 0, "champion is not a guard → no isolation penalty");
+        let iso_p1 = bd.terms.iter().find(|t| t.name == "guard_isolation")
+            .map(|t| t.p1).unwrap_or(0);
+        assert_eq!(iso_p1, 0, "champion is not a guard → no isolation penalty");
     }
 
     // ============================================================

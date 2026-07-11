@@ -383,6 +383,9 @@ pub struct GuardIsolation;
 impl EvalTerm for GuardIsolation {
     fn name(&self) -> &'static str { "guard_isolation" }
     fn is_per_piece(&self) -> bool { true }
+    /// Behavior-preserving skip: scores only guards, so with no guards on the
+    /// board it is uniformly 0. Golden byte-identical.
+    fn is_active(&self, ctx: &EvalContext) -> bool { ctx.pos.guards.0 != 0 }
     /// Penalty: stored as positive magnitude, subtracts in the total.
     fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
@@ -435,6 +438,11 @@ pub struct ChampionThreat;
 impl EvalTerm for ChampionThreat {
     fn name(&self) -> &'static str { "champion_threat" }
     fn is_per_piece(&self) -> bool { true }
+    /// Behavior-preserving skip: the term scores only champions, so if there are
+    /// no champions on the board it is uniformly 0. Skipping avoids the per-
+    /// champion skill-ray tracing entirely in stripped positions (the term's
+    /// dominant cost). Golden byte-identical — skipped ⇔ would-be-0.
+    fn is_active(&self, ctx: &EvalContext) -> bool { ctx.pos.champions.0 != 0 }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         if !pc.is_champion { return 0; }
         champion_threat_score(
