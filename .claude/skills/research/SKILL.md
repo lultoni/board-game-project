@@ -14,7 +14,7 @@ Query the `essays` table for existing coverage:
 sqlite3 design/design.db "SELECT id, title, description FROM essays WHERE description LIKE '%<keyword>%' OR title LIKE '%<keyword>%';"
 ```
 
-Also check `design/inbox/ai-chats/` for any unmined transcripts on this topic.
+Also check `design/inbox/` for any unmined `chat-*.md` transcripts on this topic.
 
 If existing material answers the question, summarise it instead of generating a fresh request. Pull the body:
 
@@ -61,7 +61,7 @@ Please include:
 
 ## Step 4: Process Results
 
-Tell the user to paste the Perplexity output into a file in `design/inbox/ai-chats/` (e.g. `perplexity-2026-06-22-<topic>.md`) and tell you when ready.
+Tell the user to paste the Perplexity output into a file in `design/inbox/` (e.g. `chat-perplexity-2026-06-22-<topic>.md`) and tell you when ready.
 
 When the user signals ready:
 
@@ -91,4 +91,4 @@ When the user signals ready:
 
 5. Delete the inbox file (fully absorbed) or annotate it with what was promoted where.
 
-The `essays` table is the canonical home for research; `design/inbox/ai-chats/` is only staging.
+The `essays` table is the canonical home for research; `design/inbox/` is only staging.

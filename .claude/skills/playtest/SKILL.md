@@ -8,10 +8,10 @@ argument-hint: "<playtest-number>"
 
 This skill handles **two input modes**:
 
-- **Paper mode**: photos/scans in `design/raw/playtest-photos/playtest-N/` (handwritten log + feedback forms + optional side-notes `.md`).
+- **Paper mode**: photos/scans in `design/raw/playtest-photos/<name>/` (handwritten log + feedback forms). Freeform prose notes may live either in `design/inbox/playtest-<name>-notes.md` OR as a `.md` inside the photo folder (legacy) — **check both**.
 - **Digital mode**: a structured game log exported by the Rust binary in `game/` (JSON / structured markdown). Once `game/` produces logs, this is the default mode.
 
-Detect mode automatically: if `design/raw/playtest-photos/playtest-N/` has image files → paper mode. If a digital log file is provided (or the user names one) → digital mode.
+Detect mode automatically: if `design/raw/playtest-photos/<name>/` has image files → paper mode. If a digital log file is provided (or the user names one) → digital mode.
 
 ## Step 1: Pull Context from the DB
 
@@ -19,19 +19,19 @@ Before reading any playtest material:
 
 ```bash
 sqlite3 design/design.db <<'SQL'
-SELECT id, body FROM stacks WHERE status='active';
 SELECT id, title, body FROM open_questions WHERE status IN ('critical','high','tracking');
+SELECT id, name, fixes, trigger_cond, body FROM backpocket WHERE category='staged-fix' AND status='parked';
 SELECT id, body FROM playtests ORDER BY n DESC LIMIT 3;
 SQL
 ```
 
-Identify which stack this playtest was testing, and which OQs are TRACKING for that stack.
+The current ruleset is `design/RULES.md` (rules marked **⧗ Stack N — staged** are under test this cycle). Identify which parked levers / staged rules this playtest was exercising, and which OQs are TRACKING for them.
 
 ## Step 2: Transcribe / Parse
 
 ### Paper mode
 
-Read EVERY file in `design/raw/playtest-photos/playtest-N/` — images and any `.md` side-notes. Transcribe with maximum fidelity before interpreting. Errors in transcription cascade into wrong design conclusions.
+Read EVERY file for this playtest — images in `design/raw/playtest-photos/<name>/` and any prose notes (in `design/inbox/playtest-<name>-notes.md` or inside the photo folder). Transcribe with maximum fidelity before interpreting. Errors in transcription cascade into wrong design conclusions.
 
 Transcription rules:
 
@@ -149,7 +149,7 @@ Split into:
   - Behaviorally observed (the log shows it; player may not have named it)]
 
 ## Answers to Stack Hypothesis Questions
-[For each question in the active stack's body, answer from evidence.]
+[For each hypothesis question of the ruleset changes under test (the ⧗-staged rules in `design/RULES.md` and any parked levers), answer from evidence. The originating `stacks.body` / `backpocket.body` holds those questions.]
 
 ## OQ Verdicts
 [For each TRACKING OQ: Hypothesis / Evidence / Verdict / Recommended action.]
@@ -157,8 +157,8 @@ Split into:
 ## Implications for Design
 [Urgent / deferred / ideas — explicit.]
 
-## Routing — Which Stack Next?
-[Map metrics to the active stack's Routing on result block.]
+## Routing — What Next?
+[Map metrics to the routing block in the originating `stacks.body` / `backpocket.body`: fold the staged rule into confirmed baseline, roll it back, or deploy the next parked lever.]
 ```
 
 ## Step 5: Persist to DB
@@ -170,11 +170,13 @@ sqlite3 design/design.db <<SQL
 BEGIN;
 
 -- 1. Insert the playtest row (summary metadata + short body)
+-- stack_id is a legacy FK column; set it only if this playtest maps to one of the
+-- frozen historical stack rows, otherwise leave NULL (the stacks methodology is retired).
 INSERT INTO playtests (id, n, date, stack_id, body) VALUES (
   'playtest-<N>',
   <N>,
   '<date>',
-  'stack-<X>',
+  NULL,
   '<concise markdown summary — top findings, final round, verdict-level only>'
 );
 
@@ -189,8 +191,8 @@ INSERT INTO essays (id, date, title, description, body) VALUES (
 
 -- 3. Link
 INSERT INTO links (from_id, to_id, relation, note) VALUES
-  ('playtest-<N>', 'stack-<X>', 'evidence-for', NULL),
   ('essay-playtest-<N>-analysis', 'playtest-<N>', 'related-to', NULL);
+  -- add ('playtest-<N>', '<parked-lever-or-frozen-stack-id>', 'evidence-for', NULL) if applicable
 
 -- 4. OQ updates from Step 4 verdicts
 UPDATE open_questions SET status='resolved' WHERE id='oq-N';
@@ -202,8 +204,8 @@ INSERT INTO open_questions (id, title, status, priority, body) VALUES (...);
 -- 6. Mechanics impacted
 UPDATE mechanics SET verdict='accepted', body='<updated>' WHERE id='mech-<slug>';
 
--- 7. New backpocket entries from side-notes
-INSERT INTO backpocket (id, title, status, body) VALUES (...);
+-- 7. New backpocket entries from notes (levers / candidate fixes)
+INSERT INTO backpocket (id, name, category, status, fixes, trigger_cond, body, created_in) VALUES (...);
 
 -- 8. next_steps
 UPDATE next_steps SET status='done' WHERE id='ns-playtest-<N>';
@@ -222,10 +224,10 @@ sqlite3 design/design.db "PRAGMA foreign_key_check; PRAGMA integrity_check;"
 ## Step 6: Backpocket Trigger Check
 
 ```bash
-sqlite3 design/design.db "SELECT id, title, body FROM backpocket WHERE status='staged';"
+sqlite3 design/design.db "SELECT id, name, trigger_cond, body FROM backpocket WHERE category='staged-fix' AND status='parked';"
 ```
 
-For each staged entry, check whether this playtest's findings triggered its activation condition. If yes, surface to the user.
+For each parked lever, check whether this playtest's findings triggered its `trigger_cond`. If yes, surface to the user.
 
 ## Step 7: Present Summary
 

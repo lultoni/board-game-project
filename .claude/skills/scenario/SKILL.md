@@ -1,86 +1,65 @@
 ---
 name: scenario
-description: "Stage a candidate rule bundle as a row in the `stacks` table. The bundle becomes a digital variant (toggleable in `game/`) or a paper rule sheet (only via archived paper-pipeline)."
-argument-hint: "<stack-X> <short description>"
+description: "Park a candidate design lever in the `backpocket` table — a problem→solution→when-to-deploy entry. Replaces the retired 'one stack per experiment' methodology; the real ruleset lives in game/ + design/RULES.md."
+argument-hint: "<short description>"
 ---
 
-# Test Scenario: $ARGUMENTS
+# Candidate Lever: $ARGUMENTS
 
-A "scenario" (a.k.a. test stack) is now a row in the `stacks` table whose `body` markdown captures everything a future Rust prototype or paper playtest needs: what changes, why, hypothesis, watch list, routing. It is NOT a Typst file — the paper pipeline is archived.
+The `stacks` "one stack per experiment" methodology is **retired** (Session 45). The current ruleset lives in `game/` (the engine) and `design/RULES.md` (canonical prose). We no longer mint `stack-a…stack-z` rows for every test.
 
-## Step 1: Validate Methodology
+Instead, a testable change is parked as a **lever** in the `backpocket` table: a row that records **what problem it fixes** (`fixes`), **when to deploy it** (`trigger_cond`), and the full rationale (`body`). When a playtest surfaces problem X, `/start` and `/playtest` surface the parked levers so you can see "we already have candidate Y for this."
 
-Pull the canonical methodology from the DB before designing the stack:
+*(The 16 historical `stacks` rows are frozen for provenance — don't add to them, don't delete them. Cross-link a new lever to a frozen stack with `derived-from` if it descends from one.)*
+
+## Step 1: Validate (Justification Rule + Methodology)
+
+Pull the methodology + existing parked levers before designing:
 
 ```bash
 sqlite3 design/design.db <<'SQL'
 SELECT body FROM principles WHERE kind='methodology';
-SELECT id, letter, name, status FROM stacks ORDER BY letter;
+SELECT id, name, fixes, trigger_cond FROM backpocket WHERE category='staged-fix' AND status='parked' ORDER BY id;
 SQL
 ```
 
-Check each:
+Check:
+1. **Justification (MANDATORY)**: what specific problem does this fix, or what game-feel improvement does it deliver? "Sounds cool" is not enough.
+2. **Duplication**: does a parked lever already cover this? If so, enrich that row instead of creating a new one.
+3. **Independence / attribution**: if deployed alongside other changes, can we still attribute the effect? Note coupling in the body.
 
-1. **Independence**: Is this change independent of other untested changes? If not, identify the coupling — either bundle (document why) or defer.
-2. **Stack assignment**: Is this a new stack or an extension of an existing one? Existing letters: query above.
-3. **Ordering**: Does it depend on results of a prior untested stack? Note the dependency.
-4. **Isolation**: Can we attribute observed effects to THIS change alone? If not, decompose.
-
-Pull baseline + active stack bodies for context:
+Pull the current ruleset for context:
 
 ```bash
-sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"
-sqlite3 design/design.db "SELECT id, name, body FROM mechanics WHERE verdict='baseline';"
+sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-n';"   # latest change set (for reference)
 ```
+Also read `design/RULES.md` (canonical current rules).
 
-## Step 2: Pick the Next Stack Letter
+## Step 2: Pick an ID
 
-```bash
-sqlite3 design/design.db "SELECT letter FROM stacks ORDER BY letter;"
-```
+Convention: `bp-<kebab-slug>` describing the lever (e.g. `bp-forward-guard-partial-skill-immunity`). No letters, no sequence — the slug is the identity.
 
-Conventional next-letter logic (alphabetic). If the new stack is a sibling variant of an existing stack (e.g. M.1 dose), use a sub-id.
+## Step 3: Write the lever body
 
-## Step 3: Write the Stack Body
-
-The `body` is full markdown. Required sections:
+The `body` is full markdown. Suggested sections:
 
 ```markdown
-# Stack X — <Name>
+# <Name> — lever
 
-**Status**: queued | active
-**Targets**: oq-N, oq-M
-**Baseline reference**: <date or "Stack <previous letter>">
+## Mechanic
+[What the change actually is — precise enough to implement.]
 
-## What changes vs baseline / previous
+## What problem it fixes  (→ the `fixes` column, condensed)
+[The specific problem / OQ this targets. Cite playtest evidence.]
 
-| Concept | Before | After | Why |
-|---|---|---|---|
-| ... | ... | ... | ... |
+## When to deploy  (→ the `trigger_cond` column, condensed)
+[The condition under which this lever should be pulled — e.g. "if the oq-58 standoff persists after Stack N."]
 
-## Hypothesis
+## Justification (MDA)
+[Mechanic → Dynamic → Aesthetic. Why it fixes the problem, and the risk it carries.]
 
-[1-2 paragraphs: the specific effect this change is predicted to produce, framed against the core fantasy.]
-
-## What "good" looks like
-
-- [Bullet 1 — observable outcome]
-- [Bullet 2]
-
-## Watch list
-
-- [Risk 1 — what could go wrong, and how we'd notice]
-- [Risk 2]
-
-## Routing on result
-
-- **If hypothesis confirmed**: [next stack to queue]
-- **If partial**: [adjustment / dose change]
-- **If rejected**: [rollback path]
-
-## Digital toggle
-
-[Once `game/` exists: how this stack maps to a feature flag / config switch in the Rust core. For paper-only stacks: "paper-only, see design/raw/paper-pipeline-archive/test-scenarios/ for the rule sheet."]
+## Routing / interactions
+[How it interacts with other levers; what to watch if deployed.]
 ```
 
 ## Step 4: Insert into DB
@@ -89,53 +68,40 @@ The `body` is full markdown. Required sections:
 sqlite3 design/design.db <<SQL
 BEGIN;
 
-INSERT INTO stacks (id, letter, name, status, body) VALUES (
-  'stack-<X>',
-  '<X>',
+INSERT INTO backpocket (id, name, category, status, fixes, trigger_cond, body, created_in) VALUES (
+  'bp-<slug>',
   '<Name>',
-  'queued',
-  '<full markdown body from Step 3>'
+  'staged-fix',
+  'parked',
+  '<one-line: the problem / OQ this fixes>',
+  '<one-line: when to deploy this lever>',
+  '<full markdown body from Step 3>',
+  'session-<N>'
 );
 
--- Link to OQs this stack addresses
+-- Link to the OQ(s) this lever addresses
 INSERT INTO links (from_id, to_id, relation, note) VALUES
-  ('stack-<X>', 'oq-N', 'addresses', NULL),
-  ('stack-<X>', 'oq-M', 'addresses', NULL);
+  ('bp-<slug>', 'oq-N', 'addresses', NULL);
 
--- If extending or superseding a previous stack
+-- If it descends from a frozen historical stack, trace it
 INSERT INTO links (from_id, to_id, relation, note) VALUES
-  ('stack-<X>', 'stack-<prev>', 'derived-from', NULL);
+  ('bp-<slug>', 'stack-<X>', 'derived-from', 'Lever descends from retired stack row.');
 
 COMMIT;
 SQL
 ```
 
-If activating this stack (replacing the current Active), mark the predecessor first:
+*(`created_in` is a nullable FK to `sessions` — set it to the current `session-<N>` once that row exists (created at `/wrapup`), or leave NULL and let wrapup stamp it.)*
 
-```bash
-sqlite3 design/design.db <<'SQL'
-UPDATE stacks SET status='resolved' WHERE id='stack-m';
-UPDATE stacks SET status='active' WHERE id='stack-<X>';
-SQL
-```
+## Step 5: Update affected rows
 
-Exactly one stack should be `active` at a time.
+- `next_steps`: if the lever needs engine work to become testable, insert a `next_steps` row ("implement <lever> in game/") owned by the OQ.
+- `mechanics`: if the lever stages a genuinely new mechanic, insert into `mechanics` with `verdict='staged'` and a `link` (`evidence-for`).
 
-## Step 5: Update Affected Rows
-
-- `next_steps`: insert a new row for "playtest stack-<X>" or "implement stack-<X> toggle in game/" depending on whether it's paper or digital.
-- `mechanics`: if the stack stages a new mechanic candidate, insert into `mechanics` with `verdict='staged'` and a `link` from the stack to the mechanic (`evidence-for`).
-
-## Step 6: Regenerate STATUS.md if Activated
-
-If the new stack is now Active, regenerate `.claude/STATUS.md` so "Active stack" reflects the change. (The `/wrapup` skill normally does this at session end — only do it inline if the user wants the file updated now.)
-
-## Step 7: Confirm
+## Step 6: Confirm
 
 Output a short summary:
-
-1. Stack ID, letter, name, status.
-2. The hypothesis (one sentence).
+1. Lever ID + name + status (`parked`).
+2. The problem it fixes (one sentence) and its deploy trigger.
 3. OQs addressed.
-4. Whether this maps to a digital toggle in `game/` or a paper run (and if paper, note that the rule-sheet generator is no longer maintained — the body in the DB is the spec).
-5. Any methodology concerns (coupling, dependencies).
+4. Any methodology concern (coupling, duplication, attribution).

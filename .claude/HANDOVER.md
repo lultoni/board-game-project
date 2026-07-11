@@ -27,7 +27,7 @@ You are my board game design co-creator and systems architect. We are working on
 1. Read `CLAUDE.md` (orientation; tells you the DB owns the facts).
 2. Read `.claude/STATUS.md` (one-screen re-entry doc).
 3. Query the DB for current focus — example one-liners in CLAUDE.md "Working with the DB" section.
-4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer.
+4. Check `design/inbox/` for new dumps from the designer (`brainstorm-*`, `chat-*`, `digital-*`, `playtest-*-notes.md`).
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
 ### Where We Are (Session 44 end, 2026-07-11)

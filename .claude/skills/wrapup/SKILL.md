@@ -40,16 +40,16 @@ INSERT INTO next_steps (id, priority, title, status, body) VALUES (...);
 INSERT INTO mechanics (id, name, verdict, source_oq, body) VALUES (...);
 UPDATE mechanics SET verdict='accepted', body='<new body>' WHERE id='mech-<slug>';
 
--- Stack lifecycle
-UPDATE stacks SET status='resolved' WHERE id='stack-M';
-INSERT INTO stacks (id, letter, name, status, body) VALUES (...);
+-- Parked design levers (the `stacks` methodology is retired — see /scenario)
+INSERT INTO backpocket (id, name, category, status, fixes, trigger_cond, body, created_in) VALUES
+  ('bp-<slug>', '<name>', 'staged-fix', 'parked', '<problem>', '<when to deploy>', '<body>', 'session-<N>');
 
 -- New principle or hard constraint (rare)
 INSERT INTO principles (id, kind, n, name, body) VALUES (...);
 
 -- Cross-references added this session
 INSERT INTO links (from_id, to_id, relation, note) VALUES
-  ('stack-M', 'oq-N', 'addresses', NULL),
+  ('bp-<slug>', 'oq-N', 'addresses', NULL),
   ('essay-<slug>', 'mech-<slug>', 'evidence-for', NULL);
 
 COMMIT;
@@ -86,7 +86,7 @@ Both must return no errors / "ok". If either fails, stop and surface the error �
 
 `.claude/STATUS.md` and `.claude/HANDOVER.md` are the two on-disk re-entry docs. Rewrite both from current DB state:
 
-- **`.claude/STATUS.md`** — one-screen re-entry doc. Keep ≤45 lines. Sections: Current focus · Active stack · What changed this session · Immediate next action · Live critical/high OQs (as a query, not enumerated) · Open methodological loose ends · DB sanity.
+- **`.claude/STATUS.md`** — one-screen re-entry doc. Keep ≤45 lines. Sections: Current focus · Current ruleset (`design/RULES.md`, note any ⧗-staged rules) · Parked levers under watch · What changed this session · Immediate next action · Live critical/high OQs (as a query, not enumerated) · Open methodological loose ends · DB sanity.
 
 - **`.claude/HANDOVER.md`** — full handover prompt. Keep ≤80 lines. Overwrite "Last updated", "Where We Are", and "Immediate Next Action" sections. The "Key DB Queries" table should reflect what's relevant for the next session's anchor task.
 

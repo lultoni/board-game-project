@@ -1,10 +1,10 @@
 # Skill Card Images
 
-One JPG per skill in the current catalogue. Used by the Typst rule sheets via `skill-icon("<name>")` (defined in `docs/test-scenarios/shared/template.typ`).
+One JPG per skill in the current catalogue. Originally authored for the (now-archived) Typst rule sheets. The live game consumes skill metadata from the `SKILLS` registry in `game/frontend/src/lib/engine/skills.ts`, not these images; they are kept as reference art / placeholders for future visual identity.
 
 ## Naming convention
 
-`<skill_name>.jpg` — lowercase, underscores, matches the `skill-icon()` argument exactly. Filenames must stay in sync with `section-skill-reference()` in `docs/test-scenarios/shared/baseline-sections.typ`.
+`<skill_name>.jpg` — lowercase, underscores. The 15 filenames match the skill catalogue; canonical stat blocks (cost, effect, range) live in `design/RULES.md` → Skill Reference.
 
 ## Current catalogue (15 skills)
 
@@ -26,15 +26,14 @@ One JPG per skill in the current catalogue. Used by the Typst rule sheets via `s
 | `focus_strike.jpg` | Focus | Mystic |
 | `blade_call.jpg` | Charge | Mystic |
 
-For canonical stat blocks (cost, effect, range), see `docs/test-scenarios/shared/baseline-sections.typ` → `section-skill-reference()`.
+For canonical stat blocks (cost, effect, range), see `design/RULES.md` → Skill Reference.
 
 ## Adding a new skill
 
-1. Add the image as `<skill_name>.jpg` here.
-2. Add a row in `section-skill-reference()` with `skill-icon("<skill_name>")` matching the filename.
+1. Add the image as `<skill_name>.jpg` here (optional — reference art only).
+2. Add the skill to the `SKILLS` registry in `game/frontend/src/lib/engine/skills.ts` and to `design/RULES.md` → Skill Reference.
 3. Update this table.
-4. Run `zsh docs/test-scenarios/build-pdfs.sh` to verify the icon resolves.
 
 ## Future (Phase B)
 
-These are placeholder images. Phase B (visual identity, ~2027 per the Road Ahead in `old-game-versions/README.md`) will replace them with commissioned art. See `docs/game-identity-visual-naming.md`.
+These are placeholder images. Phase B (visual identity) will replace them with commissioned art. See the visual-identity design doc: `SELECT body FROM design_docs WHERE id='design-doc-game-identity-visual-naming';`.

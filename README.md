@@ -41,11 +41,13 @@ The source of truth for all design knowledge is `design/design.db` (SQLite). Que
 | See critical / high open questions | `sqlite3 design/design.db "SELECT id, title FROM open_questions WHERE status IN ('critical','high') ORDER BY priority;"` |
 | See what to do next | `sqlite3 design/design.db "SELECT priority, title FROM next_steps WHERE status='todo' ORDER BY priority;"` |
 | Read the most recent session narrative | `sqlite3 design/design.db "SELECT body FROM sessions ORDER BY n DESC LIMIT 1;"` |
-| See all stacks (active / queued / resolved) | `sqlite3 design/design.db "SELECT id, letter, name, status FROM stacks ORDER BY letter;"` |
+| Read the current canonical ruleset | [`design/RULES.md`](design/RULES.md) |
+| See historical test stacks (frozen for provenance) | `sqlite3 design/design.db "SELECT id, letter, name, status FROM stacks ORDER BY letter;"` |
+| See parked design levers (if problem X → candidate Y) | `sqlite3 design/design.db "SELECT id, name, fixes, trigger_cond FROM backpocket WHERE category='staged-fix' AND status='parked';"` |
 | Read a specific essay / research artefact | `sqlite3 design/design.db "SELECT body FROM essays WHERE id='essay-<slug>';"` |
 | See cross-references for any row | `sqlite3 design/design.db "SELECT to_id, relation FROM links WHERE from_id='<id>';"` |
 | Read all architecture decisions | `sqlite3 design/design.db "SELECT body FROM adrs ORDER BY n;"` |
-| Read the paper-era rule sheets (historical) | [`design/raw/paper-pipeline-archive/test-scenarios/`](design/raw/paper-pipeline-archive/test-scenarios/) |
+| Read the paper-era rule sheets (historical) | [`design/_archive/test-scenarios/`](design/_archive/test-scenarios/) |
 
 More query patterns in [`CLAUDE.md`](CLAUDE.md).
 
@@ -63,15 +65,14 @@ board-game-project/
 │   ├── design.db                ← SQLite source of truth (12 tables)
 │   ├── schema.sql               ← table definitions, CHECK constraints, FKs
 │   ├── README.md                ← DB usage notes
+│   ├── RULES.md                 ← canonical current ruleset (authoritative on conflict)
 │   ├── raw/                     ← binary artefacts (photos, scans, card images)
 │   │   ├── playtest-photos/
 │   │   ├── brainstorm-scans/
-│   │   ├── skill-card-images/
-│   │   └── paper-pipeline-archive/  ← Typst rule sheets + PDFs (paper-prototype era; historical)
-│   └── inbox/                   ← fast-write staging — promoted into the DB
-│       ├── brainstorm/          ← raw game-design idea dumps
-│       ├── ai-chats/            ← pasted transcripts from other AI tools
-│       └── digital/             ← architecture / UI / AI-opponent notes for game/
+│   │   └── skill-card-images/
+│   ├── inbox/                   ← fast-write staging (single folder) — promoted into the DB
+│   │                              brainstorm-* · chat-* · digital-* · playtest-*-notes.md
+│   └── _archive/                ← frozen Typst rule sheets + PDFs (paper-prototype era; historical)
 │
 ├── game/                        ← digital implementation (Rust core + Tauri frontend)
 │
@@ -131,14 +132,16 @@ Run `/wrapup` — it persists DB changes, runs integrity checks, regenerates STA
 | `/wrapup` | End a session — DB writes, commit, push |
 | `/research <topic>` | Need external knowledge about game design |
 | `/adr <topic>` | Multiple valid design approaches need comparison |
-| `/scenario <stack-X> <desc>` | Discussion yields a testable rule bundle |
+| `/scenario <desc>` | Discussion yields a testable change → park it as a backpocket lever |
 | `/playtest <N>` | Analyse playtest results (paper photos or digital log) |
 
 ### Dropping notes between sessions
 
-- **Game-design ideas** (mechanics, skills, board) → `design/inbox/brainstorm/`
-- **Pasted AI chats** (ChatGPT, Perplexity, Gemini) → `design/inbox/ai-chats/`
-- **Digital-implementation thinking** (architecture, UI, AI opponent, save format) → `design/inbox/digital/`
+Everything goes into the single `design/inbox/` folder; name the file by kind:
+- **Game-design ideas** (mechanics, skills, board) → `brainstorm-*.md`
+- **Pasted AI chats** (ChatGPT, Perplexity, Gemini) → `chat-*.md`
+- **Digital-implementation thinking** (architecture, UI, AI opponent, save format) → `digital-*.md`
+- **Playtest feedback** prose → `playtest-<name>-notes.md` (keep photos/logs in `design/raw/playtest-photos/`)
 
 I'll mine these into the DB (backpocket / essays / open_questions / adrs / next_steps) at session start.
 
@@ -146,4 +149,4 @@ I'll mine these into the DB (backpocket / essays / open_questions / adrs / next_
 
 ## Historical archive
 
-`design/raw/paper-pipeline-archive/` — Typst rule sheets and PDFs from the paper-prototype era; read-only history. Earlier prototype versions (v1–v3) were removed in S38 cleanup; recoverable from git history if needed.
+`design/_archive/` — Typst rule sheets and PDFs from the paper-prototype era; read-only history (the canonical rules now live in `design/RULES.md`). Earlier prototype versions (v1–v3) were removed in S38 cleanup; recoverable from git history if needed.

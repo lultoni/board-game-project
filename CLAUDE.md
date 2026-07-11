@@ -17,11 +17,10 @@ design/
     playtest-photos/
     brainstorm-scans/
     skill-card-images/
-    paper-pipeline-archive/ ← Typst rule sheets + PDFs from the paper-prototype era (historical)
-  inbox/                    ← Fast-write staging — promoted to DB by Claude
-    brainstorm/             ← Raw idea dumps
-    ai-chats/               ← Pasted chat transcripts (ChatGPT/Perplexity/etc)
-    digital/                ← Architecture / UI / AI-opponent notes for game/
+  inbox/                    ← Fast-write staging (single folder) — promoted to DB by Claude.
+                              brainstorm-* ideas · chat-* AI transcripts · digital-* arch notes · playtest-*-notes.md
+  RULES.md                  ← Canonical current ruleset (authoritative on conflict)
+  _archive/                 ← Frozen historical material (Typst paper-pipeline rule sheets + PDFs)
 
 game/                       ← Digital implementation (Rust core + Tauri frontend)
   README.md                 ← Status + open architecture questions
@@ -147,10 +146,10 @@ One layer per playtest. Decompose, identify coupling, order from independent to 
 | `/wrapup` | User only | Session end — appends a `sessions` row, updates STATUS.md, HANDOVER.md, commits |
 | `/research <topic>` | Auto or user | Perplexity research prompt with project context. Auto-triggers on knowledge gaps. |
 | `/playtest <N>` | Auto or user | Transcribes playtest photos/scans into a `playtests` row + cross-links |
-| `/scenario <stack-X> <desc>` | Auto or user | Stages a new `stacks` row + hypothesis. Auto-triggers when a discussion yields a testable change. |
+| `/scenario <desc>` | Auto or user | Parks a candidate design lever in the `backpocket` table (problem→solution→when-to-deploy). Auto-triggers when a discussion yields a testable change. *(The `stacks` "one stack per test" methodology is retired — see below.)* |
 | `/adr <topic>` | Auto or user | Stages a new `adrs` row. Auto-triggers when multiple valid approaches emerge. |
 
-**Note**: Skill definitions in `.claude/skills/` were written for the paper-pipeline era and still reference deleted MD paths. They need a rewrite to query the DB instead. Until then, expect skills to fail on the old paths — fall back to direct DB queries.
+**Note**: The `/start`, `/playtest`, `/scenario`, and `/research` skills were rewritten in Session 45 to query the DB / `design/RULES.md` and to write levers to `backpocket` (not `stacks`). The old paper-pipeline paths are gone (archived under `design/_archive/`).
 
 ## Git branching — HARD RULE (MANDATORY, NO EXCEPTIONS)
 
@@ -183,21 +182,13 @@ If you need to redo a tag (e.g. tag already exists): delete it locally (`git tag
 At the start of any fresh session (before doing any design or implementation work), read the current full ruleset:
 
 ```
-design/raw/paper-pipeline-archive/test-scenarios/stack-m-game-length-cut/stack-m-game-length-cut.typ
+design/RULES.md
 ```
 
-This is the authoritative Stack M rule sheet. Read it in full before touching any design question or game code.
+This is the **canonical ruleset — authoritative on conflict.** Read it in full before touching any design question or game code. Rules marked **⧗ Stack N — staged, awaiting P7** are implemented (or being implemented) in the engine but not yet playtest-confirmed. The in-game Help page (`help.rules.*` i18n) is a derived player-facing summary; RULES.md wins.
 
-## Stack M (current Active stack)
+## Current ruleset & the retired stacks methodology
 
-Stack M is the active design (Session 25-26). Six bundled simultaneous changes from the paper baseline:
-1. Board 10×10 → 8×8.
-2. Armor cap 3 → 2.
-3. Injured penalties removed (HP-tracker only).
-4. Draw conditions removed.
-5. Steal cost 3 → 4.
-6. Multi-Champion combo bonus widened to movement-causing skills (both trigger and bonus).
+`design/RULES.md` is the single canonical ruleset. It is Stack M (game-length-cut baseline, provisionally landed P6) plus the three staged Stack N changes (Session 45). Full change rationale: `SELECT body FROM stacks WHERE id='stack-m';` and `… id='stack-n';`.
 
-Full rule substance: `SELECT body FROM stacks WHERE id='stack-m';`. **Stack M's body is the foundation for the digital implementation in `game/`.**
-
-P6 has not yet run as of Session 27. The digital-first pivot may absorb P6 into a digital playtest rather than a paper one.
+**The `stacks` "one stack per experiment" methodology is retired (Session 45).** We no longer mint `stack-a…stack-z` rows for every test. The 16 existing stack rows are **frozen for provenance** (linked to playtests/OQs — don't add to them, don't delete them). New candidate changes are parked as **levers in `backpocket`** (category `staged-fix`, status `parked`, with `fixes` + `trigger_cond`): "if problem X occurs in a playtest, here's candidate solution Y." Query parked levers: `SELECT id, name, fixes, trigger_cond FROM backpocket WHERE category='staged-fix' AND status='parked';`
