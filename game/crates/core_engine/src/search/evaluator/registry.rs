@@ -34,6 +34,7 @@ pub fn default_terms(_params: &EvalParams) -> Vec<Box<dyn EvalTerm>> {
         Box::new(terms::Money),
         Box::new(terms::Tempo),
         Box::new(terms::OffensiveRange),
+        Box::new(terms::WastedModifier),
     ]
 }
 

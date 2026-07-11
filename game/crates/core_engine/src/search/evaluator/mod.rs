@@ -428,6 +428,99 @@ mod tests {
     }
 
     // ============================================================
+    // WastedModifier term (E10, ns-43) — a live Focus/Charge bit with no
+    // castable consumer this Skill phase is a penalty on the holding side.
+    // ============================================================
+
+    use crate::state::position::modifier_bits;
+
+    /// Build a lone-champion position in the Skill phase for the given player,
+    /// equipping `skill_id` on that champion, with the given money + buff bits.
+    fn skill_phase_champ(to_move: Player, skill_id: u8, money: u16, mods: u8, actions: u8) -> Position {
+        let mut p = Position::empty();
+        let (sq, kind) = (28u8, 1u8);
+        place(&mut p, sq, to_move, kind,
+            MailboxEntry::default().with_hp(2).with_skill1(skill_id));
+        match to_move { Player::P1 => p.p1_money = money, Player::P2 => p.p2_money = money }
+        p.current_phase = Phase::Skill;
+        p.to_move = to_move;
+        p.actions_remaining = actions;
+        p.round_number = 6;
+        p.pending_modifiers = mods;
+        p
+    }
+
+    #[test]
+    fn wasted_focus_penalised_when_no_offensive_skill() {
+        // Champion equips only Shield (defensive) → Focus has no consumer.
+        let p = skill_phase_champ(Player::P1, Skill::Shield as u8, 10, modifier_bits::FOCUS, 2);
+        let with_focus = evaluate(&p);
+        // Same position with the buff bit cleared: no penalty.
+        let mut clean = p.clone();
+        clean.pending_modifiers = 0;
+        let baseline = evaluate(&clean);
+        // P1 holds the wasted buff → its eval is LOWER than baseline by exactly
+        // wasted_modifier_per_cost × Focus cost.
+        let expected_pen = EvalParams::DEFAULT.wasted_modifier_per_cost
+            * crate::game_logic::skills::skill_cost(Skill::Focus) as i32;
+        assert_eq!(baseline - with_focus, expected_pen);
+    }
+
+    #[test]
+    fn wasted_focus_not_penalised_when_offensive_skill_castable() {
+        // Champion equips Lance (Strike) and can afford it → Focus is consumable.
+        let p = skill_phase_champ(Player::P1, Skill::Lance as u8, 10, modifier_bits::FOCUS, 2);
+        let mut clean = p.clone();
+        clean.pending_modifiers = 0;
+        assert_eq!(evaluate(&p), evaluate(&clean), "Focus has a consumer → no penalty");
+    }
+
+    #[test]
+    fn wasted_charge_penalised_when_only_shove_castable() {
+        // Shove is offensive (consumes Focus) but NOT a Strike (does not consume
+        // Charge). So Charge is wasted even though Shove is castable.
+        let p = skill_phase_champ(Player::P1, Skill::Shove as u8, 10, modifier_bits::CHARGE, 2);
+        let mut clean = p.clone();
+        clean.pending_modifiers = 0;
+        let expected_pen = EvalParams::DEFAULT.wasted_modifier_per_cost
+            * crate::game_logic::skills::skill_cost(Skill::Charge) as i32;
+        assert_eq!(evaluate(&clean) - evaluate(&p), expected_pen);
+    }
+
+    #[test]
+    fn wasted_modifier_dormant_outside_skill_phase() {
+        // Same live Focus bit but in the Move phase → term is inactive.
+        let mut p = skill_phase_champ(Player::P1, Skill::Shield as u8, 10, modifier_bits::FOCUS, 2);
+        p.current_phase = Phase::Move;
+        let mut clean = p.clone();
+        clean.pending_modifiers = 0;
+        assert_eq!(evaluate(&p), evaluate(&clean), "not Skill phase → no penalty");
+    }
+
+    #[test]
+    fn wasted_modifier_penalised_when_no_actions_left() {
+        // Lance is equipped+affordable, but actions_remaining=0 → nothing is
+        // castable, so the Focus bit is wasted.
+        let p = skill_phase_champ(Player::P1, Skill::Lance as u8, 10, modifier_bits::FOCUS, 0);
+        let mut clean = p.clone();
+        clean.pending_modifiers = 0;
+        let expected_pen = EvalParams::DEFAULT.wasted_modifier_per_cost
+            * crate::game_logic::skills::skill_cost(Skill::Focus) as i32;
+        assert_eq!(evaluate(&clean) - evaluate(&p), expected_pen);
+    }
+
+    #[test]
+    fn wasted_modifier_p2_sign() {
+        // P2 holds the wasted buff → P1-POV eval goes UP (penalty on P2).
+        let p = skill_phase_champ(Player::P2, Skill::Shield as u8, 10, modifier_bits::FOCUS, 2);
+        let mut clean = p.clone();
+        clean.pending_modifiers = 0;
+        let expected_pen = EvalParams::DEFAULT.wasted_modifier_per_cost
+            * crate::game_logic::skills::skill_cost(Skill::Focus) as i32;
+        assert_eq!(evaluate(&p) - evaluate(&clean), expected_pen);
+    }
+
+    // ============================================================
     // Golden-equality suite (ns-43 refactor safety net).
     //
     // A fixed set of labelled positions exercising every eval term. The

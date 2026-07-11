@@ -47,6 +47,12 @@ pub struct EvalParams {
     // Offensive-range (E9).
     pub offensive_range_weight: i32,
 
+    // Wasted-modifier penalty (E10 — ns-43). A live Focus/Charge bit with no
+    // castable consumer this Skill phase is money already spent for nothing.
+    // Penalty = this × the buff's own skill_cost (Focus 2 / Charge 3), so a
+    // wasted Charge (3 money) stings more than a wasted Focus (2 money).
+    pub wasted_modifier_per_cost: i32,
+
     // Skill availability sigmoid (E4).
     pub skill_avail_k:   i32,
     pub skill_avail_max: i32,
@@ -78,6 +84,8 @@ impl EvalParams {
         tempo_per_action: 15,
 
         offensive_range_weight: 500,
+
+        wasted_modifier_per_cost: 25, // ≈ money_per_unit: a wasted buff ≈ its money burned.
 
         skill_avail_k:   3,
         skill_avail_max: 256,
