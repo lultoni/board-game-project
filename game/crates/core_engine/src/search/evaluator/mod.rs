@@ -521,6 +521,59 @@ mod tests {
     }
 
     // ============================================================
+    // GuardIsolation term (E11, ns-43) — a guard locally outnumbered
+    // (more enemies than friendlies within radius) is penalised.
+    // ============================================================
+
+    #[test]
+    fn guard_isolation_penalises_outnumbered_guard() {
+        // P1 guard at d4 (sq 27) with TWO P2 champions within radius 2 and no
+        // friendly support → outnumber = 2. Penalty = per_step × 2 on P1.
+        let mut p = Position::empty();
+        place(&mut p, 27, Player::P1, 2, MailboxEntry::default().with_hp(2));
+        place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2)); // adjacent enemy
+        place(&mut p, 29, Player::P2, 1, MailboxEntry::default().with_hp(2)); // radius-2 enemy
+        let bd = evaluate_dyn(&p);
+        let iso = bd.terms.iter().find(|t| t.name == "guard_isolation")
+            .expect("guard_isolation term present");
+        assert_eq!(iso.p1, EvalParams::DEFAULT.guard_iso_per_step * 2,
+            "lone P1 guard outnumbered 2-0 → penalty magnitude 2×per_step");
+        assert_eq!(iso.p2, 0, "P2 champions are not outnumbered here");
+        // signed_total negates the penalty into the P1-POV total.
+        assert_eq!(iso.signed, -(EvalParams::DEFAULT.guard_iso_per_step * 2));
+    }
+
+    #[test]
+    fn guard_isolation_zero_when_supported() {
+        // P1 guard at d4 (sq 27), one P2 champion adjacent (28), but TWO P1
+        // friendlies also within radius 2 → enemies(1) − friendlies(2) < 0 →
+        // outnumber clamps to 0 → no penalty on that guard.
+        let mut p = Position::empty();
+        place(&mut p, 27, Player::P1, 2, MailboxEntry::default().with_hp(2));
+        place(&mut p, 26, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut p, 25, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        let bd = evaluate_dyn(&p);
+        let iso = bd.terms.iter().find(|t| t.name == "guard_isolation").unwrap();
+        // The guard at 27 sees enemies_near=1, friendlies_near=2 → 0.
+        // (The other P1 pieces are champions, not guards — they don't contribute.)
+        assert_eq!(iso.p1, 0, "supported guard not penalised");
+    }
+
+    #[test]
+    fn guard_isolation_ignores_champions_and_kings() {
+        // A lone P1 CHAMPION surrounded by enemies must NOT be penalised by this
+        // guard-only term (champion_threat/exposure handle champions).
+        let mut p = Position::empty();
+        place(&mut p, 27, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        place(&mut p, 29, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        let bd = evaluate_dyn(&p);
+        let iso = bd.terms.iter().find(|t| t.name == "guard_isolation").unwrap();
+        assert_eq!(iso.p1, 0, "champion is not a guard → no isolation penalty");
+    }
+
+    // ============================================================
     // Golden-equality suite (ns-43 refactor safety net).
     //
     // A fixed set of labelled positions exercising every eval term. The

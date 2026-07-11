@@ -81,6 +81,16 @@ pub fn king_expand(x: u64) -> u64 {
     h | (h << 8) | (h >> 8)
 }
 
+/// Chebyshev dilation by `radius`: the set of all squares within Chebyshev
+/// distance `radius` of any set bit in `x` (includes `x` itself). `radius`
+/// applications of [`king_expand`]. `radius == 0` returns `x` unchanged.
+#[inline]
+pub fn expand_n(x: u64, radius: u8) -> u64 {
+    let mut out = x;
+    for _ in 0..radius { out = king_expand(out); }
+    out
+}
+
 /// Per-skill availability given a side's money snapshot. Piecewise-linear
 /// sigmoid centred at `money - cost`; fixed-point 0..=`skill_avail_max`.
 #[inline]

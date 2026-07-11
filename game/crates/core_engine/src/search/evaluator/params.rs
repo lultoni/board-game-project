@@ -53,6 +53,16 @@ pub struct EvalParams {
     // wasted Charge (3 money) stings more than a wasted Focus (2 money).
     pub wasted_modifier_per_cost: i32,
 
+    // Guard isolation (E11 — ns-43). A guard that is locally OUTNUMBERED (more
+    // enemy pieces than friendly pieces within `guard_iso_radius` Chebyshev
+    // tiles) is a hanging piece — the "crammed alone deep among enemies" case
+    // that `exposure` (direct-attacker only) misses. Penalty scales by the
+    // outnumber count. `guard_iso_depth_pct` optionally amplifies when the
+    // guard is past the midline on the enemy's half (100 = neutral/off).
+    pub guard_iso_radius:    u8,
+    pub guard_iso_per_step:  i32,
+    pub guard_iso_depth_pct: i32,
+
     // Skill availability sigmoid (E4).
     pub skill_avail_k:   i32,
     pub skill_avail_max: i32,
@@ -86,6 +96,10 @@ impl EvalParams {
         offensive_range_weight: 500,
 
         wasted_modifier_per_cost: 25, // ≈ money_per_unit: a wasted buff ≈ its money burned.
+
+        guard_iso_radius:    2,
+        guard_iso_per_step:  120,  // ≈ 0.2 × guard_value per net enemy in the neighbourhood.
+        guard_iso_depth_pct: 100,  // neutral: depth amplification off until measured.
 
         skill_avail_k:   3,
         skill_avail_max: 256,

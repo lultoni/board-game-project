@@ -8,7 +8,7 @@
 use crate::state::position::Player;
 use crate::state::magic;
 use crate::game_logic::skills::{skill_default_range, TargetOwner, skill_target_owner, skill_from_id};
-use super::context::{EvalContext, king_expand, useful_money, max_offensive_range};
+use super::context::{EvalContext, king_expand, expand_n, useful_money, max_offensive_range};
 use super::term::{EvalTerm, PieceContext};
 
 // === Per-piece terms =====================================================
@@ -267,5 +267,56 @@ impl EvalTerm for WastedModifier {
             Player::P1 => (penalty, 0),
             Player::P2 => (0, penalty),
         }
+    }
+}
+
+/// E11 (ns-43) — guard isolation penalty.
+///
+/// Symptom it fixes: the AI shoves a guard forward and strands it — not in open
+/// space, but **crammed among enemy pieces, unsupported**. `exposure` only fires
+/// on *direct attackers* of the guard's square, so a guard sitting one tile from
+/// a cluster of enemies (about to be attacked, or blocking nothing) is invisible
+/// until the trade is already on. This term reads the local balance of force:
+/// a guard with more enemies than friendlies within `guard_iso_radius` tiles is
+/// a hanging piece. Location-agnostic — a guard alone among enemies is bad
+/// anywhere (per designer: the bad guard was deep + surrounded, not in space).
+///
+/// Penalty (positive magnitude; `signed_total` negates it, like `exposure`):
+///   `guard_iso_per_step × outnumber`, where
+///   `outnumber = max(0, enemies_near − friendlies_near)`,
+/// optionally amplified by `guard_iso_depth_pct` when the guard stands on the
+/// enemy's half (P1 guard on rank ≥ 4, P2 guard on rank ≤ 3).
+pub struct GuardIsolation;
+impl EvalTerm for GuardIsolation {
+    fn name(&self) -> &'static str { "guard_isolation" }
+    fn is_per_piece(&self) -> bool { true }
+    /// Penalty: stored as positive magnitude, subtracts in the total.
+    fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
+    fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
+        if !pc.is_guard { return 0; }
+        let p = ctx.params;
+
+        // Chebyshev-radius neighbourhood around the guard (includes the guard's
+        // own square; excluded from friendly count below via `& !pc.mask`).
+        let hood = expand_n(pc.mask, p.guard_iso_radius);
+        let (own_bb, opp_bb) = if pc.is_p1 { (ctx.p1_bb, ctx.p2_bb) } else { (ctx.p2_bb, ctx.p1_bb) };
+        let enemies_near   = (hood & opp_bb).count_ones() as i32;
+        let friendlies_near = (hood & own_bb & !pc.mask).count_ones() as i32;
+
+        let outnumber = (enemies_near - friendlies_near).max(0);
+        if outnumber == 0 { return 0; }
+
+        let mut penalty = p.guard_iso_per_step * outnumber;
+
+        // Depth amplification: a guard stranded on the ENEMY half is worse than
+        // one stranded at home. P1 advances toward high ranks, P2 toward low.
+        if p.guard_iso_depth_pct != 100 {
+            let rank = pc.sq / 8;
+            let on_enemy_half = if pc.is_p1 { rank >= 4 } else { rank <= 3 };
+            if on_enemy_half {
+                penalty = (penalty * p.guard_iso_depth_pct) / 100;
+            }
+        }
+        penalty
     }
 }

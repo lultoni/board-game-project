@@ -319,11 +319,34 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
             )
         };
 
+        // E11 — guard isolation penalty (folds into total; not itemised in the
+        // per-square struct yet). Mirrors terms::GuardIsolation exactly so the
+        // `evaluate_by_square.total == evaluate_breakdown.total` invariant holds.
+        let guard_iso_pen: i32 = if is_guard {
+            let hood = {
+                let mut out = mask;
+                for _ in 0..params.guard_iso_radius { out = king_expand(out); }
+                out
+            };
+            let (own_bb2, opp_bb2) = if is_p1 { (p1_bb, p2_bb) } else { (p2_bb, p1_bb) };
+            let enemies_near = (hood & opp_bb2).count_ones() as i32;
+            let friendlies_near = (hood & own_bb2 & !mask).count_ones() as i32;
+            let outnumber = (enemies_near - friendlies_near).max(0);
+            if outnumber == 0 { 0 } else {
+                let mut pen = params.guard_iso_per_step * outnumber;
+                if params.guard_iso_depth_pct != 100 {
+                    let rank = sq / 8;
+                    let on_enemy_half = if is_p1 { rank >= 4 } else { rank <= 3 };
+                    if on_enemy_half { pen = (pen * params.guard_iso_depth_pct) / 100; }
+                }
+                pen
+            }
+        } else { 0 };
+
         let piece_total = material + hp_term + armor_term + skills_term
-            + mob_score + coverage_term - exposure_term;
+            + mob_score + coverage_term - exposure_term - guard_iso_pen;
 
         if is_p1 { sum_p1 += piece_total; } else { sum_p2 += piece_total; }
-
         let s = &mut out.squares[sq as usize];
         s.sq = sq;
         s.occupied = true;
