@@ -30,50 +30,48 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/` for new dumps from the designer (`brainstorm-*`, `chat-*`, `digital-*`, `playtest-*-notes.md`).
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 44 end, 2026-07-11)
+### Where We Are (Session 45 end, 2026-07-11)
 
-- **Three frontend commits landed on `main` this session, all verified (svelte-check clean, 292 tests):** ns-37 sandbox/MP anti-cheat fix (`0f12282`), settings-defaults + language-selector pass (`e2b2043`), and ns-35 part A in-game help modal (`f276410`).
-- **`main` is 6 commits ahead of `origin/main` — nothing is pushed.** The `fix/combo-bonus-and-preset-mirror` branch referenced in older handovers is resolved: those B1/B2 fixes are already on `main`, no stray branches exist.
-- **Sequencing unchanged:** clean up UI / close UX gaps first, THEN decide the next game change for the next playtest. No release-testing this session. Design OQs untouched.
+- **Stack N is staged (design), awaiting P7 (playtest).** It targets the P6 mid-game "first-mover-loses" standoff (oq-58), root-caused this session as **ranged skill-kills being non-reciprocal** (attacker pays no positional cost). Three changes: Focus 1→2, max 1 move-attack/turn, strike-moves-caster. Full: `SELECT body FROM stacks WHERE id='stack-n';`.
+- **Big structural cleanup landed (commit `be2affe`, +456/−1803):** `design/RULES.md` is now the canonical ruleset; the Typst paper-pipeline is archived to `design/_archive/`; the 3 inboxes are collapsed into one `design/inbox/`; the "one stack per experiment" methodology is retired (16 stack rows frozen for provenance, `/scenario` now parks levers in `backpocket`); 6 residual plan files deleted; all skills rewritten to query the DB / RULES.md.
+- **The engine does NOT yet implement Stack N** — the three rules live in RULES.md marked ⧗-staged. ns-42 is the P7-blocking engine task.
+- **`main` is unpushed** (7+ commits). No game code changed this session.
 
 ### Immediate Next Action
 
-1. **Designer visual check first:** run `cargo tauri dev` from `game/crates/tauri_wrapper` (NOT `game/relay`) and eyeball the ns-35 help modal — Help button placement next to the gear, opens over the board & closes back with no navigation, all three tabs, live switch to Deutsch via Settings.
-2. **ns-38** — unify duplicated UI components into shared primitives (skill-card primitive consumed by SkillInfoCard / SkillPicker / SquareEvalCard / HelpModal; panel/modal chrome). This is the deferred part B of ns-35. Feed ns-13/ns-14 tooltip work into the shared primitive.
-3. **ns-36** is the low-priority QoL grab-bag — defer unless it shares components with ns-38.
-4. **Then** (separate design mode): pick the next game change for the next playtest. Candidate levers: ns-32 (Focus 1→2), ns-34/oq-58 (first-mover tempo), oq-86 (loser-gets-money rebate).
-5. Ask the designer whether to **push the 6 unpushed commits** to origin (and, separately, ns-39: what AI think-time default value they want).
+1. **ns-42 (P1, P7-blocking)** — implement Stack N's three rules in `game/crates/core_engine`: Focus cost 2, cap move-attacks at 1/turn, strike-moves-caster (after a Strike resolves, caster steps 1 tile toward target iff that tile is now empty; reuse existing movement resolution; Strike category only). Add regression tests for the strike-moves-caster edge cases. `SELECT body FROM next_steps WHERE id='42';`.
+2. **Then P7** — playtest Stack N: does the standoff dissolve without re-inflating game length (watch for mid-30s–40s round counts)?
+3. **ns-43 (P2)** — phase-aware evaluator: every eval term toggleable + parameterised; `evaluate()` detects game phase from the position, then picks which terms to compute + their per-phase weights. Independent of P7.
+4. Ask the designer whether to **push** the unpushed commits, and ns-39 (AI think-time default value).
 
 ### Open methodological loose ends
 
-- **`main` 6 commits ahead of `origin/main`** — unpushed (pushing needs explicit designer OK)
-- ns-35 part A manual visual verification pending in the running app
+- **`main` ahead of `origin/main`** — unpushed (pushing needs explicit designer OK)
 - v0.1.0 cross-platform release smoke test — still outstanding from Session 40/42 (ns-28, ns-29)
-- ns-39 (AI think-time default — no value named yet), MP loadout fairness — deferred
+- ns-39 (AI think-time default — no value named yet), ns-40 (bodyguard visual indicator), ns-41 (rendering decouple + research) — deferred
 
 ### Key DB Queries
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM sessions WHERE id='session-44';` | This session — ns-37 + settings + ns-35 help modal |
-| `SELECT body FROM next_steps WHERE id='38';` | Deferred UI-unification work (next anchor) |
-| `SELECT body FROM next_steps WHERE id='35';` | ns-35 part A done / B deferred |
-| `SELECT body FROM next_steps WHERE id IN ('36','39');` | QoL grab-bag + AI think-time TBD |
+| `SELECT body FROM sessions WHERE id='session-45';` | This session — Stack N staging + cleanup |
+| `SELECT body FROM stacks WHERE id='stack-n';` | Stack N — the three staged lethality/standoff changes |
+| `SELECT body FROM next_steps WHERE id='42';` | Engine implementation of Stack N (next anchor) |
+| `SELECT body FROM next_steps WHERE id='43';` | Phase-aware evaluator rework |
+| `SELECT body FROM open_questions WHERE id='oq-58';` | First-mover-loses standoff + non-reciprocity diagnosis |
+| `SELECT id, fixes, trigger_cond FROM backpocket WHERE category='staged-fix' AND status='parked';` | The 3 live parked levers |
 | `SELECT body FROM essays WHERE id='essay-playtest-6-analysis';` | Full P6 analysis |
-| `SELECT body FROM open_questions WHERE id='oq-58';` | First-mover-loses standoff |
-| `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance |
 
 ### Key Files
 
 | Path | Purpose |
 |------|---------|
-| `game/frontend/src/lib/HelpModal.svelte` | NEW — help modal (ns-35 part A); inline skill list to be refactored in ns-38 |
-| `game/frontend/src/lib/board/SkillInfoCard.svelte` | Skill display (wheel hover) — duplication target for ns-38 |
-| `game/frontend/src/lib/board/SkillPicker.svelte` | 15-skill grid — duplication target for ns-38 |
-| `game/frontend/src/lib/eval/SquareEvalCard.svelte` | Eval breakdown skill list — duplication target for ns-38 |
-| `game/frontend/src/lib/ui/BackButton.svelte` | Existing shared component (model for ns-38 unification) |
-| `game/frontend/src/lib/engine/skills.ts` | `SKILLS` registry + `CATEGORY_COLOR` (skill metadata source) |
-| `game/frontend/src/routes/+layout.svelte` | Global chrome — Help + Settings buttons |
-| `game/frontend/src/lib/multiplayer-engine.ts` | MP wrapper; `ensureLiveEngine` (ns-37 fix) |
+| `design/RULES.md` | **NEW — canonical ruleset (authoritative on conflict).** Read first each session. |
 | `design/design.db` | Source of truth (binary; committed) |
+| `design/inbox/` | Single fast-write staging folder (brainstorm-/chat-/digital-/playtest- prefixes) |
+| `design/_archive/` | Frozen Typst paper-pipeline (historical) |
+| `game/crates/core_engine/src/game_logic/` | Move/skill resolution — where ns-42 (Stack N rules) lands |
+| `game/crates/core_engine/src/search/evaluator.rs` | Evaluator — where ns-43 (phase-aware rework) lands |
+| `.claude/skills/scenario/SKILL.md` | Rewritten — parks levers in `backpocket`, not `stacks` |
 | `.claude/STATUS.md` | One-screen re-entry summary |
+
