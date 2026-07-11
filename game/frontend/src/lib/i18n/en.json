@@ -4,7 +4,8 @@
     "engineVersion": "engine v{version}",
     "loading": "loading…",
     "back": "← back",
-    "settings": "settings"
+    "settings": "settings",
+    "help": "help"
   },
   "match": {
     "title": "match · {mode}"
@@ -292,5 +293,49 @@
     "waitingForHostConfig": "Waiting for host to configure the match.",
     "waitingForPeerMove": "Waiting for Player {n}…",
     "webrtcUnsupported": "Multiplayer is not available on Linux. The system WebView (webkit2gtk) does not support WebRTC, which is required for peer-to-peer connections. This is a known upstream limitation with no ETA for a fix."
+  },
+  "help": {
+    "title": "Help",
+    "tabSkills": "Skills",
+    "tabRules": "Rules",
+    "tabControls": "Controls",
+    "rules": {
+      "goalTerm": "Goal",
+      "goalBody": "Capture the opponent's King. The game ends immediately when a King is removed from the board.",
+      "roundsTerm": "Rounds and turns",
+      "roundsBody": "The game is played in Rounds. Each Round, P1 takes a full turn, then P2. A turn has two phases: Move Phase, then Skill Phase.",
+      "moveTerm": "Move Phase",
+      "moveBody": "You have 2 actions. Spend one to move a piece up to its speed. Each piece can only be moved once per phase.",
+      "moveAttackTerm": "Move-Attack",
+      "moveAttackBody": "Instead of moving into empty space, spend an action to move your piece onto an enemy tile. The enemy takes 1 damage.",
+      "healthTerm": "Health",
+      "healthBody": "Every piece has 2 HP: Normal → Injured → Removed. Taking 1 damage moves a piece one step along that track. Injured is purely an HP-tracker — pieces operate at full speed and Range.",
+      "armorTerm": "Armor",
+      "armorBody": "A piece can hold up to 2 Armor. Each point absorbs 1 incoming damage before HP is affected, then is destroyed.",
+      "skillPhaseTerm": "Skill Phase",
+      "skillPhaseBody": "You have actions (starting at 2 per turn). Spend one action + Money to activate an equipped skill on one of your Champions or King.",
+      "moneyTerm": "Money",
+      "moneyBody": "Your currency. You earn it automatically each turn (starting at +2/turn, scaling up over time). Skills cost Money.",
+      "pathTerm": "Skills and Path",
+      "pathBody": "Skills travel in a straight line from the caster (like a chess Queen). That path is blocked by any piece in the way. Most skills have a default range of 2 tiles.",
+      "bodyguardTerm": "Bodyguard",
+      "bodyguardBody": "When a Champion or King is hit by a Move-Attack, you can choose to have an adjacent Guard take the hit instead.",
+      "draftingTerm": "Skill Drafting",
+      "draftingBody": "Before the game, players alternate picking skills from a shared pool and assigning them to their Champions and King. Each piece gets 2 skills.",
+      "progressionTerm": "Progression",
+      "progressionBody": "As the game goes on, your Money income and the number of actions in your Skill Phase both grow — late-game turns are more powerful because you can cast more skills."
+    },
+    "controls": {
+      "selectTerm": "Select a piece",
+      "selectBody": "Click one of your pieces to select it. Legal destinations and skill targets are highlighted on the board.",
+      "wheelTerm": "Cast a skill",
+      "wheelBody": "Select a Champion or King in the Skill Phase to open the skill wheel, then click a slice to arm the skill and click a target tile to cast it.",
+      "endTerm": "End phase / end turn",
+      "endBody": "Use End Phase to move from the Move Phase to the Skill Phase, and End Turn to pass play to your opponent. Unspent actions are forfeit.",
+      "undoTerm": "Undo",
+      "undoBody": "Undo reverts your last action within the current turn (local play only).",
+      "sandboxTerm": "Sandbox",
+      "sandboxBody": "Enter sandbox to try out hypothetical moves without committing them. Exit sandbox to restore the real position."
+    }
   }
 }

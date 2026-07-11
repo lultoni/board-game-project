@@ -4,7 +4,8 @@
     "engineVersion": "Engine v{version}",
     "loading": "lädt…",
     "back": "← zurück",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "help": "Hilfe"
   },
   "match": {
     "title": "Partie · {mode}"
@@ -291,5 +292,50 @@
     "p2Wins": "Spieler 2 gewinnt",
     "draw": "Unentschieden",
     "aborted": "Partie abgebrochen"
+  },
+  "_comment_help": "TODO: German rules/controls prose below is a mirror translation of the English Simple Overview — precise rules text; wants a native-speaker review before release.",
+  "help": {
+    "title": "Hilfe",
+    "tabSkills": "Fähigkeiten",
+    "tabRules": "Regeln",
+    "tabControls": "Steuerung",
+    "rules": {
+      "goalTerm": "Ziel",
+      "goalBody": "Fange den König des Gegners. Das Spiel endet sofort, wenn ein König vom Brett entfernt wird.",
+      "roundsTerm": "Runden und Züge",
+      "roundsBody": "Das Spiel wird in Runden gespielt. In jeder Runde macht P1 einen vollen Zug, dann P2. Ein Zug hat zwei Phasen: zuerst die Bewegungsphase, dann die Fähigkeitsphase.",
+      "moveTerm": "Bewegungsphase",
+      "moveBody": "Du hast 2 Aktionen. Gib eine aus, um eine Figur bis zu ihrer Geschwindigkeit zu bewegen. Jede Figur kann pro Phase nur einmal bewegt werden.",
+      "moveAttackTerm": "Bewegungsangriff",
+      "moveAttackBody": "Statt auf ein leeres Feld zu ziehen, gibst du eine Aktion aus, um deine Figur auf ein gegnerisches Feld zu bewegen. Der Gegner erleidet 1 Schaden.",
+      "healthTerm": "Gesundheit",
+      "healthBody": "Jede Figur hat 2 LP: Normal → Verletzt → Entfernt. 1 Schaden bewegt eine Figur einen Schritt auf dieser Leiste. Verletzt ist rein ein LP-Zähler — Figuren agieren mit voller Geschwindigkeit und Reichweite.",
+      "armorTerm": "Rüstung",
+      "armorBody": "Eine Figur kann bis zu 2 Rüstung halten. Jeder Punkt absorbiert 1 eingehenden Schaden, bevor LP betroffen sind, und wird dann zerstört.",
+      "skillPhaseTerm": "Fähigkeitsphase",
+      "skillPhaseBody": "Du hast Aktionen (anfangs 2 pro Zug). Gib eine Aktion + Geld aus, um eine ausgerüstete Fähigkeit auf einem deiner Champions oder deinem König zu aktivieren.",
+      "moneyTerm": "Geld",
+      "moneyBody": "Deine Währung. Du erhältst es automatisch jeden Zug (anfangs +2/Zug, mit der Zeit steigend). Fähigkeiten kosten Geld.",
+      "pathTerm": "Fähigkeiten und Pfad",
+      "pathBody": "Fähigkeiten verlaufen in gerader Linie vom Anwender (wie eine Schach-Dame). Dieser Pfad wird von jeder Figur im Weg blockiert. Die meisten Fähigkeiten haben eine Standardreichweite von 2 Feldern.",
+      "bodyguardTerm": "Leibwächter",
+      "bodyguardBody": "Wenn ein Champion oder König von einem Bewegungsangriff getroffen wird, kannst du wählen, dass stattdessen ein angrenzender Wächter den Treffer einsteckt.",
+      "draftingTerm": "Fähigkeiten-Draft",
+      "draftingBody": "Vor dem Spiel wählen die Spieler abwechselnd Fähigkeiten aus einem gemeinsamen Pool und weisen sie ihren Champions und dem König zu. Jede Figur erhält 2 Fähigkeiten.",
+      "progressionTerm": "Fortschritt",
+      "progressionBody": "Im Spielverlauf wachsen sowohl dein Geldeinkommen als auch die Anzahl der Aktionen in deiner Fähigkeitsphase — spätere Züge sind mächtiger, weil du mehr Fähigkeiten wirken kannst."
+    },
+    "controls": {
+      "selectTerm": "Eine Figur auswählen",
+      "selectBody": "Klicke auf eine deiner Figuren, um sie auszuwählen. Legale Ziele und Fähigkeitsziele werden auf dem Brett hervorgehoben.",
+      "wheelTerm": "Eine Fähigkeit wirken",
+      "wheelBody": "Wähle in der Fähigkeitsphase einen Champion oder König, um das Fähigkeitsrad zu öffnen, klicke dann auf ein Segment, um die Fähigkeit scharfzuschalten, und klicke auf ein Zielfeld, um sie zu wirken.",
+      "endTerm": "Phase / Zug beenden",
+      "endBody": "Nutze „Phase beenden“, um von der Bewegungsphase zur Fähigkeitsphase zu wechseln, und „Zug beenden“, um das Spiel an den Gegner zu übergeben. Nicht genutzte Aktionen verfallen.",
+      "undoTerm": "Rückgängig",
+      "undoBody": "Rückgängig macht deine letzte Aktion im aktuellen Zug rückgängig (nur lokales Spiel).",
+      "sandboxTerm": "Sandkasten",
+      "sandboxBody": "Betritt den Sandkasten, um hypothetische Züge auszuprobieren, ohne sie festzulegen. Verlasse den Sandkasten, um die echte Stellung wiederherzustellen."
+    }
   }
 }
