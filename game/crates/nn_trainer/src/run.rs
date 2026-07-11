@@ -1128,6 +1128,7 @@ mod tests {
             n_generations: 1,
             corpus_games: 2,
             corpus_search_depth: 2,
+            gauntlet_think_ms: 10,
             lineage: LineageConfig {
                 n_lineages: 2,
                 n_rounds: 1,
