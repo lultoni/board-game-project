@@ -2,7 +2,7 @@
 
 *Copy-paste this entire file as your first message in a new Claude Code session to resume where you left off.*
 
-*Last updated: 2026-07-10 — Session 43 end (P6 analysis + B1/B2 fixes + idea-capture sweep).*
+*Last updated: 2026-07-11 — Session 44 end (ns-37 sandbox/MP fix + settings pass + ns-35 help modal).*
 
 ---
 
@@ -30,35 +30,36 @@ You are my board game design co-creator and systems architect. We are working on
 4. Check `design/inbox/brainstorm/`, `design/inbox/ai-chats/`, and `design/inbox/digital/` for new dumps from the designer.
 5. Check `design/raw/playtest-photos/` for any new playtest folders since last session.
 
-### Where We Are (Session 43 end, 2026-07-10)
+### Where We Are (Session 44 end, 2026-07-11)
 
-- **P6 (Elias vs Dorian) is analysed and its ideas are all captured.** Combo widening accepted and combo mechanic is now **done/closed**. Game length substantially met. New live pattern: mid-game **first-mover-loses** standoff (oq-58) — a tempo problem, NOT a draw problem.
-- **Two engine bugs fixed** on branch `fix/combo-bonus-and-preset-mirror` (committed, **NOT merged, NOT pushed**): B1 combo-bonus ruling, B2 preset P2 loadout mirror.
-- **Focus is now the sequencing pivot:** the designer wants to **clean up broken/bugged UI first**, THEN decide the next game change for the next playtest. This session did no release-testing.
+- **Three frontend commits landed on `main` this session, all verified (svelte-check clean, 292 tests):** ns-37 sandbox/MP anti-cheat fix (`0f12282`), settings-defaults + language-selector pass (`e2b2043`), and ns-35 part A in-game help modal (`f276410`).
+- **`main` is 6 commits ahead of `origin/main` — nothing is pushed.** The `fix/combo-bonus-and-preset-mirror` branch referenced in older handovers is resolved: those B1/B2 fixes are already on `main`, no stray branches exist.
+- **Sequencing unchanged:** clean up UI / close UX gaps first, THEN decide the next game change for the next playtest. No release-testing this session. Design OQs untouched.
 
 ### Immediate Next Action
 
-**UI cleanup first, in priority order:**
-1. **ns-37** — fix the sandbox-in-MP false anti-cheat "engine disagreed" bug. Sandbox exploration must be isolated from the authoritative MP-validation engine (or re-sync from last `committed`/`snapshot` on sandbox exit). Surface: `multiplayer-engine.ts`, sandbox entry/exit in `/match/`.
-2. **ns-35** — build the in-game help/reference surface (button next to settings, reachable from any screen) AND unify duplicated UI components (skill cards/tooltips/buttons). Feed ns-13/ns-14 tooltip work into shared primitives.
-3. **ns-36** is the low-priority QoL grab-bag — defer unless it shares components with ns-35.
+1. **Designer visual check first:** run `cargo tauri dev` from `game/crates/tauri_wrapper` (NOT `game/relay`) and eyeball the ns-35 help modal — Help button placement next to the gear, opens over the board & closes back with no navigation, all three tabs, live switch to Deutsch via Settings.
+2. **ns-38** — unify duplicated UI components into shared primitives (skill-card primitive consumed by SkillInfoCard / SkillPicker / SquareEvalCard / HelpModal; panel/modal chrome). This is the deferred part B of ns-35. Feed ns-13/ns-14 tooltip work into the shared primitive.
+3. **ns-36** is the low-priority QoL grab-bag — defer unless it shares components with ns-38.
 4. **Then** (separate design mode): pick the next game change for the next playtest. Candidate levers: ns-32 (Focus 1→2), ns-34/oq-58 (first-mover tempo), oq-86 (loser-gets-money rebate).
-5. Ask the designer whether to merge/push `fix/combo-bonus-and-preset-mirror`.
+5. Ask the designer whether to **push the 6 unpushed commits** to origin (and, separately, ns-39: what AI think-time default value they want).
 
 ### Open methodological loose ends
 
-- Branch `fix/combo-bonus-and-preset-mirror` — committed, not merged, not pushed (awaiting designer OK)
-- v0.1.0 cross-platform release smoke test — still outstanding from Session 40/42
-- A5 replay parity; ETA field null; MP loadout fairness — all still deferred
+- **`main` 6 commits ahead of `origin/main`** — unpushed (pushing needs explicit designer OK)
+- ns-35 part A manual visual verification pending in the running app
+- v0.1.0 cross-platform release smoke test — still outstanding from Session 40/42 (ns-28, ns-29)
+- ns-39 (AI think-time default — no value named yet), MP loadout fairness — deferred
 
 ### Key DB Queries
 
 | Query | Returns |
 |-------|---------|
-| `SELECT body FROM sessions WHERE id='session-43';` | This session — P6 + B1/B2 + idea sweep |
+| `SELECT body FROM sessions WHERE id='session-44';` | This session — ns-37 + settings + ns-35 help modal |
+| `SELECT body FROM next_steps WHERE id='38';` | Deferred UI-unification work (next anchor) |
+| `SELECT body FROM next_steps WHERE id='35';` | ns-35 part A done / B deferred |
+| `SELECT body FROM next_steps WHERE id IN ('36','39');` | QoL grab-bag + AI think-time TBD |
 | `SELECT body FROM essays WHERE id='essay-playtest-6-analysis';` | Full P6 analysis |
-| `SELECT body FROM next_steps WHERE id IN ('35','36','37');` | UI cleanup work items |
-| `SELECT body FROM open_questions WHERE id='oq-86';` | Loser-gets-money design question |
 | `SELECT body FROM open_questions WHERE id='oq-58';` | First-mover-loses standoff |
 | `SELECT body FROM stacks WHERE id='stack-m';` | Stack M rule substance |
 
@@ -66,12 +67,13 @@ You are my board game design co-creator and systems architect. We are working on
 
 | Path | Purpose |
 |------|---------|
-| `game/frontend/src/lib/multiplayer-engine.ts` | Role-aware MP wrapper (anti-cheat validation path — ns-37) |
-| `game/frontend/src/routes/match/+page.svelte` | Match route; sandbox entry/exit lives here |
-| `game/frontend/src/lib/ui/BackButton.svelte` | Existing shared component (model for unification — ns-35) |
-| `game/frontend/src/lib/board/SkillPicker.svelte` | 15-skill grid (candidate shared primitive) |
-| `game/crates/core_engine/src/game_logic/skills.rs` | `mirror_loadout` (B2 fix) |
-| `game/crates/core_engine/src/game_logic/make_unmake.rs` | combo-bonus ruling (B1 fix) |
-| `game/frontend/src/lib/state/draft.ts` | `mirrorLoadout` parity + presets |
+| `game/frontend/src/lib/HelpModal.svelte` | NEW — help modal (ns-35 part A); inline skill list to be refactored in ns-38 |
+| `game/frontend/src/lib/board/SkillInfoCard.svelte` | Skill display (wheel hover) — duplication target for ns-38 |
+| `game/frontend/src/lib/board/SkillPicker.svelte` | 15-skill grid — duplication target for ns-38 |
+| `game/frontend/src/lib/eval/SquareEvalCard.svelte` | Eval breakdown skill list — duplication target for ns-38 |
+| `game/frontend/src/lib/ui/BackButton.svelte` | Existing shared component (model for ns-38 unification) |
+| `game/frontend/src/lib/engine/skills.ts` | `SKILLS` registry + `CATEGORY_COLOR` (skill metadata source) |
+| `game/frontend/src/routes/+layout.svelte` | Global chrome — Help + Settings buttons |
+| `game/frontend/src/lib/multiplayer-engine.ts` | MP wrapper; `ensureLiveEngine` (ns-37 fix) |
 | `design/design.db` | Source of truth (binary; committed) |
 | `.claude/STATUS.md` | One-screen re-entry summary |
