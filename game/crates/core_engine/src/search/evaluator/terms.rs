@@ -7,9 +7,108 @@
 
 use crate::state::position::Player;
 use crate::state::magic;
-use crate::game_logic::skills::skill_from_id;
+use crate::game_logic::skills::{skill_from_id, skill_category, skill_target_owner, skill_default_range, SkillCategory, TargetOwner};
 use super::context::{EvalContext, king_expand, expand_n, useful_money, max_offensive_range};
 use super::term::{EvalTerm, PieceContext};
+
+/// Integer soft cap: saturating hyperbola `x·k/(x+k)` for `x, k ≥ 0`. Rises
+/// ~linearly for small `x`, asymptotes to `k`. Order-independent → deterministic.
+#[inline]
+fn softcap(x: i32, k: i32) -> i32 {
+    if x <= 0 || k <= 0 { return 0; }
+    ((x as i64 * k as i64) / (x as i64 + k as i64)) as i32
+}
+
+/// Champion-threat score for one champion. Shared by [`ChampionThreat`] and the
+/// diagnostic `evaluate_by_square` so both stay byte-identical. `is_p1` selects
+/// the champion's side; `atk` is the shared attackers table.
+///
+/// Returns the champion's total threat contribution (offensive + defensive,
+/// each soft-capped and weighted). All integer / bitboard math → deterministic.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn champion_threat_score(
+    pos: &crate::state::Position,
+    params: &super::params::EvalParams,
+    atk: &crate::search::see::AttackersTable,
+    sq: u8,
+    mailbox: crate::state::MailboxEntry,
+    is_p1: bool,
+    all_occ: u64,
+    p1_bb: u64,
+    p2_bb: u64,
+) -> i32 {
+    let p = params;
+    let (own_bb, opp_bb) = if is_p1 { (p1_bb, p2_bb) } else { (p2_bb, p1_bb) };
+    let enemy_player  = if is_p1 { Player::P2 } else { Player::P1 };
+    let friend_player = if is_p1 { Player::P1 } else { Player::P2 };
+    let self_mask = 1u64 << sq;
+
+    let target_value = |t_mask: u64| -> i32 {
+        let base = if pos.kings.0 & t_mask != 0 {
+            p.champion_value + (p.threat_king_bonus << p.threat_value_shift)
+        } else if pos.champions.0 & t_mask != 0 {
+            p.champion_value
+        } else {
+            p.guard_value
+        };
+        base >> p.threat_value_shift
+    };
+
+    let mut offensive_raw = 0i32;
+    let mut defensive_raw = 0i32;
+
+    for sid in [mailbox.skill1(), mailbox.skill2()] {
+        let Some(sk) = skill_from_id(sid) else { continue };
+        let owner = skill_target_owner(sk);
+        let range = skill_default_range(sk);
+        if range == 0 { continue; }
+        let ray = magic::skill_attacks(sq, all_occ, range).0;
+
+        match owner {
+            TargetOwner::Enemy | TargetOwner::Either => {
+                let is_strike = matches!(skill_category(sk), SkillCategory::Strike);
+                let mut hits = ray & opp_bb;
+                while hits != 0 {
+                    let t = hits.trailing_zeros() as u8;
+                    hits &= hits - 1;
+                    let tmask = 1u64 << t;
+                    let mut v = target_value(tmask);
+                    if is_strike {
+                        if let Some(land) = magic::step_toward(sq, t) {
+                            let land_mask = 1u64 << land;
+                            if land_mask != tmask {
+                                let enemy_atk  = atk.any_attackers_of(enemy_player, land).count_ones() as i32;
+                                let friend_atk = atk.any_attackers_of(friend_player, land).count_ones() as i32;
+                                if enemy_atk > friend_atk {
+                                    v = (v * p.threat_safety_penalty_pct) / 100;
+                                }
+                            }
+                        }
+                    }
+                    offensive_raw += v;
+                }
+            }
+            TargetOwner::Ally => {
+                let mut hits = ray & own_bb & !self_mask;
+                while hits != 0 {
+                    let t = hits.trailing_zeros() as u8;
+                    hits &= hits - 1;
+                    let tmask = 1u64 << t;
+                    let base = target_value(tmask);
+                    let m = pos.mailbox[t as usize];
+                    let low_hp = if m.hp() <= 1 { 1 } else { 0 };
+                    let attacked = if atk.any_attackers_of(enemy_player, t) != 0 { 1 } else { 0 };
+                    defensive_raw += base + (base * (low_hp + attacked)) / 2;
+                }
+            }
+            TargetOwner::Empty | TargetOwner::SelfOnly => {}
+        }
+    }
+
+    let offensive = (softcap(offensive_raw, p.threat_softcap) * p.threat_offensive_weight) / 100;
+    let defensive = (softcap(defensive_raw, p.threat_softcap) * p.threat_defensive_weight) / 100;
+    offensive + defensive
+}
 
 // === Per-piece terms =====================================================
 
@@ -312,5 +411,35 @@ impl EvalTerm for GuardIsolation {
             }
         }
         penalty
+    }
+}
+
+/// E12 (ns-43 Term 3b) — champion threat.
+///
+/// Replaces the crude enemy-in-range coverage the `mobility` term used to carry
+/// (capped flat 60, offensive-only). Two symmetric sub-scores per champion,
+/// each soft-capped so neither category is inherently rated above the other
+/// (designer requirement):
+///   - OFFENSIVE: enemy pieces the champion's Strike/Shove/Blast skills can hit,
+///     weighted by target value (king ≫ champion > guard). Post-Stack-N a Strike
+///     moves the caster 1 tile toward the target — so a strike whose landing
+///     square is unsafe (more enemy than friendly attackers on it) keeps only
+///     `threat_safety_penalty_pct` of its value. "Right targets you can execute
+///     safely", per designer.
+///   - DEFENSIVE: ally pieces the champion's Heal/Plate/Swap skills can reach,
+///     weighted by the ally's value AND vulnerability (a wounded/exposed ally in
+///     reach is worth more to be able to cover).
+/// Folds into `total` only (no legacy field). All integer / bitboard math →
+/// deterministic.
+pub struct ChampionThreat;
+impl EvalTerm for ChampionThreat {
+    fn name(&self) -> &'static str { "champion_threat" }
+    fn is_per_piece(&self) -> bool { true }
+    fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
+        if !pc.is_champion { return 0; }
+        champion_threat_score(
+            ctx.pos, ctx.params, &ctx.atk, pc.sq, pc.mailbox, pc.is_p1,
+            ctx.all_occ, ctx.p1_bb, ctx.p2_bb,
+        )
     }
 }

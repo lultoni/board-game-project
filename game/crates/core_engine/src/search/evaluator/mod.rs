@@ -575,6 +575,70 @@ mod tests {
     }
 
     // ============================================================
+    // ChampionThreat term (E12, ns-43 Term 3b) — offensive + defensive
+    // targeting, value-weighted, strike-safety-aware.
+    // ============================================================
+
+    fn champ_threat_of(pos: &Position, is_p1: bool) -> i32 {
+        let bd = evaluate_dyn(pos);
+        let t = bd.terms.iter().find(|t| t.name == "champion_threat").unwrap();
+        if is_p1 { t.p1 } else { t.p2 }
+    }
+
+    #[test]
+    fn champion_threat_rewards_offensive_target() {
+        // P1 champion at d4 (27) with Lance (Strike, range 1) adjacent to a P2
+        // champion at e4 (28). Offensive threat should be > 0.
+        let mut p = Position::empty();
+        place(&mut p, 27, Player::P1, 1, MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        assert!(champ_threat_of(&p, true) > 0, "champion threatening an enemy scores > 0");
+    }
+
+    #[test]
+    fn champion_threat_rewards_defensive_target() {
+        // P1 champion at d4 (27) with Heal (Ally, range 1) adjacent to a wounded
+        // P1 guard at e4 (28). Defensive threat should be > 0.
+        let mut p = Position::empty();
+        place(&mut p, 27, Player::P1, 1, MailboxEntry::default().with_hp(2).with_skill1(Skill::Heal as u8));
+        place(&mut p, 28, Player::P1, 2, MailboxEntry::default().with_hp(1)); // wounded ally
+        assert!(champ_threat_of(&p, true) > 0, "champion able to heal a wounded ally scores > 0");
+    }
+
+    #[test]
+    fn champion_threat_zero_with_no_targets() {
+        // Lone P1 champion with Lance, no enemies/allies in range → 0.
+        let mut p = Position::empty();
+        place(&mut p, 27, Player::P1, 1, MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        assert_eq!(champ_threat_of(&p, true), 0);
+    }
+
+    #[test]
+    fn champion_threat_king_worth_more_than_guard() {
+        // Same champion+Hook (range 2), targeting a lone enemy KING vs a lone
+        // enemy GUARD at the same square → king case scores strictly higher.
+        let mut king_pos = Position::empty();
+        place(&mut king_pos, 27, Player::P1, 1, MailboxEntry::default().with_hp(2).with_skill1(Skill::Hook as u8));
+        place(&mut king_pos, 29, Player::P2, 0, MailboxEntry::default().with_hp(2)); // enemy king in range 2
+
+        let mut guard_pos = Position::empty();
+        place(&mut guard_pos, 27, Player::P1, 1, MailboxEntry::default().with_hp(2).with_skill1(Skill::Hook as u8));
+        place(&mut guard_pos, 29, Player::P2, 2, MailboxEntry::default().with_hp(2)); // enemy guard in range 2
+
+        assert!(champ_threat_of(&king_pos, true) > champ_threat_of(&guard_pos, true),
+            "threatening the enemy king is worth more than a guard");
+    }
+
+    #[test]
+    fn champion_threat_ignores_non_champions() {
+        // A GUARD is not a champion → champion_threat contributes nothing for it.
+        let mut p = Position::empty();
+        place(&mut p, 27, Player::P1, 2, MailboxEntry::default().with_hp(2)); // guard, no skills anyway
+        place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        assert_eq!(champ_threat_of(&p, true), 0);
+    }
+
+    // ============================================================
     // Golden-equality suite (ns-43 refactor safety net).
     //
     // A fixed set of labelled positions exercising every eval term. The
@@ -688,14 +752,15 @@ mod tests {
     /// re-capture via the (restored) dump harness and update these literals in
     /// the SAME commit — never silently.
     #[test]
-    fn golden_eval_unchanged() {        let expected: &[(&str, i32, EvalBreakdown)] = &[
+    fn golden_eval_unchanged() {
+        let expected: &[(&str, i32, EvalBreakdown)] = &[
             ("empty", 0, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 0 }),
             ("terminal_p1", 1000000, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 1000000 }),
             ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 264, mobility_p2: 264, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 1800, coverage_p2: 1800, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
-            ("champ_diff_skills_money", 2206, EvalBreakdown { material_p1: 1000, material_p2: 1000, hp_p1: 300, hp_p2: 150, armor_p1: 240, armor_p2: 0, skills_p1: 290, skills_p2: 33, money_p1: 75, money_p2: 46, mobility_p1: 28, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 100, exposure_p2: 100, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 3, offensive_range_p2: 0, total: 2206 }),
+            ("champ_diff_skills_money", 2282, EvalBreakdown { material_p1: 1000, material_p2: 1000, hp_p1: 300, hp_p2: 150, armor_p1: 240, armor_p2: 0, skills_p1: 290, skills_p2: 33, money_p1: 75, money_p2: 46, mobility_p1: 28, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 100, exposure_p2: 100, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 3, offensive_range_p2: 0, total: 2282 }),
             ("exposure_coverage", 1468, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 120, skills_p2: 120, money_p1: 50, money_p2: 50, mobility_p1: 112, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 199, coverage_p2: 0, tempo_p1: 0, tempo_p2: 15, offensive_range_p1: 1, offensive_range_p2: 1, total: 1468 }),
-            ("king_exposure_mobility", -3343, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 58, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3343 }),
-            ("guard_mob_offensive_range", 3097, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 220, skills_p2: 120, money_p1: 112, money_p2: 75, mobility_p1: 104, mobility_p2: 24, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 150, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 4, offensive_range_p2: 1, total: 3097 }),
+            ("king_exposure_mobility", -3426, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 58, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3426 }),
+            ("guard_mob_offensive_range", 3078, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 220, skills_p2: 120, money_p1: 112, money_p2: 75, mobility_p1: 104, mobility_p2: 24, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 150, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 4, offensive_range_p2: 1, total: 3078 }),
         ];
 
         let suite = golden_suite();

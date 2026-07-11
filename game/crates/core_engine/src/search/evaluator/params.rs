@@ -68,6 +68,20 @@ pub struct EvalParams {
     pub guard_iso_per_step:  i32,
     pub guard_iso_depth_pct: i32,
 
+    // Champion threat (E12 — ns-43 Term 3b). Two symmetric sub-scores per
+    // champion: OFFENSIVE (enemy pieces its Strike/Shove/Blast skills can hit,
+    // value-weighted, safety-scaled) + DEFENSIVE (ally pieces its Heal/Plate/
+    // Swap skills can reach, value+vulnerability-weighted). Each soft-capped so
+    // neither category dominates. Target values reuse material weights but are
+    // scaled down by `threat_value_shift` (a right-shift) so a champion in
+    // range of an enemy champion isn't worth another whole champion.
+    pub threat_offensive_weight: i32, // ×/100 applied to the offensive sub-score
+    pub threat_defensive_weight: i32, // ×/100 applied to the defensive sub-score
+    pub threat_value_shift:      u32, // right-shift on target material value
+    pub threat_safety_penalty_pct: i32, // % kept when a strike's landing sq is unsafe
+    pub threat_softcap:          i32, // saturation ceiling per sub-score (hyperbola k)
+    pub threat_king_bonus:       i32, // flat extra for threatening the enemy king
+
     // Skill availability sigmoid (E4).
     pub skill_avail_k:   i32,
     pub skill_avail_max: i32,
@@ -106,6 +120,17 @@ impl EvalParams {
         guard_iso_radius:    2,
         guard_iso_per_step:  120,  // ≈ 0.2 × guard_value per net enemy in the neighbourhood.
         guard_iso_depth_pct: 100,  // neutral: depth amplification off until measured.
+
+        // Champion threat (Term 3b). Target values are material >> shift (4):
+        // champion 1000>>4 ≈ 62, guard 600>>4 ≈ 37 per target in range. Weights
+        // ×/100. Soft cap ~200 per sub-score keeps a champ's threat contribution
+        // in the low-hundreds (comparable to coverage/mobility, below material).
+        threat_offensive_weight:   100,
+        threat_defensive_weight:   100,
+        threat_value_shift:        4,
+        threat_safety_penalty_pct: 40,  // unsafe strike keeps 40% of its offensive value.
+        threat_softcap:            200,
+        threat_king_bonus:         80,
 
         skill_avail_k:   3,
         skill_avail_max: 256,

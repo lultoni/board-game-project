@@ -336,6 +336,15 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
         let piece_total = material + hp_term + armor_term + skills_term
             + mob_score + coverage_term - exposure_term - guard_iso_pen;
 
+        // E12 — champion threat (folds into total; not itemised in the
+        // per-square struct yet). Mirrors terms::champion_threat_score exactly.
+        let champ_threat: i32 = if is_champion {
+            super::terms::champion_threat_score(
+                pos, params, &atk, sq, m, is_p1, all_occ, p1_bb, p2_bb,
+            )
+        } else { 0 };
+        let piece_total = piece_total + champ_threat;
+
         if is_p1 { sum_p1 += piece_total; } else { sum_p2 += piece_total; }
         let s = &mut out.squares[sq as usize];
         s.sq = sq;

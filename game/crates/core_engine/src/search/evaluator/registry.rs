@@ -31,6 +31,7 @@ pub fn default_terms(_params: &EvalParams) -> Vec<Box<dyn EvalTerm>> {
         Box::new(terms::Exposure),
         Box::new(terms::Coverage),
         Box::new(terms::GuardIsolation),
+        Box::new(terms::ChampionThreat),
         // Side-level.
         Box::new(terms::Money),
         Box::new(terms::Tempo),
