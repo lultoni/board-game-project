@@ -13,6 +13,18 @@ use crate::game_logic::skills::{Skill, SkillCategory, skill_cost, skill_default_
 use crate::game_logic::make_unmake::skill_phase_budget;
 use super::params::EvalParams;
 
+/// Coarse game stage (ns-43 stage infra). Derived from total material on the
+/// board with a round-number bias (rounds drive income + skill budget in this
+/// game, so a long game is "later" even at high material). Consumed by phase-
+/// gated terms via [`EvalTerm::is_active`](super::term::EvalTerm::is_active) —
+/// notably the asymmetric `endgame_closing` term.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameStage {
+    Opening,
+    Mid,
+    End,
+}
+
 /// Per-`evaluate()` shared state. Holds a borrow of the params so terms read
 /// weights without cloning.
 pub struct EvalContext<'a> {
@@ -38,6 +50,13 @@ pub struct EvalContext<'a> {
     /// E3 money caps: `max_owned_skill_cost × actions_per_round`.
     pub p1_money_cap: u16,
     pub p2_money_cap: u16,
+
+    /// Unified P1-POV lead score (ns-43 stage infra): summed differential of
+    /// material + hp + armor + equipped-skill value. Positive → P1 ahead. The
+    /// "who is ahead" signal the asymmetric closing term reads.
+    pub advantage: i32,
+    /// Coarse game stage from total on-board material + round bias.
+    pub stage: GameStage,
 }
 
 impl<'a> EvalContext<'a> {
@@ -60,13 +79,72 @@ impl<'a> EvalContext<'a> {
         let p1_max_cost = max_owned_skill_cost(pos, p1_bb);
         let p2_max_cost = max_owned_skill_cost(pos, p2_bb);
 
+        // Stage infra: per-side summed value (material + hp + armor + skills)
+        // and total on-board material. Single scan; integer-only.
+        let (p1_val, p1_mat) = side_value_and_material(pos, p1_bb, params);
+        let (p2_val, p2_mat) = side_value_and_material(pos, p2_bb, params);
+        let advantage = p1_val - p2_val;
+        let stage = classify_stage(p1_mat + p2_mat, pos.round_number, params);
+
         EvalContext {
             pos, params, all_occ, p1_bb, p2_bb, p1_guards, p2_guards,
             p1_avail, p2_avail, atk, phase,
             actions_per_round: actions,
             p1_money_cap: p1_max_cost as u16 * actions as u16,
             p2_money_cap: p2_max_cost as u16 * actions as u16,
+            advantage,
+            stage,
         }
+    }
+}
+
+/// Per-side summed value `(total_value, material_value)` for the stage infra.
+/// `total_value` = material + hp + armor + equipped-skill base value (the
+/// `advantage` differential uses this); `material_value` = piece material only
+/// (the stage classifier uses the board total). Reuses the same weights the
+/// material/hp/armor/skills terms use — single source of truth via `params`.
+#[inline]
+pub fn side_value_and_material(pos: &Position, side_bb: u64, params: &EvalParams) -> (i32, i32) {
+    let mut total = 0i32;
+    let mut material = 0i32;
+    let mut bits = side_bb;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as usize;
+        bits &= bits - 1;
+        let mask = 1u64 << sq;
+        let m = pos.mailbox[sq];
+        let mat = if pos.kings.0 & mask != 0 {
+            params.king_material
+        } else if pos.champions.0 & mask != 0 {
+            params.champion_value
+        } else {
+            params.guard_value
+        };
+        material += mat;
+        total += mat
+            + params.hp_per_point * m.hp() as i32
+            + params.armor_per_point * m.armor() as i32;
+        for id in [m.skill1(), m.skill2()] {
+            let idx = id as usize;
+            if idx > 0 && idx < params.skill_value.len() {
+                total += params.skill_value[idx];
+            }
+        }
+    }
+    (total, material)
+}
+
+/// Classify the coarse game stage from total on-board material with a round-
+/// number bias (each round elapsed credits `stage_round_bias` toward "later").
+#[inline]
+pub fn classify_stage(total_material: i32, round_number: u16, params: &EvalParams) -> GameStage {
+    let effective = total_material - round_number as i32 * params.stage_round_bias;
+    if effective >= params.stage_mid_threshold {
+        GameStage::Opening
+    } else if effective >= params.stage_end_threshold {
+        GameStage::Mid
+    } else {
+        GameStage::End
     }
 }
 

@@ -51,6 +51,7 @@ use crate::state::Position;
 pub use params::EvalParams;
 pub use term::{EvalTerm, PieceContext};
 pub use context::EvalContext;
+pub use context::GameStage;
 pub use breakdown::{EvalBreakdown, EvalBreakdownBySquare, SquareBreakdown, DynBreakdown, TermEntry, evaluate_by_square};
 
 pub const MATE_SCORE: i32 = 1_000_000;
@@ -519,6 +520,62 @@ mod tests {
         let expected_pen = EvalParams::DEFAULT.wasted_modifier_per_cost
             * crate::game_logic::skills::skill_cost(Skill::Focus) as i32;
         assert_eq!(evaluate(&p) - evaluate(&clean), expected_pen);
+    }
+
+    // ============================================================
+    // Stage infra (ns-43) — advantage score + game-stage classifier.
+    // Infra-only: no term consumes these yet, so goldens are unchanged.
+    // ============================================================
+
+    #[test]
+    fn advantage_sign_tracks_who_is_ahead() {
+        let params = EvalParams::DEFAULT;
+        // P1 has an extra champion → P1 ahead → advantage > 0.
+        let mut p = Position::empty();
+        place(&mut p, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut p, 1,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut p, 63, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        let ctx = EvalContext::new(&p, &params);
+        assert!(ctx.advantage > 0, "P1 up a champion → advantage > 0");
+
+        // Mirror: P2 up a champion → advantage < 0.
+        let mut q = Position::empty();
+        place(&mut q, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut q, 62, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        place(&mut q, 63, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        let ctx2 = EvalContext::new(&q, &params);
+        assert!(ctx2.advantage < 0, "P2 up a champion → advantage < 0");
+    }
+
+    #[test]
+    fn stage_opening_at_full_material() {
+        let params = EvalParams::DEFAULT;
+        let pos = Position::setup_stack_m(); // full material, round 0
+        let ctx = EvalContext::new(&pos, &params);
+        assert_eq!(ctx.stage, GameStage::Opening,
+            "full-material Stack-M start classifies as Opening");
+    }
+
+    #[test]
+    fn stage_progresses_to_end_as_material_drops() {
+        let params = EvalParams::DEFAULT;
+        // Only two lone kings left, early round → below end threshold → End.
+        let mut p = Position::empty();
+        place(&mut p, 4,  Player::P1, 0, MailboxEntry::default().with_hp(2));
+        place(&mut p, 60, Player::P2, 0, MailboxEntry::default().with_hp(2));
+        let ctx = EvalContext::new(&p, &params);
+        assert_eq!(ctx.stage, GameStage::End, "two lone kings → End");
+    }
+
+    #[test]
+    fn stage_round_bias_pushes_later() {
+        let params = EvalParams::DEFAULT;
+        // classify_stage directly: same material, higher round → not-earlier.
+        let mat = params.stage_mid_threshold + 100; // just into Opening at round 0
+        assert_eq!(context::classify_stage(mat, 0, &params), GameStage::Opening);
+        // A high round biases the same material toward Mid/End.
+        let late = context::classify_stage(mat, 30, &params);
+        assert_ne!(late, GameStage::Opening, "30 rounds elapsed pushes past Opening");
     }
 
     // ============================================================

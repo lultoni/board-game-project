@@ -82,6 +82,16 @@ pub struct EvalParams {
     pub threat_softcap:          i32, // saturation ceiling per sub-score (hyperbola k)
     pub threat_king_bonus:       i32, // flat extra for threatening the enemy king
 
+    // Game-stage thresholds (ns-43 stage infra). Total on-board material (both
+    // sides, using material weights only) is the primary stage signal; a high
+    // round_number biases the stage later via `stage_round_bias` (material
+    // "credited" per round elapsed). `Opening` above `stage_mid_threshold`,
+    // `End` below `stage_end_threshold`, `Mid` between. Anchored so the
+    // full-material Stack-M opening classifies as Opening.
+    pub stage_mid_threshold: i32,
+    pub stage_end_threshold: i32,
+    pub stage_round_bias:    i32,
+
     // Skill availability sigmoid (E4).
     pub skill_avail_k:   i32,
     pub skill_avail_max: i32,
@@ -131,6 +141,14 @@ impl EvalParams {
         threat_safety_penalty_pct: 40,  // unsafe strike keeps 40% of its offensive value.
         threat_softcap:            200,
         threat_king_bonus:         80,
+
+        // Stage thresholds. Full Stack-M opening = 17200 total material (2 ×
+        // (5×1000 + 6×600)) → Opening. Mid once ~40% of material is gone; End
+        // once ~65% is gone. Each round elapsed credits stage_round_bias toward
+        // "later" so a long game trends to End even at higher material.
+        stage_mid_threshold: 10000,
+        stage_end_threshold: 6000,
+        stage_round_bias:    150,
 
         skill_avail_k:   3,
         skill_avail_max: 256,
