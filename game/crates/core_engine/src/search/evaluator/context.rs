@@ -80,9 +80,9 @@ impl<'a> EvalContext<'a> {
         let p2_max_cost = max_owned_skill_cost(pos, p2_bb);
 
         // Stage infra: per-side summed value (material + hp + armor + skills)
-        // and total on-board material. Single scan; integer-only.
-        let (p1_val, p1_mat) = side_value_and_material(pos, p1_bb, params);
-        let (p2_val, p2_mat) = side_value_and_material(pos, p2_bb, params);
+        // and total on-board material, in ONE pass over all occupied squares
+        // (was two separate per-side scans).
+        let (p1_val, p1_mat, p2_val, p2_mat) = both_sides_value_and_material(pos, p1_bb, params);
         let advantage = p1_val - p2_val;
         let stage = classify_stage(p1_mat + p2_mat, pos.round_number, params);
 
@@ -132,6 +132,43 @@ pub fn side_value_and_material(pos: &Position, side_bb: u64, params: &EvalParams
         }
     }
     (total, material)
+}
+
+/// One-pass variant of [`side_value_and_material`] computing BOTH sides in a
+/// single walk over occupied squares. Returns
+/// `(p1_total, p1_material, p2_total, p2_material)`. Byte-identical to calling
+/// `side_value_and_material` per side; used on the hot `EvalContext::new` path.
+#[inline]
+pub fn both_sides_value_and_material(
+    pos: &Position, p1_bb: u64, params: &EvalParams,
+) -> (i32, i32, i32, i32) {
+    let (mut p1_total, mut p1_mat, mut p2_total, mut p2_mat) = (0i32, 0i32, 0i32, 0i32);
+    let mut bits = (pos.p1_pieces | pos.p2_pieces).0;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as usize;
+        bits &= bits - 1;
+        let mask = 1u64 << sq;
+        let m = pos.mailbox[sq];
+        let mat = if pos.kings.0 & mask != 0 {
+            params.king_material
+        } else if pos.champions.0 & mask != 0 {
+            params.champion_value
+        } else {
+            params.guard_value
+        };
+        let mut val = mat
+            + params.hp_per_point * m.hp() as i32
+            + params.armor_per_point * m.armor() as i32;
+        for id in [m.skill1(), m.skill2()] {
+            let idx = id as usize;
+            if idx > 0 && idx < params.skill_value.len() {
+                val += params.skill_value[idx];
+            }
+        }
+        if p1_bb & mask != 0 { p1_total += val; p1_mat += mat; }
+        else                 { p2_total += val; p2_mat += mat; }
+    }
+    (p1_total, p1_mat, p2_total, p2_mat)
 }
 
 /// Classify the coarse game stage from total on-board material with a round-
