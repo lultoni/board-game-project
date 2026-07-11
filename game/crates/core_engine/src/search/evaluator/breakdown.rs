@@ -20,7 +20,7 @@ use super::MATE_SCORE;
 use super::params::EvalParams;
 use super::context::{
     king_expand, side_availability_table, useful_money, max_offensive_range,
-    max_owned_skill_cost, actions_per_round,
+    max_owned_skill_cost, actions_per_round, side_value_and_material, classify_stage,
 };
 
 /// One active term's contribution in the dynamic breakdown.
@@ -395,9 +395,17 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
     let off_p1 = max_offensive_range(pos, p1_bb, pos.p1_money) as i32;
     let off_p2 = max_offensive_range(pos, p2_bb, pos.p2_money) as i32;
 
+    // E13 — endgame closing (folds into total; mirrors terms::endgame_closing_score).
+    let (p1_val, p1_mat) = side_value_and_material(pos, p1_bb, params);
+    let (p2_val, p2_mat) = side_value_and_material(pos, p2_bb, params);
+    let stage = classify_stage(p1_mat + p2_mat, pos.round_number, params);
+    let (close_p1, close_p2) =
+        super::terms::endgame_closing_score(pos, params, stage, p1_val - p2_val, p1_bb, p2_bb);
+
     out.total = sum_p1 - sum_p2
         + (out.p1_money_term - out.p2_money_term)
         + (out.p1_tempo_term - out.p2_tempo_term)
-        + (off_p1 - off_p2) * params.offensive_range_weight;
+        + (off_p1 - off_p2) * params.offensive_range_weight
+        + (close_p1 - close_p2);
     out
 }

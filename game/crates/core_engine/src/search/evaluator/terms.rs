@@ -443,3 +443,79 @@ impl EvalTerm for ChampionThreat {
         )
     }
 }
+
+/// Asymmetric endgame-closing score `(p1, p2)`. Shared by [`EndgameClosing`]
+/// and the diagnostic `evaluate_by_square`. Returns `(0, 0)` unless
+/// `stage == End`, the lead exceeds `close_lead_min`, and both kings exist.
+/// The leader's side gets a closing score, the trailer's a stalling score.
+pub(crate) fn endgame_closing_score(
+    pos: &crate::state::Position,
+    params: &super::params::EvalParams,
+    stage: super::context::GameStage,
+    advantage: i32,
+    p1_bb: u64,
+    p2_bb: u64,
+) -> (i32, i32) {
+    use super::context::GameStage;
+    if !matches!(stage, GameStage::End) { return (0, 0); }
+    let p = params;
+    if advantage.abs() < p.close_lead_min { return (0, 0); }
+
+    let king_sq = |side_bb: u64| -> Option<u8> {
+        let k = pos.kings.0 & side_bb;
+        if k == 0 { None } else { Some(k.trailing_zeros() as u8) }
+    };
+    let (Some(p1_king), Some(p2_king)) = (king_sq(p1_bb), king_sq(p2_bb)) else { return (0, 0); };
+
+    let nearest = |attacker_bb: u64, target: u8| -> u8 {
+        let non_king = attacker_bb & !pos.kings.0;
+        let mut best = 7u8;
+        let mut bits = non_king;
+        while bits != 0 {
+            let sq = bits.trailing_zeros() as u8;
+            bits &= bits - 1;
+            let d = magic::cheby_dist(sq, target);
+            if d < best { best = d; }
+        }
+        best
+    };
+    let leader_score = |leader_bb: u64, enemy_bb: u64, enemy_king: u8| -> i32 {
+        let dist = nearest(leader_bb, enemy_king) as i32;
+        let pressure = p.close_king_pressure * (7 - dist);
+        let escapes = (magic::movement_targets_speed1(enemy_king).0 & !(leader_bb | enemy_bb)).count_ones() as i32;
+        let denial = p.close_escape_denial * (8 - escapes);
+        pressure + denial
+    };
+    let trailer_score = |own_bb: u64, enemy_bb: u64, own_king: u8| -> i32 {
+        let dist = nearest(enemy_bb, own_king) as i32;
+        let safety = p.defend_king_safety * dist;
+        let hugging = (king_expand(1u64 << own_king) & own_bb & !(1u64 << own_king)).count_ones() as i32;
+        safety + p.defend_compactness * hugging
+    };
+
+    if advantage > 0 {
+        (leader_score(p1_bb, p2_bb, p2_king), trailer_score(p2_bb, p1_bb, p2_king))
+    } else {
+        (trailer_score(p1_bb, p2_bb, p1_king), leader_score(p2_bb, p1_bb, p1_king))
+    }
+}
+
+/// E13 (ns-43 Term 4) — asymmetric endgame closing.
+///
+/// Active only when `ctx.stage == End` (via `is_active`). The side that is
+/// AHEAD (`advantage` beyond `close_lead_min`) is rewarded for *closing the
+/// game out*; the side BEHIND is rewarded for *stretching it out* — the
+/// asymmetry the designer asked for. Side-level; folds into `total` via the
+/// default `p1 - p2`, so a leader closing well pushes toward the leader and a
+/// trailer defending well pushes back toward the trailer. Delegates to the
+/// shared [`endgame_closing_score`] so `evaluate_by_square` stays consistent.
+pub struct EndgameClosing;
+impl EvalTerm for EndgameClosing {
+    fn name(&self) -> &'static str { "endgame_closing" }
+    fn is_active(&self, ctx: &EvalContext) -> bool {
+        matches!(ctx.stage, super::context::GameStage::End)
+    }
+    fn score_side(&self, ctx: &EvalContext) -> (i32, i32) {
+        endgame_closing_score(ctx.pos, ctx.params, ctx.stage, ctx.advantage, ctx.p1_bb, ctx.p2_bb)
+    }
+}

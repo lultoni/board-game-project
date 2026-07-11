@@ -92,6 +92,18 @@ pub struct EvalParams {
     pub stage_end_threshold: i32,
     pub stage_round_bias:    i32,
 
+    // Endgame closing (E13 — ns-43 Term 4). Active only when stage == End.
+    // Asymmetric by `advantage`: the LEADER is rewarded for closing (king
+    // pressure + denying the enemy king escape squares), the TRAILER for
+    // stalling (own-king safety + compactness). `close_lead_min` is the
+    // advantage magnitude below which the position is "even" and the term stays
+    // neutral (no forced aggression in a dead-even endgame).
+    pub close_lead_min:         i32,
+    pub close_king_pressure:    i32, // leader: × (7 − dist(nearest threatener → enemy king))
+    pub close_escape_denial:    i32, // leader: × (8 − enemy-king escape squares)
+    pub defend_king_safety:     i32, // trailer: × (dist(nearest enemy threatener → own king))
+    pub defend_compactness:     i32, // trailer: × (own pieces adjacent to own king)
+
     // Skill availability sigmoid (E4).
     pub skill_avail_k:   i32,
     pub skill_avail_max: i32,
@@ -149,6 +161,15 @@ impl EvalParams {
         stage_mid_threshold: 10000,
         stage_end_threshold: 6000,
         stage_round_bias:    150,
+
+        // Endgame closing. Only fires in the End stage; magnitudes kept modest
+        // (low-hundreds) so material still dominates — this shapes HOW a won/
+        // lost endgame is played, it doesn't invent advantages.
+        close_lead_min:      400,  // < ~0.7 guard of lead → treat as even, stay neutral.
+        close_king_pressure: 40,   // per tile closer the nearest threatener is to enemy king.
+        close_escape_denial: 30,   // per denied enemy-king escape square.
+        defend_king_safety:  30,   // per tile the nearest enemy threatener is from own king.
+        defend_compactness:  25,   // per own piece hugging own king.
 
         skill_avail_k:   3,
         skill_avail_max: 256,

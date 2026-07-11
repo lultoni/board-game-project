@@ -696,8 +696,57 @@ mod tests {
     }
 
     // ============================================================
-    // Golden-equality suite (ns-43 refactor safety net).
-    //
+    // EndgameClosing term (E13, ns-43 Term 4) — asymmetric, stage-gated.
+    // ============================================================
+
+    fn closing_of(pos: &Position) -> (i32, i32) {
+        let bd = evaluate_dyn(pos);
+        match bd.terms.iter().find(|t| t.name == "endgame_closing") {
+            Some(t) => (t.p1, t.p2),
+            None => (0, 0), // inactive (not End stage) → term absent
+        }
+    }
+
+    #[test]
+    fn endgame_closing_dormant_in_opening() {
+        // Full-material opening → stage Opening → term inactive → absent.
+        let pos = Position::setup_stack_m();
+        assert_eq!(closing_of(&pos), (0, 0), "closing term must not fire in the opening");
+    }
+
+    #[test]
+    fn endgame_closing_asymmetric_leader_and_trailer() {
+        // End stage: P1 leads (king + champion) vs P2 (lone king). P1 champion
+        // near the P2 king. Leader (P1) should get a closing score; trailer (P2)
+        // a stalling score. Both positive magnitudes on their own side.
+        let mut p = Position::empty();
+        place(&mut p, 4,  Player::P1, 0, MailboxEntry::default().with_hp(2)); // P1 king
+        place(&mut p, 45, Player::P1, 1, MailboxEntry::default().with_hp(2)   // P1 champion near P2 king
+            .with_skill1(Skill::Lance as u8));
+        place(&mut p, 60, Player::P2, 0, MailboxEntry::default().with_hp(2)); // P2 lone king
+        p.round_number = 20;
+        // Confirm we are in the End stage and P1 leads.
+        let ctx = EvalContext::new(&p, &EvalParams::DEFAULT);
+        assert_eq!(ctx.stage, GameStage::End);
+        assert!(ctx.advantage > 0, "P1 is up a champion");
+        let (p1, p2) = closing_of(&p);
+        assert!(p1 > 0, "leader P1 gets a closing score");
+        assert!(p2 > 0, "trailer P2 gets a stalling score");
+    }
+
+    #[test]
+    fn endgame_closing_neutral_when_even() {
+        // End stage but dead even (mirrored lone kings) → advantage 0 < lead_min
+        // → neutral.
+        let mut p = Position::empty();
+        place(&mut p, 4,  Player::P1, 0, MailboxEntry::default().with_hp(2));
+        place(&mut p, 60, Player::P2, 0, MailboxEntry::default().with_hp(2));
+        p.round_number = 20;
+        assert_eq!(closing_of(&p), (0, 0), "even endgame → no forced aggression");
+    }
+
+    // ============================================================
+    // Golden-equality suite (ns-43 refactor safety net).    //
     // A fixed set of labelled positions exercising every eval term. The
     // `golden_eval_unchanged` test asserts `evaluate()` and the full
     // per-field `EvalBreakdown` match hand-captured expected values. The
@@ -816,7 +865,7 @@ mod tests {
             ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 264, mobility_p2: 264, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 1800, coverage_p2: 1800, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
             ("champ_diff_skills_money", 2282, EvalBreakdown { material_p1: 1000, material_p2: 1000, hp_p1: 300, hp_p2: 150, armor_p1: 240, armor_p2: 0, skills_p1: 290, skills_p2: 33, money_p1: 75, money_p2: 46, mobility_p1: 28, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 100, exposure_p2: 100, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 3, offensive_range_p2: 0, total: 2282 }),
             ("exposure_coverage", 1468, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 120, skills_p2: 120, money_p1: 50, money_p2: 50, mobility_p1: 112, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 199, coverage_p2: 0, tempo_p1: 0, tempo_p2: 15, offensive_range_p1: 1, offensive_range_p2: 1, total: 1468 }),
-            ("king_exposure_mobility", -3426, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 58, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3426 }),
+            ("king_exposure_mobility", -3756, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 58, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3756 }),
             ("guard_mob_offensive_range", 3078, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 220, skills_p2: 120, money_p1: 112, money_p2: 75, mobility_p1: 104, mobility_p2: 24, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 150, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 4, offensive_range_p2: 1, total: 3078 }),
         ];
 
