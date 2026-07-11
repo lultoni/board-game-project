@@ -22,6 +22,27 @@ export function squareCenter(sq: number, size: number): { x: number; y: number }
   return { x: file * size + size / 2, y: (7 - rank) * size + size / 2 };
 }
 
+/** Caster anchor point for a skill effect, interpolated over the animation.
+ *  Stack N strike-moves-caster steps the caster 1 tile toward the target after
+ *  the skill resolves; when `outcome.casterPostSq` is set (and differs from
+ *  `eff.from`), the caster-end of the choreography slides from `from` →
+ *  `casterPostSq` across the effect so lines/coins/bursts track the moving
+ *  piece rather than sticking on the vacated origin. `t` is the effect's
+ *  normalized progress (0..1). Skills that don't move the caster return the
+ *  static `from` centre. */
+export function casterAnchor(
+  eff: SkillEffect,
+  size: number,
+  t: number,
+): { x: number; y: number } {
+  const from = squareCenter(eff.from, size);
+  const post = eff.outcome?.casterPostSq;
+  if (post === undefined || post === eff.from) return from;
+  const to = squareCenter(post, size);
+  const k = Math.max(0, Math.min(1, t));
+  return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
+}
+
 /** Deterministic small wobble sign for a src/target pair — so bezier control
  *  offsets feel intentional rather than random. Same pair always produces the
  *  same wobble. */
@@ -118,7 +139,7 @@ const renderLance: SkillRenderer = (ctx, eff, age, size) => {
   if (age >= LANCE_TTL) return;
   const t = age / LANCE_TTL;
   const color = skillColor(eff.skillId);
-  const from = squareCenter(eff.from, size);
+  const from = casterAnchor(eff, size, t);
   const to = squareCenter(eff.to, size);
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -178,7 +199,7 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   if (age >= HOOK_TTL) return;
   const t = age / HOOK_TTL;
   const color = skillColor(eff.skillId);
-  const from = squareCenter(eff.from, size);
+  const from = casterAnchor(eff, size, t);
   const to = squareCenter(eff.to, size);
   // Post-move target square: when the target actually slid toward the caster,
   // the ply-renderer records where it ended up. The pull-taut phase should
@@ -611,7 +632,7 @@ const renderBreak: SkillRenderer = (ctx, eff, age, size) => {
   const t = age / BREAK_TTL;
   const color = skillColor(eff.skillId);
   const to = squareCenter(eff.to, size);
-  const from = squareCenter(eff.from, size);
+  const from = casterAnchor(eff, size, t);
 
   // Phase: strike 100 / cracks-draw 60 / fade 250. Combine strike+cracks-draw
   // as one attack; then release.
@@ -693,7 +714,7 @@ const renderSteal: SkillRenderer = (ctx, eff, age, size) => {
   if (age >= STEAL_TTL) return;
   const t = age / STEAL_TTL;
   const color = skillColor(eff.skillId);
-  const from = squareCenter(eff.from, size);
+  const from = casterAnchor(eff, size, t);
   const to = squareCenter(eff.to, size);
 
   // Segments (of 700ms): reach 120 / grab 100 / return 200 / burst 100 / fade 180
@@ -791,7 +812,7 @@ const renderTempest: SkillRenderer = (ctx, eff, age, size) => {
   if (age >= TEMPEST_TTL) return;
   const t = age / TEMPEST_TTL;
   const color = skillColor(eff.skillId);
-  const from = squareCenter(eff.from, size);
+  const from = casterAnchor(eff, size, t);
   const to = squareCenter(eff.to, size);
 
   // Segments: strike 140 / shock 300 / fade 280

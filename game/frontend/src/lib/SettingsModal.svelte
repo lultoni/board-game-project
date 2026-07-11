@@ -76,6 +76,10 @@
       <span>Show blocked path</span>
       <input type="checkbox" bind:checked={settings.showBlockedByFriendly} />
     </label>
+    <label class="row">
+      <span>Show bodyguard cover</span>
+      <input type="checkbox" bind:checked={settings.showBodyguardCover} />
+    </label>
   </section>
 
   <div class="divider"></div>

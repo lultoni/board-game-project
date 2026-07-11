@@ -5,6 +5,8 @@
   import DirectionPicker from "./DirectionPicker.svelte";
   import type { SkillVariant } from "$lib/state/skill-targets";
   import type { PieceMotion } from "./ply-renderer.svelte";
+  import { bodyguardCover } from "./bodyguard-cover";
+  import { settings } from "$lib/state/settings.svelte";
 
   interface Props {
     position: PositionView | null;
@@ -108,9 +110,6 @@
     } | null;
     onDirectionPick?: (raw: number) => void;
     onDirectionCancel?: () => void;
-    /** Per-square lunge offsets (SVG px) + dist. Drives the lunge-recoil CSS animation
-     *  on non-kill attacks: piece at `sq` lunges by (dx, dy) then recoils. */
-    lungeSquares?: Map<number, { dx: number; dy: number; dist: number }>;
     /** Multi-hop walk descriptors keyed by the piece's final square. When a
      *  piece has an entry, its outer `<g>` drives a WAAPI keyframe animation
      *  along the waypoints (with a subtle bounce) instead of the CSS
@@ -163,7 +162,6 @@
     directionPicker = null,
     onDirectionPick,
     onDirectionCancel,
-    lungeSquares = new Map<number, { dx: number; dy: number; dist: number }>(),
     pieceMotion = new Map<number, PieceMotion>(),
     toMove = null,
     onSquareHover,
@@ -180,6 +178,57 @@
   const pieces = $derived(
     position ? readPieces(position.bitboards, position.mailbox) : [],
   );
+
+  // Static Bodyguard-protection edges (ns-40). One mark per (champion, covered
+  // approach square). Each mark is drawn on the CHAMPION's tile boundary facing
+  // the approach square, so two Champions sharing a Guard stay unambiguous — a
+  // mark always hugs the piece it belongs to. Gated behind the settings toggle.
+  const bodyguardEdges = $derived(
+    settings.showBodyguardCover
+      ? bodyguardCover(position).flatMap((c) =>
+          c.protectedApproaches.map((a) => ({ championSq: c.championSq, approachSq: a })),
+        )
+      : [],
+  );
+
+  /** Endpoints (SVG px) of the short mark drawn on the champion tile's border
+   *  facing `approachSq`. Sits right on the border (minimal inset) so the piece
+   *  glyph doesn't cover it. Cardinal and diagonal marks share a common length
+   *  so they read as one uniform family. */
+  function bodyguardEdgeLine(
+    championSq: number,
+    approachSq: number,
+    size: number,
+  ): { x1: number; y1: number; x2: number; y2: number } {
+    const cf = championSq & 7, cr = (championSq >> 3) & 7;
+    const af = approachSq & 7, ar = (approachSq >> 3) & 7;
+    const df = Math.sign(af - cf); // +1 = approach to the right (higher file)
+    const dr = Math.sign(ar - cr); // +1 = approach above (higher rank → smaller y)
+    const x = cf * size;
+    const y = (7 - cr) * size; // top-left of the champion tile
+    const inset = size * 0.03; // hug the border so the piece can't cover it
+    const half = size * 0.28;  // half-length of the mark (uniform across dirs)
+    // Border coordinates: left=x, right=x+size, top=y (rank increases upward),
+    // bottom=y+size. Screen-up corresponds to +rank (dr>0 → smaller y).
+    const left = x + inset, right = x + size - inset;
+    const top = y + inset, bottom = y + size - inset;
+    const midX = x + size / 2, midY = y + size / 2;
+    if (df !== 0 && dr === 0) {
+      // Vertical side (east/west): centered segment on that side.
+      const ex = df > 0 ? right : left;
+      return { x1: ex, y1: midY - half, x2: ex, y2: midY + half };
+    }
+    if (dr !== 0 && df === 0) {
+      // Horizontal side (north/south). dr>0 = north = top edge (smaller y).
+      const ey = dr > 0 ? top : bottom;
+      return { x1: midX - half, y1: ey, x2: midX + half, y2: ey };
+    }
+    // Diagonal: an L across the facing corner, each leg `half` long so the
+    // total stroke reads at a similar weight to the cardinal marks.
+    const ex = df > 0 ? right : left;
+    const ey = dr > 0 ? top : bottom;
+    return { x1: ex - df * half, y1: ey, x2: ex, y2: ey + dr * half };
+  }
 
   // 64 square rects. Rank 0 (P1 home) renders at the bottom.
   const squares = $derived(
@@ -813,6 +862,28 @@
     </g>
   {/if}
 
+  <!-- Static Bodyguard-protection marks (ns-40): a blue line on the protected
+       Champion's tile edge facing each covered approach square. Anchored to the
+       Champion's own border so shared-Guard cases stay unambiguous. Drawn under
+       the pieces so glyphs and attack effects sit on top. -->
+  {#if bodyguardEdges.length > 0}
+    <g class="bodyguard-cover" pointer-events="none">
+      {#each bodyguardEdges as edge (edge.championSq * 64 + edge.approachSq)}
+        {@const l = bodyguardEdgeLine(edge.championSq, edge.approachSq, SIZE)}
+        <line
+          x1={l.x1}
+          y1={l.y1}
+          x2={l.x2}
+          y2={l.y2}
+          stroke="#3a7acc"
+          stroke-width={SIZE * 0.05}
+          stroke-linecap="round"
+          stroke-opacity="0.7"
+        />
+      {/each}
+    </g>
+  {/if}
+
   <!-- Pieces -->
   <g class="pieces">
     {#each pieces as piece (pieceIds.get(piece.square) ?? `sq-${piece.square}`)}
@@ -822,7 +893,6 @@
         used={usedSquares.has(piece.square)}
         overrideXY={overrideForPiece(piece.square)}
         shake={shakingSquares.has(piece.square)}
-        lunge={lungeSquares.get(piece.square) ?? null}
         motion={pieceMotion.get(piece.square) ?? null}
         {effectsActive}
         dormant={position

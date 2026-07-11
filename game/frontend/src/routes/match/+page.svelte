@@ -1716,7 +1716,6 @@
             draggable={movable}
             usedSquares={usedThisPhase}
             shakingSquares={renderer?.shakingSquares ?? new Set()}
-            lungeSquares={renderer?.lungeSquares ?? new Map()}
             pieceMotion={renderer?.pieceMotion ?? new Map()}
             toMove={match.position?.gameResult === 0 ? (match.position?.toMove ?? null) : null}
             effectsActive={(renderer?.effectQueue.length ?? 0) > 0}

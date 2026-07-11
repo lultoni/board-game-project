@@ -15,7 +15,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createPlyRenderer, type PlyRenderer, type TimerHandle } from "./ply-renderer.svelte";
-import { ActionKind } from "../engine/action";
+import { ActionKind, encodeBodyguardChoice } from "../engine/action";
 import type { EngineClient, PositionView, StepResult } from "../engine";
 
 // === Fakes =================================================================
@@ -104,6 +104,7 @@ function cell(opts: { hp?: number; armor?: number; combo?: number; skill1?: numb
 function makePositionView(
   pieces: Record<number, { cell: number; owner: "p1" | "p2"; kind: "king" | "champion" | "guard" }>,
   zobrist: bigint = 0n,
+  pendingBodyguard: PositionView["pendingBodyguard"] = null,
 ): PositionView {
   const mailbox = new Uint16Array(64);
   let p1 = 0n;
@@ -134,7 +135,7 @@ function makePositionView(
     pendingModifiers: 0,
     gameResult: 0,
     zobrist,
-    pendingBodyguard: null,
+    pendingBodyguard,
   };
 }
 
@@ -482,6 +483,255 @@ describe("createPlyRenderer", () => {
     // The scheduler entry for the deferred refresh is gone (drained).
     // Other entries (shake) may still exist.
     expect(scheduler.pendingHandles().every((h) => h !== undefined)).toBe(true);
+  });
+
+  // === Move-attack lunge (WAAPI, non-kill) ===================================
+  // Non-kill attacks emit a pieceMotion with `lungeReturnTo` so the attacker
+  // leans toward the target and recoils to its resting square via the same
+  // reliable WAAPI channel as the walk/kill-lunge.
+
+  it("non-kill move-attack (speed-1) emits a lungeReturnTo motion keyed at src", async () => {
+    // P1 champ at a1 (sq 0) attacks P2 champ at a2 (sq 8) with auxSq === src
+    // (speed-1: attacker doesn't relocate). Target survives (2→1).
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      8: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+    }));
+    await renderer.resyncFromEngine();
+    const attackerId = renderer.pieceIds.get(0);
+    const raw = encodeMove({ src: 0, target: 8, hasAux: true, auxSq: 0 });
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      8: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },
+    }));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+
+    const motion = renderer.pieceMotion.get(0);
+    expect(motion).toBeDefined();
+    expect(motion!.lungeReturnTo).toBe(8);
+    expect(motion!.killLungeTo).toBe(null);
+    expect(motion!.hops).toBe(0);
+    // Contact fires at the lunge peak; drain and assert damage on the target.
+    scheduler.fireAll();
+    expect(renderer.effectQueue.some((e) => e.kind === "damageNumber" && e.at === 8)).toBe(true);
+    expect(sfx.calls.map((c) => c.key)).toContain("attack");
+    expect(renderer.pieceIds.get(0)).toBe(attackerId);
+  });
+
+  it("non-kill move-attack (speed-2) emits a lungeReturnTo motion keyed at approach", async () => {
+    // P2 champ at a3 (sq 16). P1 speed-2 attacker walks a1→a2 then strikes a3.
+    // Target survives; attacker rests at a2 (approach).
+    const attackerId = renderer.pieceIds.get(0);
+    const raw = encodeMove({ src: 0, target: 16, hasAux: true, auxSq: 8 });
+    eng.setNextView(makePositionView({
+      8: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      16: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },
+    }));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+
+    const motion = renderer.pieceMotion.get(8);
+    expect(motion).toBeDefined();
+    expect(motion!.lungeReturnTo).toBe(16);
+    expect(motion!.hops).toBe(1);
+    scheduler.fireAll();
+    expect(renderer.pieceIds.get(8)).toBe(attackerId);
+  });
+
+  // === Bodyguard-choice animations ===========================================
+
+  it("attack ply with a pending bodyguard is SILENT (no motion, no damage)", async () => {
+    // P1 champ at a1 (sq 0) attacks P2 champ at a3 (sq 16, speed-1 via aux=0).
+    // Engine applies tentatively: target HP unchanged, pendingBodyguard set.
+    const raw = encodeMove({ src: 0, target: 16, hasAux: true, auxSq: 0 });
+    sfx.calls.length = 0;
+    eng.setNextView(makePositionView(
+      {
+        0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+        16: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+        17: { cell: cell({ hp: 2 }), owner: "p2", kind: "guard" },
+      },
+      5n,
+      { attackerSrc: 0, attackerNow: 0, targetSq: 16, eligible: [17] },
+    ));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+    scheduler.fireAll();
+
+    expect(renderer.pieceMotion.size).toBe(0);
+    expect(renderer.effectQueue.some((e) => e.kind === "damageNumber")).toBe(false);
+    expect(sfx.calls.map((c) => c.key)).not.toContain("attack");
+    expect(sfx.calls.map((c) => c.key)).not.toContain("death");
+  });
+
+  it("bodyguard DECLINE plays the attacker lunge + damage on the target", async () => {
+    // Seed a pre-state with pendingBodyguard set (attacker a1, target a3).
+    eng.setNextView(makePositionView(
+      {
+        0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+        16: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+        17: { cell: cell({ hp: 2 }), owner: "p2", kind: "guard" },
+      },
+      0n,
+      { attackerSrc: 0, attackerNow: 0, targetSq: 16, eligible: [17] },
+    ));
+    await renderer.resyncFromEngine();
+    sfx.calls.length = 0;
+
+    // Choice = decline (idx 0). Post: target took 1 damage (2→1).
+    const raw = encodeBodyguardChoice(0);
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      16: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },
+      17: { cell: cell({ hp: 2 }), owner: "p2", kind: "guard" },
+    }, 3n));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+
+    const motion = renderer.pieceMotion.get(0); // attacker rests at a1
+    expect(motion).toBeDefined();
+    expect(motion!.lungeReturnTo).toBe(16);
+    scheduler.fireAll();
+    expect(renderer.effectQueue.some((e) => e.kind === "damageNumber" && e.at === 16)).toBe(true);
+    expect(sfx.calls.map((c) => c.key)).toContain("attack");
+  });
+
+  it("bodyguard ACCEPT plays the guard lunge (toward attacker) + damage on the guard", async () => {
+    eng.setNextView(makePositionView(
+      {
+        0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+        16: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+        17: { cell: cell({ hp: 2 }), owner: "p2", kind: "guard" },
+      },
+      0n,
+      { attackerSrc: 0, attackerNow: 0, targetSq: 16, eligible: [17] },
+    ));
+    await renderer.resyncFromEngine();
+    const guardId = renderer.pieceIds.get(17);
+    sfx.calls.length = 0;
+
+    // Choice = accept guard #1 (idx 1). Post: guard at 17 took 1 damage (2→1).
+    const raw = encodeBodyguardChoice(1);
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      16: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+      17: { cell: cell({ hp: 1 }), owner: "p2", kind: "guard" },
+    }, 3n));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+
+    const motion = renderer.pieceMotion.get(17); // guard rests on its own tile
+    expect(motion).toBeDefined();
+    expect(motion!.lungeReturnTo).toBe(0); // lunges toward attackerNow (a1)
+    expect(motion!.killLungeTo).toBe(null);
+    scheduler.fireAll();
+    expect(renderer.effectQueue.some((e) => e.kind === "damageNumber" && e.at === 17)).toBe(true);
+    expect(renderer.pieceIds.get(17)).toBe(guardId);
+  });
+
+  it("bodyguard ACCEPT where the guard dies: death sweep after the deferred settle", async () => {
+    eng.setNextView(makePositionView(
+      {
+        0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+        16: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+        17: { cell: cell({ hp: 1 }), owner: "p2", kind: "guard" },
+      },
+      0n,
+      { attackerSrc: 0, attackerNow: 0, targetSq: 16, eligible: [17] },
+    ));
+    await renderer.resyncFromEngine();
+    sfx.calls.length = 0;
+
+    // Accept; guard at 17 (1hp) dies → removed.
+    const raw = encodeBodyguardChoice(1);
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      16: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+    }, 3n));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+
+    scheduler.fireAll();
+    expect(sfx.calls.map((c) => c.key)).toContain("death");
+    // After the deferred settle, the dead guard's id is gone.
+    expect(renderer.pieceIds.get(17)).toBeUndefined();
+  });
+
+  // === Stack N strike-moves-caster ==========================================
+  // A Strike now steps the caster 1 tile toward the target after resolving.
+  // These guard against the "heal on the destination + damage on the origin"
+  // glitch: the mailbox diff is piece-identity-blind, so the caster's forced
+  // step must be extracted and rendered as a relocation, not an impact.
+
+  it("Strike point-blank kill: caster steps onto target tile, no heal, death fx on dest", async () => {
+    // Caster p1 champ at a1 (sq 0, 2hp+1armor) adjacent to p2 champ at a2
+    // (sq 8, 1hp). Lance (strike) kills it; caster steps 0 → 8 onto the
+    // vacated tile.
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      8: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },
+    }));
+    await renderer.resyncFromEngine();
+    const casterId = renderer.pieceIds.get(0);
+    expect(casterId).toBeDefined();
+    sfx.calls.length = 0;
+
+    const raw = encodeSkill({ src: 0, target: 8, skillId: 1 /* lance */ });
+    eng.setNextView(makePositionView({
+      8: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+    }, 7n));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+    scheduler.fireAll();
+
+    expect(renderer.effectQueue.some((e) => e.kind === "heal")).toBe(false);
+    expect(renderer.effectQueue.some((e) => e.kind === "impact" && e.at === 8)).toBe(true);
+    expect(sfx.calls.map((c) => c.key)).toContain("death");
+    expect(renderer.pieceIds.get(8)).toBe(casterId);
+    expect(renderer.pieceIds.get(0)).toBeUndefined();
+  });
+
+  it("Strike ranged non-kill: damage on target, caster relocates via dust, no heal", async () => {
+    // Caster p1 champ at a1 (sq 0) hits p2 champ at a3 (sq 16, 2hp) at range 2.
+    // Target survives (2→1); caster steps 0 → 8 (empty intermediate).
+    const casterId = renderer.pieceIds.get(0);
+    expect(casterId).toBeDefined();
+    sfx.calls.length = 0;
+
+    const raw = encodeSkill({ src: 0, target: 16, skillId: 3 /* break→ranged strike */ });
+    eng.setNextView(makePositionView({
+      8: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      16: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },
+    }, 9n));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+
+    // Target took damage while stayed → deferred (RELOC_DELAY_MS) path.
+    expect(scheduler.pendingCount()).toBeGreaterThan(0);
+    scheduler.fireAll();
+
+    expect(renderer.effectQueue.some((e) => e.kind === "impact" && e.at === 16)).toBe(true);
+    expect(renderer.effectQueue.some((e) => e.kind === "heal")).toBe(false);
+    expect(renderer.effectQueue.some((e) => e.kind === "dust")).toBe(true);
+    expect(renderer.pieceIds.get(8)).toBe(casterId);
+    expect(renderer.pieceIds.get(0)).toBeUndefined();
+  });
+
+  it("Strike point-blank non-kill: target survives, caster does NOT move", async () => {
+    // Caster p1 champ at a1 (sq 0) adjacent to p2 champ at a2 (sq 8, 2hp).
+    // Target survives (2→1); dest (sq 8) is still occupied → caster stays.
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      8: { cell: cell({ hp: 2 }), owner: "p2", kind: "champion" },
+    }));
+    await renderer.resyncFromEngine();
+    const casterId = renderer.pieceIds.get(0);
+    expect(casterId).toBeDefined();
+
+    const raw = encodeSkill({ src: 0, target: 8, skillId: 1 /* lance */ });
+    eng.setNextView(makePositionView({
+      0: { cell: cell({ hp: 2, armor: 1 }), owner: "p1", kind: "champion" },
+      8: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },
+    }, 11n));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+    scheduler.fireAll();
+
+    expect(renderer.pieceIds.get(0)).toBe(casterId);
+    expect(renderer.effectQueue.some((e) => e.kind === "impact" && e.at === 8)).toBe(true);
+    expect(renderer.effectQueue.some((e) => e.kind === "heal")).toBe(false);
   });
 
   it("EndPhase plays the phaseEnd sfx and yields lastApplied=null", async () => {

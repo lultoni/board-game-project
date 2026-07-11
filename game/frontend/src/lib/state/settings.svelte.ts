@@ -19,6 +19,9 @@ export interface Settings {
   showIllegalOwner: boolean;
   /** Projectile paths that are blocked by a friendly piece (red X). */
   showBlockedByFriendly: boolean;
+  /** Always-on: mark the tile edges from which a Champion/King is currently
+   *  protected by a friendly Guard (Bodyguard Rule). Teaching / legibility aid. */
+  showBodyguardCover: boolean;
   /** Master audio volume, 0..1. */
   audioVolume: number;
   /** UI language. Falls back to en when key missing. */
@@ -76,6 +79,7 @@ const DEFAULTS: Settings = {
   showProjectilePath: true,
   showIllegalOwner: false,
   showBlockedByFriendly: true,
+  showBodyguardCover: true,
   audioVolume: 0.6,
   locale: "en",
   p1ThinkTimeMs: 1000,
@@ -153,6 +157,7 @@ function validate(raw: unknown): Settings {
     showProjectilePath: pickBool(r.showProjectilePath, DEFAULTS.showProjectilePath),
     showIllegalOwner: pickBool(r.showIllegalOwner, DEFAULTS.showIllegalOwner),
     showBlockedByFriendly: pickBool(r.showBlockedByFriendly, DEFAULTS.showBlockedByFriendly),
+    showBodyguardCover: pickBool(r.showBodyguardCover, DEFAULTS.showBodyguardCover),
     audioVolume: pickClamped01(r.audioVolume, DEFAULTS.audioVolume),
     locale: pickLocale(r.locale, DEFAULTS.locale),
     p1ThinkTimeMs: pickFiniteNonNeg(r.p1ThinkTimeMs, DEFAULTS.p1ThinkTimeMs),
@@ -249,6 +254,7 @@ export function initSettingsPersistence() {
     void settings.showProjectilePath;
     void settings.showIllegalOwner;
     void settings.showBlockedByFriendly;
+    void settings.showBodyguardCover;
     void settings.audioVolume;
     void settings.locale;
     void settings.p1ThinkTimeMs;

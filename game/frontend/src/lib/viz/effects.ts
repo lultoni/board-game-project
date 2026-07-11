@@ -86,6 +86,12 @@ export type SkillEffect = {
      *  chain end tracks the pulled target rather than sticking on the
      *  original target square). */
     targetPostSq?: number;
+    /** Actual post-cast square of the *caster* (Stack N strike-moves-caster:
+     *  a Strike steps the caster 1 tile toward the target). When set and
+     *  different from `from`, the strike renderers animate their caster-end
+     *  from `from` → `casterPostSq` so lines/coins/bursts track the piece as
+     *  it slides. Undefined for skills that don't move the caster. */
+    casterPostSq?: number;
   };
 };
 

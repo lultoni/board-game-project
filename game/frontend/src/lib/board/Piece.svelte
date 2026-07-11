@@ -24,17 +24,14 @@
     /** When true, this piece belongs to the side whose turn is NOT current —
      *  suppress idle breathing so the active side reads as "alive". */
     dormant?: boolean;
-    /** When set, play a lunge-and-recoil animation by (dx, dy) SVG pixels.
-     *  dist=1: jab-and-back (2 segments). dist=2: step, step, back (3 segments).
-     *  Used for non-kill attacks: attacker rests at auxSq but visually lunges
-     *  toward the target and bounces back. */
-    lunge?: { dx: number; dy: number; dist: number } | null;
     /** Multi-hop walk descriptor. When present, replaces the CSS transition
      *  with a WAAPI keyframe animation stepping through each waypoint (with a
      *  small Y-bounce mid-hop). On kill, chains a final lunge into
-     *  `killLungeTo` and leaves the piece there. The piece's `piece.square`
-     *  is expected to already equal the last waypoint (state has flipped by
-     *  the time this arrives). */
+     *  `killLungeTo` and leaves the piece there; on a non-kill attack /
+     *  bodyguard intercept, `lungeReturnTo` leans toward the target then
+     *  recoils to the resting square. The piece's `piece.square` is expected
+     *  to already equal the last waypoint (state has flipped by the time this
+     *  arrives). */
     motion?: PieceMotion | null;
   }
 
@@ -47,7 +44,6 @@
     shake = false,
     effectsActive = false,
     dormant = false,
-    lunge = null,
     motion = null,
   }: Props = $props();
 
@@ -65,14 +61,6 @@
     overrideXY || !animate || slideDur === 0 || motion
       ? "none"
       : `transform ${slideDur}ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity ${Math.round(slideDur * 0.86)}ms ease, filter ${Math.round(slideDur * 0.86)}ms ease`,
-  );
-  // Lunge-recoil animation: fires after the slide has settled.
-  // dist-1: piece-lunge-1 — jab toward target, snap back. 2× slide duration.
-  // dist-2: piece-lunge-2 — step, step, snap back. 3× slide duration.
-  const lungeStyle = $derived(
-    lunge && slideDur > 0
-      ? `--lunge-dx:${lunge.dx}px;--lunge-dy:${lunge.dy}px;animation:${lunge.dist >= 2 ? "piece-lunge-2" : "piece-lunge-1"} ${slideDur * (lunge.dist >= 2 ? 3 : 2)}ms ease-in-out forwards`
-      : "",
   );
 
   // WAAPI walk driver. When `motion` becomes non-null, run a keyframe
@@ -92,7 +80,8 @@
     // Bounce amplitude — tuned to feel like a footfall, not a jump.
     const bounce = size * 0.045;
     const frames: Keyframe[] = [];
-    const totalHops = m.hops + (m.killLungeTo !== null ? 1 : 0);
+    const hasLunge = m.killLungeTo !== null || m.lungeReturnTo !== null;
+    const totalHops = m.hops + (hasLunge ? 1 : 0);
     if (totalHops === 0) return frames;
     // Walk segments: for each pair (waypoints[i], waypoints[i+1]) emit the
     // waypoint keyframe, plus a mid-hop keyframe with a -bounce offset. The
@@ -117,16 +106,18 @@
         });
       }
     }
-    // Kill-lunge: from last waypoint (approach) into killLungeTo (target).
-    // One extra hop's worth of duration. Choreographed as a lean-forward jab
-    // that partially overlaps the target square, holds briefly at the peak
-    // (this is when the defender is removed from the mailbox), then completes
-    // onto the now-empty target square. Reads as "punch → they fall → step in"
-    // rather than a straight teleport.
-    if (m.killLungeTo !== null) {
+    // Lunge segment — kill or non-kill:
+    //   kill (killLungeTo): from last waypoint (approach) into the target,
+    //     landing there and staying. "punch → they fall → step in".
+    //   non-kill (lungeReturnTo): lean ~55% toward the target then RETURN to
+    //     the last waypoint (the resting square). "jab → recoil". Same
+    //     anticipation/peak choreography; only the final frame differs.
+    const lungeTo = m.killLungeTo ?? m.lungeReturnTo;
+    if (lungeTo !== null) {
+      const isKill = m.killLungeTo !== null;
       const last = m.waypoints[m.waypoints.length - 1];
       const from = sqToXY(last);
-      const to = sqToXY(m.killLungeTo);
+      const to = sqToXY(lungeTo);
       // Anticipation frame: slight pull back (8% of vector, opposite direction).
       const dx = to.x - from.x;
       const dy = to.y - from.y;
@@ -139,7 +130,6 @@
       const anticipOffset = (m.hops + 0.10) / totalHops;
       const peakOffset = (m.hops + 0.40) / totalHops;
       const holdOffset = (m.hops + 0.55) / totalHops;
-      const impactOffset = 1;
       frames.push({
         transform: `translate(${anticipX}px, ${anticipY}px) scale(1)`,
         offset: anticipOffset,
@@ -152,9 +142,11 @@
         transform: `translate(${peakX}px, ${peakY}px) scale(1.06)`,
         offset: holdOffset,
       });
+      // Final frame: kill lands ON the target; non-kill returns to rest.
+      const endXY = isKill ? to : from;
       frames.push({
-        transform: `translate(${to.x}px, ${to.y}px) scale(1)`,
-        offset: impactOffset,
+        transform: `translate(${endXY.x}px, ${endXY.y}px) scale(1)`,
+        offset: 1,
       });
     }
     return frames;
@@ -167,7 +159,7 @@
     if (!motion || !gEl) return;
     const dur = untrack(() => slideDur);
     if (dur === 0) return;
-    const totalHops = motion.hops + (motion.killLungeTo !== null ? 1 : 0);
+    const totalHops = motion.hops + (motion.killLungeTo !== null || motion.lungeReturnTo !== null ? 1 : 0);
     if (totalHops === 0) return;
     const frames = buildKeyframes(motion);
     if (frames.length < 2) return;
@@ -301,10 +293,6 @@
       ? "\n" + skillNames.join(", ")
       : ""}
   </title>
-
-  <!-- Lunge wrapper: applies lunge-recoil animation independently of the
-       positional slide on the outer <g>. No-op when lungeStyle is empty. -->
-  <g class="lunge-wrap" style={lungeStyle}>
 
   <g
     class="body"
@@ -475,7 +463,6 @@
       >{piece.combo}</text>
     </g>
   {/if}
-  </g><!-- /lunge-wrap -->
 </g>
 
 <style>
@@ -525,35 +512,5 @@
     .piece .body {
       animation: none;
     }
-  }
-  /* Lunge-and-recoil animations. Fired after the positional slide settles.
-     Both use --lunge-dx / --lunge-dy set inline when lunge prop is active.
-
-     The lunge is a PARTIAL overlap: the attacker leans ~55% of the way into
-     the defender square (not fully occupying it) and grows slightly bigger
-     at the peak. That partial encroachment reads as a hit rather than a
-     positional replacement, and leaves visual room for the defender piece
-     to still be seen underneath.
-
-     dist-1: jab toward target, snap back.
-       Timeline: 0% resting → 45% at 55% of the vector (scaled up) → 100% resting.
-
-     dist-2: step out to halfway, lean further to ~55% of vector, snap back.
-       Timeline: 0% → 33% at 30% → 67% at 55% (scaled up) → 100% resting. */
-  .lunge-wrap {
-    /* default: no transform when not lunging */
-    transform-box: fill-box;
-    transform-origin: center;
-  }
-  @keyframes piece-lunge-1 {
-    0%   { transform: translate(0, 0) scale(1); }
-    45%  { transform: translate(calc(var(--lunge-dx, 0px) * 0.55), calc(var(--lunge-dy, 0px) * 0.55)) scale(1.08); }
-    100% { transform: translate(0, 0) scale(1); }
-  }
-  @keyframes piece-lunge-2 {
-    0%   { transform: translate(0, 0) scale(1); }
-    33%  { transform: translate(calc(var(--lunge-dx, 0px) * 0.30), calc(var(--lunge-dy, 0px) * 0.30)) scale(1.04); }
-    67%  { transform: translate(calc(var(--lunge-dx, 0px) * 0.55), calc(var(--lunge-dy, 0px) * 0.55)) scale(1.08); }
-    100% { transform: translate(0, 0) scale(1); }
   }
 </style>

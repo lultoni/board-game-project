@@ -331,7 +331,6 @@
               position={renderer.position}
               pieceIds={renderer.pieceIds}
               shakingSquares={renderer.shakingSquares}
-              lungeSquares={renderer.lungeSquares}
               pieceMotion={renderer.pieceMotion}
               lastApplied={lastAppliedDisplay}
               interactive={false}
