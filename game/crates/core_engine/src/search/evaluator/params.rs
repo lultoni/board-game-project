@@ -30,6 +30,11 @@ pub struct EvalParams {
     pub champ_skill_cov_per_enemy: i32,
     pub champ_skill_cov_cap:       i32,
     pub king_mob_per_sq:          i32,
+    /// Champion real movement-space (ns-43 Term 3a): reachable empty squares ×
+    /// this. Champions are speed-1. Mild positional value (skill-cast paths,
+    /// endgame maneuvering) — not the main event. The former champion
+    /// "mobility" (enemies-in-range) moved to the `champion_threat` term.
+    pub champ_mob_per_sq:         i32,
 
     // Exposure (E2).
     /// % of piece_val (÷100), indexed by min(unshielded_attackers, 3).
@@ -85,6 +90,7 @@ impl EvalParams {
         champ_skill_cov_per_enemy: 10,
         champ_skill_cov_cap:       60,
         king_mob_per_sq:           6,
+        champ_mob_per_sq:          4,  // ns-43 Term 3a: champion real movement-space.
 
         exposure_mult: [0, 10, 30, 55],
         king_exposure: [0, 800, 2400, 4000],

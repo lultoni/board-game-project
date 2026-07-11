@@ -294,15 +294,14 @@ mod tests {
     #[test]
     fn maxed_piece_formula() {
         // Pin the math for a lone P1 Champion HP=2 armor=2 skills=Tempest+Charge,
-        // no enemies, no money. Under E2..E8:
-        //   - mobility (E7) uses skill-range coverage; 0 enemies → mob=0
-        //   - skill_term (E4) gated by money=0; both Tempest (cost 4) and Charge (cost 3)
-        //     have money-cost+K ≤ 0 → availability=0 → skill_term=0
-        //   - exposure (E2) = 0 (no attackers)
-        //   - coverage (E6) = 0 (no adjacent guards)
-        //   - tempo (E8) skipped in Draft phase; empty position has no side_to_move
-        //     effect on tempo either — Draft.
-        // Result: pure material + hp + armor.
+        // no enemies, no money. Under the current terms:
+        //   - mobility (ns-43 Term 3a) = champion real movement-space: 8 empty
+        //     neighbours at d4 × champ_mob_per_sq.
+        //   - skill_term (E4) gated by money=0 → availability=0 → 0.
+        //   - champion_threat (Term 3b) — no enemies/allies in range → 0.
+        //   - exposure (E2) = 0 (no attackers); coverage (E6) = 0 (no guards).
+        //   - tempo (E8) skipped in Draft; offensive_range needs money → 0.
+        // Result: material + hp + armor + champion movement-space.
         let mut pos = Position::empty();
         place(&mut pos, 28, Player::P1, 1,
             MailboxEntry::default()
@@ -310,9 +309,11 @@ mod tests {
                 .with_armor(2)
                 .with_skill1(Skill::Tempest as u8)
                 .with_skill2(Skill::Charge as u8));
+        let champ_mob = 8 * EvalParams::DEFAULT.champ_mob_per_sq; // d4: 8 empty neighbours
         let expected = CHAMPION_VALUE
             + 2 * HP_PER_POINT
-            + 2 * ARMOR_PER_POINT;
+            + 2 * ARMOR_PER_POINT
+            + champ_mob;
         assert_eq!(evaluate(&pos), expected);
     }
 
@@ -390,8 +391,8 @@ mod tests {
         assert!(bs.squares[28].occupied);
         assert!(bs.squares[28].is_p1);
         assert!(bs.squares[28].n_attackers >= 1, "P2 Champion should threaten P1");
-        // Champion mobility_raw counts enemies in skill range; Lance range 2.
-        // P2 Champion at sq 29 is 1 square away → in range.
+        // Champion mobility_raw now counts REAL movement-space (ns-43 Term 3a):
+        // reachable empty neighbours. At e4 with only sq 29 occupied → 7 empties.
         assert!(bs.squares[28].mobility_raw >= 1);
         // Skill availability at p1_money=10: Lance cost 2, so availability=256 (max).
         assert_eq!(bs.squares[28].skill1_avail_fp, SKILL_AVAIL_MAX);
@@ -690,11 +691,11 @@ mod tests {
     fn golden_eval_unchanged() {        let expected: &[(&str, i32, EvalBreakdown)] = &[
             ("empty", 0, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 0 }),
             ("terminal_p1", 1000000, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 1000000 }),
-            ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 248, mobility_p2: 248, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 1800, coverage_p2: 1800, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
-            ("champ_diff_skills_money", 2226, EvalBreakdown { material_p1: 1000, material_p2: 1000, hp_p1: 300, hp_p2: 150, armor_p1: 240, armor_p2: 0, skills_p1: 290, skills_p2: 33, money_p1: 75, money_p2: 46, mobility_p1: 20, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 100, exposure_p2: 100, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 3, offensive_range_p2: 0, total: 2226 }),
-            ("exposure_coverage", 1472, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 120, skills_p2: 120, money_p1: 50, money_p2: 50, mobility_p1: 98, mobility_p2: 10, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 199, coverage_p2: 0, tempo_p1: 0, tempo_p2: 15, offensive_range_p1: 1, offensive_range_p2: 1, total: 1472 }),
-            ("king_exposure_mobility", -3325, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 40, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3325 }),
-            ("guard_mob_offensive_range", 3087, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 220, skills_p2: 120, money_p1: 112, money_p2: 75, mobility_p1: 90, mobility_p2: 20, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 150, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 4, offensive_range_p2: 1, total: 3087 }),
+            ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 264, mobility_p2: 264, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 1800, coverage_p2: 1800, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
+            ("champ_diff_skills_money", 2206, EvalBreakdown { material_p1: 1000, material_p2: 1000, hp_p1: 300, hp_p2: 150, armor_p1: 240, armor_p2: 0, skills_p1: 290, skills_p2: 33, money_p1: 75, money_p2: 46, mobility_p1: 28, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 100, exposure_p2: 100, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 3, offensive_range_p2: 0, total: 2206 }),
+            ("exposure_coverage", 1468, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 120, skills_p2: 120, money_p1: 50, money_p2: 50, mobility_p1: 112, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 199, coverage_p2: 0, tempo_p1: 0, tempo_p2: 15, offensive_range_p1: 1, offensive_range_p2: 1, total: 1468 }),
+            ("king_exposure_mobility", -3343, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 58, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3343 }),
+            ("guard_mob_offensive_range", 3097, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 220, skills_p2: 120, money_p1: 112, money_p2: 75, mobility_p1: 104, mobility_p2: 24, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 150, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 4, offensive_range_p2: 1, total: 3097 }),
         ];
 
         let suite = golden_suite();

@@ -16,7 +16,6 @@ use crate::state::Position;
 use crate::state::position::{GameResult, Player, Phase};
 use crate::state::magic;
 use crate::search::see::build_attackers_table;
-use crate::game_logic::skills::{skill_default_range, TargetOwner, skill_target_owner, skill_from_id};
 use super::MATE_SCORE;
 use super::params::EvalParams;
 use super::context::{
@@ -255,7 +254,6 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
         let skills_term = (sk1_base * sk1_a + sk2_base * sk2_a) / params.skill_avail_max;
 
         let own_bb = if is_p1 { p1_bb } else { p2_bb };
-        let opp_bb = if is_p1 { p2_bb } else { p1_bb };
 
         let (mob_score, mob_raw): (i32, u16) = if is_guard {
             let raw = magic::movement_targets_speed2(sq, all_occ).0.count_ones();
@@ -264,19 +262,11 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
             let raw = (magic::movement_targets_speed1(sq).0 & !own_bb).count_ones();
             (raw as i32 * params.king_mob_per_sq, raw as u16)
         } else {
-            let mut cov = 0i32;
-            let mut raw_enemies = 0u32;
-            for sid in [m.skill1(), m.skill2()] {
-                let Some(sk) = skill_from_id(sid) else { continue };
-                let owner = skill_target_owner(sk);
-                if !matches!(owner, TargetOwner::Enemy | TargetOwner::Either) { continue; }
-                let range = skill_default_range(sk);
-                let ray = magic::skill_attacks(sq, all_occ, range).0;
-                let hits = (ray & opp_bb).count_ones();
-                raw_enemies += hits;
-                cov += hits as i32 * params.champ_skill_cov_per_enemy;
-            }
-            (cov.min(params.champ_skill_cov_cap), raw_enemies as u16)
+            // Champion (ns-43 Term 3a): real movement-space (reachable empty
+            // squares), matching terms::Mobility. Enemy-coverage moved to the
+            // `champion_threat` term (not itemised in the per-square view yet).
+            let raw = (magic::movement_targets_speed1(sq).0 & !all_occ).count_ones();
+            (raw as i32 * params.champ_mob_per_sq, raw as u16)
         };
 
         let opp_attackers_bb = if is_p1 { atk.any_attackers_of(Player::P2, sq) }

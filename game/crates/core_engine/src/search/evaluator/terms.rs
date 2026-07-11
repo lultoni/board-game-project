@@ -7,7 +7,7 @@
 
 use crate::state::position::Player;
 use crate::state::magic;
-use crate::game_logic::skills::{skill_default_range, TargetOwner, skill_target_owner, skill_from_id};
+use crate::game_logic::skills::skill_from_id;
 use super::context::{EvalContext, king_expand, expand_n, useful_money, max_offensive_range};
 use super::term::{EvalTerm, PieceContext};
 
@@ -67,7 +67,6 @@ impl EvalTerm for Mobility {
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         let p = ctx.params;
         let own_bb = if pc.is_p1 { ctx.p1_bb } else { ctx.p2_bb };
-        let opp_bb = if pc.is_p1 { ctx.p2_bb } else { ctx.p1_bb };
         if pc.is_guard {
             magic::movement_targets_speed2(pc.sq, ctx.all_occ).0.count_ones() as i32
                 * p.guard_mob_per_sq
@@ -75,17 +74,12 @@ impl EvalTerm for Mobility {
             (magic::movement_targets_speed1(pc.sq).0 & !own_bb).count_ones() as i32
                 * p.king_mob_per_sq
         } else {
-            // Champion: skill-range coverage over enemies.
-            let mut cov = 0i32;
-            for sid in [pc.mailbox.skill1(), pc.mailbox.skill2()] {
-                let Some(sk) = skill_from_id(sid) else { continue };
-                let owner = skill_target_owner(sk);
-                if !matches!(owner, TargetOwner::Enemy | TargetOwner::Either) { continue; }
-                let range = skill_default_range(sk);
-                let ray = magic::skill_attacks(pc.sq, ctx.all_occ, range).0;
-                cov += (ray & opp_bb).count_ones() as i32 * p.champ_skill_cov_per_enemy;
-            }
-            cov.min(p.champ_skill_cov_cap)
+            // Champion (ns-43 Term 3a): REAL movement-space. Champions are
+            // speed-1; reward reachable empty squares (skill-cast path
+            // flexibility + endgame maneuvering). The former enemy-in-range
+            // "mobility" moved to the `champion_threat` term.
+            (magic::movement_targets_speed1(pc.sq).0 & !ctx.all_occ).count_ones() as i32
+                * p.champ_mob_per_sq
         }
     }
 }

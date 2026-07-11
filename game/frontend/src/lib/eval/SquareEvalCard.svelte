@@ -72,7 +72,7 @@
   function mobilityLabel(kind: number): string {
     switch (kind) {
       case 1: return "reachable (BFS-2)";
-      case 2: return "enemies in strike range";
+      case 2: return "reachable squares";
       case 3: return "adjacent escape squares";
       default: return "raw";
     }
