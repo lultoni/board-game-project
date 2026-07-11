@@ -634,8 +634,7 @@ mod tests {
     /// re-capture via the (restored) dump harness and update these literals in
     /// the SAME commit — never silently.
     #[test]
-    fn golden_eval_unchanged() {
-        let expected: &[(&str, i32, EvalBreakdown)] = &[
+    fn golden_eval_unchanged() {        let expected: &[(&str, i32, EvalBreakdown)] = &[
             ("empty", 0, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 0 }),
             ("terminal_p1", 1000000, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 1000000 }),
             ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 248, mobility_p2: 248, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 1800, coverage_p2: 1800, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
@@ -655,6 +654,27 @@ mod tests {
             // Per-square view must agree on the total (existing invariant, re-checked here).
             assert_eq!(evaluate_by_square(pos).total, *etotal,
                 "evaluate_by_square total mismatch for '{label}'");
+        }
+    }
+
+    /// Determinism guard (HARD requirement): the same position must produce the
+    /// exact same score on every call — no rand/Date, no order-dependent float
+    /// accumulation, no HashMap-iteration in scoring. Evaluate each golden
+    /// position many times and assert byte-identical `evaluate` + full
+    /// `EvalBreakdown` every time. Cheap insurance against a future term
+    /// accidentally introducing nondeterminism.
+    #[test]
+    fn eval_is_deterministic() {
+        let suite = golden_suite();
+        for (label, pos) in suite.iter() {
+            let first_total = evaluate(pos);
+            let first_bd = evaluate_breakdown(pos);
+            for _ in 0..64 {
+                assert_eq!(evaluate(pos), first_total,
+                    "evaluate() nondeterministic for '{label}'");
+                assert_eq!(evaluate_breakdown(pos), first_bd,
+                    "evaluate_breakdown() nondeterministic for '{label}'");
+            }
         }
     }
 }
