@@ -1,0 +1,567 @@
+//! Heuristic evaluation for terminal / time-out search nodes.
+//!
+//! Score convention: positive = P1 advantage, negative = P2 advantage.
+//! Win/loss are represented as ±(MATE_SCORE - depth_to_mate) so shorter wins
+//! score higher and the search prefers fast mates.
+//!
+//! ## ns-43 — term-registry architecture
+//!
+//! The evaluator is a **registry of independent, parameterised terms**
+//! ([`term::EvalTerm`]). [`registry::evaluate_dyn`] builds one
+//! [`context::EvalContext`], runs a single shared board pass for per-piece
+//! terms + side-level terms once, and returns a [`breakdown::DynBreakdown`]
+//! (only the *active* terms). The legacy fixed-field [`EvalBreakdown`] is a
+//! projection of that ([`breakdown::DynBreakdown::to_legacy`]) — kept because
+//! it is serialised to the frontend / telemetry / nn_trainer / search_bench.
+//!
+//! All tunable weights live in [`params::EvalParams`]; `EvalParams::DEFAULT`
+//! reproduces the pre-ns-43 constants exactly. The `golden_eval_unchanged`
+//! test enforces byte-identical output across the refactor.
+//!
+//! ============================================================
+//! Design philosophy (load-bearing — read before changing eval)
+//! ============================================================
+//!
+//! Source: designer's eval-function notes (Session 28 inbox, Perplexity
+//! transcript). These principles outlive any particular term set.
+//!
+//! 1. WIN/LOSS OVERRULES EVERYTHING.
+//!    Captured-King = ±MATE_SCORE. Checked before any term. Encoded as
+//!    ±(MATE_SCORE - depth) so a mate-in-2 scores higher than a mate-in-5.
+//! 2. "FASTEST PATH" LIVES IN THE SEARCH, NOT IN EVAL.
+//!    Eval scores the position as-is; tempo-to-resolution is search's job.
+//! 3. AFTER WIN/LOSS: COUNT REAL THINGS. Material first (pieces, HP, armor,
+//!    money, equipped skills). Must beat random play before anything fancier.
+//! 4. TWO ANGLES ON EVERY ADVANTAGE — TEMPO AND MONEY.
+//! 5. EVAL COST IS A FIRST-CLASS BUDGET. A cheap eval at depth 6 beats an
+//!    expensive one at depth 1. `is_active` gating (later pass) skips terms
+//!    that don't matter for the phase.
+//! 6. START STUPID. Material-only first; every later term proves itself against
+//!    that baseline.
+
+pub mod params;
+pub mod context;
+pub mod term;
+pub mod terms;
+pub mod registry;
+pub mod breakdown;
+
+use crate::state::Position;
+
+pub use params::EvalParams;
+pub use term::{EvalTerm, PieceContext};
+pub use context::EvalContext;
+pub use breakdown::{EvalBreakdown, EvalBreakdownBySquare, SquareBreakdown, DynBreakdown, TermEntry, evaluate_by_square};
+
+pub const MATE_SCORE: i32 = 1_000_000;
+
+// Const aliases to the default params, kept so the existing test module (and
+// any external callers) that referenced the old top-level consts compile
+// unchanged — and to make the faithful port self-evident. Only referenced from
+// the test module, so allow dead_code in non-test builds.
+#[cfg(test)] pub(crate) const CHAMPION_VALUE:  i32 = EvalParams::DEFAULT.champion_value;
+#[cfg(test)] pub(crate) const HP_PER_POINT:    i32 = EvalParams::DEFAULT.hp_per_point;
+#[cfg(test)] pub(crate) const ARMOR_PER_POINT: i32 = EvalParams::DEFAULT.armor_per_point;
+#[cfg(test)] pub(crate) const TEMPO_PER_ACTION: i32 = EvalParams::DEFAULT.tempo_per_action;
+#[cfg(test)] pub(crate) const SKILL_AVAIL_MAX: i32 = EvalParams::DEFAULT.skill_avail_max;
+
+/// Scalar P1-POV static eval. `+`=P1, `±MATE_SCORE` for terminals.
+pub fn evaluate(pos: &Position) -> i32 {
+    evaluate_breakdown(pos).total
+}
+
+/// Legacy fixed-field breakdown (projection of the dynamic registry output).
+pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
+    let params = EvalParams::DEFAULT;
+    let terms = registry::default_terms(&params);
+    registry::evaluate_dyn(pos, &terms, &params).to_legacy()
+}
+
+/// Dynamic breakdown (registry-native; only active terms). For tuning /
+/// future dynamic-panel consumers.
+pub fn evaluate_dyn(pos: &Position) -> DynBreakdown {
+    let params = EvalParams::DEFAULT;
+    let terms = registry::default_terms(&params);
+    registry::evaluate_dyn(pos, &terms, &params)
+}
+
+/// Position-rater interface. The search calls `evaluate` once per leaf; an
+/// `Evaluator` impl returns a P1-POV score (positive = P1, ±MATE_SCORE for
+/// terminals).
+///
+/// **Send-only** bound: the search is single-threaded but evaluators are owned
+/// by `Match` (one per AI seat) and moved between thread-pool tasks. Code that
+/// shares an evaluator across threads re-asserts `+ Sync` locally.
+pub trait Evaluator: Send {
+    fn evaluate(&self, pos: &Position) -> i32;
+    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown;
+}
+
+/// Zero-size wrapper around the free eval functions. Default evaluator.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HeuristicEvaluator;
+
+impl Evaluator for HeuristicEvaluator {
+    #[inline]
+    fn evaluate(&self, pos: &Position) -> i32 { evaluate(pos) }
+    #[inline]
+    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown { evaluate_breakdown(pos) }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{Bitboard, MailboxEntry, Position};
+    use crate::state::position::{GameResult, Player};
+    use crate::state::position::Phase;
+    use crate::game_logic::skills::Skill;
+
+    /// Place a piece on `sq` for `player` of `kind` (0=King, 1=Champion, 2=Guard)
+    /// with mailbox `entry`. Mirrors the structure of `make_unmake::tests::place`
+    /// (which is pub(super)-scoped and not reachable from here).
+    fn place(p: &mut Position, sq: u8, player: Player, kind: u8, entry: MailboxEntry) {
+        let bit = Bitboard::from_square(sq);
+        match player {
+            Player::P1 => p.p1_pieces = p.p1_pieces | bit,
+            Player::P2 => p.p2_pieces = p.p2_pieces | bit,
+        }
+        match kind {
+            0 => p.kings     = p.kings     | bit,
+            1 => p.champions = p.champions | bit,
+            _ => p.guards    = p.guards    | bit,
+        }
+        p.mailbox[sq as usize] = entry;
+    }
+
+    #[test]
+    fn empty_board_is_zero() {
+        let pos = Position::empty();
+        assert_eq!(evaluate(&pos), 0);
+    }
+
+    #[test]
+    fn terminal_p1_wins() {
+        let mut pos = Position::empty();
+        pos.game_result = Some(GameResult::P1Wins);
+        assert_eq!(evaluate(&pos), MATE_SCORE);
+    }
+
+    #[test]
+    fn terminal_p2_wins() {
+        let mut pos = Position::empty();
+        pos.game_result = Some(GameResult::P2Wins);
+        assert_eq!(evaluate(&pos), -MATE_SCORE);
+    }
+
+    #[test]
+    fn terminal_overrules_material() {
+        // Place a P2 Champion (which would give P1 a negative material score)
+        // but set game_result = P1Wins. Terminal must short-circuit the loop
+        // and return exactly +MATE_SCORE.
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        pos.game_result = Some(GameResult::P1Wins);
+        assert_eq!(evaluate(&pos), MATE_SCORE);
+    }
+
+    #[test]
+    fn mirrored_single_champion_is_zero() {
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 63, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        assert_eq!(evaluate(&pos), 0);
+    }
+
+    #[test]
+    fn hp_differential() {
+        // P1 Champion HP=2 vs P2 Champion HP=1, no armor, no skills.
+        // Differential is exactly HP_PER_POINT.
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 63, Player::P2, 1, MailboxEntry::default().with_hp(1));
+        assert_eq!(evaluate(&pos), HP_PER_POINT);
+    }
+
+    #[test]
+    fn armor_differential() {
+        // P1 Champion armor=1 vs P2 Champion armor=0, identical otherwise.
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2).with_armor(1));
+        place(&mut pos, 63, Player::P2, 1, MailboxEntry::default().with_hp(2).with_armor(0));
+        assert_eq!(evaluate(&pos), ARMOR_PER_POINT);
+    }
+
+    #[test]
+    fn money_differential() {
+        // E3: money value requires owned skills (cap = max_skill_cost × actions).
+        // Give both sides an identical piece so both have a skill_cost baseline,
+        // but different money. Differential must be positive when P1 has more.
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        place(&mut pos, 63, Player::P2, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        pos.p1_money = 10;
+        pos.p2_money = 4;
+        pos.actions_remaining = 2;
+        pos.current_phase = Phase::Move;
+        // With cap = 2 (Lance cost) × 2 (actions) = 4, both sides plateau at
+        // MONEY_PER_UNIT × cap / 2 = 50 each — but P2 is under cap so gets less
+        // than the plateau. P1 differential should be non-negative and small.
+        // The load-bearing invariant: score should be non-negative and reflect
+        // P1's money advantage.
+        assert!(evaluate(&pos) >= 0, "P1 money advantage should not be negative");
+    }
+
+    #[test]
+    fn money_symmetric_when_equal() {
+        // Two symmetric pieces + equal money → material terms cancel.
+        // With actions_remaining=0 the tempo term (E8) is also 0, so total=0.
+        let mut pos = Position::empty();
+        place(&mut pos, 0,  Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        place(&mut pos, 63, Player::P2, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        pos.p1_money = 5;
+        pos.p2_money = 5;
+        pos.actions_remaining = 0;
+        assert_eq!(evaluate(&pos), 0);
+    }
+
+    #[test]
+    fn skill_equipped_beats_unequipped() {
+        // P1 Champion with Lance equipped vs P2 Champion bare. Assert P1 > P2
+        // (skill contributes positively) rather than the raw skill_value
+        // (E4 gates by availability, so exact value depends on money).
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        place(&mut pos, 63, Player::P2, 1,
+            MailboxEntry::default().with_hp(2));
+        // Money high enough that Lance availability saturates.
+        pos.p1_money = 20;
+        pos.p2_money = 20;
+        pos.actions_remaining = 2;
+        assert!(evaluate(&pos) > 0);
+    }
+
+    #[test]
+    fn stack_m_setup_is_zero() {
+        // Canonical start: identical material on both sides, 6 money each.
+        // Under E8 (tempo), P1-to-move contributes +TEMPO_PER_ACTION * 2 = +30;
+        // material/skills/money/mobility/exposure/coverage are perfectly mirrored
+        // and cancel. So the invariant is: score == tempo bonus for the moving side.
+        let pos = Position::setup_stack_m();
+        assert_eq!(evaluate(&pos), TEMPO_PER_ACTION * pos.actions_remaining as i32);
+    }
+
+    #[test]
+    fn sign_convention_p1_positive_p2_negative() {
+        // A lone P1 Champion → positive score.
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        assert!(evaluate(&pos) > 0);
+
+        // Symmetric: a lone P2 Champion → negative.
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        assert!(evaluate(&pos) < 0);
+    }
+
+    #[test]
+    fn additivity() {
+        // Build three positions:
+        //   A: P1 +1 HP advantage (P1 HP=2, P2 HP=1, no armor)
+        //   B: P1 +1 armor advantage (HP=2 both, P1 armor=1, P2 armor=0)
+        //   AB: both effects combined
+        // Assert evaluate(AB) == evaluate(A) + evaluate(B).
+        let mut a = Position::empty();
+        place(&mut a, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut a, 63, Player::P2, 1, MailboxEntry::default().with_hp(1));
+
+        let mut b = Position::empty();
+        place(&mut b, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2).with_armor(1));
+        place(&mut b, 63, Player::P2, 1, MailboxEntry::default().with_hp(2));
+
+        let mut ab = Position::empty();
+        place(&mut ab, 0,  Player::P1, 1, MailboxEntry::default().with_hp(2).with_armor(1));
+        place(&mut ab, 63, Player::P2, 1, MailboxEntry::default().with_hp(1));
+
+        assert_eq!(evaluate(&ab), evaluate(&a) + evaluate(&b));
+    }
+
+    #[test]
+    fn maxed_piece_formula() {
+        // Pin the math for a lone P1 Champion HP=2 armor=2 skills=Tempest+Charge,
+        // no enemies, no money. Under E2..E8:
+        //   - mobility (E7) uses skill-range coverage; 0 enemies → mob=0
+        //   - skill_term (E4) gated by money=0; both Tempest (cost 4) and Charge (cost 3)
+        //     have money-cost+K ≤ 0 → availability=0 → skill_term=0
+        //   - exposure (E2) = 0 (no attackers)
+        //   - coverage (E6) = 0 (no adjacent guards)
+        //   - tempo (E8) skipped in Draft phase; empty position has no side_to_move
+        //     effect on tempo either — Draft.
+        // Result: pure material + hp + armor.
+        let mut pos = Position::empty();
+        place(&mut pos, 28, Player::P1, 1,
+            MailboxEntry::default()
+                .with_hp(2)
+                .with_armor(2)
+                .with_skill1(Skill::Tempest as u8)
+                .with_skill2(Skill::Charge as u8));
+        let expected = CHAMPION_VALUE
+            + 2 * HP_PER_POINT
+            + 2 * ARMOR_PER_POINT;
+        assert_eq!(evaluate(&pos), expected);
+    }
+
+    #[test]
+    fn asymmetric_kings_no_panic() {
+        // Malformed: P2 has a king, P1 doesn't, but game_result is None.
+        // Eval must return a finite i32 without panicking.
+        let mut pos = Position::empty();
+        place(&mut pos, 4, Player::P2, 0, MailboxEntry::default().with_hp(2));
+        // game_result stays None.
+        let s = evaluate(&pos);
+        // We don't assert a specific value — just that it computed.
+        // KING_MATERIAL is 0, so the king contributes only its HP. P1 has nothing.
+        // The point is: no panic, no overflow.
+        assert!(s > i32::MIN && s < i32::MAX);
+    }
+
+    #[test]
+    fn evaluate_by_square_matches_breakdown_stack_m() {
+        // Invariant: the per-square view must sum to the same total as the
+        // aggregate breakdown for the canonical Stack M opening position.
+        let pos = Position::setup_stack_m();
+        let bd = evaluate_breakdown(&pos);
+        let bs = evaluate_by_square(&pos);
+        assert_eq!(bd.total, bs.total, "total mismatch");
+    }
+
+    #[test]
+    fn evaluate_by_square_matches_breakdown_asymmetric() {
+        // A P1 Champion adjacent to a P2 Guard, no other pieces — exercises
+        // exposure, coverage, mobility on both sides.
+        let mut pos = Position::empty();
+        place(&mut pos, 28, Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_armor(1)
+                .with_skill1(crate::game_logic::skills::Skill::Lance as u8));
+        place(&mut pos, 29, Player::P2, 2, MailboxEntry::default().with_hp(1));
+        pos.p1_money = 4;
+        pos.p2_money = 2;
+        pos.actions_remaining = 2;
+        pos.current_phase = Phase::Move;
+        pos.to_move = Player::P1;
+        let bd = evaluate_breakdown(&pos);
+        let bs = evaluate_by_square(&pos);
+        assert_eq!(bd.total, bs.total, "total mismatch");
+    }
+
+    #[test]
+    fn evaluate_by_square_terminal_p1_wins() {
+        let mut pos = Position::empty();
+        pos.game_result = Some(GameResult::P1Wins);
+        let bs = evaluate_by_square(&pos);
+        assert_eq!(bs.total, MATE_SCORE);
+        assert!(bs.terminal);
+        // All per-square records must be zero — mirrors evaluate_breakdown's
+        // terminal short-circuit.
+        for s in bs.squares.iter() {
+            assert!(!s.occupied);
+            assert_eq!(s.piece_total, 0);
+        }
+    }
+
+    #[test]
+    fn evaluate_by_square_records_intermediates() {
+        // P1 Champion at e4 (sq 28) with P2 Champion at f4 (sq 29) attacking it.
+        // Assert intermediate values populated: attacker count, mobility raw.
+        let mut pos = Position::empty();
+        place(&mut pos, 28, Player::P1, 1,
+            MailboxEntry::default().with_hp(2)
+                .with_skill1(crate::game_logic::skills::Skill::Lance as u8));
+        place(&mut pos, 29, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        pos.p1_money = 10;
+        pos.p2_money = 10;
+        let bs = evaluate_by_square(&pos);
+        // The P1 Champion at sq 28 sees P2 Champion at sq 29 as an attacker.
+        assert!(bs.squares[28].occupied);
+        assert!(bs.squares[28].is_p1);
+        assert!(bs.squares[28].n_attackers >= 1, "P2 Champion should threaten P1");
+        // Champion mobility_raw counts enemies in skill range; Lance range 2.
+        // P2 Champion at sq 29 is 1 square away → in range.
+        assert!(bs.squares[28].mobility_raw >= 1);
+        // Skill availability at p1_money=10: Lance cost 2, so availability=256 (max).
+        assert_eq!(bs.squares[28].skill1_avail_fp, SKILL_AVAIL_MAX);
+    }
+
+    #[test]
+    fn coverage_requires_dual_adjacency_to_defender_and_ring_square() {
+        // Regression: E6 coverage previously counted an empty ring square `s`
+        // as shielded if *any* own Guard sat adjacent to `s`, even when that
+        // Guard was NOT adjacent to the defender. Bodyguard only triggers when
+        // a friendly Guard is adjacent to BOTH the defender and the attacker's
+        // approach square, so a distant Guard cannot contribute to coverage.
+
+        // Case A: Guard at c3 (sq 18) is NOT adjacent to defender at e4 (sq 28)
+        // — chebyshev distance 2. Coverage MUST be 0.
+        let mut pos = Position::empty();
+        place(&mut pos, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 18, Player::P1, 2, MailboxEntry::default().with_hp(2));
+        let bs = evaluate_by_square(&pos);
+        assert_eq!(bs.squares[28].empty_ring_shielded, 0,
+            "guard at sq 18 is not adjacent to defender at sq 28; coverage must be 0");
+
+        // Case B: Guard at f4 (sq 29) IS adjacent to defender at e4 (sq 28).
+        // Its ring is {sq 20, 21, 22, 28, 30, 36, 37, 38}. Intersecting with
+        // defender's empty ring {19,20,21,27,35,36,37} yields {20, 21, 36, 37}
+        // = 4 shielded squares out of 7 empty (sq 29 is occupied by the guard).
+        let mut pos2 = Position::empty();
+        place(&mut pos2, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos2, 29, Player::P1, 2, MailboxEntry::default().with_hp(2));
+        let bs2 = evaluate_by_square(&pos2);
+        assert_eq!(bs2.squares[28].empty_ring_total, 7, "1 of 8 ring squares occupied");
+        assert_eq!(bs2.squares[28].empty_ring_shielded, 4,
+            "guard at sq 29 shields the 4 empty ring squares also adjacent to it");
+    }
+
+    // ============================================================
+    // Golden-equality suite (ns-43 refactor safety net).
+    //
+    // A fixed set of labelled positions exercising every eval term. The
+    // `golden_eval_unchanged` test asserts `evaluate()` and the full
+    // per-field `EvalBreakdown` match hand-captured expected values. The
+    // ns-43 term-registry refactor is behaviour-preserving iff this test
+    // still passes byte-for-byte afterwards. NO Date/rand — fixed positions
+    // only, so the goldens are deterministic and reproducible.
+    // ============================================================
+
+    /// Build the labelled golden suite. Each entry: (label, position).
+    /// Chosen to cover: terminal, material/hp/armor, skills+money (E4/E3),
+    /// mobility (E7: guard/king/champion variants), exposure (E2 + king),
+    /// coverage (E6), tempo (E8), offensive-range (E9), and the canonical
+    /// Stack M opening (all terms mirrored).
+    fn golden_suite() -> Vec<(&'static str, Position)> {
+        let mut suite: Vec<(&'static str, Position)> = Vec::new();
+
+        // 1. Empty board.
+        suite.push(("empty", Position::empty()));
+
+        // 2. Terminal P1 wins (short-circuit).
+        {
+            let mut p = Position::empty();
+            place(&mut p, 0, Player::P2, 1, MailboxEntry::default().with_hp(2));
+            p.game_result = Some(GameResult::P1Wins);
+            suite.push(("terminal_p1", p));
+        }
+
+        // 3. Canonical opening layout (the `setup_stack_m` constructor is the
+        //    standard start position; its name is a historical artefact — the
+        //    layout is unchanged under Stack N).
+        suite.push(("opening", Position::setup_stack_m()));
+
+        // 4. HP + armor + skill differential with money (E3/E4).
+        {
+            let mut p = Position::empty();
+            place(&mut p, 28, Player::P1, 1,
+                MailboxEntry::default().with_hp(2).with_armor(2)
+                    .with_skill1(Skill::Lance as u8).with_skill2(Skill::Shove as u8));
+            place(&mut p, 35, Player::P2, 1,
+                MailboxEntry::default().with_hp(1).with_armor(0)
+                    .with_skill1(Skill::Focus as u8));
+            p.p1_money = 12;
+            p.p2_money = 3;
+            p.actions_remaining = 2;
+            p.current_phase = Phase::Move;
+            p.to_move = Player::P1;
+            p.round_number = 6;
+            suite.push(("champ_diff_skills_money", p));
+        }
+
+        // 5. Exposure + coverage: P1 champ flanked by a P2 champ, with a P1
+        //    guard shielding it. Exercises E2 (exposure) and E6 (coverage).
+        {
+            let mut p = Position::empty();
+            place(&mut p, 28, Player::P1, 1, MailboxEntry::default().with_hp(2)
+                .with_skill1(Skill::Lance as u8));
+            place(&mut p, 29, Player::P1, 2, MailboxEntry::default().with_hp(2)); // shielding guard
+            place(&mut p, 27, Player::P2, 1, MailboxEntry::default().with_hp(2)
+                .with_skill1(Skill::Lance as u8)); // attacker
+            p.p1_money = 6;
+            p.p2_money = 6;
+            p.actions_remaining = 1;
+            p.current_phase = Phase::Move;
+            p.to_move = Player::P2;
+            p.round_number = 8;
+            suite.push(("exposure_coverage", p));
+        }
+
+        // 6. King exposure + king mobility (E2 king curve, E7 king escape).
+        {
+            let mut p = Position::empty();
+            place(&mut p, 4, Player::P1, 0, MailboxEntry::default().with_hp(2)); // P1 king
+            place(&mut p, 12, Player::P2, 1, MailboxEntry::default().with_hp(2)
+                .with_skill1(Skill::Hook as u8)); // threatens king
+            place(&mut p, 60, Player::P2, 0, MailboxEntry::default().with_hp(2)); // P2 king (well-formed)
+            p.p1_money = 4;
+            p.p2_money = 8;
+            p.actions_remaining = 2;
+            p.current_phase = Phase::Move;
+            p.to_move = Player::P1;
+            p.round_number = 10;
+            suite.push(("king_exposure_mobility", p));
+        }
+
+        // 7. Guard mobility (E7 guard BFS-2) + offensive-range (E9).
+        {
+            let mut p = Position::empty();
+            place(&mut p, 27, Player::P1, 2, MailboxEntry::default().with_hp(2)); // free guard, high BFS-2
+            place(&mut p, 28, Player::P1, 1, MailboxEntry::default().with_hp(2)
+                .with_skill1(Skill::Shove as u8).with_skill2(Skill::Focus as u8)); // reach 3 + focus
+            place(&mut p, 36, Player::P2, 1, MailboxEntry::default().with_hp(2)
+                .with_skill1(Skill::Lance as u8)); // reach 2
+            p.p1_money = 10;
+            p.p2_money = 10;
+            p.actions_remaining = 2;
+            p.current_phase = Phase::Move;
+            p.to_move = Player::P1;
+            p.round_number = 12;
+            suite.push(("guard_mob_offensive_range", p));
+        }
+
+        suite
+    }
+
+    /// Golden-equality: `evaluate_breakdown` must return exactly these
+    /// per-field values on the fixed suite. Captured from the pre-ns-43 flat
+    /// evaluator; the term-registry refactor is behaviour-preserving iff this
+    /// still passes byte-for-byte. If a deliberate eval change lands later,
+    /// re-capture via the (restored) dump harness and update these literals in
+    /// the SAME commit — never silently.
+    #[test]
+    fn golden_eval_unchanged() {
+        let expected: &[(&str, i32, EvalBreakdown)] = &[
+            ("empty", 0, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 0 }),
+            ("terminal_p1", 1000000, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 1000000 }),
+            ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 248, mobility_p2: 248, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 1800, coverage_p2: 1800, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
+            ("champ_diff_skills_money", 2226, EvalBreakdown { material_p1: 1000, material_p2: 1000, hp_p1: 300, hp_p2: 150, armor_p1: 240, armor_p2: 0, skills_p1: 290, skills_p2: 33, money_p1: 75, money_p2: 46, mobility_p1: 20, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 100, exposure_p2: 100, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 3, offensive_range_p2: 0, total: 2226 }),
+            ("exposure_coverage", 1472, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 120, skills_p2: 120, money_p1: 50, money_p2: 50, mobility_p1: 98, mobility_p2: 10, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 199, coverage_p2: 0, tempo_p1: 0, tempo_p2: 15, offensive_range_p1: 1, offensive_range_p2: 1, total: 1472 }),
+            ("king_exposure_mobility", -3325, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 40, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3325 }),
+            ("guard_mob_offensive_range", 3087, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 220, skills_p2: 120, money_p1: 112, money_p2: 75, mobility_p1: 90, mobility_p2: 20, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 150, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 4, offensive_range_p2: 1, total: 3087 }),
+        ];
+
+        let suite = golden_suite();
+        assert_eq!(suite.len(), expected.len(), "suite/expected length mismatch");
+        for ((label, pos), (elabel, etotal, ebd)) in suite.iter().zip(expected.iter()) {
+            assert_eq!(label, elabel, "suite ordering mismatch");
+            let got = evaluate_breakdown(pos);
+            assert_eq!(&got, ebd, "EvalBreakdown mismatch for '{label}'");
+            assert_eq!(evaluate(pos), *etotal, "evaluate() total mismatch for '{label}'");
+            // Per-square view must agree on the total (existing invariant, re-checked here).
+            assert_eq!(evaluate_by_square(pos).total, *etotal,
+                "evaluate_by_square total mismatch for '{label}'");
+        }
+    }
+}
