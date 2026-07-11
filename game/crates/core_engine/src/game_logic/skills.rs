@@ -93,7 +93,7 @@ pub fn skill_cost(s: Skill) -> u8 {
         Skill::Shove   => 3,
         Skill::Swap    => 4,
         Skill::Retreat => 4,
-        Skill::Focus   => 1,
+        Skill::Focus   => 2, // Stack N (staged S45): 1→2. See stacks.body id='stack-n'.
         Skill::Charge  => 3,
     }
 }
@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(skill_cost(Skill::Shove),   3);
         assert_eq!(skill_cost(Skill::Swap),    4);
         assert_eq!(skill_cost(Skill::Retreat), 4);
-        assert_eq!(skill_cost(Skill::Focus),   1);
+        assert_eq!(skill_cost(Skill::Focus),   2); // Stack N (staged S45): 1→2.
         assert_eq!(skill_cost(Skill::Charge),  3);
     }
 

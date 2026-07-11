@@ -13,7 +13,7 @@ import de from "$lib/i18n/de.json";
 // Mirror the key lists HelpModal iterates.
 const RULE_KEYS = [
   "goal", "rounds", "move", "moveAttack", "health", "armor",
-  "skillPhase", "money", "path", "bodyguard", "drafting", "progression",
+  "skillPhase", "money", "path", "strikeMove", "bodyguard", "drafting", "progression",
 ] as const;
 const CONTROL_KEYS = ["select", "wheel", "end", "undo", "sandbox"] as const;
 

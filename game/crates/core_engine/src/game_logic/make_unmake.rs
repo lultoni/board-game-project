@@ -237,6 +237,15 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) -> boo
     debug_assert!(pos.pending_bodyguard.is_none(),
         "Move-Attack applied while a Bodyguard choice was already pending");
 
+    // Stack N (staged S45): cap Move-Attacks at 1 per turn. Set the turn-scoped
+    // flag now, before the tentative/direct split — a tentative (bodyguard-
+    // pending) apply has already committed the move-attack action, so it counts.
+    // Idempotent: the generator suppresses a second move-attack, so this bit is
+    // normally unset here; add_pending is a no-op if it's already set.
+    if pos.pending_modifiers & modifier_bits::MOVE_ATTACK_USED == 0 {
+        add_pending(pos, undo, modifier_bits::MOVE_ATTACK_USED);
+    }
+
     // Bodyguard eligibility decides whether this is a tentative or direct apply.
     let bg_guards = super::generator::bodyguard_guards_for(pos, tgt, approach);
 
@@ -545,6 +554,7 @@ fn apply_lance(pos: &mut Position, action: Action, undo: &mut Undo) {
     let tgt = action.target();
     apply_strike_damage(pos, src, tgt, /*base=*/ 1, undo);
     debit_money(pos, src, /*cost=*/ 2, undo);
+    strike_move_caster(pos, src, tgt, undo); // Stack N (staged S45)
     dec_actions(pos, undo);
 }
 
@@ -581,6 +591,7 @@ fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
     if dmg > 0 { deal_damage(pos, tgt, dmg, undo); }
 
     debit_money(pos, src, /*cost=*/ 2, undo);
+    strike_move_caster(pos, src, tgt, undo); // Stack N (staged S45)
     dec_actions(pos, undo);
 }
 
@@ -595,6 +606,7 @@ fn apply_steal(pos: &mut Position, action: Action, undo: &mut Undo) {
     };
     transfer_money(pos, from_p, to_p, /*amount=*/ 1, undo);
     debit_money(pos, src, /*cost=*/ 4, undo);
+    strike_move_caster(pos, src, tgt, undo); // Stack N (staged S45)
     dec_actions(pos, undo);
 }
 
@@ -611,6 +623,7 @@ fn apply_hook(pos: &mut Position, action: Action, undo: &mut Undo) {
         }
     }
     debit_money(pos, src, /*cost=*/ 3, undo);
+    strike_move_caster(pos, src, tgt, undo); // Stack N (staged S45)
     dec_actions(pos, undo);
 }
 
@@ -637,6 +650,7 @@ fn apply_tempest(pos: &mut Position, action: Action, undo: &mut Undo) {
     }
 
     debit_money(pos, src, /*cost=*/ 4, undo);
+    strike_move_caster(pos, src, tgt, undo); // Stack N (staged S45)
     dec_actions(pos, undo);
 }
 
@@ -872,7 +886,7 @@ fn apply_focus(pos: &mut Position, action: Action, undo: &mut Undo) {
         "generator emitted Focus while Focus already pending — illegal per Stack-M"
     );
     add_pending(pos, undo, modifier_bits::FOCUS);
-    debit_money(pos, src, /*cost=*/ 1, undo);
+    debit_money(pos, src, /*cost=*/ 2, undo); // Stack N (staged S45): Focus 1→2.
     dec_actions(pos, undo);
 }
 
@@ -1000,6 +1014,38 @@ fn ensure_tracked_caster(pos: &mut Position, sq: u8) -> u8 {
     pos.tracked_casters[i as usize] = sq;
     pos.tracked_casters_len += 1;
     i
+}
+
+/// Stack N (staged S45): strike-moves-caster. After a Strike skill's damage +
+/// effect have fully resolved, the caster steps 1 tile toward the (former)
+/// target along the cast direction, IFF that destination tile is now empty.
+///
+/// Single uniform rule — call this as the LAST spatial step of each Strike
+/// resolver, after the effect + money debit. Reads live occupancy so all the
+/// documented consequences fall out automatically:
+///   - point-blank (adjacent) NON-kill → dest is the target tile, still
+///     occupied by the survivor → no move.
+///   - point-blank kill → target tile vacated → caster steps onto it.
+///   - ranged strike → dest is the intermediate tile (empty, since the skill
+///     Path reached the target) → caster steps 1 tile toward target.
+///   - Hook pulling the target onto the caster-adjacent tile (survivor) → dest
+///     occupied → no move; if the target died, dest empties → caster steps.
+///
+/// The caster always steps *toward* the target (never off-board, since the
+/// target is on-board), so the only no-move cases are `dest` occupied or the
+/// degenerate caster==target (never happens for a real ranged strike).
+/// `relocate_piece` records all deltas into `undo`, so `unmake` reverses this
+/// step for free — no new Undo field required.
+///
+/// Returns the caster's final square (unchanged if no move happened).
+fn strike_move_caster(pos: &mut Position, caster_sq: u8, target_sq: u8, undo: &mut Undo) -> u8 {
+    // Defensive: no current Strike removes its own caster, but guard anyway.
+    if !pos.is_occupied(caster_sq) { return caster_sq; }
+    let Some(dest) = magic::step_toward(caster_sq, target_sq) else { return caster_sq };
+    if dest == caster_sq { return caster_sq; }
+    if pos.is_occupied(dest) { return caster_sq; }
+    relocate_piece(pos, caster_sq, dest, undo);
+    dest
 }
 
 /// Move a piece from `from` to `to`. Mailbox copy, bitboard XOR across every
@@ -2373,9 +2419,13 @@ mod tests {
         let snapshot = pos.clone();
 
         let undo = make(&mut pos, skill_action(28, 36, Skill::Lance));
-        assert!(!pos.is_occupied(36), "target removed at HP 0");
-        assert!(!pos.p2_pieces.contains(36));
-        assert!(!pos.champions.contains(36));
+        // Target (P2) removed at HP 0. Stack N (staged S45): this is a
+        // point-blank kill, so the caster steps onto the vacated tile —
+        // 36 is now occupied by the P1 caster, not empty.
+        assert!(!pos.p2_pieces.contains(36), "target removed at HP 0");
+        assert!(!pos.champions.contains(28), "caster left its origin (strike-moves-caster)");
+        assert!(pos.p1_pieces.contains(36), "caster took the vacated square");
+        assert!(pos.champions.contains(36));
 
         unmake(&mut pos, &undo);
         assert!(pos_eq(&snapshot, &pos));
@@ -2571,8 +2621,11 @@ mod tests {
         let snapshot = pos.clone();
 
         let undo = make(&mut pos, skill_action(28, 44, Skill::Hook));
-        assert!(!pos.is_occupied(44));
-        assert!(!pos.is_occupied(36), "no pull because target removed");
+        assert!(!pos.is_occupied(44), "target removed, nothing pulled");
+        // Stack N (staged S45): the kill vacated the target tile, so the caster
+        // steps 1 tile toward it — from e4 (28) to the intermediate e5 (36).
+        assert!(!pos.champions.contains(28), "caster left origin");
+        assert!(pos.p1_pieces.contains(36), "caster stepped to e5");
 
         unmake(&mut pos, &undo);
         assert!(pos_eq(&snapshot, &pos));
@@ -2888,8 +2941,12 @@ mod tests {
         // A→T again: returning at counter 2 → +(2-1)=+1. base 1 + 1 = 2 dmg.
         // counter stays 2. armor 0, hp 1→ removed (2 dmg on 1 hp).
         let _ = make(&mut pos, skill_action(18, 27, Skill::Lance));
-        assert!(!pos.is_occupied(27),
+        // Target (P2) removed. Stack N (staged S45): this is a point-blank kill,
+        // so caster A steps onto the vacated tile 27 — assert the target is gone
+        // via the P2 bitboard rather than square-emptiness.
+        assert!(!pos.p2_pieces.contains(27),
                 "A returning at counter 2 deals base 1 + bonus 1 = 2, removing the 1-hp target");
+        assert!(pos.p1_pieces.contains(27), "caster A took the vacated square");
     }
 
     #[test]
@@ -2986,7 +3043,10 @@ mod tests {
         let snapshot = pos.clone();
 
         let undo = make(&mut pos, skill_action(28, 36, Skill::Lance));
-        assert!(!pos.is_occupied(36));
+        // King removed → game over. Stack N (staged S45): the point-blank kill
+        // also steps the caster onto the vacated King tile; assert the King is
+        // gone via the kings bitboard rather than square-emptiness.
+        assert!(!pos.kings.contains(36), "enemy King removed");
         assert_eq!(pos.game_result, Some(GameResult::P1Wins));
 
         unmake(&mut pos, &undo);
@@ -3681,7 +3741,7 @@ mod tests {
         let _ = make(&mut pos, skill_action(28, 28, Skill::Focus));
         assert_ne!(pos.pending_modifiers & modifier_bits::FOCUS, 0);
         assert_eq!(pos.actions_remaining, 1);
-        assert_eq!(pos.p1_money, pre_money - 1);
+        assert_eq!(pos.p1_money, pre_money - 2); // Stack N (staged S45): Focus 1→2
     }
 
     #[test]
@@ -3729,7 +3789,10 @@ mod tests {
         // so this removes it.
         equip(&mut pos, 28, Skill::Lance as u8);
         let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
-        assert!(!pos.is_occupied(36), "Charge+Lance should KO a HP2/armor0 enemy");
+        // Stack N (staged S45): the point-blank KO vacates 36, so the caster
+        // steps onto it — assert the enemy is gone via the P2 bitboard.
+        assert!(!pos.p2_pieces.contains(36), "Charge+Lance should KO a HP2/armor0 enemy");
+        assert!(pos.p1_pieces.contains(36), "caster took the vacated square");
         // CHARGE bit cleared.
         assert_eq!(pos.pending_modifiers & modifier_bits::CHARGE, 0);
     }
@@ -4169,5 +4232,225 @@ mod tests {
         let pos = Position::setup_stack_m(); // Move phase
         assert_eq!(legal_draft_turns(&pos).len(), 0,
             "legal_draft_turns must be empty outside Phase::Draft");
+    }
+
+    // === Stack N (staged S45) regression tests =============================
+    //
+    // Three rules: (1) Focus cost 1→2, (2) max 1 Move-Attack per turn,
+    // (3) strike-moves-caster. Rationale: `SELECT body FROM stacks WHERE
+    // id='stack-n';`. Focus-cost is also covered by the edited
+    // `focus_sets_pending_bit_and_consumes_action` above.
+
+    use crate::state::position::modifier_bits as mb;
+
+    // --- Rule 2: max 1 Move-Attack per turn -------------------------------
+
+    #[test]
+    fn move_attack_sets_used_flag_and_suppresses_second() {
+        // P1 champion at sq 9 (b2), enemy champions at sq 10 (c2) and 17 (b3),
+        // both reachable as speed-1 move-attacks. After the first move-attack,
+        // the generator must emit NO further move-attacks — only plain moves +
+        // EndPhase (and, for a speed-1 champ that killed, follow-through already
+        // consumed the move).
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 9,  Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 0,  Player::P1, PieceKind::Champion, 2, 0); // free-mover
+        place(&mut pos, 10, Player::P2, PieceKind::Champion, 2, 0);
+        place(&mut pos, 17, Player::P2, PieceKind::Champion, 2, 0);
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        // First move-attack: champ at 9 hits enemy at 10 (approach = src, speed 1).
+        let a = Action::encode_move_attack(9, 10, 0, 9);
+        let undo = make(&mut pos, a);
+        assert_ne!(pos.pending_modifiers & mb::MOVE_ATTACK_USED, 0,
+            "first move-attack must set MOVE_ATTACK_USED");
+        assert_eq!(pos.actions_remaining, 1, "one action left");
+
+        // Generator: no move-attacks emitted now.
+        let acts = generate(&pos);
+        assert!(acts.iter().all(|x| !x.has_approach()),
+            "no further move-attacks allowed this turn");
+        assert!(acts.iter().any(|x| x.kind() == ActionKind::Move && !x.has_approach()),
+            "plain moves still legal");
+        assert!(acts.iter().any(|x| x.kind() == ActionKind::EndPhase),
+            "EndPhase still legal");
+
+        // Unmake restores the flag.
+        unmake(&mut pos, &undo);
+        assert_eq!(pos.pending_modifiers & mb::MOVE_ATTACK_USED, 0,
+            "unmake must clear MOVE_ATTACK_USED");
+    }
+
+    #[test]
+    fn move_attack_cap_resets_next_turn() {
+        // After a move-attack in P1's turn, ending the turn (EndPhase Move→Skill,
+        // then EndPhase Skill→next turn) must clear MOVE_ATTACK_USED so the next
+        // side may move-attack again.
+        let mut pos = empty_pos_with_actions(2);
+        place(&mut pos, 9,  Player::P1, PieceKind::Champion, 2, 0);
+        place(&mut pos, 10, Player::P2, PieceKind::Champion, 2, 0);
+        // Give P2 a champ + enemy so it has a move-attack next turn.
+        place(&mut pos, 40, Player::P2, PieceKind::Champion, 2, 0);
+        place(&mut pos, 41, Player::P1, PieceKind::Champion, 2, 0);
+        pos.round_number = 1;
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        let _ = make(&mut pos, Action::encode_move_attack(9, 10, 0, 9));
+        assert_ne!(pos.pending_modifiers & mb::MOVE_ATTACK_USED, 0);
+
+        // End Move phase, then end Skill phase → next turn (P2).
+        let _ = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        let _ = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
+        assert_eq!(pos.to_move, Player::P2, "turn flipped to P2");
+        assert_eq!(pos.pending_modifiers & mb::MOVE_ATTACK_USED, 0,
+            "MOVE_ATTACK_USED cleared at end of turn");
+    }
+
+    // --- Rule 3: strike-moves-caster --------------------------------------
+
+    #[test]
+    fn strike_move_caster_ranged_non_kill_steps_one() {
+        // Caster at e4 (28) casts Lance... use Steal (range 2) so it's ranged.
+        // Caster 28, empty 36 (e5), target 44 (e6) survives → caster steps to 36.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Steal as u8);
+        place(&mut pos, 44, Player::P2, PieceKind::Champion, 2, 0); // hp2 → survives
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 44, Skill::Steal));
+        assert!(pos.p2_pieces.contains(44), "target survived");
+        assert!(!pos.champions.contains(28), "caster left e4");
+        assert!(pos.p1_pieces.contains(36), "caster stepped to e5 (1 tile toward target)");
+
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "diff: {:?}", pos_diff(&snap, &pos));
+    }
+
+    #[test]
+    fn strike_move_caster_point_blank_non_kill_no_move() {
+        // Adjacent Lance: caster 28 (e4), target 36 (e5) survives (armor absorbs).
+        // dest == target tile, occupied by survivor → no move.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Lance as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 1); // armor 1 absorbs
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
+        assert!(pos.champions.contains(28), "caster did NOT move (dest occupied)");
+        assert!(pos.p2_pieces.contains(36), "target survived");
+    }
+
+    #[test]
+    fn strike_move_caster_point_blank_kill_takes_square() {
+        // Adjacent Lance kills injured target → caster steps onto vacated tile.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Lance as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 1, 0); // hp1 → dies
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+        let snap = pos.clone();
+
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Lance));
+        assert!(!pos.p2_pieces.contains(36), "target removed");
+        assert!(!pos.champions.contains(28), "caster left e4");
+        assert!(pos.p1_pieces.contains(36), "caster took the vacated square");
+
+        unmake(&mut pos, &undo);
+        assert!(pos_eq(&snap, &pos), "diff: {:?}", pos_diff(&snap, &pos));
+    }
+
+    #[test]
+    fn strike_move_caster_ranged_kill_steps_one_not_onto_target() {
+        // Ranged Steal (range 2) kills target at e6 (44). Caster at e4 (28) steps
+        // ONE tile to e5 (36) — not two tiles onto the far target tile.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Steal as u8);
+        place(&mut pos, 44, Player::P2, PieceKind::Champion, 1, 0); // hp1 → dies
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        let _ = make(&mut pos, skill_action(28, 44, Skill::Steal));
+        assert!(!pos.p2_pieces.contains(44), "target removed");
+        assert!(pos.p1_pieces.contains(36), "caster stepped ONE tile to e5");
+        assert!(!pos.p1_pieces.contains(44), "caster did NOT teleport onto target tile");
+    }
+
+    #[test]
+    fn strike_move_caster_blocked_dest_no_move() {
+        // Ranged Steal: caster e4 (28), a friendly piece sits on the 1-step tile
+        // e5 (36), target at e6 (44). After the kill, dest (36) is occupied by
+        // the ally → no caster move. (This also blocks the skill Path — Steal is
+        // Range 2 and the Path is blocked by ALL pieces — so instead place the
+        // blocker where it only blocks the step, not the path: use a diagonal.)
+        //
+        // Diagonal cast: caster at a1 (0), target at c3 (18), 1-step tile b2 (9).
+        // Put a friendly blocker on b2 → path blocked. To isolate the step-block
+        // WITHOUT path-block we cannot (queen path == step line here). So this
+        // case is exercised by the Hook interaction test below, which frees/keeps
+        // the dest tile via the pull. Assert the simple invariant instead:
+        // an occupied 1-step tile yields no move when the strike still resolves
+        // by using Lance (adjacent) with a surviving target — already covered by
+        // strike_move_caster_point_blank_non_kill_no_move. This test documents
+        // that reasoning and asserts the helper is a no-op when dest occupied.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        // Manually invoke via a Lance on an armored adjacent survivor (dest busy).
+        equip(&mut pos, 28, Skill::Lance as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 2);
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
+        assert!(pos.champions.contains(28), "occupied dest → caster stays");
+    }
+
+    #[test]
+    fn strike_move_caster_hook_moves_only_if_target_dies() {
+        // Hook range 2: caster e4 (28), target e6 (44). On a NON-kill Hook, the
+        // target is pulled 44→36 (e5), which then occupies the caster's 1-step
+        // dest → caster does NOT move. On a KILL, the tile stays empty → caster
+        // steps to 36.
+        // Case A — survives, pulled onto dest → no caster move.
+        let mut a = skill_phase_pos(2);
+        place(&mut a, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut a, 28, Skill::Hook as u8);
+        place(&mut a, 44, Player::P2, PieceKind::Champion, 2, 0); // survives
+        a.zobrist = crate::state::zobrist::full_recompute(&a);
+        let _ = make(&mut a, skill_action(28, 44, Skill::Hook));
+        assert!(a.p2_pieces.contains(36), "target pulled to e5");
+        assert!(a.champions.contains(28), "caster blocked by pulled target → no move");
+
+        // Case B — dies, no pull, dest e5 empty → caster steps.
+        let mut b = skill_phase_pos(2);
+        place(&mut b, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut b, 28, Skill::Hook as u8);
+        place(&mut b, 44, Player::P2, PieceKind::Champion, 1, 0); // dies
+        b.zobrist = crate::state::zobrist::full_recompute(&b);
+        let _ = make(&mut b, skill_action(28, 44, Skill::Hook));
+        assert!(!b.p2_pieces.contains(44), "target removed");
+        assert!(b.p1_pieces.contains(36), "caster stepped to e5 (dest freed)");
+    }
+
+    #[test]
+    fn non_strike_skills_do_not_move_caster() {
+        // Scope guard: Move/Shield/Mystic skills never move the caster.
+        // Shield (self, shield): caster stays put.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Shield as u8);
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+        let _ = make(&mut pos, skill_action(28, 28, Skill::Shield));
+        assert!(pos.champions.contains(28), "Shield must not move the caster");
+
+        // Blast (Move category, pushes enemy) — caster stays put even though it
+        // affects an enemy. Caster e4 (28), enemy e5 (36).
+        let mut pos2 = skill_phase_pos(2);
+        place(&mut pos2, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos2, 28, Skill::Blast as u8);
+        place(&mut pos2, 36, Player::P2, PieceKind::Champion, 2, 0);
+        pos2.zobrist = crate::state::zobrist::full_recompute(&pos2);
+        let _ = make(&mut pos2, skill_action(28, 36, Skill::Blast));
+        assert!(pos2.champions.contains(28), "Blast (Move) must not move the caster");
     }
 }

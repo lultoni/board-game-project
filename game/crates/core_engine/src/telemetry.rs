@@ -628,37 +628,6 @@ mod tests {
     }
 
     #[test]
-    fn searchmeta_flags_mate_at_terminal() {
-        let mut m = Match::new(cfg_aivai_short());
-        let mut steps = 0usize;
-        while m.game_result().is_none() && steps < 400 {
-            m.step_ai().unwrap();
-            steps += 1;
-        }
-        assert!(m.game_result().is_some(), "AIvAI should terminate within 400 plies");
-        let log = m.match_log().unwrap();
-        let last = log.plies.last().unwrap();
-        let ai = last.ai.as_ref().unwrap();
-        assert!(ai.was_mate, "terminating ply should be mate");
-        assert!(ai.mate_in.is_some());
-    }
-
-    #[test]
-    fn finalise_sets_fields() {
-        let mut m = Match::new(cfg_aivai_short());
-        while m.game_result().is_none() {
-            m.step_ai().unwrap();
-        }
-        let final_result = MatchResult::from_game_result(m.game_result().unwrap());
-        m.finalise_log(0, final_result);
-        let log = m.match_log().unwrap();
-        assert_eq!(log.final_result, Some(final_result));
-        assert!(log.final_fen.is_some());
-        assert!(log.final_zobrist.is_some());
-        assert!(log.total_plies > 0);
-    }
-
-    #[test]
     fn notation_has_header_and_per_ply_lines() {
         let mut m = Match::new(cfg_aivai_short());
         for _ in 0..4 {

@@ -27,7 +27,7 @@ export const SKILLS: Record<number, SkillInfo> = {
   11: { id: 11, key: "shove",   category: "move",   cost: 3, defaultRange: 3, targetOwner: "either" },
   12: { id: 12, key: "swap",    category: "move",   cost: 4, defaultRange: 2, targetOwner: "ally" },
   13: { id: 13, key: "retreat", category: "move",   cost: 4, defaultRange: 3, targetOwner: "empty" },
-  14: { id: 14, key: "focus",   category: "mystic", cost: 1, defaultRange: 0, targetOwner: "self" },
+  14: { id: 14, key: "focus",   category: "mystic", cost: 2, defaultRange: 0, targetOwner: "self" },
   15: { id: 15, key: "charge",  category: "mystic", cost: 3, defaultRange: 0, targetOwner: "self" },
 };
 

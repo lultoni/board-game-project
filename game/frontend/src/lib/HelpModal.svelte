@@ -56,7 +56,7 @@
   // line-by-line.
   const RULE_KEYS: ReadonlyArray<string> = [
     "goal", "rounds", "move", "moveAttack", "health", "armor",
-    "skillPhase", "money", "path", "bodyguard", "drafting", "progression",
+    "skillPhase", "money", "path", "strikeMove", "bodyguard", "drafting", "progression",
   ];
 
   const CONTROL_KEYS: ReadonlyArray<string> = [

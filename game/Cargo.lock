@@ -1388,7 +1388,7 @@ dependencies = [
 
 [[package]]
 name = "core_engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rand 0.8.6",
  "serde",
@@ -4436,7 +4436,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nn_trainer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "burn",
  "core_engine",
@@ -6027,7 +6027,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "search_bench"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "core_engine",
  "serde",
@@ -6894,7 +6894,7 @@ dependencies = [
 
 [[package]]
 name = "tauri_wrapper"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "core_engine",
  "nn_trainer",

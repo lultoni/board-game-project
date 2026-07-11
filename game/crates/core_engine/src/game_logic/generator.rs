@@ -101,6 +101,12 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
     let opp_bb = opponent_bb(pos);
     let occ    = stm_bb | opp_bb;
 
+    // Stack N (staged S45): at most one Move-Attack per turn. Once one has been
+    // used this turn (flag set by apply_move_attack), suppress all further
+    // Move-Attacks — plain moves and EndPhase remain legal.
+    let move_attack_used = pos.pending_modifiers
+        & crate::state::position::modifier_bits::MOVE_ATTACK_USED != 0;
+
     // Iterate over each piece of the side-to-move that hasn't moved this phase.
     let movable = Bitboard(stm_bb.0 & !pos.moved_this_phase.0);
     for src in iter_squares(movable) {
@@ -127,14 +133,16 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
         // bodyguard_guards_for(...) is non-empty, the engine's `make()` does
         // a *tentative* apply (relocate attacker, set `pending_bodyguard`,
         // flip STM) and the defender's next ply is a BodyguardChoice.
-        for tgt in iter_squares(reach_attack) {
-            for approach in iter_bits(magic::movement_targets_speed1(tgt).0) {
-                // approach must be reachable via empties in <= speed-1 steps
-                // (src itself counts, dist[src]=0).
-                let d = dist[approach as usize];
-                if d == 255 { continue; }
-                if d as u32 + 1 > speed as u32 { continue; }
-                out.push(Action::encode_move_attack(src, tgt, 0, approach));
+        if !move_attack_used {
+            for tgt in iter_squares(reach_attack) {
+                for approach in iter_bits(magic::movement_targets_speed1(tgt).0) {
+                    // approach must be reachable via empties in <= speed-1 steps
+                    // (src itself counts, dist[src]=0).
+                    let d = dist[approach as usize];
+                    if d == 255 { continue; }
+                    if d as u32 + 1 > speed as u32 { continue; }
+                    out.push(Action::encode_move_attack(src, tgt, 0, approach));
+                }
             }
         }
     }

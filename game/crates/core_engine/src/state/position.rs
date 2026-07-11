@@ -89,7 +89,12 @@ pub struct PendingBodyguard {
 pub mod modifier_bits {
     pub const FOCUS:  u8 = 1 << 0;  // next skill: +1 Range
     pub const CHARGE: u8 = 1 << 1;  // next Strike skill: +1 damage
-    // bits 2..8 reserved for future turn-scoped modifiers.
+    /// Stack N (staged S45): a Move-Attack has been used this turn. Turn-scoped
+    /// (cleared by end_turn's 0xFF clear; NOT cleared at Move→Skill phase end,
+    /// which is fine — move-attacks only occur in the Move Phase). The generator
+    /// suppresses further Move-Attacks while this is set, capping them at 1/turn.
+    pub const MOVE_ATTACK_USED: u8 = 1 << 2;
+    // bits 3..8 reserved for future turn-scoped modifiers.
 }
 
 #[derive(Clone, Debug)]
