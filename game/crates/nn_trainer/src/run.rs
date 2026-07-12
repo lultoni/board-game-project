@@ -40,7 +40,7 @@
 //! and returns the partial summary.
 
 use crate::backend::{BackendChoice, InferenceBackend, TrainingBackend};
-use crate::bootstrap::{label_repo_raw_corpus, train_scalar};
+use crate::bootstrap::train_scalar;
 use crate::gauntlet::{accept_vs, play_match_with_callback, ChampionTracker, SeriesTally};
 use crate::lineage::perturb_model;
 use crate::live::{is_subscribed, write_if_subscribed, EvalBars, LivePosition, LIVE_POSITION_VERSION};
@@ -119,6 +119,16 @@ pub struct RunConfig {
     pub bootstrap: BootstrapConfig,
     /// Root seed; per-iteration seeds derive deterministically.
     pub seed_root: u64,
+    /// Override the training-corpus file path (None = the default gitignored
+    /// `bench/corpus/nn_training_corpus.txt`). Set by tests to a temp path so
+    /// they never touch the repo corpus. `#[serde(default)]` keeps the IPC
+    /// JSON round-trip compatible.
+    #[serde(default)]
+    pub training_corpus_path: Option<std::path::PathBuf>,
+    /// Override the training-corpus target size (None = `TRAINING_CORPUS_TARGET`
+    /// = 100k). Tests set a tiny value to avoid minutes of generation.
+    #[serde(default)]
+    pub training_corpus_target: Option<usize>,
 }
 
 impl Default for RunConfig {
@@ -137,6 +147,8 @@ impl RunConfig {
     }
 
     /// Smoke-test preset: 2 iterations, tiny bootstrap, ~seconds total.
+    /// NOTE: uses the full 100k training corpus (generated on first use); the
+    /// bootstrap epochs are low so the seed is weak, but the corpus is real.
     pub fn smoke() -> Self {
         Self {
             n_iterations: 2,
@@ -145,6 +157,8 @@ impl RunConfig {
             model: Self::sparse_model(),
             bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 16, epochs: 3 },
             seed_root: 0xCAFE_F00D,
+            training_corpus_path: None,
+            training_corpus_target: None,
         }
     }
 
@@ -155,8 +169,10 @@ impl RunConfig {
             gauntlet_think_ms: 100,
             mutation_std: 0.2,
             model: Self::sparse_model(),
-            bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 16, epochs: 60 },
+            bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 64, epochs: 200 },
             seed_root: 0xCAFE_F00D,
+            training_corpus_path: None,
+            training_corpus_target: None,
         }
     }
 
@@ -167,8 +183,10 @@ impl RunConfig {
             gauntlet_think_ms: 100,
             mutation_std: 0.25,
             model: Self::sparse_model(),
-            bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 16, epochs: 120 },
+            bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 64, epochs: 400 },
             seed_root: 0xCAFE_F00D,
+            training_corpus_path: None,
+            training_corpus_target: None,
         }
     }
 
@@ -326,7 +344,19 @@ fn run_training_cpu(
         } else {
             // Fresh: bootstrap the Phase-0 net and persist it as v0001.
             write_snapshot(run_dir, &snapshot_for(TrainingPhase::Training, 0, 0, &[], None))?;
-            let corpus = label_repo_raw_corpus();
+            let corpus_path = config
+                .training_corpus_path
+                .clone()
+                .unwrap_or_else(crate::bootstrap::training_corpus_path);
+            let corpus_target = config
+                .training_corpus_target
+                .unwrap_or(crate::bootstrap::TRAINING_CORPUS_TARGET);
+            let corpus = crate::bootstrap::label_training_corpus_with(
+                &corpus_path,
+                corpus_target,
+                crate::bootstrap::TRAINING_CORPUS_MAX_GAMES,
+                crate::bootstrap::TRAINING_CORPUS_SEED,
+            );
             if corpus.is_empty() {
                 return Err(RunError::EmptyBootstrapCorpus);
             }
@@ -726,7 +756,10 @@ mod tests {
         dir
     }
 
-    fn tiny_cfg() -> RunConfig {
+    /// Tiny config for fast tests: a temp training corpus (small target, inside
+    /// the test's own dir so it never touches the repo corpus) + minimal
+    /// bootstrap + 1 mutation iteration.
+    fn tiny_cfg(dir: &Path) -> RunConfig {
         RunConfig {
             n_iterations: 1,
             gauntlet_think_ms: 5,
@@ -734,6 +767,8 @@ mod tests {
             model: RunConfig::sparse_model(),
             bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 8, epochs: 1 },
             seed_root: 1,
+            training_corpus_path: Some(dir.join("train_corpus.txt")),
+            training_corpus_target: Some(200),
         }
     }
 
@@ -743,7 +778,7 @@ mod tests {
         // candidate is accepted (depends on the mutation), but we DO assert the
         // run seeds v0001, produces a valid run-directory layout, and ends idle.
         let dir = tempdir();
-        let cfg = tiny_cfg();
+        let cfg = tiny_cfg(&dir);
         let stop = Arc::new(AtomicBool::new(false));
         let summary = run_training(&cfg, &dir, stop, BackendChoice::Cpu).expect("orchestrator runs");
 
@@ -764,7 +799,7 @@ mod tests {
         // Stop set true up-front: the seed still bootstraps (that's the champion
         // setup, before the loop), but zero mutation iterations run.
         let dir = tempdir();
-        let cfg = tiny_cfg();
+        let cfg = tiny_cfg(&dir);
         let stop = Arc::new(AtomicBool::new(true));
         let summary = run_training(&cfg, &dir, stop, BackendChoice::Cpu).expect("orchestrator runs");
         assert!(summary.stopped_early, "should stop before the mutation loop");
@@ -776,7 +811,7 @@ mod tests {
     #[test]
     fn non_cpu_backend_is_unavailable() {
         let dir = tempdir();
-        let cfg = tiny_cfg();
+        let cfg = tiny_cfg(&dir);
         let stop = Arc::new(AtomicBool::new(false));
         let err = run_training(&cfg, &dir, stop, BackendChoice::Wgpu).expect_err("wgpu unsupported");
         assert!(matches!(err, RunError::BackendUnavailable(BackendChoice::Wgpu)));
@@ -799,8 +834,11 @@ mod tests {
             gauntlet_think_ms: 100,
             mutation_std: 0.25,
             model: RunConfig::sparse_model(),
-            bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 16, epochs: 60 },
+            bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 64, epochs: 200 },
             seed_root: 0xABCD_1234,
+            // Moderate temp corpus (bounded gen time; still ~170× the old 116).
+            training_corpus_path: Some(dir.join("train_corpus.txt")),
+            training_corpus_target: Some(20_000),
         };
         let stop = Arc::new(AtomicBool::new(false));
         let summary = run_training(&cfg, &dir, stop, BackendChoice::Cpu).expect("run");

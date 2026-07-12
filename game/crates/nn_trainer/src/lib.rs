@@ -16,6 +16,7 @@ pub mod batch;
 pub mod accumulator;
 pub mod bootstrap;
 pub mod calibration;
+pub mod corpus_gen;
 pub mod encoding;
 pub mod gauntlet;
 pub mod lineage;
@@ -67,6 +68,7 @@ pub use snapshot::{
 };
 pub use batch::generate_corpus;
 pub use loadout::{random_loadout, random_loadout_from_seed};
+pub use corpus_gen::{generate_training_corpus, write_training_corpus_file};
 pub use matrix::{
     load_matrix, save_matrix, GauntletMatrix, MatrixEntry, MatrixError,
     MATRIX_FILENAME, MATRIX_FORMAT_VERSION,

@@ -114,6 +114,84 @@ pub fn label_repo_raw_corpus() -> Vec<ScalarLabelled> {
     }
 }
 
+/// Path to the large NN **training** corpus — DISTINCT from the search
+/// benchmark corpora (`raw_corpus.txt` / `corpus.txt`). Generated on demand,
+/// gitignored, one FEN per line. ~100k positions at the default target.
+pub const TRAINING_CORPUS_FILENAME: &str = "nn_training_corpus.txt";
+
+/// Default training-corpus target: enough labelled positions for the Phase-0
+/// bootstrap to regress `evaluate` into a genuinely heuristic-like net (the
+/// ~120-row benchmark is far too small — see ns-50 Phase-1 findings).
+pub const TRAINING_CORPUS_TARGET: usize = 100_000;
+
+/// Ceiling on games played to reach the target. Generation stops as soon as
+/// the target unique positions are collected; this only bounds the worst case.
+pub const TRAINING_CORPUS_MAX_GAMES: usize = 6_000;
+
+/// Deterministic seed for on-demand training-corpus generation.
+pub const TRAINING_CORPUS_SEED: u64 = 0x5EED_C0DE_1234_5678;
+
+/// Absolute path to the training corpus file (sibling of the benchmark files).
+pub fn training_corpus_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../bench/corpus")
+        .join(TRAINING_CORPUS_FILENAME)
+}
+
+/// Label the large NN training corpus, generating it on demand if the file is
+/// missing. If present, parse + label the existing file (reproducible across
+/// runs); if absent, generate `target` positions via `corpus_gen`, write the
+/// file (gitignored), then label. Labels are the hand-crafted `evaluate`
+/// (cheap); terminals are skipped.
+///
+/// `path` / `target` / `max_games` / `seed` parameterize the file location and
+/// on-demand generation so tests can point at a temp path and request a tiny
+/// corpus. Production callers use [`label_training_corpus`] (default path +
+/// `TRAINING_CORPUS_TARGET`).
+pub fn label_training_corpus_with(
+    path: &std::path::Path,
+    target: usize,
+    max_games: usize,
+    seed: u64,
+) -> Vec<ScalarLabelled> {
+    if let Ok(text) = std::fs::read_to_string(path) {
+        let labelled = label_corpus(&text);
+        if !labelled.is_empty() {
+            return labelled;
+        }
+        // Present-but-empty (or all-terminal) file → fall through to regenerate.
+    }
+    eprintln!(
+        "[bootstrap] training corpus missing at {} — generating {} positions (up to {} games)…",
+        path.display(), target, max_games,
+    );
+    let positions = crate::corpus_gen::generate_training_corpus(target, max_games, seed);
+    eprintln!("[bootstrap] generated {} positions; writing corpus file", positions.len());
+    if let Err(e) = crate::corpus_gen::write_training_corpus_file(path, &positions) {
+        eprintln!("[bootstrap] WARNING: failed to write training corpus ({e}); labelling in memory");
+    }
+    // Label the in-memory positions directly (avoids a re-read; identical result).
+    positions
+        .into_iter()
+        .filter(|p| p.game_result.is_none())
+        .map(|position| {
+            let label_cp = evaluate(&position) as f32;
+            ScalarLabelled { position, label_cp }
+        })
+        .collect()
+}
+
+/// Production entry point: label the training corpus at the default path +
+/// target (`TRAINING_CORPUS_TARGET` positions), generating on demand if missing.
+pub fn label_training_corpus() -> Vec<ScalarLabelled> {
+    label_training_corpus_with(
+        &training_corpus_path(),
+        TRAINING_CORPUS_TARGET,
+        TRAINING_CORPUS_MAX_GAMES,
+        TRAINING_CORPUS_SEED,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,5 +255,52 @@ mod tests {
             "quantized net MAE {mae:.1} cp did not beat 0.75× baseline {baseline:.1} cp"
         );
         assert!(mae.is_finite());
+    }
+
+    /// Bigger-corpus milestone (ns-50 Phase-1 follow-up): the whole point of the
+    /// large in-process training corpus is that the bootstrap net gets much
+    /// closer to `evaluate` than the ~116-position benchmark allowed. Generate a
+    /// moderate training corpus, train, and print held-out MAE vs the constant
+    /// baseline. `#[ignore]` — generation + train take minutes. Run explicitly:
+    /// `cargo test -p nn_trainer --release bigger_corpus_bootstrap -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "slow (minutes): bigger-corpus bootstrap accuracy diagnostic"]
+    fn bigger_corpus_bootstrap_beats_baseline() {
+        // Generate ~15k positions in-process (deterministic), label with evaluate.
+        let positions = crate::corpus_gen::generate_training_corpus(15_000, 2_000, 0x1234_5678);
+        eprintln!("generated {} training positions", positions.len());
+        let mut all: Vec<ScalarLabelled> = positions
+            .into_iter()
+            .filter(|p| p.game_result.is_none())
+            .map(|position| {
+                let label_cp = evaluate(&position) as f32;
+                ScalarLabelled { position, label_cp }
+            })
+            .collect();
+        assert!(all.len() >= 1_000, "need a sizable corpus; got {}", all.len());
+
+        // Deterministic split: every 5th held out.
+        let mut train = Vec::new();
+        let mut held = Vec::new();
+        for (i, ex) in all.drain(..).enumerate() {
+            if i % 5 == 0 { held.push(ex); } else { train.push(ex); }
+        }
+        eprintln!("train={} held={}", train.len(), held.len());
+
+        let config = TrainingConfig { learning_rate: 1e-3, batch_size: 64, epochs: 200 };
+        let net = bootstrap(&train, &config);
+        let mae = mean_abs_error_cp(&net, &held);
+
+        let mean_label: f64 =
+            train.iter().map(|e| e.label_cp as f64).sum::<f64>() / train.len() as f64;
+        let baseline: f64 = held
+            .iter()
+            .map(|e| (mean_label - e.label_cp as f64).abs())
+            .sum::<f64>()
+            / held.len() as f64;
+
+        eprintln!("BIGGER CORPUS: held-out MAE = {mae:.1} cp; constant-predictor baseline = {baseline:.1} cp (ratio {:.2})", mae / baseline);
+        assert!(mae.is_finite());
+        assert!(mae < baseline, "net must at least beat the constant baseline");
     }
 }
