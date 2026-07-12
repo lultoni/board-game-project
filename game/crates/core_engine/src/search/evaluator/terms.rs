@@ -215,19 +215,37 @@ impl EvalTerm for Coverage {
         if pc.is_guard { return 0; }
         let p = ctx.params;
         let own_guards = if pc.is_p1 { ctx.p1_guards } else { ctx.p2_guards };
+        let enemy_bb = if pc.is_p1 { ctx.p2_bb } else { ctx.p1_bb };
         let defender_neighbours = king_expand(pc.mask) & !pc.mask;
         let empty_ring = defender_neighbours & !ctx.all_occ;
-        let denom = empty_ring.count_ones() as i32;
+
+        // Threat gate (ns-43+): an empty ring square is only worth shielding if
+        // an enemy could actually attack *through* it — otherwise "coverage" is
+        // free reward for a wall of guards with nothing to guard against (the
+        // starting-rank line-placement exploit). Mark the enemies within r3 of
+        // the defender, then count a ring square only when an r3-enemy lies in
+        // its direction (its outward r2-dilation reaches one). No threat in a
+        // direction → that square does not count toward denom or shielded.
+        // Approximates the in-game Bodyguard rule (screens an attack path).
+        let enemies_r3 = expand_n(pc.mask, 3) & enemy_bb;
+        if enemies_r3 == 0 { return 0; }
+
+        let mut denom = 0i32;
         let mut shielded = 0i32;
         let mut ring_bits = empty_ring;
         while ring_bits != 0 {
             let s = ring_bits.trailing_zeros();
             ring_bits &= ring_bits - 1;
             let s_bit = 1u64 << s;
+            if expand_n(s_bit, 2) & enemies_r3 == 0 { continue; } // no threat in this direction
+            denom += 1;
             let dual_neigh = king_expand(s_bit) & defender_neighbours & own_guards;
             if dual_neigh != 0 { shielded += 1; }
         }
-        let coverage_fp = if denom == 0 { p.skill_avail_max } else { (shielded * p.skill_avail_max) / denom };
+        // No *threatened* ring square (enemies near but not lined up with any
+        // open ring square) → nothing to cover → neutral, not full credit.
+        if denom == 0 { return 0; }
+        let coverage_fp = (shielded * p.skill_avail_max) / denom;
         let piece_val = p.champion_value; // king shielded ≈ champion-scale
         (p.coverage_per_piece * piece_val * coverage_fp) / (100 * p.skill_avail_max)
     }

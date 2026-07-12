@@ -406,27 +406,37 @@ mod tests {
         // Guard was NOT adjacent to the defender. Bodyguard only triggers when
         // a friendly Guard is adjacent to BOTH the defender and the attacker's
         // approach square, so a distant Guard cannot contribute to coverage.
+        //
+        // Coverage is now ALSO threat-gated: an empty ring square only counts
+        // when an enemy sits within r3 of the defender in that square's
+        // direction. Both cases below therefore place an enemy champion so the
+        // dual-adjacency assertion is exercised on a *threatened* ring.
 
         // Case A: Guard at c3 (sq 18) is NOT adjacent to defender at e4 (sq 28)
-        // — chebyshev distance 2. Coverage MUST be 0.
+        // — chebyshev distance 2. Coverage MUST be 0. Enemy at e6 (sq 44) makes
+        // the north ring squares count, so a non-zero shielded would be a bug.
         let mut pos = Position::empty();
         place(&mut pos, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
         place(&mut pos, 18, Player::P1, 2, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 44, Player::P2, 2, MailboxEntry::default().with_hp(2));
         let bs = evaluate_by_square(&pos);
         assert_eq!(bs.squares[28].empty_ring_shielded, 0,
             "guard at sq 18 is not adjacent to defender at sq 28; coverage must be 0");
 
         // Case B: Guard at f4 (sq 29) IS adjacent to defender at e4 (sq 28).
-        // Its ring is {sq 20, 21, 22, 28, 30, 36, 37, 38}. Intersecting with
-        // defender's empty ring {19,20,21,27,35,36,37} yields {20, 21, 36, 37}
-        // = 4 shielded squares out of 7 empty (sq 29 is occupied by the guard).
+        // Enemy champion at e6 (sq 44) gates in the north-facing ring squares
+        // {d4, d5, e5, f5} (denom=4); of those, the guard at f4 is dual-adjacent
+        // to {d5, e5, f5}... wait — it shields the ring squares also adjacent to
+        // it: {d5, e5, f5} minus those not in the gate. Assert the gated counts.
         let mut pos2 = Position::empty();
         place(&mut pos2, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
         place(&mut pos2, 29, Player::P1, 2, MailboxEntry::default().with_hp(2));
+        place(&mut pos2, 44, Player::P2, 2, MailboxEntry::default().with_hp(2));
         let bs2 = evaluate_by_square(&pos2);
-        assert_eq!(bs2.squares[28].empty_ring_total, 7, "1 of 8 ring squares occupied");
-        assert_eq!(bs2.squares[28].empty_ring_shielded, 4,
-            "guard at sq 29 shields the 4 empty ring squares also adjacent to it");
+        assert_eq!(bs2.squares[28].empty_ring_total, 4,
+            "enemy at e6 gates in 4 north-facing empty ring squares");
+        assert_eq!(bs2.squares[28].empty_ring_shielded, 2,
+            "guard at sq 29 is dual-adjacent to 2 of the 4 threatened ring squares");
     }
 
     // ============================================================
@@ -860,12 +870,17 @@ mod tests {
     /// still passes byte-for-byte. If a deliberate eval change lands later,
     /// re-capture via the (restored) dump harness and update these literals in
     /// the SAME commit — never silently.
+    ///
+    /// ns-43+ (threat-gated coverage): the `opening` golden's coverage dropped
+    /// 1800→0 per side — the starting ranks have no enemy within r3, so the
+    /// bodyguard "coverage" bonus is (correctly) no longer paid for guarding
+    /// empty directions. Symmetric, so the total (differential) is unchanged.
     #[test]
     fn golden_eval_unchanged() {
         let expected: &[(&str, i32, EvalBreakdown)] = &[
             ("empty", 0, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 0 }),
             ("terminal_p1", 1000000, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 1000000 }),
-            ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 264, mobility_p2: 264, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 1800, coverage_p2: 1800, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
+            ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 264, mobility_p2: 264, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
             ("champ_diff_skills_money", 2282, EvalBreakdown { material_p1: 1000, material_p2: 1000, hp_p1: 300, hp_p2: 150, armor_p1: 240, armor_p2: 0, skills_p1: 290, skills_p2: 33, money_p1: 75, money_p2: 46, mobility_p1: 28, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 100, exposure_p2: 100, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 3, offensive_range_p2: 0, total: 2282 }),
             ("exposure_coverage", 1468, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 120, skills_p2: 120, money_p1: 50, money_p2: 50, mobility_p1: 112, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 199, coverage_p2: 0, tempo_p1: 0, tempo_p2: 15, offensive_range_p1: 1, offensive_range_p2: 1, total: 1468 }),
             ("king_exposure_mobility", -3756, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 58, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3756 }),

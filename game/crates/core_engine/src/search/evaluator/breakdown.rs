@@ -287,26 +287,41 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
         let (coverage_term, empty_ring_total, empty_ring_shielded): (i32, u8, u8) = if is_guard {
             (0, 0, 0)
         } else {
+            // Threat-gated coverage — mirrors terms::Coverage exactly. Only empty
+            // ring squares with an enemy in their direction (within r3 of the
+            // defender) count; no threat → 0 (not full credit).
+            let enemy_bb = if is_p1 { p2_bb } else { p1_bb };
+            let enemies_r3 = expand_n(mask, 3) & enemy_bb;
             let defender_neighbours = king_expand(mask) & !mask;
             let empty_ring = defender_neighbours & !all_occ;
-            let denom = empty_ring.count_ones();
-            let mut shielded: u32 = 0;
-            let mut ring_bits = empty_ring;
-            while ring_bits != 0 {
-                let s = ring_bits.trailing_zeros();
-                ring_bits &= ring_bits - 1;
-                let s_bit = 1u64 << s;
-                if king_expand(s_bit) & defender_neighbours & own_guards != 0 {
-                    shielded += 1;
+            if enemies_r3 == 0 {
+                (0, 0, 0)
+            } else {
+                let mut denom: u32 = 0;
+                let mut shielded: u32 = 0;
+                let mut ring_bits = empty_ring;
+                while ring_bits != 0 {
+                    let s = ring_bits.trailing_zeros();
+                    ring_bits &= ring_bits - 1;
+                    let s_bit = 1u64 << s;
+                    if expand_n(s_bit, 2) & enemies_r3 == 0 { continue; }
+                    denom += 1;
+                    if king_expand(s_bit) & defender_neighbours & own_guards != 0 {
+                        shielded += 1;
+                    }
+                }
+                if denom == 0 {
+                    (0, 0, 0)
+                } else {
+                    let coverage_fp = (shielded as i32 * params.skill_avail_max) / denom as i32;
+                    let piece_val = params.champion_value;
+                    (
+                        (params.coverage_per_piece * piece_val * coverage_fp) / (100 * params.skill_avail_max),
+                        denom as u8,
+                        shielded as u8,
+                    )
                 }
             }
-            let coverage_fp = if denom == 0 { params.skill_avail_max } else { (shielded as i32 * params.skill_avail_max) / denom as i32 };
-            let piece_val = params.champion_value;
-            (
-                (params.coverage_per_piece * piece_val * coverage_fp) / (100 * params.skill_avail_max),
-                denom as u8,
-                shielded as u8,
-            )
         };
 
         // E11 — guard isolation penalty (folds into total; not itemised in the
