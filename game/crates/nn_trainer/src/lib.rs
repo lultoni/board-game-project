@@ -25,6 +25,7 @@ pub mod matrix;
 pub mod model;
 pub mod nn_evaluator;
 pub mod persistence;
+pub mod quantized;
 pub mod registry;
 pub mod run;
 pub mod selfplay;
@@ -35,6 +36,7 @@ pub mod train;
 pub use encoding::{encode_position, INPUT_DIM};
 pub use sparse::{encode_sparse, encode_sparse_vec, ACCUM_WIDTH, NUM_FEATURES};
 pub use accumulator::{Accumulator, FeatureTransform};
+pub use quantized::{QuantScales, QuantizedNet};
 pub use backend::BackendChoice;
 pub use gauntlet::{
     mirrored_bo3, play_match, play_match_with_callback, tier1_fitness, tier2_acceptance,

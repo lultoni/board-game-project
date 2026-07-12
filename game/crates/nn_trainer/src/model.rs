@@ -85,6 +85,27 @@ impl<B: Backend> Mlp<B> {
         x
     }
 
+    /// Per-layer raw parameters in forward order, for quantization. Each entry
+    /// is `(weight, bias, in_dim, out_dim)` where `weight` is flattened
+    /// **input-major** (`weight[i*out_dim + o]`, burn's `[d_input, d_output]`
+    /// layout) and `bias` has length `out_dim` (empty if the layer has none).
+    /// The last entry is the scalar output projection (`out_dim == 1`).
+    pub fn layer_params(&self) -> Vec<(Vec<f32>, Vec<f32>, usize, usize)> {
+        self.layers
+            .iter()
+            .map(|layer| {
+                let [in_dim, out_dim] = layer.weight.shape().dims();
+                let weight: Vec<f32> = layer.weight.val().into_data().to_vec().unwrap_or_default();
+                let bias: Vec<f32> = layer
+                    .bias
+                    .as_ref()
+                    .map(|b| b.val().into_data().to_vec().unwrap_or_default())
+                    .unwrap_or_default();
+                (weight, bias, in_dim, out_dim)
+            })
+            .collect()
+    }
+
     /// Per-layer summary statistics. One `LayerStats` per `Linear`, in
     /// forward order — last entry is the scalar output projection. Used by
     /// the Training Observatory's Network Inspector to surface mean/std/
