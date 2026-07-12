@@ -67,23 +67,28 @@ pub const MATE_SCORE: i32 = 1_000_000;
 #[cfg(test)] pub(crate) const SKILL_AVAIL_MAX: i32 = EvalParams::DEFAULT.skill_avail_max;
 
 /// Scalar P1-POV static eval. `+`=P1, `±MATE_SCORE` for terminals.
+///
+/// Search-leaf fast path (Phase 1b, Session 48): a monomorphic accumulation of
+/// the term set into a single `i32`, with no `DynBreakdown` / breakdown Vecs /
+/// `to_legacy` projection. Byte-identical to `evaluate_breakdown(pos).total`
+/// (pinned by `golden_eval_unchanged`).
 pub fn evaluate(pos: &Position) -> i32 {
-    evaluate_breakdown(pos).total
+    registry::evaluate_scalar(pos, &EvalParams::DEFAULT)
 }
 
 /// Legacy fixed-field breakdown (projection of the dynamic registry output).
 pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
     let params = EvalParams::DEFAULT;
-    let terms = registry::default_terms(&params);
-    registry::evaluate_dyn(pos, &terms, &params).to_legacy()
+    let terms = registry::default_terms_static();
+    registry::evaluate_dyn(pos, terms, &params).to_legacy()
 }
 
 /// Dynamic breakdown (registry-native; only active terms). For tuning /
 /// future dynamic-panel consumers.
 pub fn evaluate_dyn(pos: &Position) -> DynBreakdown {
     let params = EvalParams::DEFAULT;
-    let terms = registry::default_terms(&params);
-    registry::evaluate_dyn(pos, &terms, &params)
+    let terms = registry::default_terms_static();
+    registry::evaluate_dyn(pos, terms, &params)
 }
 
 /// Position-rater interface. The search calls `evaluate` once per leaf; an
