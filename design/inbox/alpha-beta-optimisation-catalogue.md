@@ -503,6 +503,48 @@ LMR "don't reduce / reduce-less at very high branching" refinement).
 
 ---
 
+### Phase 3a: Late Move Pruning re-graded — **ACCEPTED (2026-07-12)**
+
+LMP behind `ENABLE_LMP` (default on, commit `270a22a`): at non-PV, non-check
+nodes with `depth ≤ 5`, quiet (`!is_loud`) moves whose ordering index exceeds a
+depth-indexed threshold are skipped entirely (no reduced search). Guarded off at
+mate boundaries. Schedule **{1→6, 2→9, 3→13, 4→18, 5→24}**.
+
+**Why it extends to depth 5** (Session 36's clean config was depth-1-only
+`{1→16}`): the two EBF-12 offenders spend most of their nodes in the depth-4/5
+interior of a d6 search; a `depth≤3` schedule never touches that mass. Extending
+through depth 5 is what actually bends their EBF down.
+
+**Why it's clean now when Session 36 rejected it standalone:** Session 36's LMP
+regressed because its leaf-set changes poisoned deeper-iteration TT/history
+ordering against a slow eval and no other pruning. It now sits atop fast-eval +
+QS + LMR/PVS, which absorb that churn.
+
+Sweep vs the Phase-2 baseline (determinism 30/30):
+- **depth6: total 9,567ms → 5,199ms (−45.7%), geo-NPS +1.7%, over-1s held at 2.**
+  opening-with-skills-03 3475→1591ms (ebf 11.9→10.6), midgame-move-03
+  2762→1521ms (ebf 12.2→11.0). Skill-phase/opening tails −70…−87%.
+- time budgets deeper at all four: 100ms +0.47 plies (10 deeper/1 shallower),
+  500ms +0.47 (13/1), 1000ms +0.60 (13/0), 3000ms +0.87 (12/1).
+
+**Trade:** a handful of sparse-endgame / skill-phase positions lose a ply at one
+budget (LMP mis-prunes in low-material tactical spots). Fixed-depth d6 shows ~5
+best-move changes vs true minimax — heuristic; real play reaches d18-22 where
+these shallow prunes are far from the root. Aggregate depth up everywhere,
+over-1s unchanged, d6 nearly halved → net win.
+
+**Schedule tuning:** a gentler low-depth variant `{1→8,2→12,3→16,4→22,5→30}` was
+*worse* on the two targets (1982/1602ms vs 1591/1521ms) for the same ~5 bm
+changes — the bm-change count is dominated by the near-root depth-4/5 pruning,
+not the low-depth thresholds, so low-depth aggression is free-ish and helps the
+goal. Kept the aggressive schedule.
+
+Remaining d6-over-1s after Phase 3a: opening-with-skills-03 (~1.6s),
+midgame-move-03 (~1.5s) — the last two, both ~1.5× over. Next levers: aspiration
+windows (narrow root window → fewer top-of-tree nodes) or a further LMP nudge.
+
+---
+
 
 ## Cross-references
 
