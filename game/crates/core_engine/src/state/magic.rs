@@ -8,6 +8,28 @@
 //! - `movement_attack_targets_speed2(sq, occ, reach_empty, opp_bb)` — enemies attackable in a Guard move
 //! - `cheby_dist(a, b)` — precomputed Chebyshev distance (0..=7)
 //! - `between(a, b)`, `on_ray(a, b)`, `step_toward`, `step_away`, `neighbour_in_dir`
+//!
+//! ## This module actually is magic bitboards (the slider path)
+//!
+//! `skill_attacks` — the only occupancy-dependent *sliding* query — resolves via
+//! classic **split rook + bishop plain-magic bitboards**: per-square
+//! `(mask, magic, shift, attack-table)` so a query is
+//! `(occ & mask).wrapping_mul(magic) >> shift → table[idx]` with NO per-call ray
+//! walk. The rook + bishop tables are OR'd (queen = rook ∪ bishop) and the
+//! Chebyshev range cap is applied afterward via `within_range`. Tables (~0.82 MB
+//! total) and the 128 magic numbers are built once at first use in the same
+//! `OnceLock` idiom as `RAYS`/`BETWEEN`. **PEXT is deliberately NOT used** — it's a
+//! BMI2 (x86) instruction; this project targets aarch64, where plain multiply-
+//! shift magics are the correct technique.
+//!
+//! `movement_targets_speed2` (Guard BFS-2) is occupancy-dependent but a magic
+//! table for it is infeasible (24 relevant blocker bits ⇒ ~2 GB). Instead it uses
+//! an allocation-free **bitboard flood-fill**: two king-dilation steps masked by
+//! empties, reusing `MOVE1`. Proven equivalent to the old BFS.
+//!
+//! Everything else here is a pure precomputed table lookup (`between`, `cheby`,
+//! `MOVE1`, `within_range`) or cheaper-than-a-lookup integer math (`on_ray`,
+//! `step_*`, `neighbour_in_dir`) — none benefit from magic, so they are left as-is.
 
 use super::bitboard::Bitboard;
 use std::sync::OnceLock;
@@ -24,10 +46,6 @@ const DELTAS: [(i8, i8); 8] = [
     ( 1, -1), // NW
 ];
 
-/// `RAYS[dir][sq]` = bitboard of all squares on the ray FROM `sq` in `dir`,
-/// EXCLUDING `sq` itself, including the edge of the board.
-static RAYS: OnceLock<[[u64; 64]; 8]> = OnceLock::new();
-
 /// `BETWEEN[a][b]` = bitboard of squares strictly between `a` and `b` on the
 /// queen-ray that connects them (empty if they don't share a ray or `a == b`).
 static BETWEEN: OnceLock<[[u64; 64]; 64]> = OnceLock::new();
@@ -35,28 +53,6 @@ static BETWEEN: OnceLock<[[u64; 64]; 64]> = OnceLock::new();
 /// `WITHIN_RANGE[sq][r]` = bitboard of all squares with Chebyshev distance
 /// `1..=r` from `sq`. Index 0 is the empty bitboard.
 static WITHIN_RANGE: OnceLock<[[u64; 5]; 64]> = OnceLock::new();
-
-fn rays() -> &'static [[u64; 64]; 8] {
-    RAYS.get_or_init(|| {
-        let mut out = [[0u64; 64]; 8];
-        for sq in 0u8..64 {
-            let rank = (sq / 8) as i8;
-            let file = (sq % 8) as i8;
-            for (i, &(dr, df)) in DELTAS.iter().enumerate() {
-                let mut r = rank + dr;
-                let mut f = file + df;
-                let mut bb = 0u64;
-                while (0..8).contains(&r) && (0..8).contains(&f) {
-                    bb |= 1u64 << ((r * 8 + f) as u8);
-                    r += dr;
-                    f += df;
-                }
-                out[i][sq as usize] = bb;
-            }
-        }
-        out
-    })
-}
 
 fn between_table() -> &'static [[u64; 64]; 64] {
     BETWEEN.get_or_init(|| {
@@ -116,6 +112,189 @@ fn within_range_table() -> &'static [[u64; 5]; 64] {
     })
 }
 
+// ── Magic bitboards for sliding (skill) attacks ──────────────────────────────
+//
+// Split rook + bishop plain magics. A query masks occupancy to the relevant
+// blocker squares, multiplies by the per-square magic, shifts down to an index,
+// and reads a precomputed blocker-inclusive attack set. Rook ∪ bishop = queen.
+
+/// Split rook+bishop plain-magic slider tables, built once. `*_attacks` are flat
+/// Vecs indexed by `*_offset[sq] + ((occ & mask) * magic >> shift)`.
+struct SliderTables {
+    rook_mask:     [u64; 64],
+    rook_magic:    [u64; 64],
+    rook_shift:    [u32; 64],
+    rook_offset:   [usize; 64],
+    rook_attacks:  Vec<u64>,
+    bishop_mask:   [u64; 64],
+    bishop_magic:  [u64; 64],
+    bishop_shift:  [u32; 64],
+    bishop_offset: [usize; 64],
+    bishop_attacks: Vec<u64>,
+}
+
+static SLIDER: OnceLock<SliderTables> = OnceLock::new();
+
+/// Deterministic xorshift64 RNG for magic search. `Math.random`/`Date::now` are
+/// unavailable/banned; a fixed seed keeps `find_magics` reproducible so tables
+/// are identical across runs (important for the determinism gate).
+struct MagicRng(u64);
+impl MagicRng {
+    #[inline]
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x
+    }
+    /// Sparse candidate — AND of three draws biases toward few set bits, which
+    /// is where good magics cluster.
+    #[inline]
+    fn sparse(&mut self) -> u64 {
+        self.next() & self.next() & self.next()
+    }
+}
+
+/// Is direction `d` orthogonal (rook) vs diagonal (bishop)?
+#[inline]
+fn is_ortho(d: usize) -> bool {
+    let (dr, df) = DELTAS[d];
+    dr == 0 || df == 0
+}
+
+/// Relevant-occupancy mask for a rook (`ortho=true`) or bishop (`ortho=false`)
+/// at `sq`: every ray square whose *next* step is still on-board (the edge
+/// square can't block anything beyond it, so it's excluded — the standard
+/// magic relevant mask).
+fn slider_relevant_mask(sq: u8, ortho: bool) -> u64 {
+    let mut m = 0u64;
+    for d in 0..8 {
+        if is_ortho(d) != ortho { continue; }
+        let (dr, df) = DELTAS[d];
+        let mut r = (sq / 8) as i8 + dr;
+        let mut f = (sq % 8) as i8 + df;
+        loop {
+            let on = (0..8).contains(&r) && (0..8).contains(&f);
+            if !on { break; }
+            let nr = r + dr;
+            let nf = f + df;
+            let next_on = (0..8).contains(&nr) && (0..8).contains(&nf);
+            if next_on {
+                m |= 1u64 << (r * 8 + f) as u8;
+            }
+            r = nr;
+            f = nf;
+        }
+    }
+    m
+}
+
+/// Reference blocker-inclusive ray attacks for a rook/bishop at `sq` against
+/// `occ`: walk each relevant ray, include every empty square and the first
+/// blocker, stop at the blocker. Used only at table-build time.
+fn slider_reference_attacks(sq: u8, occ: u64, ortho: bool) -> u64 {
+    let mut a = 0u64;
+    for d in 0..8 {
+        if is_ortho(d) != ortho { continue; }
+        let (dr, df) = DELTAS[d];
+        let mut r = (sq / 8) as i8 + dr;
+        let mut f = (sq % 8) as i8 + df;
+        while (0..8).contains(&r) && (0..8).contains(&f) {
+            let s = (r * 8 + f) as u8;
+            a |= 1u64 << s;
+            if occ & (1u64 << s) != 0 { break; }
+            r += dr;
+            f += df;
+        }
+    }
+    a
+}
+
+/// Enumerate every occupancy subset of `mask` (Carry-Rippler), in order.
+fn occupancy_subsets(mask: u64) -> Vec<u64> {
+    let mut out = Vec::with_capacity(1usize << mask.count_ones());
+    let mut sub: u64 = 0;
+    loop {
+        out.push(sub);
+        sub = sub.wrapping_sub(mask) & mask;
+        if sub == 0 { break; }
+    }
+    out
+}
+
+/// Find a collision-free magic for one square/piece and return
+/// `(magic, shift, attack_table)`. `attack_table` has `1 << bits` entries.
+fn find_one_magic(sq: u8, ortho: bool, rng: &mut MagicRng) -> (u64, u32, Vec<u64>) {
+    let mask = slider_relevant_mask(sq, ortho);
+    let bits = mask.count_ones();
+    let shift = 64 - bits;
+    let size = 1usize << bits;
+    let subsets = occupancy_subsets(mask);
+    let refs: Vec<u64> = subsets
+        .iter()
+        .map(|&o| slider_reference_attacks(sq, o, ortho))
+        .collect();
+
+    for _ in 0..100_000_000u64 {
+        let magic = rng.sparse();
+        // Cheap reject: a good magic spreads the mask's high bits.
+        if (mask.wrapping_mul(magic) >> 56).count_ones() < 6 { continue; }
+        let mut table = vec![u64::MAX; size];
+        let mut ok = true;
+        for (i, &o) in subsets.iter().enumerate() {
+            let idx = ((o.wrapping_mul(magic)) >> shift) as usize;
+            if table[idx] == u64::MAX {
+                table[idx] = refs[i];
+            } else if table[idx] != refs[i] {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            return (magic, shift, table);
+        }
+    }
+    // 8×8 magics are dense; failure would indicate a logic bug, not bad luck.
+    panic!("no magic found for sq {sq} ortho {ortho}");
+}
+
+fn slider() -> &'static SliderTables {
+    SLIDER.get_or_init(|| {
+        let mut rng = MagicRng(0x1234_5678_9abc_def1);
+        let mut t = SliderTables {
+            rook_mask: [0; 64],
+            rook_magic: [0; 64],
+            rook_shift: [0; 64],
+            rook_offset: [0; 64],
+            rook_attacks: Vec::new(),
+            bishop_mask: [0; 64],
+            bishop_magic: [0; 64],
+            bishop_shift: [0; 64],
+            bishop_offset: [0; 64],
+            bishop_attacks: Vec::new(),
+        };
+        for sq in 0u8..64 {
+            // Rook.
+            let (rm, rs, rtab) = find_one_magic(sq, true, &mut rng);
+            t.rook_mask[sq as usize] = slider_relevant_mask(sq, true);
+            t.rook_magic[sq as usize] = rm;
+            t.rook_shift[sq as usize] = rs;
+            t.rook_offset[sq as usize] = t.rook_attacks.len();
+            t.rook_attacks.extend_from_slice(&rtab);
+            // Bishop.
+            let (bm, bs, btab) = find_one_magic(sq, false, &mut rng);
+            t.bishop_mask[sq as usize] = slider_relevant_mask(sq, false);
+            t.bishop_magic[sq as usize] = bm;
+            t.bishop_shift[sq as usize] = bs;
+            t.bishop_offset[sq as usize] = t.bishop_attacks.len();
+            t.bishop_attacks.extend_from_slice(&btab);
+        }
+        t
+    })
+}
+
 /// 8-direction queen-style "skill attack" bitboard from `sq` against the given
 /// occupancy, bounded by Chebyshev distance `range`.
 ///
@@ -125,46 +304,29 @@ fn within_range_table() -> &'static [[u64; 5]; 64] {
 ///
 /// `range = 0` → empty bitboard.
 /// `range ≥ 4` → the full board reach (Stack M's effective maximum range is
-/// Retreat at +1 = 4; the lookup table covers 0..=4).
+/// Retreat/Shove at +1 = 4; the `within_range` cap covers 0..=4).
+///
+/// Resolved via split rook+bishop plain-magic bitboards (see `SliderTables`):
+/// two `(occ & mask) * magic >> shift` lookups OR'd (queen = rook ∪ bishop),
+/// then AND'd with the Chebyshev range mask. No per-call ray walk.
 pub fn skill_attacks(sq: u8, occ: u64, range: u8) -> Bitboard {
     debug_assert!(sq < 64);
+    // Max reachable range in Stack M is 4 (range-3 skill + Focus +1). The magic
+    // tables are range-independent (full queen attack); only this cap depends on
+    // `range`, and `within_range` covers 0..=4. Clamp keeps us in-bounds if a
+    // future skill ever passes a larger value.
+    debug_assert!(range <= 4, "skill range {range} exceeds within_range table (0..=4)");
     if range == 0 {
         return Bitboard::EMPTY;
     }
-    let rays_t = rays();
-    let mut out: u64 = 0;
-    for d in 0..8 {
-        let ray = rays_t[d][sq as usize];
-        let blockers = ray & occ;
-        let reach_full = if blockers == 0 {
-            // Entire ray is empty.
-            ray
-        } else {
-            // Find the closest blocker on this ray. Direction determines whether
-            // "closest" means lowest or highest bit-index.
-            //   N, NE, E, NW → increasing bit index (away from sq goes up)
-            //   S, SE, W, SW → decreasing bit index (away from sq goes down)
-            // We picked the deltas s.t. (dr > 0) or (dr == 0 && df > 0) → up,
-            // anything else → down. Mirror that here.
-            let (dr, df) = DELTAS[d];
-            let upward = dr > 0 || (dr == 0 && df > 0);
-            let first_blocker = if upward {
-                blockers.trailing_zeros() as u8
-            } else {
-                63 - (blockers.leading_zeros() as u8)
-            };
-            // Squares on the ray from sq up to AND INCLUDING the blocker.
-            let mask_to_blocker = ray ^ rays_t[d][first_blocker as usize];
-            // ^ flips off all squares strictly past the blocker. Result still
-            // includes the blocker itself (since it's on `ray` but not on
-            // the blocker's own outgoing ray).
-            mask_to_blocker
-        };
-        out |= reach_full;
-    }
-    // Apply the range cap.
-    let capped = out & within_range_table()[sq as usize][range.min(4) as usize];
-    Bitboard(capped)
+    let t = slider();
+    let s = sq as usize;
+    let rook_idx = ((occ & t.rook_mask[s]).wrapping_mul(t.rook_magic[s]) >> t.rook_shift[s]) as usize;
+    let bishop_idx = ((occ & t.bishop_mask[s]).wrapping_mul(t.bishop_magic[s]) >> t.bishop_shift[s]) as usize;
+    let queen = t.rook_attacks[t.rook_offset[s] + rook_idx]
+        | t.bishop_attacks[t.bishop_offset[s] + bishop_idx];
+    // Apply the Chebyshev range cap.
+    Bitboard(queen & within_range_table()[s][range.min(4) as usize])
 }
 
 /// Squares strictly between `a` and `b` on the queen-ray connecting them.
@@ -273,6 +435,21 @@ fn move1_table() -> &'static [u64; 64] {
     })
 }
 
+/// Dilate a set by one king-step: OR the `MOVE1` neighbourhood of every set
+/// bit. Used by the speed-2 flood-fill.
+#[inline]
+fn dilate(set: u64) -> u64 {
+    let m1 = move1_table();
+    let mut out = 0u64;
+    let mut b = set;
+    while b != 0 {
+        let s = b.trailing_zeros() as usize;
+        b &= b - 1;
+        out |= m1[s];
+    }
+    out
+}
+
 /// The 8 immediately adjacent squares for a speed-1 piece at `sq`.
 ///
 /// Returns empty squares AND occupied squares — callers should mask out
@@ -293,40 +470,18 @@ pub fn movement_targets_speed1(sq: u8) -> Bitboard {
 ///   - separately compute attack targets as enemies adjacent to any reachable
 ///     square or `sq` itself (see `movement_attack_targets_speed2`)
 ///
-/// This is identical to the generator's `reachable()` BFS but returns a plain
-/// `u64` mask without the distance array overhead.
+/// Allocation-free bitboard flood-fill: two king-dilation steps, each masked to
+/// empty squares. `s1` = empties reachable in one step; `s2` = empties reachable
+/// from `sq ∪ s1` (i.e. within two steps). Proven equivalent to the previous
+/// per-call BFS (see the `speed2_flood_matches_bfs` test).
 #[inline]
 pub fn movement_targets_speed2(sq: u8, occ: u64) -> Bitboard {
     debug_assert!(sq < 64);
-    let mut dist = [255u8; 64];
-    dist[sq as usize] = 0;
-    let mut front = [0u8; 64];
-    let mut flen = 1usize;
-    front[0] = sq;
-    let mut reach = 0u64;
-    for step in 1u8..=2 {
-        let mut next = [0u8; 64];
-        let mut nlen = 0usize;
-        for i in 0..flen {
-            let s = front[i];
-            for (dr, df) in DELTAS {
-                let r = (s / 8) as i8 + dr;
-                let f = (s % 8) as i8 + df;
-                if !(0..8).contains(&r) || !(0..8).contains(&f) { continue; }
-                let n = (r * 8 + f) as u8;
-                if dist[n as usize] != 255 { continue; }
-                if occ & (1u64 << n) != 0 { continue; }
-                dist[n as usize] = step;
-                reach |= 1u64 << n;
-                next[nlen] = n;
-                nlen += 1;
-            }
-        }
-        front = next;
-        flen = nlen;
-        if flen == 0 { break; }
-    }
-    Bitboard(reach)
+    let empty = !occ;
+    let start = 1u64 << sq;
+    let s1 = dilate(start) & empty;
+    let s2 = dilate(start | s1) & empty;
+    Bitboard((s1 | s2) & !start)
 }
 
 /// Move-attack targets for a speed-2 piece at `sq`: enemy squares that can be
@@ -375,6 +530,131 @@ mod tests {
 
     fn bb_of(squares: &[u8]) -> u64 {
         squares.iter().fold(0u64, |acc, &s| acc | (1u64 << s))
+    }
+
+    // ── Reference implementations (the pre-magic versions) ───────────────────
+    // These are the exact algorithms `skill_attacks` and `movement_targets_speed2`
+    // used before the magic-bitboard / flood-fill rewrite. Kept here so the
+    // equivalence tests prove the fast paths return byte-identical results.
+
+    /// Old `skill_attacks`: per-call 8-ray walk with blocker-inclusive stop and
+    /// a Chebyshev range cap.
+    fn ref_skill_attacks(sq: u8, occ: u64, range: u8) -> u64 {
+        if range == 0 { return 0; }
+        let mut out = 0u64;
+        for d in 0..8 {
+            let (dr, df) = DELTAS[d];
+            let mut r = (sq / 8) as i8 + dr;
+            let mut f = (sq % 8) as i8 + df;
+            while (0..8).contains(&r) && (0..8).contains(&f) {
+                let s = (r * 8 + f) as u8;
+                out |= 1u64 << s;
+                if occ & (1u64 << s) != 0 { break; }
+                r += dr;
+                f += df;
+            }
+        }
+        out & within_range_table()[sq as usize][range.min(4) as usize]
+    }
+
+    /// Old `movement_targets_speed2`: BFS-2 over empty squares.
+    fn ref_speed2(sq: u8, occ: u64) -> u64 {
+        let mut dist = [255u8; 64];
+        dist[sq as usize] = 0;
+        let mut front = [0u8; 64];
+        let mut flen = 1usize;
+        front[0] = sq;
+        let mut reach = 0u64;
+        for step in 1u8..=2 {
+            let mut next = [0u8; 64];
+            let mut nlen = 0usize;
+            for i in 0..flen {
+                let s = front[i];
+                for (dr, df) in DELTAS {
+                    let r = (s / 8) as i8 + dr;
+                    let f = (s % 8) as i8 + df;
+                    if !(0..8).contains(&r) || !(0..8).contains(&f) { continue; }
+                    let n = (r * 8 + f) as u8;
+                    if dist[n as usize] != 255 { continue; }
+                    if occ & (1u64 << n) != 0 { continue; }
+                    dist[n as usize] = step;
+                    reach |= 1u64 << n;
+                    next[nlen] = n;
+                    nlen += 1;
+                }
+            }
+            front = next;
+            flen = nlen;
+            if flen == 0 { break; }
+        }
+        reach
+    }
+
+    /// Deterministic xorshift for test occupancies (no `rand`, no `Math.random`).
+    struct TestRng(u64);
+    impl TestRng {
+        fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+            self.0 = x; x
+        }
+    }
+
+    #[test]
+    fn skill_attacks_matches_reference_over_random_occupancies() {
+        let mut rng = TestRng(0xF00D_BABE_1234_5678);
+        for sq in 0u8..64 {
+            for _ in 0..4000 {
+                let occ = rng.next() & !(1u64 << sq); // caster square unoccupied
+                for range in 1u8..=4 {
+                    let got = skill_attacks(sq, occ, range).0;
+                    let want = ref_skill_attacks(sq, occ, range);
+                    assert_eq!(
+                        got, want,
+                        "skill_attacks mismatch sq={sq} range={range} occ={occ:#018x}"
+                    );
+                }
+                // range 0 must be empty.
+                assert_eq!(skill_attacks(sq, occ, 0).0, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn speed2_flood_matches_bfs() {
+        let mut rng = TestRng(0x1357_9BDF_2468_ACE0);
+        for sq in 0u8..64 {
+            for _ in 0..4000 {
+                let occ = rng.next() & !(1u64 << sq);
+                let got = movement_targets_speed2(sq, occ).0;
+                let want = ref_speed2(sq, occ);
+                assert_eq!(got, want, "speed2 mismatch sq={sq} occ={occ:#018x}");
+            }
+        }
+    }
+
+    #[test]
+    fn magic_tables_are_deterministic_across_builds() {
+        // The magic search uses a fixed seed, so an independent rebuild of the
+        // per-square rook/bishop attack tables via the reference walk must agree
+        // with what the live tables return for every occupancy subset.
+        let t = slider();
+        for sq in 0u8..64 {
+            let s = sq as usize;
+            for (mask, magic, shift, off, tab, ortho) in [
+                (t.rook_mask[s], t.rook_magic[s], t.rook_shift[s], t.rook_offset[s], &t.rook_attacks, true),
+                (t.bishop_mask[s], t.bishop_magic[s], t.bishop_shift[s], t.bishop_offset[s], &t.bishop_attacks, false),
+            ] {
+                for occ in occupancy_subsets(mask) {
+                    let idx = ((occ.wrapping_mul(magic)) >> shift) as usize;
+                    assert_eq!(
+                        tab[off + idx],
+                        slider_reference_attacks(sq, occ, ortho),
+                        "slider table mismatch sq={sq} ortho={ortho} occ={occ:#018x}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
