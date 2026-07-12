@@ -179,12 +179,10 @@
       {/each}
     </svg>
 
-    {#if index.tracks && (index.tracks.fast || index.tracks.slow || index.tracks.overall)}
+    {#if index.tracks && index.tracks.champion}
       <footer class="tracks">
-        <span>Tracks:</span>
-        {#if index.tracks.fast}<span>fast → <code>{index.tracks.fast}</code></span>{/if}
-        {#if index.tracks.slow}<span>slow → <code>{index.tracks.slow}</code></span>{/if}
-        {#if index.tracks.overall}<span>overall → <code>{index.tracks.overall}</code></span>{/if}
+        <span>Champion:</span>
+        <span><code>{index.tracks.champion}</code></span>
       </footer>
     {/if}
   {/if}

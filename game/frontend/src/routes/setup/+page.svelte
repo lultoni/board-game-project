@@ -165,6 +165,54 @@
   const hasAi = $derived(p1 === "ai" || p2 === "ai");
   const isAivAi = $derived(p1 === "ai" && p2 === "ai");
 
+  // --- Trained-rater picker (ns-50) --------------------------------------
+  // Each AI seat can use the built-in Heuristic (default) or a trained rater.
+  // The choice is stored in settings.{p1,p2}Evaluator ({ source, id }); the
+  // match route already installs it via set_ai_evaluator at game start. We
+  // just populate the dropdown here from the active run dir + blessed set.
+  interface RaterListing {
+    source: "run" | "blessed";
+    id: string;
+    acceptedAt: string;
+    parentId: string | null;
+    isChampion: boolean;
+  }
+  let raters = $state<RaterListing[]>([]);
+  onMount(async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      raters = await invoke<RaterListing[]>("list_available_raters", { runDir: null });
+    } catch {
+      raters = []; // no trainer / no raters yet — picker shows Heuristic only.
+    }
+  });
+  const champion = $derived(raters.find((r) => r.isChampion) ?? null);
+
+  /** Encode a seat's evaluator choice as a single select value. */
+  function evalKey(source: string, id: string | null): string {
+    return source === "heuristic" ? "heuristic" : `${source}:${id}`;
+  }
+  function currentEvalKey(seat: "p1" | "p2"): string {
+    const c = seat === "p1" ? settings.p1Evaluator : settings.p2Evaluator;
+    return evalKey(c.source, c.id);
+  }
+  /** Apply a select value back to the per-seat evaluator setting. */
+  function setEval(seat: "p1" | "p2", value: string): void {
+    let choice: { source: "heuristic" | "run" | "blessed"; id: string | null };
+    if (value === "heuristic") {
+      choice = { source: "heuristic", id: null };
+    } else if (value === "champion") {
+      choice = champion
+        ? { source: champion.source, id: champion.id }
+        : { source: "heuristic", id: null };
+    } else {
+      const [source, id] = value.split(":", 2);
+      choice = { source: source as "run" | "blessed", id: id ?? null };
+    }
+    if (seat === "p1") settings.p1Evaluator = choice;
+    else settings.p2Evaluator = choice;
+  }
+
   /** Returns true when the given ref points at something valid and complete.
    *  For pre-mades this is `isPreMadeLoadoutReady`; for custom refs it
    *  checks that the id still exists in `savedLoadouts`. */
@@ -307,6 +355,21 @@
             />
             <output>{settings.p1MaxDepth}</output>
           </label>
+          <label class="row">
+            <span class="rowLabel">P1 · {t("setup.evaluator")}</span>
+            <select
+              value={currentEvalKey("p1")}
+              onchange={(e) => { sfx.play("click"); setEval("p1", e.currentTarget.value); }}
+            >
+              <option value="heuristic">{t("setup.evaluatorHeuristic")}</option>
+              {#if champion}
+                <option value="champion">{t("setup.evaluatorChampion")} ({champion.id})</option>
+              {/if}
+              {#each raters as r}
+                <option value={evalKey(r.source, r.id)}>{r.id} ({r.source})</option>
+              {/each}
+            </select>
+          </label>
         {/if}
         {#if p2 === "ai"}
           <label class="row">
@@ -333,6 +396,21 @@
             />
             <output>{settings.p2MaxDepth}</output>
           </label>
+          <label class="row">
+            <span class="rowLabel">P2 · {t("setup.evaluator")}</span>
+            <select
+              value={currentEvalKey("p2")}
+              onchange={(e) => { sfx.play("click"); setEval("p2", e.currentTarget.value); }}
+            >
+              <option value="heuristic">{t("setup.evaluatorHeuristic")}</option>
+              {#if champion}
+                <option value="champion">{t("setup.evaluatorChampion")} ({champion.id})</option>
+              {/if}
+              {#each raters as r}
+                <option value={evalKey(r.source, r.id)}>{r.id} ({r.source})</option>
+              {/each}
+            </select>
+          </label>
         {/if}
         {#if isAivAi}
           <label class="row">
@@ -349,6 +427,9 @@
           </label>
         {/if}
       </div>
+      {#if raters.length > 0}
+        <p class="raterNote">{t("setup.evaluatorNote")}</p>
+      {/if}
     </section>
   {/if}
 
@@ -534,6 +615,12 @@
   .ai h2 {
     font-size: 1.1rem;
     margin: 0 0 0.5em;
+  }
+  .raterNote {
+    font-size: 0.82em;
+    font-style: italic;
+    color: var(--paper-ink-soft);
+    margin: 0.6em 0 0;
   }
   .grid {
     display: grid;

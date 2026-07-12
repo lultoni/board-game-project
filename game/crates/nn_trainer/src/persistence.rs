@@ -203,6 +203,23 @@ pub fn save_rater<B: Backend>(
     Ok(())
 }
 
+/// Read only the sidecar metadata (`<stem>.json`) without loading the weight
+/// blob. Cheap topology/provenance peek — used by the in-game AI load path to
+/// decide whether a rater is dense (`NnEvaluator`) or sparse/NNUE
+/// (`NnueEvaluator`) via `model_config.input_dim`.
+pub fn load_metadata(stem: &Path) -> Result<RaterMetadata, PersistenceError> {
+    let (_blob_path, sidecar_path) = paths_from_stem(stem);
+    let json = std::fs::read_to_string(&sidecar_path)?;
+    let metadata: RaterMetadata = serde_json::from_str(&json)?;
+    if metadata.format_version != RATER_FORMAT_VERSION {
+        return Err(PersistenceError::FormatVersionMismatch {
+            found: metadata.format_version,
+            expected: RATER_FORMAT_VERSION,
+        });
+    }
+    Ok(metadata)
+}
+
 /// Load a rater. Reads the sidecar first to recover the topology, then loads
 /// the weight blob into a freshly-built skeleton.
 pub fn load_rater<B: Backend>(

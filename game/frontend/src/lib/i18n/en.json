@@ -134,6 +134,10 @@
     "thinkTime": "Think time (ms)",
     "maxDepth": "Max search depth",
     "aivaiDelay": "AIvAI delay between plies (ms)",
+    "evaluator": "Evaluator",
+    "evaluatorHeuristic": "Heuristic (built-in)",
+    "evaluatorChampion": "Current best (champion)",
+    "evaluatorNote": "Trained raters are experimental and may play weaker than the built-in Heuristic.",
     "continue": "Continue →",
     "summary": "{p1Label} vs {p2Label}",
     "draftMode": {

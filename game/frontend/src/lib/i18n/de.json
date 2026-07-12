@@ -134,6 +134,10 @@
     "thinkTime": "Bedenkzeit (ms)",
     "maxDepth": "Max. Suchtiefe",
     "aivaiDelay": "KI-gegen-KI Pause zwischen Zügen (ms)",
+    "evaluator": "Bewerter",
+    "evaluatorHeuristic": "Heuristik (integriert)",
+    "evaluatorChampion": "Aktuell bester (Champion)",
+    "evaluatorNote": "Trainierte Bewerter sind experimentell und spielen evtl. schwächer als die integrierte Heuristik.",
     "continue": "Weiter →",
     "summary": "{p1Label} gegen {p2Label}",
     "draftMode": {

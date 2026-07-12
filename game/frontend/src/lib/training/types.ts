@@ -85,7 +85,9 @@ export interface IndexEntry {
   bracket_results: Record<string, BracketWinRate>;
 }
 
-export type Track = "fast" | "slow" | "overall";
+/** The champion track. ns-50 collapsed the retired best-fast/best-slow/
+ *  best-overall triple to a single 100 ms champion pointer. */
+export type Track = "champion";
 
 export interface RaterIndex {
   format_version: number;

@@ -678,6 +678,10 @@ pub struct RaterListing {
     pub id: String,
     pub accepted_at: String,
     pub parent_id: Option<String>,
+    /// `true` if this rater is the current champion of its index (the single
+    /// `Track::Champion` pointer, ns-50). The setup-screen "Current best"
+    /// quick-pick resolves to this entry.
+    pub is_champion: bool,
 }
 
 /// Walks both the active run dir's `raters/` and `game/raters/blessed/`,
@@ -694,12 +698,14 @@ fn list_available_raters(run_dir: Option<String>) -> Result<Vec<RaterListing>, S
     if run_raters.is_dir() {
         match nn_trainer::RaterIndex::load(&run_raters) {
             Ok(idx) => {
+                let champ = idx.track_leader(nn_trainer::Track::Champion).map(|e| e.id.clone());
                 for e in &idx.entries {
                     out.push(RaterListing {
                         source: "run".to_string(),
                         id: e.id.clone(),
                         accepted_at: e.accepted_at.clone(),
                         parent_id: e.parent_id.clone(),
+                        is_champion: champ.as_deref() == Some(e.id.as_str()),
                     });
                 }
             }
@@ -710,12 +716,14 @@ fn list_available_raters(run_dir: Option<String>) -> Result<Vec<RaterListing>, S
     if blessed.is_dir() {
         match nn_trainer::RaterIndex::load(&blessed) {
             Ok(idx) => {
+                let champ = idx.track_leader(nn_trainer::Track::Champion).map(|e| e.id.clone());
                 for e in &idx.entries {
                     out.push(RaterListing {
                         source: "blessed".to_string(),
                         id: e.id.clone(),
                         accepted_at: e.accepted_at.clone(),
                         parent_id: e.parent_id.clone(),
+                        is_champion: champ.as_deref() == Some(e.id.as_str()),
                     });
                 }
             }
@@ -753,9 +761,23 @@ fn set_ai_evaluator(
                 blessed_raters_dir()
             };
             let stem = dir.join(&id);
-            let nn = nn_trainer::NnEvaluator::load_from_stem(&stem)
-                .map_err(|e| format!("load rater {id}: {e}"))?;
-            Box::new(nn)
+            // Discriminate dense vs NNUE raters by the sidecar's input_dim:
+            // NNUE raters use the sparse feature space (NUM_FEATURES) and must
+            // load as an NnueEvaluator (quantized integer forward); dense raters
+            // load as NnEvaluator (f32 forward over encode_position). Feeding a
+            // dense-encoded vector into a sparse-topology model would panic on a
+            // matmul dimension mismatch.
+            let meta = nn_trainer::load_metadata(&stem)
+                .map_err(|e| format!("load rater meta {id}: {e}"))?;
+            if meta.model_config.input_dim == nn_trainer::NUM_FEATURES {
+                let nnue = nn_trainer::NnueEvaluator::load_from_stem(&stem)
+                    .map_err(|e| format!("load NNUE rater {id}: {e}"))?;
+                Box::new(nnue)
+            } else {
+                let nn = nn_trainer::NnEvaluator::load_from_stem(&stem)
+                    .map_err(|e| format!("load rater {id}: {e}"))?;
+                Box::new(nn)
+            }
         }
         other => return Err(format!("unknown evaluator source: {other}")),
     };

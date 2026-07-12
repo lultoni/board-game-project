@@ -39,6 +39,27 @@ impl NnueEvaluator {
         NnueEvaluator { net: QuantizedNet::from_mlp(model, scales) }
     }
 
+    /// Load a persisted **NNUE** (sparse-topology) rater from disk and wrap it.
+    /// Reconstructs the f32 `Mlp` from the blob + sidecar, then quantizes with
+    /// the standard scales (same convention as `bootstrap::bootstrap`, so
+    /// `forward_int` yields centipawns). Used by the in-game AI load path for
+    /// raters whose `model_config.input_dim == NUM_FEATURES` (the dense
+    /// `NnEvaluator::load_from_stem` would mismatch on those). The sidecar's
+    /// `eval_scale` is not used — the quantized integer forward already emits
+    /// centipawns directly via `LABEL_DIVISOR`.
+    pub fn load_from_stem(
+        stem: &std::path::Path,
+    ) -> Result<Self, crate::persistence::PersistenceError> {
+        let device: burn::tensor::Device<InferenceBackend> = Default::default();
+        let (model, _meta) = crate::persistence::load_rater::<InferenceBackend>(stem, &device)?;
+        let scales = QuantScales {
+            qa: crate::quantized::QA,
+            qw: crate::quantized::QW,
+            out: crate::bootstrap::LABEL_DIVISOR,
+        };
+        Ok(Self::from_mlp(&model, scales))
+    }
+
     /// Borrow the underlying quantized net.
     pub fn net(&self) -> &QuantizedNet {
         &self.net

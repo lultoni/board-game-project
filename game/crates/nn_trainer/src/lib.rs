@@ -56,7 +56,7 @@ pub use live::{
 pub use model::{LayerStats, Mlp, MlpConfig};
 pub use nn_evaluator::{InferenceBackend, NnEvaluator, DEFAULT_EVAL_SCALE, MAX_NN_SCORE};
 pub use persistence::{
-    load_rater, paths_from_stem, save_rater, BracketWinRate, PerturbationEvent,
+    load_metadata, load_rater, paths_from_stem, save_rater, BracketWinRate, PerturbationEvent,
     PersistenceError, RaterMetadata, TrainingConfigSnapshot, RATER_FORMAT_VERSION,
 };
 pub use registry::{IndexEntry, IndexError, RaterIndex, Track, INDEX_FORMAT_VERSION};
