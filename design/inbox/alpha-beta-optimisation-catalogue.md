@@ -457,6 +457,52 @@ midgame-move-03 (~2.4s), skill-phase-full-03 (~1.7s).
 
 ---
 
+### Phase 2: LMR + PVS paired — **ACCEPTED (2026-07-12)**
+
+Implemented together per the §5 note (commit `a9a734f`), both behind
+`ENABLE_PVS` / `ENABLE_LMR` toggles (default on):
+- **PVS** (absolute-POV): first move full window `[α,β]`; siblings null-window
+  (max `[α,α+1]`, min `[β-1,β]`); full re-search on an in-window raise.
+  **Proven exact** — a PVS-only build (NMP + LMR off) matched plain alpha-beta
+  scores byte-for-byte across the corpus at depth 6. So the fixed-depth score
+  drifts observed with the full stack are NMP + LMR heuristic behaviour, NOT a
+  PVS re-search bug. (This finally discharges the Session 36 PVS rejection: it
+  was rejected standalone because strong ordering left it nothing to save; atop
+  LMR's reduced re-searches it pulls its weight.)
+- **LMR**: reduce late (idx≥3), quiet (`!is_loud`), non-check, depth≥3 moves by
+  `R = 0.75 + ln(depth)·ln(idx)/2.25`; re-search full depth on a reduced-probe
+  raise. Never reduces the first move, in-check nodes, or loud/King-threatening
+  actions (`is_loud` covers Move-Attacks + Strike/Blast + BodyguardChoice).
+
+Sweep vs the Phase-1 baseline (determinism 30/30):
+- **depth6: total 11,221ms → 9,567ms (−14.7%), over-1s 3 → 2**
+  (skill-phase-full-03 1691→591ms crossed under). geo-NPS −4.5% (LMR re-searches
+  lower the raw node rate even as the tree shrinks). Skill-phase/opening tails
+  −40…−78%.
+- time budgets deeper at all four: 100ms +0.37 plies (7 deeper/0 shallower),
+  500ms +0.60 (14/1), 1000ms +0.67 (12/0), 3000ms +0.70 (16/3).
+
+**The documented trade (accept-gate call).** The two widest-EBF positions
+(opening-with-skills-03 ebf 11.9, midgame-move-03 ebf 12.2) got ~26%/12% SLOWER
+at d6 and lose a ply at 3s (plus skill-phase-full-04). On trees that wide LMR's
+reduced probes fail high and re-search often enough that the overhead outweighs
+the pruning — the same "LMR hurts the worst case" pattern the Session-36 LMP
+retro saw. They were already over 1s (not newly crossed over), over-1s dropped
+3→2, and the aggregate improves at every budget → net win, accepted.
+
+**Tuning tried:** a gentler formula (`0.5 + ln·ln/3.0`, min_idx 4) halved the
+speedup (−7.2% vs −14.7%) and did NOT remove the midgame-move-01 fixed-depth
+sign flip (LMR reduces the true-best line there regardless of formula
+gentleness) — so conservatism bought no correctness, only lost speed. Kept the
+aggressive setting.
+
+Remaining d6-over-1s after Phase 2: opening-with-skills-03 (~3.5s),
+midgame-move-03 (~2.8s) — both high-EBF, both slightly worse under LMR. These
+are the Phase 3 / tree-shape targets (aspiration windows, LMP re-grade, or an
+LMR "don't reduce / reduce-less at very high branching" refinement).
+
+---
+
 
 ## Cross-references
 
