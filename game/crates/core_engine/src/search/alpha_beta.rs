@@ -64,6 +64,16 @@ pub static ENABLE_PVS: AtomicBool = AtomicBool::new(true);
 /// `LMR_MIN_IDX`.
 pub static ENABLE_LMR: AtomicBool = AtomicBool::new(true);
 
+/// Runtime toggle for Late Move Pruning / move-count pruning (Phase 3, Session
+/// 48). Default `true`. At shallow depth and away from the PV, skip quiet moves
+/// whose ordering index exceeds `lmp_threshold(depth)` ENTIRELY (no reduced
+/// search — more aggressive than LMR). Directly attacks the EBF-12 skill-phase
+/// tails that LMR's re-searches couldn't contain (opening-with-skills-03,
+/// midgame-move-03). Session 36 accepted a `{depth1→16}` config standalone; this
+/// re-grades atop fast-eval + LMR/PVS. Never prunes: first moves, loud/
+/// King-threatening actions, in-check nodes, PV (full-window) nodes.
+pub static ENABLE_LMP: AtomicBool = AtomicBool::new(true);
+
 /// R = 2 reduction for null-move search. Depth on the null branch is
 /// `depth - 1 - R`.
 const NMP_R: i32 = 2;
@@ -88,6 +98,28 @@ fn lmr_reduction(depth: i32, idx: usize) -> i32 {
     let li = (idx as f32).ln();
     let r = 0.75 + ld * li / 2.25;
     (r as i32).max(1)
+}
+
+/// LMP: move-count threshold by depth. At `depth <= LMP_MAX_DEPTH`, quiet moves
+/// with ordering index `>= lmp_threshold(depth)` are pruned outright. Grows with
+/// depth (deeper nodes keep more moves). `None` = no pruning at this depth.
+/// Schedule `{1→6, 2→9, 3→13, 4→18, 5→24}` — extends through depth 5 because the
+/// EBF-12 offenders (opening-with-skills-03, midgame-move-03) spend most of
+/// their nodes in the depth-4/5 interior, which a depth≤3 schedule never
+/// touches. More aggressive than Session 36's `{1→16}`, but it now sits atop
+/// fast-eval + QS + LMR/PVS, which absorb the leaf-set churn that made LMP
+/// regress standalone in Session 36.
+const LMP_MAX_DEPTH: i32 = 5;
+#[inline]
+fn lmp_threshold(depth: i32) -> Option<usize> {
+    match depth {
+        1 => Some(6),
+        2 => Some(9),
+        3 => Some(13),
+        4 => Some(18),
+        5 => Some(24),
+        _ => None,
+    }
 }
 
 use super::evaluator::{Evaluator, HeuristicEvaluator, MATE_SCORE};
@@ -402,15 +434,39 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
     // PVS/LMR gates (read once per node).
     let pvs_on = ENABLE_PVS.load(AtomicOrdering::Relaxed);
     let lmr_on = ENABLE_LMR.load(AtomicOrdering::Relaxed);
+    let lmp_on = ENABLE_LMP.load(AtomicOrdering::Relaxed);
     // In-check gate for LMR (never reduce when our own King is threatened —
     // those lines are tactically forced). Reuses the QS bitboard fast path.
     // `side` is the side to move at this node (captured above before the loop).
     let node_in_check = super::quiescence::is_king_threatened(pos, side);
+    // LMP is only safe away from the PV (a null-window node) and out of check.
+    // Never at a mate-boundary window (guarded via alpha/beta below).
+    let is_pv_node = beta - alpha > 1;
+    let lmp_thresh = if lmp_on && !is_pv_node && !node_in_check && depth <= LMP_MAX_DEPTH {
+        lmp_threshold(depth)
+    } else {
+        None
+    };
 
     for (idx, a) in moves.into_iter().enumerate() {
         // LMR eligibility (computed before make(): `is_loud` inspects only the
         // action, and `node_in_check` is a property of the parent node).
         let is_first = idx == 0;
+
+        // LMP: at shallow non-PV nodes, prune late quiet moves outright. The
+        // move list is already ordered (TT-move + killers + history), so a high
+        // index is a low-value quiet tail move. Never prune loud/King-threatening
+        // actions or near a mate boundary.
+        if let Some(t) = lmp_thresh {
+            if !is_first
+                && idx >= t
+                && !is_mate(alpha) && !is_mate(beta)
+                && !super::quiescence::is_loud(a, pos)
+            {
+                continue;
+            }
+        }
+
         let reduce = lmr_on
             && !is_first
             && depth >= LMR_MIN_DEPTH
