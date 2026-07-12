@@ -18,6 +18,7 @@
 use crate::encoding::{encode_position, INPUT_DIM};
 use crate::model::Mlp;
 use crate::selfplay::LabelledPosition;
+use crate::sparse::{encode_sparse, NUM_FEATURES};
 
 use burn::module::AutodiffModule;
 use burn::optim::{AdamConfig, GradientsParams, Optimizer};
@@ -54,6 +55,52 @@ pub fn batch_to_tensors<B: AutodiffBackend>(
         labels.push(ex.label);
     }
     let inputs = Tensor::from_data(TensorData::new(features, [n, INPUT_DIM]), device);
+    let labels = Tensor::from_data(TensorData::new(labels, [n]), device);
+    (inputs, labels)
+}
+
+/// A position + a **scalar centipawn** label (the hand-crafted eval), for the
+/// Phase-0 supervised bootstrap. Distinct from `LabelledPosition` (outcome
+/// labels in {-1,+1}); the bootstrap regresses to `evaluate_scalar` centipawns.
+#[derive(Clone, Debug)]
+pub struct ScalarLabelled {
+    pub position: core_engine::state::Position,
+    /// Target centipawns (P1-POV), pre-normalization.
+    pub label_cp: f32,
+}
+
+/// Scatter a set of active sparse feature indices into a dense f32 row of width
+/// `NUM_FEATURES` (zeroing first). Training-only: burn's `Linear` needs a dense
+/// tensor. Inference never scatters — it uses the accumulator.
+pub fn scatter_dense(active: &[u32], row: &mut [f32]) {
+    debug_assert_eq!(row.len(), NUM_FEATURES);
+    for v in row.iter_mut() {
+        *v = 0.0;
+    }
+    for &f in active {
+        row[f as usize] = 1.0;
+    }
+}
+
+/// Encode a batch of scalar-labelled positions into the sparse-input tensors:
+/// `inputs` is `(N, NUM_FEATURES)` (dense-scattered sparse features), `labels`
+/// is `(N,)` in **normalized** units (`label_cp / label_divisor`).
+pub fn sparse_batch_to_tensors<B: AutodiffBackend>(
+    examples: &[ScalarLabelled],
+    label_divisor: f32,
+    device: &B::Device,
+) -> (Tensor<B, 2>, Tensor<B, 1>) {
+    let n = examples.len();
+    let mut features = vec![0.0f32; n * NUM_FEATURES];
+    let mut labels = Vec::with_capacity(n);
+    let mut active = Vec::with_capacity(64 * 6 + 6);
+    for (i, ex) in examples.iter().enumerate() {
+        encode_sparse(&ex.position, &mut active);
+        let row = &mut features[i * NUM_FEATURES..(i + 1) * NUM_FEATURES];
+        scatter_dense(&active, row);
+        labels.push(ex.label_cp / label_divisor);
+    }
+    let inputs = Tensor::from_data(TensorData::new(features, [n, NUM_FEATURES]), device);
     let labels = Tensor::from_data(TensorData::new(labels, [n]), device);
     (inputs, labels)
 }

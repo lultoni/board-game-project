@@ -14,6 +14,7 @@
 pub mod backend;
 pub mod batch;
 pub mod accumulator;
+pub mod bootstrap;
 pub mod calibration;
 pub mod encoding;
 pub mod gauntlet;
@@ -37,6 +38,7 @@ pub use encoding::{encode_position, INPUT_DIM};
 pub use sparse::{encode_sparse, encode_sparse_vec, ACCUM_WIDTH, NUM_FEATURES};
 pub use accumulator::{Accumulator, FeatureTransform};
 pub use quantized::{QuantScales, QuantizedNet};
+pub use bootstrap::{bootstrap, label_corpus, mean_abs_error_cp, train_scalar, LABEL_DIVISOR};
 pub use backend::BackendChoice;
 pub use gauntlet::{
     mirrored_bo3, play_match, play_match_with_callback, tier1_fitness, tier2_acceptance,
