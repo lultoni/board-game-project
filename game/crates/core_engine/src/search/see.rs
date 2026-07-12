@@ -245,18 +245,6 @@ impl AttackersTable {
     }
 }
 
-/// King-expand: bitboard OR of all 8-directional 1-step neighbours. Used to
-/// project a Guard's reach-set into its move-attack fanout.
-#[inline]
-fn king_expand(x: u64) -> u64 {
-    const NOT_A: u64 = 0xfefefefefefefefe; // !file A
-    const NOT_H: u64 = 0x7f7f7f7f7f7f7f7f; // !file H
-    let l = (x & NOT_A) >> 1;
-    let r = (x & NOT_H) << 1;
-    let h = x | l | r;
-    h | (h << 8) | (h >> 8)
-}
-
 /// Build the attackers table for the current position.
 ///
 /// For each non-king piece at `sq`, computes the bitmask of squares it can
@@ -268,7 +256,7 @@ fn king_expand(x: u64) -> u64 {
 ///
 /// Guard move-attack semantics per generator.rs: approach ≤ speed-1 through
 /// empties, then attack cheby-1. Landing set = {src ∪ empty cheby-1 of src};
-/// fanout = king_expand(landing) minus src. Guards do not participate in
+/// fanout = magic::king_expand(landing) minus src. Guards do not participate in
 /// skill attacks (they cannot equip skills).
 pub fn build_attackers_table(pos: &Position, all_occ: u64) -> AttackersTable {
     let mut table = AttackersTable {
@@ -308,7 +296,7 @@ fn scatter_side(pos: &Position, all_occ: u64, mut side_bits: u64, of: &mut [u64;
         let is_guard = pos.guards.0 & sq_bit != 0;
         let attacks = if is_guard {
             let approach = (magic::movement_targets_speed1(sq).0 & !all_occ) | sq_bit;
-            king_expand(approach) & !sq_bit
+            magic::king_expand(approach) & !sq_bit
         } else {
             // Champion: 8 immediate neighbours.
             magic::movement_targets_speed1(sq).0
@@ -567,7 +555,7 @@ pub fn see_capture(pos: &Position, table: &AttackersTable, src: u8, target: u8) 
     let mut gains = [0i32; SEE_MAX_PLIES];
     let mut n_gains = 0usize;
 
-    let target_cheby1 = king_expand(target_bit);
+    let target_cheby1 = magic::king_expand(target_bit);
 
     // Attack ply 0: initiator hits the victim.
     let mut vacated = 0u64;
@@ -735,7 +723,7 @@ fn apply_hit(
     // Newly-reachable Guards from the vacated square (only if vacated sits
     // cheby-1 of the target). Skill bitmasks stay frozen — see doc comment.
     if target_cheby1 & att_bit != 0 {
-        let neigh = king_expand(att_bit) & pos.guards.0 & !*vacated & !target_bit;
+        let neigh = magic::king_expand(att_bit) & pos.guards.0 & !*vacated & !target_bit;
         let (stm_own, dfd_own) = match stm {
             Player::P1 => (pos.p1_pieces.0, pos.p2_pieces.0),
             Player::P2 => (pos.p2_pieces.0, pos.p1_pieces.0),

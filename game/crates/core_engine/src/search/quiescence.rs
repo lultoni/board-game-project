@@ -43,6 +43,7 @@ use crate::game_logic::skills::{
 };
 use crate::game_logic::{generator, make_unmake};
 use crate::state::Position;
+use crate::state::magic;
 use crate::state::position::{GameResult, Phase, Player};
 
 /// Cap on quiescence recursion depth. Prevents stack overflow in pathological
@@ -125,7 +126,7 @@ pub(super) fn is_king_threatened(pos: &mut Position, side: Player) -> bool {
                 let sq = bits.trailing_zeros() as u8;
                 bits &= bits - 1;
                 let speed: u8 = if pos.guards.contains(sq) { 2 } else { 1 };
-                if chebyshev(sq, king_sq) <= speed { return true; }
+                if magic::cheby_dist(sq, king_sq) <= speed { return true; }
             }
             false
         }
@@ -140,21 +141,12 @@ pub(super) fn is_king_threatened(pos: &mut Position, side: Player) -> bool {
                     let damaging = skill_category(s) == SkillCategory::Strike || s == Skill::Blast;
                     if !damaging { continue; }
                     if (opp_money as u8) < skill_cost(s) { continue; }
-                    if chebyshev(sq, king_sq) <= skill_default_range(s) { return true; }
+                    if magic::cheby_dist(sq, king_sq) <= skill_default_range(s) { return true; }
                 }
             }
             false
         }
     }
-}
-
-#[inline]
-fn chebyshev(a: u8, b: u8) -> u8 {
-    let ar = (a / 8) as i8; let af = (a % 8) as i8;
-    let br = (b / 8) as i8; let bf = (b % 8) as i8;
-    let dr = (ar - br).unsigned_abs();
-    let df = (af - bf).unsigned_abs();
-    dr.max(df)
 }
 
 /// Quiescence search at depth-0 boundary of the main alpha-beta search.

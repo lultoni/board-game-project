@@ -185,16 +185,10 @@ pub fn classify_stage(total_material: i32, round_number: u16, params: &EvalParam
     }
 }
 
-/// King-expand: bitboard OR of all 8-directional 1-step neighbours.
-#[inline]
-pub fn king_expand(x: u64) -> u64 {
-    const NOT_A: u64 = 0xfefefefefefefefe;
-    const NOT_H: u64 = 0x7f7f7f7f7f7f7f7f;
-    let l = (x & NOT_A) >> 1;
-    let r = (x & NOT_H) << 1;
-    let h = x | l | r;
-    h | (h << 8) | (h >> 8)
-}
+/// King-expand: bitboard OR of all 8-directional 1-step neighbours. Thin
+/// re-export of the single shared primitive in `state::magic` so the evaluator
+/// and SEE share one implementation.
+pub use crate::state::magic::king_expand;
 
 /// Chebyshev dilation by `radius`: the set of all squares within Chebyshev
 /// distance `radius` of any set bit in `x` (includes `x` itself). `radius`

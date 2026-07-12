@@ -435,19 +435,19 @@ fn move1_table() -> &'static [u64; 64] {
     })
 }
 
-/// Dilate a set by one king-step: OR the `MOVE1` neighbourhood of every set
-/// bit. Used by the speed-2 flood-fill.
+/// King-dilate a whole bitboard: OR every set square with its 8 immediate
+/// neighbours (the result INCLUDES the input set). Branchless shift-mask form —
+/// faster than iterating set bits, and the single shared primitive for all
+/// bitboard dilation in the engine (SEE fanout, evaluator neighbourhoods, the
+/// speed-2 flood-fill below).
 #[inline]
-fn dilate(set: u64) -> u64 {
-    let m1 = move1_table();
-    let mut out = 0u64;
-    let mut b = set;
-    while b != 0 {
-        let s = b.trailing_zeros() as usize;
-        b &= b - 1;
-        out |= m1[s];
-    }
-    out
+pub fn king_expand(x: u64) -> u64 {
+    const NOT_A: u64 = 0xfefe_fefe_fefe_fefe; // !file A
+    const NOT_H: u64 = 0x7f7f_7f7f_7f7f_7f7f; // !file H
+    let l = (x & NOT_A) >> 1;
+    let r = (x & NOT_H) << 1;
+    let h = x | l | r;
+    h | (h << 8) | (h >> 8)
 }
 
 /// The 8 immediately adjacent squares for a speed-1 piece at `sq`.
@@ -471,16 +471,17 @@ pub fn movement_targets_speed1(sq: u8) -> Bitboard {
 ///     square or `sq` itself (see `movement_attack_targets_speed2`)
 ///
 /// Allocation-free bitboard flood-fill: two king-dilation steps, each masked to
-/// empty squares. `s1` = empties reachable in one step; `s2` = empties reachable
-/// from `sq ∪ s1` (i.e. within two steps). Proven equivalent to the previous
-/// per-call BFS (see the `speed2_flood_matches_bfs` test).
+/// empty squares (and excluding the origin). `s1` = empties reachable in one
+/// step; `s2` = empties reachable from `sq ∪ s1` (i.e. within two steps). Proven
+/// equivalent to the previous per-call BFS (see the `speed2_flood_matches_bfs`
+/// test). `king_expand` includes its input, so `& !start` drops the origin.
 #[inline]
 pub fn movement_targets_speed2(sq: u8, occ: u64) -> Bitboard {
     debug_assert!(sq < 64);
     let empty = !occ;
     let start = 1u64 << sq;
-    let s1 = dilate(start) & empty;
-    let s2 = dilate(start | s1) & empty;
+    let s1 = king_expand(start) & empty & !start;
+    let s2 = king_expand(start | s1) & empty & !start;
     Bitboard((s1 | s2) & !start)
 }
 

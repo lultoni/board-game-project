@@ -19,7 +19,7 @@ use crate::search::see::build_attackers_table;
 use super::MATE_SCORE;
 use super::params::EvalParams;
 use super::context::{
-    king_expand, side_availability_table, useful_money, max_offensive_range,
+    king_expand, expand_n, side_availability_table, useful_money, max_offensive_range,
     max_owned_skill_cost, actions_per_round, side_value_and_material, classify_stage,
 };
 
@@ -313,11 +313,7 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
         // per-square struct yet). Mirrors terms::GuardIsolation exactly so the
         // `evaluate_by_square.total == evaluate_breakdown.total` invariant holds.
         let guard_iso_pen: i32 = if is_guard {
-            let hood = {
-                let mut out = mask;
-                for _ in 0..params.guard_iso_radius { out = king_expand(out); }
-                out
-            };
+            let hood = expand_n(mask, params.guard_iso_radius);
             let (own_bb2, opp_bb2) = if is_p1 { (p1_bb, p2_bb) } else { (p2_bb, p1_bb) };
             let enemies_near = (hood & opp_bb2).count_ones() as i32;
             let friendlies_near = (hood & own_bb2 & !mask).count_ones() as i32;
