@@ -581,6 +581,13 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
     // are castable), skip the whole tree — the caller will just apply it.
     // Score is the static eval so telemetry / UI show something meaningful.
     // nodes=1: we did examine one node (the root) to determine it was forced.
+    //
+    // `fallback_move` also seeds `best` below: it guarantees `find_best` returns
+    // a LEGAL move on any non-terminal position even if the search is aborted by
+    // the clock before iteration 1 completes (ns-49 bug: a tight/loaded time
+    // budget on an expensive wide-open endgame aborted during depth 1, leaving
+    // `best = default() = None`, and the UI reported "AI returned no move").
+    let mut fallback_move = Action::default();
     if pos.game_result.is_none() {
         let root_moves = generator::generate(pos);
         if root_moves.len() == 1 {
@@ -591,9 +598,17 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
                 nodes: 1,
             };
         }
+        if let Some(&m) = root_moves.first() { fallback_move = m; }
     }
 
-    let mut best = SearchResult::default();
+    // Seed with the fallback legal move + static eval, so an abort before any
+    // completed iteration still returns something the caller can legally apply.
+    let mut best = SearchResult {
+        best: if fallback_move.0 == 0 { None } else { Some(fallback_move) },
+        score: if pos.game_result.is_none() { evaluator.evaluate(pos) } else { 0 },
+        depth: 0,
+        nodes: 0,
+    };
     let mut total_nodes: u64 = 0;
 
     // Killers + history persist across iterative-deepening iterations within
@@ -605,11 +620,18 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
         let score = search(pos, d as i32, 0, -INF, INF, true, &mut ctx);
         total_nodes += ctx.nodes;
 
-        if ctx.aborted { break; }
+        if ctx.aborted {
+            // Aborted mid-iteration: keep the best from the last COMPLETED depth
+            // (or the seeded fallback if none completed). Record nodes examined.
+            best.nodes = total_nodes;
+            break;
+        }
 
         let root_move = tt.probe(pos.zobrist).map(|e| e.best_move).unwrap_or_default();
         best = SearchResult {
-            best:  if root_move.0 == 0 { None } else { Some(root_move) },
+            // Never regress to None: if this completed iteration somehow lacks a
+            // root TT move, keep the prior best move rather than nulling it.
+            best:  if root_move.0 != 0 { Some(root_move) } else { best.best },
             score,
             depth: d,
             nodes: total_nodes,
@@ -953,5 +975,38 @@ mod tests {
         let h_after = ord.history[OrderingTables::side_idx(Player::P1)]
                                  [OrderingTables::kind_idx(ActionKind::Move)][10][20];
         assert_eq!(h_before, h_after, "Draft/BG cutoffs must not touch history");
+    }
+
+    /// ns-49 regression: a near-lost, wide-open endgame where the time-limited
+    /// AI returned NO move despite legal moves existing. Root cause: an
+    /// expensive depth-1 got aborted by the clock before completing, so
+    /// `find_best` returned `SearchResult::default()` (best=None) and the UI
+    /// reported "AI returned no move — pausing". `find_best` must ALWAYS return
+    /// a legal move on a non-terminal position, even if aborted before iteration
+    /// 1 completes. FEN reported by Elias.
+    #[test]
+    fn find_best_returns_move_even_when_clock_aborts_depth_1() {
+        let fen = "8/3C[2/0/0/1/10]4/8/k[2/2/0/6/9]1C[2/2/0/6/10]5/8/8/1C[2/2/0/1/6]4K[2/2/0/6/9]1/8 P2 M 2 6 18 0 33 0x0";
+        let mut pos = crate::state::fen::from_fen(fen).expect("valid fen");
+        let moves = crate::game_logic::generator::generate(&pos);
+        assert!(!moves.is_empty(), "position must have legal moves");
+        assert!(pos.game_result.is_none(), "position is not terminal");
+
+        // Full depth-limited search returns the true best.
+        let mut tt = TranspositionTable::with_capacity_mb(16);
+        assert!(find_best(&mut pos, &mut tt, 0, 6).best.is_some());
+
+        // Tight time limits force an abort during (or before) depth 1 on this
+        // expensive position — the search must still return a legal move.
+        for tl in [1u64, 2, 5, 10] {
+            let mut tt2 = TranspositionTable::with_capacity_mb(16);
+            let mut p2 = crate::state::fen::from_fen(fen).unwrap();
+            let r = find_best(&mut p2, &mut tt2, tl, 64);
+            assert!(r.best.is_some(),
+                    "AI returned no move under {}ms time limit (has {} legal moves)", tl, moves.len());
+            // And the returned move must be one the generator considers legal.
+            assert!(moves.contains(&r.best.unwrap()),
+                    "returned move under {}ms not in the legal set", tl);
+        }
     }
 }

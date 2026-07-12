@@ -619,6 +619,85 @@ count), not eval cost per node.
 
 ---
 
+### OPEN ISSUE (ns-49, found 2026-07-12): quiescence explosion at "depth 1" in open king-danger endgames
+
+**Symptom that surfaced it.** Two AIs playing the endgame FEN
+`8/3C[2/0/0/1/10]4/8/k[2/2/0/6/9]1C[2/2/0/6/10]5/8/8/1C[2/2/0/1/6]4K[2/2/0/6/9]1/8 P2 M 2 6 18 0 33 0x0`
+froze with "AI returned no move — pausing". Two separate problems:
+
+1. **Correctness (FIXED, this commit).** `find_best` seeded `best = None` and, on
+   an iterative-deepening abort *before iteration 1 completed*, broke the loop
+   returning `None` → wrapper emitted `applied_action = 0` → UI "no move". Fixed
+   by seeding `best` with a legal fallback root move (+ static eval) before the
+   loop and never regressing to `None`. Regression test
+   `find_best_returns_move_even_when_clock_aborts_depth_1` pins the FEN.
+
+2. **Performance (OPEN — this note).** The reason iteration 1 doesn't complete:
+   **a nominal depth-1 search here costs ~681 ms / ~450k nodes** — because the
+   `depth<=0` boundary hands off to quiescence, and QS explodes in this position.
+
+**Measured (no-clock, exact depth, 64 MB TT, release):**
+
+| depth | time | nodes |
+|-------|------|-------|
+| 1 | **681 ms** | **450,596** |
+| 2 | +652 ms | 1,115,936 |
+| 3 | 861 ms | 1,474,247 |
+| 6 | 1,173 ms | 2,007,296 |
+
+Realistic budgets (with the correctness fix in place):
+
+| budget | reached | move played |
+|--------|---------|-------------|
+| 100 ms | depth 0 | **fallback** (unsearched) |
+| 300 ms | depth 1 | searched |
+| 500 ms | depth 1 | searched |
+| 700 ms | depth 2 | searched |
+
+So at any per-ply budget below ~700 ms — or on a loaded machine — the AI in this
+class of position plays a *shallow fallback* move rather than a searched one.
+That is weak play, and it is why the freeze "kept happening with more than
+enough think time": ~1 s was NOT enough for even one full iteration.
+
+**Root cause.** `MAX_QS_PLY = 8` (quiescence.rs). Each QS node calls
+`generator::generate` and recurses on every *loud* move (move-attacks + Strike
+skills). In a wide-open endgame with sliding champions + strike skills and the
+king in danger, the loud-move branching stays high for all 8 QS plies, so the QS
+tree under a single depth-1 leaf balloons to hundreds of thousands of nodes.
+This is almost certainly the same mechanism behind the two remaining over-1s d6
+corpus positions (`opening-with-skills-03`, `midgame-move-03`) — both are
+loud-heavy.
+
+**Sharpest mechanism (quiescence.rs:230).** When the side to move is in check,
+QS searches **every legal move, including quiet ones** (`if !in_check && !is_l
+{ continue; }`) — correct for check-evasion, but it means that in a *persistent*
+king-danger position `in_check` stays true down the QS line, so QS degenerates
+into a near-**full-width 8-ply search** rather than a tactical-only one. That is
+the explosion: it is not loud-move branching alone, it is 8 plies of all-moves
+whenever the king stays threatened.
+
+**Candidate fixes (unranked, each needs the search-sweep gate + strength check):**
+- **QS delta / futility pruning** — skip loud moves that can't raise alpha past a
+  margin (standard chessprogramming QS pruning). Biggest expected win.
+- **QS SEE gating** — only recurse into a capture/strike whose static-exchange
+  eval is non-losing (we already have `see.rs`; wire it into `is_loud` filtering).
+- **Lower `MAX_QS_PLY`** in these positions, or make the cap adaptive to loud-move
+  count. Cheap but blunt; risks horizon effects.
+- **QS node budget** — hard cap QS nodes per leaf, fall back to static eval past it.
+- **Check-evasion focus** — when the side to move is in king-danger, restrict QS
+  to king-safety-relevant loud moves rather than all loud moves.
+
+**Grade on:** the search sweep (d6 total + over-1s count) AND a self-play strength
+check (QS pruning can silently weaken play — must not regress move quality, not
+just speed). Do NOT grade on the eval microbench.
+
+**Watch:** the fallback move the correctness fix plays is the *first generated*
+root move — fine for not-freezing, but if these positions stay sub-700 ms the AI
+is effectively random there. Fixing the QS explosion is what makes the AI
+actually *play* these positions, so this is worth a dedicated pass.
+
+---
+
 
 - `search-speed-benchmark-plan.md` — the benchmark infrastructure that grades each technique.
 - `nnue-rework-plan.md` — the NN-eval plan (absorbed the retired `nn-rater-plan.md`); its search-speed prerequisite is fed by this catalogue.
