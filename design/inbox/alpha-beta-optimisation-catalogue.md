@@ -407,6 +407,57 @@ Per the catalogue's recommended order, remaining Phase B / early-Phase-C items t
 
 ---
 
+## Session 48 retrospective — Phase 1 eval throughput (search-deepening plan)
+
+### Phase 1: monomorphic allocation-free scalar leaf path — **ACCEPTED (2026-07-12)**
+
+The ns-43 term registry rebuilt itself on every `evaluate()`: 14 `Box<dyn
+EvalTerm>` allocations (`default_terms`), an `active`/`per_piece`/`side_level`/
+`acc`/`entries` `Vec` chain, `dyn` dispatch per term × square, and a full
+`DynBreakdown::to_legacy()` projection to the frontend struct — all pure
+overhead in the search leaf, which only wants an `i32`.
+
+Two behaviour-preserving changes (commit `60dbc1e`), gated by `golden_eval_unchanged`
++ `eval_is_deterministic` staying byte-identical:
+- `registry::default_terms_static()` — build the boxed term set once (`OnceLock`)
+  and borrow it. Terms are stateless ZSTs reading `ctx.params`, so a single
+  static set is correct; kills the 14 boxes/call on the breakdown paths too.
+- `registry::evaluate_scalar()` — a monomorphic fold of the same term
+  set/order/`is_active` gates/signs into one running `i32`: no `DynBreakdown`,
+  no `acc`/`entries` Vecs, no `to_legacy`. `evaluate()` (hence the search leaf
+  via `HeuristicEvaluator::evaluate`) routes through it.
+
+Sweep vs the fresh post-ns-43 baseline (determinism 30/30):
+- **depth6: geo-NPS 587K → 1,153K (+96.5%), total d6 22,496ms → 11,221ms
+  (−50.1%), positions-over-1s 5 → 3.** midgame-move-05 (1519→836ms) and
+  skill-phase-full-04 (1008→501ms) crossed under 1s. Every position ~50% faster;
+  zero score/best-move regressions.
+- time budgets: deeper at all four, **0 shallower anywhere** (100ms +0.43 plies /
+  9 deeper; 500ms +0.47 / 14; 1000ms +0.37 / 10; 3000ms +0.50 / 14).
+
+**The `--eval-only` microbench was misleading — read this before trusting one
+again.** eval-only ran ~2270 ns/eval before AND after (flat, warm allocator,
+predictable branch pattern in a tight loop). It completely hid a ~2× *search*
+NPS gain. The win is allocator + cache pressure amortised across 5M+ real search
+nodes with interleaved make/unmake, not per-call eval latency. **Grade
+eval-throughput refactors on the search sweep, not eval-only.**
+
+**Phase 1c ("≤150 ns/eval") is moot and was not pursued.** eval latency is
+dominated by `EvalContext::new` (the `build_attackers_table` scatter + the two
+`[i32;16]` availability tables + the value/material board pass), which every
+path shares unchanged — not the registry glue Phase 1 removed. Phase 1a/1b/1c
+collapsed into the single scalar-path commit; the scalar path is already
+heap-allocation-free (all accumulators are stack scalars), which satisfies 1c's
+actual intent. Further eval-throughput gains would need to attack
+`EvalContext::new` itself (or incremental eval, 1d) — deferred; the remaining
+3 over-1s positions are a tree-shape problem for Phase 2 (LMR+PVS).
+
+Remaining d6-over-1s after Phase 1: opening-with-skills-03 (~2.7s),
+midgame-move-03 (~2.4s), skill-phase-full-03 (~1.7s).
+
+---
+
+
 ## Cross-references
 
 - `search-speed-benchmark-plan.md` — the benchmark infrastructure that grades each technique.
