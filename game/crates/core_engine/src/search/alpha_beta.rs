@@ -47,6 +47,23 @@ pub static DISABLE_QS: AtomicBool = AtomicBool::new(false);
 /// Skill phase, so it isn't a real null.
 pub static ENABLE_NMP: AtomicBool = AtomicBool::new(true);
 
+/// Runtime toggle for Principal Variation Search (Phase 2, Session 48). Default
+/// `true`. First move at a node is searched with the full `[alpha, beta]`
+/// window; siblings are probed with a null window and re-searched full only on
+/// a raise. Paired with LMR (below) — the null-window probe is the structure
+/// LMR's reduced-depth re-search rides on (catalogue §5). Session 36 rejected
+/// PVS standalone (nothing to save atop strong ordering); it earns its keep once
+/// LMR is reducing the re-search depth.
+pub static ENABLE_PVS: AtomicBool = AtomicBool::new(true);
+
+/// Runtime toggle for Late Move Reductions (Phase 2, Session 48). Default
+/// `true`. Late, quiet, non-PV, non-TT, non-killer moves are searched at reduced
+/// depth; a beat-the-bound result triggers a full-depth re-search. Aimed at the
+/// EBF-10-12 Skill-phase tails. Never reduces: PV-window nodes' first move,
+/// in-check positions, loud/King-threatening actions, or moves below
+/// `LMR_MIN_IDX`.
+pub static ENABLE_LMR: AtomicBool = AtomicBool::new(true);
+
 /// R = 2 reduction for null-move search. Depth on the null branch is
 /// `depth - 1 - R`.
 const NMP_R: i32 = 2;
@@ -54,6 +71,24 @@ const NMP_R: i32 = 2;
 /// In sparse endgames a "pass" can be strictly better than any real move,
 /// which is exactly the situation NMP fails on.
 const NMP_MIN_PIECES: u32 = 6;
+
+/// LMR: don't reduce the first `LMR_MIN_IDX` moves at a node (the TT-move +
+/// early killers/history-ordered moves are the likely PV / cut moves).
+const LMR_MIN_IDX: usize = 3;
+/// LMR: only reduce at `depth >= LMR_MIN_DEPTH` (reducing shallow nodes buys
+/// nothing — the child is already near a leaf).
+const LMR_MIN_DEPTH: i32 = 3;
+
+/// Late-move reduction amount: `R = base + ln(depth)·ln(idx)/divisor`, floored
+/// at 1, capped so the reduced child keeps `depth >= 1`. Integer approximation
+/// of the classic LMR curve (catalogue §2). `idx` is the 0-based move index.
+#[inline]
+fn lmr_reduction(depth: i32, idx: usize) -> i32 {
+    let ld = (depth as f32).ln();
+    let li = (idx as f32).ln();
+    let r = 0.75 + ld * li / 2.25;
+    (r as i32).max(1)
+}
 
 use super::evaluator::{Evaluator, HeuristicEvaluator, MATE_SCORE};
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
@@ -364,9 +399,54 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
     let mut best_score  = if maximising { -INF } else { INF };
     let mut best_action = Action::default();
 
-    for a in moves {
+    // PVS/LMR gates (read once per node).
+    let pvs_on = ENABLE_PVS.load(AtomicOrdering::Relaxed);
+    let lmr_on = ENABLE_LMR.load(AtomicOrdering::Relaxed);
+    // In-check gate for LMR (never reduce when our own King is threatened —
+    // those lines are tactically forced). Reuses the QS bitboard fast path.
+    // `side` is the side to move at this node (captured above before the loop).
+    let node_in_check = super::quiescence::is_king_threatened(pos, side);
+
+    for (idx, a) in moves.into_iter().enumerate() {
+        // LMR eligibility (computed before make(): `is_loud` inspects only the
+        // action, and `node_in_check` is a property of the parent node).
+        let is_first = idx == 0;
+        let reduce = lmr_on
+            && !is_first
+            && depth >= LMR_MIN_DEPTH
+            && idx >= LMR_MIN_IDX
+            && !node_in_check
+            && !super::quiescence::is_loud(a, pos);
+        let r = if reduce { lmr_reduction(depth, idx).min(depth - 1) } else { 0 };
+
         let undo = make_unmake::make(pos, a);
-        let s = search(pos, depth - 1, ply + 1, alpha, beta, true, ctx);
+        let s = if is_first || !pvs_on {
+            // First move (or PVS off): full window, full depth.
+            search(pos, depth - 1, ply + 1, alpha, beta, true, ctx)
+        } else if maximising {
+            // Null-window probe [alpha, alpha+1] at (optionally reduced) depth.
+            let mut s = search(pos, depth - 1 - r, ply + 1, alpha, alpha + 1, true, ctx);
+            // LMR re-search at full depth if the reduced probe beat alpha.
+            if r > 0 && !ctx.aborted && s > alpha {
+                s = search(pos, depth - 1, ply + 1, alpha, alpha + 1, true, ctx);
+            }
+            // PVS full-window re-search if the probe raised alpha inside the window.
+            if !ctx.aborted && s > alpha && s < beta {
+                s = search(pos, depth - 1, ply + 1, alpha, beta, true, ctx);
+            }
+            s
+        } else {
+            // Minimising: null-window probe [beta-1, beta].
+            let mut s = search(pos, depth - 1 - r, ply + 1, beta - 1, beta, true, ctx);
+            if r > 0 && !ctx.aborted && s < beta {
+                s = search(pos, depth - 1, ply + 1, beta - 1, beta, true, ctx);
+            }
+            if !ctx.aborted && s < beta && s > alpha {
+                s = search(pos, depth - 1, ply + 1, alpha, beta, true, ctx);
+            }
+            s
+        };
+
         make_unmake::unmake(pos, &undo);
         if ctx.aborted { return 0; }
 
