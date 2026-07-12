@@ -22,9 +22,9 @@
 //! reads them by name.
 
 use core_engine::game_logic::action::{Action, ActionKind};
-use core_engine::search::alpha_beta::{find_best, SearchResult};
+use core_engine::search::alpha_beta::{find_best_with_evaluator, SearchResult};
 use core_engine::search::counters::{self, Snapshot as CounterSnapshot, ATTACKER_LIST_HIST_BUCKETS};
-use core_engine::search::evaluator::evaluate_breakdown;
+use core_engine::search::evaluator::{evaluate_breakdown, Evaluator, HeuristicEvaluator};
 use core_engine::search::transposition::{Stats as TtStats, TranspositionTable};
 use core_engine::state::Position;
 use core_engine::state::fen::from_fen;
@@ -84,15 +84,43 @@ struct Args {
     determinism_runs: usize,
     eval_only: bool,
     eval_iterations: u64,
+    eval_choice: EvalChoice,
+}
+
+/// Which evaluator the search uses. `Nnue` is the ns-50 NNUE Phase-0 A/B lever:
+/// it swaps in a quantized `NnueEvaluator` (refresh-per-call) so the search
+/// sweep measures the NNUE eval cost as an NPS ratio vs the heuristic. For the
+/// fixed-depth speed gate the net's weights are irrelevant (only forward cost),
+/// so `nnue` builds a fresh in-process net.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EvalChoice {
+    Heuristic,
+    Nnue,
+}
+
+/// Build the evaluator for a run. Boxed so both variants share one `&dyn
+/// Evaluator` path; constructed once per process, not per position.
+fn build_evaluator(choice: EvalChoice) -> Box<dyn Evaluator> {
+    match choice {
+        EvalChoice::Heuristic => Box::new(HeuristicEvaluator),
+        EvalChoice::Nnue => {
+            use nn_trainer::{Mlp, MlpConfig, NnueEvaluator, QuantScales, NUM_FEATURES};
+            let device = Default::default();
+            let model: Mlp<nn_trainer::InferenceBackend> =
+                MlpConfig::new().with_input_dim(NUM_FEATURES).init(&device);
+            Box::new(NnueEvaluator::from_mlp(&model, QuantScales::default()))
+        }
+    }
 }
 
 fn print_usage_and_exit() -> ! {
-    eprintln!("usage: search_bench --corpus <path> (--depth N | --time-ms M) [--runs N] [--out <path>]");
-    eprintln!("       search_bench --determinism [--corpus <path>] [--depth N] [--determinism-runs N]");
+    eprintln!("usage: search_bench --corpus <path> (--depth N | --time-ms M) [--runs N] [--out <path>] [--eval heuristic|nnue]");
+    eprintln!("       search_bench --determinism [--corpus <path>] [--depth N] [--determinism-runs N] [--eval heuristic|nnue]");
     eprintln!("       search_bench --eval-only [--corpus <path>] [--eval-iterations N] [--out <path>]");
     eprintln!();
     eprintln!("Mode is inferred: --depth ⇒ depth mode; --time-ms ⇒ time mode.");
     eprintln!("Passing both, or neither, is an error (use --determinism or --eval-only to opt out).");
+    eprintln!("--eval selects the search leaf evaluator (default heuristic). 'nnue' is the ns-50 NNUE A/B.");
     std::process::exit(2);
 }
 
@@ -106,6 +134,7 @@ fn parse_args() -> Args {
     let mut determinism_runs = 10usize;
     let mut eval_only = false;
     let mut eval_iterations: u64 = 100_000;
+    let mut eval_choice = EvalChoice::Heuristic;
 
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -183,6 +212,21 @@ fn parse_args() -> Args {
                     });
                 i += 2;
             }
+            "--eval" => {
+                let v = argv.get(i + 1).cloned().unwrap_or_else(|| {
+                    eprintln!("--eval needs a value (heuristic|nnue)");
+                    std::process::exit(2);
+                });
+                eval_choice = match v.as_str() {
+                    "heuristic" => EvalChoice::Heuristic,
+                    "nnue" => EvalChoice::Nnue,
+                    other => {
+                        eprintln!("--eval must be 'heuristic' or 'nnue', got '{other}'");
+                        std::process::exit(2);
+                    }
+                };
+                i += 2;
+            }
             "--help" | "-h" => print_usage_and_exit(),
             other => {
                 eprintln!("unknown arg: {}", other);
@@ -219,6 +263,7 @@ fn parse_args() -> Args {
         determinism_runs,
         eval_only,
         eval_iterations,
+        eval_choice,
     }
 }
 
@@ -318,7 +363,7 @@ fn load_corpus(path: &PathBuf) -> Vec<CorpusEntry> {
     out
 }
 
-fn one_run(pos_template: &Position, mode: Mode) -> (Measurement, TtStats) {
+fn one_run(pos_template: &Position, mode: Mode, evaluator: &dyn Evaluator) -> (Measurement, TtStats) {
     let mut pos = pos_template.clone();
     let mut tt = TranspositionTable::with_capacity_mb(TT_MB);
     counters::reset();
@@ -327,7 +372,8 @@ fn one_run(pos_template: &Position, mode: Mode) -> (Measurement, TtStats) {
         Mode::Depth(d) => (0u64, d),
         Mode::Time(t) => (t, 64u8),
     };
-    let sr: SearchResult = find_best(&mut pos, &mut tt, time_ms_arg, max_depth_arg);
+    let sr: SearchResult =
+        find_best_with_evaluator(&mut pos, &mut tt, time_ms_arg, max_depth_arg, evaluator, None);
     let elapsed = t0.elapsed().as_secs_f64();
     let stats = tt.stats();
     let counter_snap = counters::snapshot();
@@ -406,7 +452,12 @@ fn action_brief(a: Option<Action>) -> String {
     }
 }
 
-fn run_corpus(entries: &[CorpusEntry], mode: Mode, runs: usize) -> (Vec<(String, Measurement)>, Vec<String>) {
+fn run_corpus(
+    entries: &[CorpusEntry],
+    mode: Mode,
+    runs: usize,
+    evaluator: &dyn Evaluator,
+) -> (Vec<(String, Measurement)>, Vec<String>) {
     let mut results = Vec::with_capacity(entries.len());
     let mut regressions: Vec<String> = Vec::new();
 
@@ -421,7 +472,7 @@ fn run_corpus(entries: &[CorpusEntry], mode: Mode, runs: usize) -> (Vec<(String,
 
         let mut samples = Vec::with_capacity(runs);
         for _ in 0..runs {
-            let (m, _stats) = one_run(&template, mode);
+            let (m, _stats) = one_run(&template, mode, evaluator);
             samples.push(m);
         }
         let med = median_measurement(&samples);
@@ -638,7 +689,7 @@ fn write_json(
     eprintln!("wrote {}", out_path.display());
 }
 
-fn run_determinism(entries: &[CorpusEntry], depth: u8, runs: usize) {
+fn run_determinism(entries: &[CorpusEntry], depth: u8, runs: usize, evaluator: &dyn Evaluator) {
     eprintln!("Determinism check: {} positions × {} runs each at depth {}", entries.len(), runs, depth);
     let mut all_ok = true;
     for entry in entries {
@@ -653,7 +704,7 @@ fn run_determinism(entries: &[CorpusEntry], depth: u8, runs: usize) {
         let mut first: Option<(u64, i32, u32)> = None;
         let mut ok = true;
         for r in 0..runs {
-            let (m, _) = one_run(&template, Mode::Depth(depth));
+            let (m, _) = one_run(&template, Mode::Depth(depth), evaluator);
             let bm = m.best_move.map(|a| a.0).unwrap_or(0);
             match first {
                 None => first = Some((m.nodes, m.score, bm)),
@@ -801,12 +852,17 @@ fn main() {
     }
     eprintln!("loaded {} positions from {}", entries.len(), args.corpus_path.display());
 
+    let evaluator = build_evaluator(args.eval_choice);
+    if args.eval_choice == EvalChoice::Nnue {
+        eprintln!("evaluator: NNUE (quantized, refresh-per-call) — ns-50 A/B");
+    }
+
     if args.determinism {
         let depth = match args.mode {
             Mode::Depth(d) => d,
             Mode::Time(_) => DEFAULT_DEPTH,
         };
-        run_determinism(&entries, depth, args.determinism_runs);
+        run_determinism(&entries, depth, args.determinism_runs, evaluator.as_ref());
         return;
     }
 
@@ -817,7 +873,7 @@ fn main() {
 
     let entries_by_id: BTreeMap<String, CorpusEntry> =
         entries.iter().map(|e| (e.id.clone(), e.clone())).collect();
-    let (results, regressions) = run_corpus(&entries, args.mode, args.runs);
+    let (results, regressions) = run_corpus(&entries, args.mode, args.runs, evaluator.as_ref());
 
     if let Some(path) = &args.out_path {
         write_json(path, args.mode, args.runs, &results, &entries_by_id);

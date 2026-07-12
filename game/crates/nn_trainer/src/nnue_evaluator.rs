@@ -133,4 +133,67 @@ mod tests {
             .forward_int(&Accumulator::refresh(&pos, eval.net().ft()));
         assert_eq!(eval.evaluate(&pos), expected);
     }
+
+    /// Milestone speed diagnostic: measure per-node inference cost three ways —
+    /// hand-crafted `evaluate`, NNUE refresh-per-call (Phase-0 conservative
+    /// bound), and NNUE incremental `apply` (the Phase-1 in-search path). Prints
+    /// the ratios so the milestone verdict is grounded in a measurement, not an
+    /// estimate. `#[ignore]` — timing noise makes it a diagnostic, not a gate;
+    /// the real gate is the search-sweep NPS ratio.
+    #[test]
+    #[ignore = "timing diagnostic; run explicitly with --nocapture"]
+    fn inference_cost_refresh_vs_incremental() {
+        use core_engine::game_logic::{generator, make_unmake};
+        use core_engine::search::evaluator::evaluate;
+        use std::time::Instant;
+
+        let eval = fresh_evaluator();
+        let ft = eval.net().ft();
+        let net = eval.net();
+
+        // Build a realistic mid-game position via a short random walk.
+        let mut pos = Position::setup_stack_m();
+        let mut rng = 0x51EDu64;
+        for _ in 0..12 {
+            let acts = generator::generate(&pos);
+            if acts.is_empty() { break; }
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+            make_unmake::make(&mut pos, acts[(rng >> 33) as usize % acts.len()]);
+        }
+
+        const N: u32 = 200_000;
+
+        // 1) hand-crafted eval.
+        let t0 = Instant::now();
+        let mut sink = 0i64;
+        for _ in 0..N { sink += evaluate(&pos) as i64; }
+        let hand_ns = t0.elapsed().as_nanos() as f64 / N as f64;
+
+        // 2) NNUE refresh-per-call (full rebuild + integer forward).
+        let t0 = Instant::now();
+        for _ in 0..N { sink += net.forward_int(&Accumulator::refresh(&pos, ft)) as i64; }
+        let refresh_ns = t0.elapsed().as_nanos() as f64 / N as f64;
+
+        // 3) NNUE incremental inference cost: apply(undo) + forward_int — the
+        // eval work the search adds per node on top of make/unmake (which every
+        // evaluator pays equally, so it's excluded here). Pre-make once; time
+        // clone+apply+forward against the fixed undo.
+        let acts = generator::generate(&pos);
+        let action = acts[0];
+        let base = Accumulator::refresh(&pos, ft);
+        let undo = make_unmake::make(&mut pos, action); // pos now post-make; undo fixed
+        let t0 = Instant::now();
+        for _ in 0..N {
+            let mut acc = base.clone();
+            acc.apply(&undo, &pos, ft);
+            sink += net.forward_int(&acc) as i64;
+        }
+        let incr_ns = t0.elapsed().as_nanos() as f64 / N as f64;
+        make_unmake::unmake(&mut pos, &undo);
+
+        eprintln!("sink={sink}");
+        eprintln!("hand-crafted eval : {hand_ns:8.1} ns/call");
+        eprintln!("NNUE refresh      : {refresh_ns:8.1} ns/call  ({:.1}x hand)", refresh_ns / hand_ns);
+        eprintln!("NNUE incremental  : {incr_ns:8.1} ns/call  ({:.1}x hand)", incr_ns / hand_ns);
+    }
 }
