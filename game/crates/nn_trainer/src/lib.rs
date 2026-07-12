@@ -13,6 +13,7 @@
 
 pub mod backend;
 pub mod batch;
+pub mod accumulator;
 pub mod calibration;
 pub mod encoding;
 pub mod gauntlet;
@@ -28,9 +29,12 @@ pub mod registry;
 pub mod run;
 pub mod selfplay;
 pub mod snapshot;
+pub mod sparse;
 pub mod train;
 
 pub use encoding::{encode_position, INPUT_DIM};
+pub use sparse::{encode_sparse, encode_sparse_vec, ACCUM_WIDTH, NUM_FEATURES};
+pub use accumulator::{Accumulator, FeatureTransform};
 pub use backend::BackendChoice;
 pub use gauntlet::{
     mirrored_bo3, play_match, play_match_with_callback, tier1_fitness, tier2_acceptance,
