@@ -43,9 +43,8 @@ pub use bootstrap::{bootstrap, label_corpus, mean_abs_error_cp, train_scalar, LA
 pub use nnue_evaluator::NnueEvaluator;
 pub use backend::BackendChoice;
 pub use gauntlet::{
-    mirrored_bo3, play_match, play_match_with_callback, tier1_fitness, tier2_acceptance,
-    AcceptanceReport, Bracket, BracketResults, ChampionTracker,
-    MatchOutcome, RaterId, SeriesTally, TrackUpdate,
+    accept_vs, mirrored_bo3, play_match, play_match_with_callback,
+    Acceptance, ChampionTracker, MatchOutcome, RaterId, SeriesTally,
 };
 pub use lineage::{perturb_model, train_lineages, Lineage, LineageConfig};
 pub use live::{

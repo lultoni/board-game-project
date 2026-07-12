@@ -1,10 +1,10 @@
 //! Accepted-rater registry.
 //!
 //! `<raters_dir>/index.json` is the authoritative list of accepted rater
-//! versions in acceptance order. It also names the leader of each of the
-//! three champion tracks (best-fast / best-slow / best-overall) so the
-//! gauntlet in §5 can pick which version to use as a baseline at each
-//! think-time bracket.
+//! versions in acceptance order. It also names the current **champion** (the
+//! single track, ns-50 — the retired best-fast / best-slow / best-overall
+//! triple was collapsed to one 100 ms track) so the gauntlet can pick the
+//! baseline to play new candidates against.
 //!
 //! ## Invariants
 //!
@@ -38,22 +38,21 @@ use std::path::{Path, PathBuf};
 /// Disk-format version for `index.json`. Bump on incompatible changes.
 pub const INDEX_FORMAT_VERSION: u32 = 1;
 
-/// The three champion tracks per plan §5. Each track has at most one
-/// leader at a time; the gauntlet driver updates the pointer when a
-/// candidate beats the current leader at that bracket.
+/// The champion track (ns-50: single track, replacing the retired
+/// best-fast / best-slow / best-overall triple). At most one leader at a time;
+/// the orchestrator updates the pointer when a candidate beats the current
+/// champion at 100 ms.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Track {
-    /// Best at the fast bracket (lowest think-time).
-    Fast,
-    /// Best at the slow bracket (highest think-time).
-    Slow,
-    /// Best aggregate across all brackets.
-    Overall,
+    /// The single 100 ms champion.
+    Champion,
 }
 
 impl Track {
-    pub fn all() -> [Track; 3] { [Track::Fast, Track::Slow, Track::Overall] }
+    pub fn all() -> [Track; 1] {
+        [Track::Champion]
+    }
 }
 
 /// One accepted rater. `stem` is the path stem relative to the directory
@@ -280,23 +279,19 @@ mod tests {
         idx.append(entry("v0001")).unwrap();
         idx.append(entry("v0002")).unwrap();
 
-        idx.set_track(Track::Fast, "v0001").unwrap();
-        idx.set_track(Track::Overall, "v0002").unwrap();
-
-        assert_eq!(idx.track_leader(Track::Fast).unwrap().id, "v0001");
-        assert_eq!(idx.track_leader(Track::Overall).unwrap().id, "v0002");
-        assert!(idx.track_leader(Track::Slow).is_none());
+        idx.set_track(Track::Champion, "v0001").unwrap();
+        assert_eq!(idx.track_leader(Track::Champion).unwrap().id, "v0001");
 
         // Promote: same track, different id.
-        idx.set_track(Track::Fast, "v0002").unwrap();
-        assert_eq!(idx.track_leader(Track::Fast).unwrap().id, "v0002");
+        idx.set_track(Track::Champion, "v0002").unwrap();
+        assert_eq!(idx.track_leader(Track::Champion).unwrap().id, "v0002");
     }
 
     #[test]
     fn set_track_rejects_unknown_id() {
         let mut idx = RaterIndex::default();
         idx.append(entry("v0001")).unwrap();
-        let err = idx.set_track(Track::Fast, "v0099").expect_err("must reject");
+        let err = idx.set_track(Track::Champion, "v0099").expect_err("must reject");
         assert!(matches!(err, IndexError::UnknownId(ref s) if s == "v0099"));
     }
 
@@ -306,14 +301,11 @@ mod tests {
         let mut idx = RaterIndex::default();
         idx.append(entry("v0001")).unwrap();
         idx.append(entry("v0002")).unwrap();
-        idx.set_track(Track::Fast, "v0001").unwrap();
-        idx.set_track(Track::Slow, "v0002").unwrap();
+        idx.set_track(Track::Champion, "v0002").unwrap();
         idx.save(&dir).unwrap();
 
         let reloaded = RaterIndex::load(&dir).unwrap();
-        assert_eq!(reloaded.track_leader(Track::Fast).unwrap().id, "v0001");
-        assert_eq!(reloaded.track_leader(Track::Slow).unwrap().id, "v0002");
-        assert!(reloaded.track_leader(Track::Overall).is_none());
+        assert_eq!(reloaded.track_leader(Track::Champion).unwrap().id, "v0002");
     }
 
     #[test]
