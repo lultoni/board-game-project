@@ -565,7 +565,60 @@ then saves nothing.
 ---
 
 
-## Cross-references
+### Phase 4: Eval throughput — physical-only attackers table + ray-skip LANDED; champion_threat vectorization + NN-eval REJECTED
+
+Session 48 (ns-49). Goal was the last 2 over-1s d6 positions. After the search
+wins (Phases 1–3), profiling turned to the eval itself.
+
+**What landed (−2.5% to −3.2% d6, byte- AND node-identical, 448 tests green):**
+
+1. **Physical-only attackers table on the eval path.** `EvalContext::new` built
+   the full `build_attackers_table` (physical scatter + skill-scatter). But the
+   evaluator only ever reads `p1_of`/`p2_of` (physical) via `any_attackers_of`
+   — the skill-scatter fields (`*_skill_of`, `*_skill_kind`) are consumed ONLY
+   by `see_capture`, never by eval. Added `build_attackers_table_phys` (skips
+   `scatter_skills_side`, the queen-ray-per-champion/king pass) and pointed
+   `EvalContext::new` at it. ~3.37M eval-path builds/sweep stop tracing skill
+   rays they discard. Byte-identical: eval reads only what's unchanged.
+2. **Ray-skip in `champion_threat`.** Skills whose `TargetOwner` is `Empty` /
+   `SelfOnly` (Dash, Retreat, Shield, Focus, Charge) score nothing in the term,
+   yet the loop traced their `skill_attacks` ray before discarding it. Moved the
+   ray trace inside the branches that read it. Small (corpus champions mostly
+   carry offensive skills) but free.
+
+**What was rejected — vectorizing champion_threat (negative result):**
+
+The initial profile *looked* like `champion_threat` was a 10× hot spot
+(2314 ns/board-pass in opening-with-skills-03 vs ~50–90 ns for every other term).
+**That was a microbench artifact** — timing the term through the per-term probe's
+`PieceContext` dispatch loop. Timed *directly*, champion_threat is ~260 ns,
+comparable to exposure (92 ns) / coverage (89 ns) / mobility (84 ns). **There is
+no single dominant eval hot spot.** The op-counter confirmed it: the two positions
+process near-identical work (~14 rays, 9–16 hits).
+
+The vectorized rewrite (a `FAR_RAY[sq][dir]` octant table so all distance-≥2
+strike hits in one direction share ONE landing-safety lookup, + masked-popcount
+value sums replacing the per-hit loop) was proven byte-identical against a
+verbatim reference over the corpus + ~1800 random positions — but **regressed the
+search sweep +1.9%**. The common case is 0–2 hits per champion, where the simple
+per-hit loop beats the popcount/closure machinery. Reverted completely (FAR_RAY
+table + all probes removed). Lesson: **grade eval micro-opts on the search sweep,
+and beware the per-term microbench** (it inflated a non-hot-spot ~9×).
+
+**NN eval as a throughput lever — REJECTED (wrong tool).** Measured a single
+`NnEvaluator` forward pass (burn `NdArray`, dense `2825→256→64→32→1`) at
+**~394 µs/call vs ~1 µs for the hand-crafted eval — ~382× slower.** A single NN
+pass is not faster; it is dramatically slower per call. NN is a *strength* lever,
+not a *throughput* one, and only via a ground-up NNUE-style redesign (sparse
+per-piece-per-square features + an incrementally-updated accumulator wired into
+make/unmake + int quantization). Scoped separately in `nnue-rework-plan.md`.
+
+**Net:** eval throughput is near its byte-identical floor. The remaining 2
+over-1s positions are node-count-bound; the next lever is search-side (node
+count), not eval cost per node.
+
+---
+
 
 - `search-speed-benchmark-plan.md` — the benchmark infrastructure that grades each technique.
 - `nn-rater-plan.md` §7 — search-speed pass is step 1 of NN-rater execution; this catalogue feeds it.

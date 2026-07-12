@@ -259,6 +259,32 @@ impl AttackersTable {
 /// fanout = magic::king_expand(landing) minus src. Guards do not participate in
 /// skill attacks (they cannot equip skills).
 pub fn build_attackers_table(pos: &Position, all_occ: u64) -> AttackersTable {
+    let mut table = build_attackers_table_phys(pos, all_occ);
+
+    // Skill scatter. Champions AND kings can equip skills; guards cannot.
+    // Money-gate at build time using the owner's current money.
+    let p1_skill_srcs = (pos.p1_pieces.0 & !pos.guards.0) & !0u64; // champs + kings
+    let p2_skill_srcs =  pos.p2_pieces.0 & !pos.guards.0;
+    scatter_skills_side(pos, all_occ, p1_skill_srcs, pos.p1_money,
+                        &mut table.p1_skill_of, &mut table.p1_skill_kind);
+    scatter_skills_side(pos, all_occ, p2_skill_srcs, pos.p2_money,
+                        &mut table.p2_skill_of, &mut table.p2_skill_kind);
+
+    table
+}
+
+/// Physical-only attackers table: fills `p1_of` / `p2_of` (Move-Attack scatter)
+/// and leaves the skill-scatter fields (`*_skill_of`, `*_skill_kind`) zeroed.
+///
+/// The **evaluator** (`EvalContext::new` → exposure / champion_threat) reads only
+/// the physical scatter via [`AttackersTable::any_attackers_of`] — it never
+/// touches the skill fields, which exist solely for the `see_capture` exchange
+/// rollout. Building the skill scatter traces a queen-ray per champion/king
+/// (`scatter_skills_side` → `magic::skill_attacks`), the dominant per-call cost;
+/// skipping it on the ~3.37M-calls/sweep eval path is byte-identical to the full
+/// build for every value the evaluator can observe. SEE keeps using
+/// [`build_attackers_table`] (both scatters).
+pub fn build_attackers_table_phys(pos: &Position, all_occ: u64) -> AttackersTable {
     let mut table = AttackersTable {
         p1_of:         [0u64; 64],
         p2_of:         [0u64; 64],
@@ -270,19 +296,10 @@ pub fn build_attackers_table(pos: &Position, all_occ: u64) -> AttackersTable {
 
     // Physical scatter (Move-Attack). Non-king pieces only. Kings are excluded
     // as physical attackers per the module invariant (king exchanges are
-    // terminal). Skill-scatter below re-includes kings so they can cast into
-    // the exchange without relocating.
+    // terminal). The full-table build re-includes kings via skill-scatter so
+    // they can cast into an exchange without relocating.
     scatter_side(pos, all_occ, pos.p1_pieces.0 & !pos.kings.0, &mut table.p1_of);
     scatter_side(pos, all_occ, pos.p2_pieces.0 & !pos.kings.0, &mut table.p2_of);
-
-    // Skill scatter. Champions AND kings can equip skills; guards cannot.
-    // Money-gate at build time using the owner's current money.
-    let p1_skill_srcs = (pos.p1_pieces.0 & !pos.guards.0) & !0u64; // champs + kings
-    let p2_skill_srcs =  pos.p2_pieces.0 & !pos.guards.0;
-    scatter_skills_side(pos, all_occ, p1_skill_srcs, pos.p1_money,
-                        &mut table.p1_skill_of, &mut table.p1_skill_kind);
-    scatter_skills_side(pos, all_occ, p2_skill_srcs, pos.p2_money,
-                        &mut table.p2_skill_of, &mut table.p2_skill_kind);
 
     table
 }

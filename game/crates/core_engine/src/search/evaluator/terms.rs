@@ -62,10 +62,15 @@ pub(crate) fn champion_threat_score(
         let owner = skill_target_owner(sk);
         let range = skill_default_range(sk);
         if range == 0 { continue; }
-        let ray = magic::skill_attacks(sq, all_occ, range).0;
 
         match owner {
             TargetOwner::Enemy | TargetOwner::Either => {
+                // Only trace the ray for owners whose branch reads it. Empty /
+                // SelfOnly skills (Dash, Retreat, Shield, Focus, Charge) score
+                // nothing here, so tracing their ray was pure waste — the common
+                // case for many equipped champions. Byte-identical: the ray was
+                // unused in those branches.
+                let ray = magic::skill_attacks(sq, all_occ, range).0;
                 let is_strike = matches!(skill_category(sk), SkillCategory::Strike);
                 let mut hits = ray & opp_bb;
                 while hits != 0 {
@@ -89,6 +94,7 @@ pub(crate) fn champion_threat_score(
                 }
             }
             TargetOwner::Ally => {
+                let ray = magic::skill_attacks(sq, all_occ, range).0;
                 let mut hits = ray & own_bb & !self_mask;
                 while hits != 0 {
                     let t = hits.trailing_zeros() as u8;

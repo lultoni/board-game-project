@@ -8,7 +8,7 @@
 
 use crate::state::Position;
 use crate::state::position::Phase;
-use crate::search::see::{build_attackers_table, AttackersTable};
+use crate::search::see::{build_attackers_table_phys, AttackersTable};
 use crate::game_logic::skills::{Skill, SkillCategory, skill_cost, skill_default_range, skill_category};
 use crate::game_logic::make_unmake::skill_phase_budget;
 use super::params::EvalParams;
@@ -72,7 +72,10 @@ impl<'a> EvalContext<'a> {
         let p1_avail = side_availability_table(pos.p1_money, params);
         let p2_avail = side_availability_table(pos.p2_money, params);
 
-        let atk = build_attackers_table(pos, all_occ);
+        // Eval reads only the physical attacker scatter (exposure /
+        // champion_threat via `any_attackers_of`); the skill-scatter fields are
+        // SEE-only, so skip tracing them here (ns-49 eval throughput).
+        let atk = build_attackers_table_phys(pos, all_occ);
 
         let phase = pos.current_phase;
         let actions = actions_per_round(phase, pos.round_number);
