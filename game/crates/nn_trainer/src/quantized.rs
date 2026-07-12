@@ -7,9 +7,9 @@
 //!
 //! ## Scheme (fixed-point, uniform per-domain scales)
 //!
-//! Topology: `Accumulator(i32 × 256) → clippedReLU → 256→64 → clippedReLU →
-//! 64→32 → clippedReLU → 32→1 → centipawns`, matching the trained
-//! `hidden_sizes = [256, 64, 32]`.
+//! Topology: `Accumulator(i32 × 128) → clippedReLU → 128→32 → clippedReLU →
+//! 32→32 → clippedReLU → 32→1 → centipawns`, matching the trained
+//! `hidden_sizes = [128, 32, 32]` (ns-50 tail-cost rework; was [256,64,32]).
 //!
 //! - **Feature transform (layer 0):** weights `w·QA` rounded to i16, bias
 //!   `b·QA` to i32. The accumulator sum lives in the **QA fixed-point domain**
@@ -31,6 +31,10 @@ use crate::accumulator::{Accumulator, FeatureTransform};
 use crate::model::Mlp;
 use crate::nn_evaluator::{InferenceBackend, MAX_NN_SCORE};
 use crate::sparse::{ACCUM_WIDTH, NUM_FEATURES};
+use wide::{i16x8, i32x8};
+
+/// SIMD lane width for the i16 dot product (`i16x8`).
+const LANES: usize = 8;
 
 /// Feature-transform weight scale (f32 → i16). Power of two so dequant is a
 /// shift.
@@ -62,30 +66,60 @@ impl Default for QuantScales {
     }
 }
 
-/// A quantized `Linear`: weights (i8, input-major `w[i*out+o]`) + i32 bias in
-/// the `act·w` product domain.
+/// A quantized `Linear`, laid out for a SIMD integer dot product.
+///
+/// Weights are **output-major**, **pre-widened i16**, and each output row is
+/// **zero-padded to a multiple of `LANES`** (`in_pad`). So `w[o*in_pad + i]` is
+/// the weight from input `i` to output `o`, and the accumulate-over-inputs for a
+/// fixed `o` walks a contiguous, lane-aligned run — vectorizable with `wide`.
+/// (burn hands us input-major i8 `w[i*out+o]`; the transpose + widen + pad
+/// happens once in `quantize_linear`, not per node.)
 struct QLinear {
-    w: Vec<i8>,
+    /// Output-major, i16, row-padded: length `out_dim * in_pad`.
+    w: Vec<i16>,
     b: Vec<i32>,
-    in_dim: usize,
+    /// `in_dim` rounded up to a multiple of `LANES` (the padded row stride).
+    in_pad: usize,
     out_dim: usize,
 }
 
 impl QLinear {
-    /// `out[o] = clamp(( b[o] + Σ_i act[i]·w[i][o] ) >> QW_SHIFT, 0, CR_MAX)`
+    /// `out[o] = clamp(( b[o] + Σ_i act[i]·w[o][i] ) >> QW_SHIFT, 0, CR_MAX)`
     /// when `relu` is set (hidden layers), else the raw shifted sum (output).
-    fn forward(&self, act: &[i32], relu: bool, out: &mut [i32]) {
-        debug_assert_eq!(act.len(), self.in_dim);
+    ///
+    /// `act` is the i16 activation buffer, zero-padded to `in_pad` (the padding
+    /// weights are zero, so padded lanes contribute nothing — the sum is
+    /// identical to the scalar `in_dim` dot product). Integer SIMD reordering is
+    /// exact, so this matches the scalar sum bit-for-bit.
+    fn forward(&self, act_padded: &[i16], relu: bool, out: &mut [i32]) {
+        debug_assert_eq!(act_padded.len(), self.in_pad);
         debug_assert_eq!(out.len(), self.out_dim);
+        let chunks = self.in_pad / LANES;
         for o in 0..self.out_dim {
-            let mut sum = self.b[o];
-            for i in 0..self.in_dim {
-                sum += act[i] * self.w[i * self.out_dim + o] as i32;
+            let wrow = &self.w[o * self.in_pad..o * self.in_pad + self.in_pad];
+            let mut acc = i32x8::ZERO;
+            for c in 0..chunks {
+                let a = load_i16x8(&act_padded[c * LANES..]);
+                let w = load_i16x8(&wrow[c * LANES..]);
+                acc += a.mul_widen(w);
             }
+            let sum = self.b[o] + acc.reduce_add();
             let scaled = sum >> QW_SHIFT;
             out[o] = if relu { scaled.clamp(0, CR_MAX) } else { scaled };
         }
     }
+}
+
+/// Load 8 contiguous `i16` into an `i16x8`. The slice must have ≥ 8 elements.
+#[inline]
+fn load_i16x8(s: &[i16]) -> i16x8 {
+    i16x8::new([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]])
+}
+
+/// Round `in_dim` up to a multiple of `LANES`.
+#[inline]
+fn pad_to_lanes(in_dim: usize) -> usize {
+    in_dim.div_ceil(LANES) * LANES
 }
 
 /// The full quantized net: feature transform + integer tail.
@@ -107,20 +141,36 @@ impl QuantizedNet {
 
     /// Integer forward: accumulator → clippedReLU → tail → centipawns (P1-POV).
     /// Clamped to ±MAX_NN_SCORE so the net can't claim a false mate.
+    ///
+    /// Activations are built as i16 buffers zero-padded to each layer's `in_pad`
+    /// (all clipped-ReLU outputs are in `[0, CR_MAX]` ⊂ i16), so `QLinear::
+    /// forward` can run a lane-aligned SIMD dot product with no scalar tail.
     pub fn forward_int(&self, acc: &Accumulator) -> i32 {
-        // clipped-ReLU on the accumulator: dequant from QA domain to scale 1.
+        // clipped-ReLU on the accumulator: dequant from QA domain to scale 1,
+        // emitted directly into the l1-input i16 buffer (padded to l1.in_pad).
         let a0 = acc.values();
-        let mut act0 = [0i32; ACCUM_WIDTH];
+        let mut act0 = vec![0i16; self.l1.in_pad];
         for j in 0..ACCUM_WIDTH {
-            act0[j] = (a0[j] >> QA_SHIFT).clamp(0, CR_MAX);
+            act0[j] = (a0[j] >> QA_SHIFT).clamp(0, CR_MAX) as i16;
         }
 
         let mut a1 = vec![0i32; self.l1.out_dim];
         self.l1.forward(&act0, true, &mut a1);
+        // Repack a1 → i16 buffer padded to l2.in_pad (values are in [0,CR_MAX]).
+        let mut a1i = vec![0i16; self.l2.in_pad];
+        for i in 0..self.l1.out_dim {
+            a1i[i] = a1[i] as i16;
+        }
+
         let mut a2 = vec![0i32; self.l2.out_dim];
-        self.l2.forward(&a1, true, &mut a2);
+        self.l2.forward(&a1i, true, &mut a2);
+        let mut a2i = vec![0i16; self.out.in_pad];
+        for i in 0..self.l2.out_dim {
+            a2i[i] = a2[i] as i16;
+        }
+
         let mut a3 = vec![0i32; self.out.out_dim];
-        self.out.forward(&a2, false, &mut a3);
+        self.out.forward(&a2i, false, &mut a3);
 
         // a3[0] is the raw output in the scale-QW/scale-1 product domain,
         // already `>> QW_SHIFT` (scale 1, i.e. normalized-label units × 1).
@@ -130,7 +180,7 @@ impl QuantizedNet {
     }
 
     /// Quantize a trained f32 `Mlp` (input_dim == NUM_FEATURES, hidden
-    /// [256,64,32]) into the integer tables.
+    /// [128,32,32]) into the integer tables.
     pub fn from_mlp(model: &Mlp<InferenceBackend>, scales: QuantScales) -> Self {
         let params = model.layer_params();
         assert_eq!(params.len(), 4, "expected 4 layers (3 hidden + output)");
@@ -164,18 +214,28 @@ impl QuantizedNet {
     }
 }
 
-/// Quantize one hidden/output layer. Input activations are scale 1; weights are
-/// scaled by QW to i8; bias must live in the `act·w` product domain (scale QW),
-/// so `b_quant = round(b_f32 · QW)`.
+/// Quantize one hidden/output layer into the SIMD-friendly `QLinear` layout.
+/// Input activations are scale 1; weights are scaled by QW to i8, then widened
+/// to i16 and stored **output-major**, each output row zero-padded to a multiple
+/// of `LANES`. Bias lives in the `act·w` product domain (scale QW), so
+/// `b_quant = round(b_f32 · QW)`.
 fn quantize_linear(params: &(Vec<f32>, Vec<f32>, usize, usize), qw: f32) -> QLinear {
     let (w, b, in_dim, out_dim) = params;
-    let w_q: Vec<i8> = w.iter().map(|&x| round_i8(x * qw)).collect();
+    let in_pad = pad_to_lanes(*in_dim);
+    // Output-major, i16, row-padded. burn's `w` is input-major (`w[i*out+o]`).
+    let mut w_q = vec![0i16; out_dim * in_pad];
+    for o in 0..*out_dim {
+        for i in 0..*in_dim {
+            w_q[o * in_pad + i] = round_i8(w[i * out_dim + o] * qw) as i16;
+        }
+        // padded lanes [in_dim, in_pad) stay zero.
+    }
     let b_q: Vec<i32> = if b.is_empty() {
         vec![0i32; *out_dim]
     } else {
         b.iter().map(|&x| (x * qw).round() as i32).collect()
     };
-    QLinear { w: w_q, b: b_q, in_dim: *in_dim, out_dim: *out_dim }
+    QLinear { w: w_q, b: b_q, in_pad, out_dim: *out_dim }
 }
 
 #[inline]

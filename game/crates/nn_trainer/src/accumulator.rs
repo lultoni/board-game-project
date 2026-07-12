@@ -71,18 +71,34 @@ impl FeatureTransform {
 
     #[inline]
     fn add_column(&self, acc: &mut [i32; ACCUM_WIDTH], f: u32) {
-        let col = &self.weights[f as usize];
-        for j in 0..ACCUM_WIDTH {
-            acc[j] += col[j] as i32;
-        }
+        add_col_i16(acc, &self.weights[f as usize]);
     }
 
     #[inline]
     fn sub_column(&self, acc: &mut [i32; ACCUM_WIDTH], f: u32) {
-        let col = &self.weights[f as usize];
-        for j in 0..ACCUM_WIDTH {
-            acc[j] -= col[j] as i32;
-        }
+        sub_col_i16(acc, &self.weights[f as usize]);
+    }
+}
+
+/// `acc += col` (widening i16 → i32). Shared by `refresh` and the incremental
+/// `apply`/`revert` paths — the single hot inner loop of the feature transform.
+///
+/// Left as a plain scalar loop **on purpose**: the compiler autovectorizes this
+/// widening add well (measured faster than a hand-rolled `wide` version, whose
+/// per-lane i32 gather/scatter defeated vectorization — ns-50). `ACCUM_WIDTH` is
+/// a multiple of 8 so there's no awkward tail.
+#[inline]
+fn add_col_i16(acc: &mut [i32; ACCUM_WIDTH], col: &[i16; ACCUM_WIDTH]) {
+    for j in 0..ACCUM_WIDTH {
+        acc[j] += col[j] as i32;
+    }
+}
+
+/// `acc -= col` (widening i16 → i32), scalar counterpart of `add_col_i16`.
+#[inline]
+fn sub_col_i16(acc: &mut [i32; ACCUM_WIDTH], col: &[i16; ACCUM_WIDTH]) {
+    for j in 0..ACCUM_WIDTH {
+        acc[j] -= col[j] as i32;
     }
 }
 
@@ -121,20 +137,12 @@ impl Accumulator {
                 pos.champions.contains(sq),
                 pos.guards.contains(sq),
                 pos.mailbox[sq as usize],
-                &mut |f| {
-                    let col = &ft.weights[f as usize];
-                    for j in 0..ACCUM_WIDTH {
-                        acc[j] += col[j] as i32;
-                    }
-                },
+                &mut |f| add_col_i16(&mut acc, &ft.weights[f as usize]),
             );
         }
         sparse::global_features(pos, &mut |f| {
             globals.push(f);
-            let col = &ft.weights[f as usize];
-            for j in 0..ACCUM_WIDTH {
-                acc[j] += col[j] as i32;
-            }
+            add_col_i16(&mut acc, &ft.weights[f as usize]);
         });
 
         Accumulator { acc, globals }

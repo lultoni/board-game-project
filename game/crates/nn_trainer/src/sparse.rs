@@ -93,7 +93,14 @@ const OFF_G_ACTIONS: usize = OFF_G_ROUND + G_ROUND; // 20
 pub const NUM_FEATURES: usize = BOARD_BLOCK + GLOBAL_BLOCK; // 3352
 
 /// First-layer / accumulator width. Matches the trained net's `hidden_sizes[0]`.
-pub const ACCUM_WIDTH: usize = 256;
+///
+/// ns-50 tail-cost rework: dropped 256→128. The tail forward runs fully every
+/// node and L1 (ACCUM_WIDTH → hidden_sizes[1]) dominated the NNUE eval cost;
+/// halving the width quarters L1 alongside the paired `hidden_sizes[1]` 64→32
+/// cut (see `model.rs`). A standard small-NNUE size; kept a config knob so
+/// Phase-1 can grow it back if strength stalls (the plan's "start small, grow
+/// if strength stalls").
+pub const ACCUM_WIDTH: usize = 128;
 
 // --- Bucket helpers (single source of truth, shared with the accumulator) --
 

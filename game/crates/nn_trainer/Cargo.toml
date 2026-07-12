@@ -35,3 +35,6 @@ rand = "0.8"
 rand_chacha = "0.3"
 rand_distr = "0.4"
 rayon = "1.10"
+# Stable portable SIMD (SSE2/AVX2 on x86_64, NEON on aarch64) for the quantized
+# NNUE tail's integer dot products. Native-only crate; no WASM concern (ns-50).
+wide = "1.5"

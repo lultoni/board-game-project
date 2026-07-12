@@ -33,9 +33,11 @@ pub struct MlpConfig {
     #[config(default = "INPUT_DIM")]
     pub input_dim: usize,
 
-    /// Hidden-layer widths, in order. Default is the v1 shape
-    /// `[256, 64, 32]` per session-37 decision.
-    #[config(default = "vec![256, 64, 32]")]
+    /// Hidden-layer widths, in order. ns-50 tail-cost rework dropped the v1
+    /// `[256, 64, 32]` to `[128, 32, 32]`: L1 (`hidden_sizes[0] → [1]`) ran
+    /// fully every search node and dominated NNUE eval cost. `hidden_sizes[0]`
+    /// MUST equal `sparse::ACCUM_WIDTH` — `QuantizedNet::from_mlp` asserts it.
+    #[config(default = "vec![128, 32, 32]")]
     pub hidden_sizes: Vec<usize>,
 }
 
@@ -188,7 +190,10 @@ mod tests {
     fn default_config_has_v1_shape() {
         let cfg = MlpConfig::new();
         assert_eq!(cfg.input_dim, INPUT_DIM);
-        assert_eq!(cfg.hidden_sizes, vec![256, 64, 32]);
+        // ns-50 tail-cost rework: [256,64,32] → [128,32,32]; hidden_sizes[0]
+        // must equal sparse::ACCUM_WIDTH.
+        assert_eq!(cfg.hidden_sizes, vec![128, 32, 32]);
+        assert_eq!(cfg.hidden_sizes[0], crate::sparse::ACCUM_WIDTH);
     }
 
     #[test]
