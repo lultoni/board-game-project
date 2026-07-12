@@ -18,7 +18,7 @@ One file per thread. Paste the conversation in markdown (`**User:**` / `**AI:**`
 Architecture sketches, UI ideas, AI-opponent thinking, save-format/transport musings — anything shaping `game/` that isn't a settled decision yet.
 → Promoted into `adrs`, `open_questions`, `next_steps`, or `essays`.
 *Examples:* "AI opponent should feel like X not Y", frontend Desktop/Web/Mobile split, "must survive a browser refresh" (P5 lesson), threat-zone overlay for felt-PI (OQ-64).
-*(The four planning docs currently in this folder — `nn-rater-plan`, `nn-trainer-cleanup`, `alpha-beta-optimisation-catalogue`, `search-speed-benchmark-plan` — are digital notes of this kind.)*
+*(The four planning docs currently in this folder — `nnue-rework-plan`, `nn-trainer-cleanup`, `alpha-beta-optimisation-catalogue`, `search-speed-benchmark-plan` — are digital notes of this kind.)*
 
 ## 4. Playtest feedback — `playtest-<name>-notes.md`
 Raw qualitative/feel notes from a playtest (the prose the game log can't capture). Drop the notes here as text; keep **binary artefacts (photos, scans, exported JSON logs) in `design/raw/playtest-photos/<name>/`.**

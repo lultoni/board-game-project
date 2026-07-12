@@ -1,6 +1,6 @@
 # Search-Speed Benchmark Plan
 
-*Session 35 (2026-06-26). Companion to `nn-rater-plan.md` §7 (search-speed pass).*
+*Session 35 (2026-06-26). Companion to `nnue-rework-plan.md` (search-speed prerequisite; absorbed the retired `nn-rater-plan.md`).*
 *Status: scoped, ready to implement. No ADR needed.*
 
 ---
@@ -141,11 +141,11 @@ Each technique lands as a separate commit. Benchmark before and after. Speedup l
 3. **Verify determinism** — same-position-same-result-N-times sanity check.
 4. **Generate initial baseline** — run on current main, commit `baseline.json`.
 5. **Land optimisations one at a time** — each in its own commit, benchmark before/after, update baseline when accepted. Use the priority order above as a default but skip / reorder based on what the data says.
-6. **Stop when designer is happy** — pivot to NN-rater work per `nn-rater-plan.md` §11 step 2 onward.
+6. **Stop when designer is happy** — pivot to NN-eval work per `nnue-rework-plan.md` (Phase 0 onward).
 
 ## Cross-references
 
-- `nn-rater-plan.md` §7 — this benchmark is step 1 of the NN-rater execution order.
+- `nnue-rework-plan.md` — this benchmark is the search-speed prerequisite for the NN-eval work (which absorbed the retired `nn-rater-plan.md`).
 - `oq-81` — search branching factor + strategy plan. Source of the candidate optimisations list. Layer 1 (measurement) of oq-81 is partly subsumed by this benchmark.
 - `core_engine/src/search/alpha_beta.rs` — the search loop under measurement.
 - `core_engine/src/search/transposition.rs` — TT infrastructure (already exists).

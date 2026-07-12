@@ -621,7 +621,7 @@ count), not eval cost per node.
 
 
 - `search-speed-benchmark-plan.md` — the benchmark infrastructure that grades each technique.
-- `nn-rater-plan.md` §7 — search-speed pass is step 1 of NN-rater execution; this catalogue feeds it.
+- `nnue-rework-plan.md` — the NN-eval plan (absorbed the retired `nn-rater-plan.md`); its search-speed prerequisite is fed by this catalogue.
 - `oq-81` — search branching factor + strategy plan. This catalogue expands the mitigation list in oq-81's Layer 2.
 - `core_engine/src/search/alpha_beta.rs` — current straight-alpha-beta implementation.
 - `core_engine/src/search/transposition.rs` — TT (already exists; needs verification of bucketing/aging schemes).
