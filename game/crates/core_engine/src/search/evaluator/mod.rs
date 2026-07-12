@@ -45,6 +45,7 @@ pub mod term;
 pub mod terms;
 pub mod registry;
 pub mod breakdown;
+pub mod incremental;
 
 use crate::state::Position;
 
@@ -53,6 +54,7 @@ pub use term::{EvalTerm, PieceContext};
 pub use context::EvalContext;
 pub use context::GameStage;
 pub use breakdown::{EvalBreakdown, EvalBreakdownBySquare, SquareBreakdown, DynBreakdown, TermEntry, evaluate_by_square};
+pub use incremental::IncrementalEvaluator;
 
 pub const MATE_SCORE: i32 = 1_000_000;
 

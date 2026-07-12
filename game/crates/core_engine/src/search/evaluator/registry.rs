@@ -164,31 +164,121 @@ pub fn evaluate_scalar(pos: &Position, params: &EvalParams) -> i32 {
     }
 
     let ctx = EvalContext::new(pos, params);
+    let sums = accumulate_terms(pos, &ctx);
+    let total = sums.fold_total(params);
 
-    // is_active gates (mirror the term impls).
-    let guards_present    = pos.guards.0 != 0;               // GuardIsolation
-    let champions_present  = pos.champions.0 != 0;           // ChampionThreat
+    if pos.actions_remaining == 0 {
+        counters::bump_actions_zero_hit();
+    }
+
+    total
+}
+
+/// Number of per-piece terms, in the fixed order the cache / scalar path use.
+pub(crate) const N_PIECE_TERMS: usize = 9;
+/// Per-piece term indices (order = `default_terms` per-piece order).
+pub(crate) mod pt {
+    pub const MATERIAL: usize = 0;
+    pub const HP: usize = 1;
+    pub const ARMOR: usize = 2;
+    pub const SKILLS: usize = 3;
+    pub const MOBILITY: usize = 4;
+    pub const EXPOSURE: usize = 5;
+    pub const COVERAGE: usize = 6;
+    pub const GUARD_ISO: usize = 7;
+    pub const CHAMPION_THREAT: usize = 8;
+}
+
+/// The per-side term sums that fold into the scalar total. Per-piece terms hold
+/// `(p1_magnitude, p2_magnitude)`; side-level terms hold their `(p1, p2)`
+/// directly. `fold_total` applies each term's sign/weight — the SINGLE source
+/// of truth for the fold, shared by `evaluate_scalar` and the incremental path.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TermSums {
+    /// Per-piece term (p1, p2) magnitudes, indexed by `pt::*`.
+    pub piece: [(i32, i32); N_PIECE_TERMS],
+    pub money:  (i32, i32),
+    pub tempo:  (i32, i32),
+    pub off:    (i32, i32),
+    pub wasted: (i32, i32),
+    pub close:  (i32, i32),
+}
+
+impl TermSums {
+    /// Fold with each term's own sign / weight. Byte-identical to the inline
+    /// fold `evaluate_scalar` used before extraction (golden-gated).
+    #[inline]
+    pub(crate) fn fold_total(&self, params: &EvalParams) -> i32 {
+        let p = &self.piece;
+        let mut total = 0i32;
+        total += p[pt::MATERIAL].0 - p[pt::MATERIAL].1;
+        total += p[pt::HP].0       - p[pt::HP].1;
+        total += p[pt::ARMOR].0    - p[pt::ARMOR].1;
+        total += p[pt::SKILLS].0   - p[pt::SKILLS].1;
+        total += p[pt::MOBILITY].0 - p[pt::MOBILITY].1;
+        total -= p[pt::EXPOSURE].0 - p[pt::EXPOSURE].1;   // penalty
+        total += p[pt::COVERAGE].0 - p[pt::COVERAGE].1;
+        total -= p[pt::GUARD_ISO].0 - p[pt::GUARD_ISO].1; // penalty
+        total += p[pt::CHAMPION_THREAT].0 - p[pt::CHAMPION_THREAT].1;
+        total += self.money.0 - self.money.1;
+        total += self.tempo.0 - self.tempo.1;
+        total += (self.off.0 - self.off.1) * params.offensive_range_weight;
+        total -= self.wasted.0 - self.wasted.1;           // penalty
+        total += self.close.0 - self.close.1;
+        total
+    }
+}
+
+/// Score one occupied square across all 9 per-piece terms, returning each term's
+/// owner-relative magnitude in `pt::*` order. `guards_present` / `champions_present`
+/// reproduce the `is_active` gates for GuardIsolation / ChampionThreat. Shared by
+/// the full accumulation pass and the incremental per-piece update — one source
+/// of truth for per-square term math.
+#[inline]
+pub(crate) fn score_piece_all(
+    ctx: &EvalContext, pc: &PieceContext,
+    guards_present: bool, champions_present: bool,
+) -> [i32; N_PIECE_TERMS] {
+    let mut out = [0i32; N_PIECE_TERMS];
+    out[pt::MATERIAL]        = terms::Material.score_piece(ctx, pc);
+    out[pt::HP]              = terms::Hp.score_piece(ctx, pc);
+    out[pt::ARMOR]           = terms::Armor.score_piece(ctx, pc);
+    out[pt::SKILLS]          = terms::Skills.score_piece(ctx, pc);
+    out[pt::MOBILITY]        = terms::Mobility.score_piece(ctx, pc);
+    out[pt::EXPOSURE]        = terms::Exposure.score_piece(ctx, pc);
+    out[pt::COVERAGE]        = terms::Coverage.score_piece(ctx, pc);
+    out[pt::GUARD_ISO]       = if guards_present { terms::GuardIsolation.score_piece(ctx, pc) } else { 0 };
+    out[pt::CHAMPION_THREAT] = if champions_present { terms::ChampionThreat.score_piece(ctx, pc) } else { 0 };
+    out
+}
+
+/// Compute the side-level term values `(p1,p2)` with their `is_active` gates.
+#[inline]
+pub(crate) fn score_side_all(ctx: &EvalContext) -> (
+    (i32, i32), (i32, i32), (i32, i32), (i32, i32), (i32, i32),
+) {
     use crate::state::position::Phase;
-    let skill_phase = ctx.phase == Phase::Skill;             // WastedModifier
-    let end_stage   = matches!(ctx.stage, super::context::GameStage::End); // EndgameClosing
+    let skill_phase = ctx.phase == Phase::Skill;
+    let end_stage = matches!(ctx.stage, super::context::GameStage::End);
+    let money  = terms::Money.score_side(ctx);
+    let tempo  = terms::Tempo.score_side(ctx);
+    let off    = terms::OffensiveRange.score_side(ctx);
+    let wasted = if skill_phase { terms::WastedModifier.score_side(ctx) } else { (0, 0) };
+    let close  = if end_stage   { terms::EndgameClosing.score_side(ctx) } else { (0, 0) };
+    (money, tempo, off, wasted, close)
+}
 
-    // Per-piece accumulators: positive magnitudes, per side.
-    let (mut mat_p1, mut mat_p2) = (0i32, 0i32);
-    let (mut hp_p1,  mut hp_p2)  = (0i32, 0i32);
-    let (mut arm_p1, mut arm_p2) = (0i32, 0i32);
-    let (mut skl_p1, mut skl_p2) = (0i32, 0i32);
-    let (mut mob_p1, mut mob_p2) = (0i32, 0i32);
-    let (mut exp_p1, mut exp_p2) = (0i32, 0i32);
-    let (mut cov_p1, mut cov_p2) = (0i32, 0i32);
-    let (mut iso_p1, mut iso_p2) = (0i32, 0i32);
-    let (mut cht_p1, mut cht_p2) = (0i32, 0i32);
+/// Full accumulation of every term for `pos` into a [`TermSums`]. This is the
+/// full-eval body shared by `evaluate_scalar` and the incremental evaluator's
+/// full-rebuild path. Terminal positions must be handled by the caller.
+#[inline]
+pub(crate) fn accumulate_terms(pos: &Position, ctx: &EvalContext) -> TermSums {
+    let guards_present    = pos.guards.0 != 0;
+    let champions_present = pos.champions.0 != 0;
 
-    let (t_mat, t_hp, t_arm, t_skl, t_mob, t_exp, t_cov, t_iso, t_cht) = (
-        terms::Material, terms::Hp, terms::Armor, terms::Skills, terms::Mobility,
-        terms::Exposure, terms::Coverage, terms::GuardIsolation, terms::ChampionThreat,
-    );
+    let mut sums = TermSums::default();
 
-    // Single shared board pass — static dispatch, no vtable.
+    // Single shared board pass.
     let mut bits = ctx.all_occ;
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
@@ -204,51 +294,14 @@ pub fn evaluate_scalar(pos: &Position, params: &EvalParams) -> i32 {
             is_champion: pos.champions.0 & mask != 0,
             mailbox:     pos.mailbox[sq as usize],
         };
-        let m   = t_mat.score_piece(&ctx, &pc);
-        let h   = t_hp.score_piece(&ctx, &pc);
-        let a   = t_arm.score_piece(&ctx, &pc);
-        let s   = t_skl.score_piece(&ctx, &pc);
-        let mo  = t_mob.score_piece(&ctx, &pc);
-        let e   = t_exp.score_piece(&ctx, &pc);
-        let c   = t_cov.score_piece(&ctx, &pc);
-        let iso = if guards_present    { t_iso.score_piece(&ctx, &pc) } else { 0 };
-        let cht = if champions_present { t_cht.score_piece(&ctx, &pc) } else { 0 };
-        if is_p1 {
-            mat_p1 += m; hp_p1 += h; arm_p1 += a; skl_p1 += s; mob_p1 += mo;
-            exp_p1 += e; cov_p1 += c; iso_p1 += iso; cht_p1 += cht;
-        } else {
-            mat_p2 += m; hp_p2 += h; arm_p2 += a; skl_p2 += s; mob_p2 += mo;
-            exp_p2 += e; cov_p2 += c; iso_p2 += iso; cht_p2 += cht;
+        let mags = score_piece_all(ctx, &pc, guards_present, champions_present);
+        for i in 0..N_PIECE_TERMS {
+            if is_p1 { sums.piece[i].0 += mags[i]; } else { sums.piece[i].1 += mags[i]; }
         }
     }
 
-    // Side-level terms — once each.
-    let (money_p1, money_p2)   = terms::Money.score_side(&ctx);
-    let (tempo_p1, tempo_p2)   = terms::Tempo.score_side(&ctx);
-    let (off_p1, off_p2)       = terms::OffensiveRange.score_side(&ctx);
-    let (wasted_p1, wasted_p2) = if skill_phase { terms::WastedModifier.score_side(&ctx) } else { (0, 0) };
-    let (close_p1, close_p2)   = if end_stage   { terms::EndgameClosing.score_side(&ctx) } else { (0, 0) };
-
-    // Fold with each term's own sign / weight (mirrors `signed_total`).
-    let mut total = 0i32;
-    total += mat_p1 - mat_p2;
-    total += hp_p1  - hp_p2;
-    total += arm_p1 - arm_p2;
-    total += skl_p1 - skl_p2;
-    total += mob_p1 - mob_p2;
-    total -= exp_p1 - exp_p2;              // exposure: penalty
-    total += cov_p1 - cov_p2;
-    total -= iso_p1 - iso_p2;              // guard_isolation: penalty
-    total += cht_p1 - cht_p2;
-    total += money_p1 - money_p2;
-    total += tempo_p1 - tempo_p2;
-    total += (off_p1 - off_p2) * params.offensive_range_weight;
-    total -= wasted_p1 - wasted_p2;        // wasted_modifier: penalty
-    total += close_p1 - close_p2;
-
-    if pos.actions_remaining == 0 {
-        counters::bump_actions_zero_hit();
-    }
-
-    total
+    let (money, tempo, off, wasted, close) = score_side_all(ctx);
+    sums.money = money; sums.tempo = tempo; sums.off = off;
+    sums.wasted = wasted; sums.close = close;
+    sums
 }
