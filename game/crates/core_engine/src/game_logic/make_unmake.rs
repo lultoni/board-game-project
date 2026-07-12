@@ -3293,6 +3293,39 @@ mod tests {
     }
 
     #[test]
+    fn blast_bonus_when_counter_ticked_by_a_different_champion() {
+        // USER-REPORTED REPRO: a DIFFERENT champion ticks the target to 1, then
+        // Blast (a new champion) hits it. Expected: counter 1→2 AND +1 bonus
+        // damage (any skill affecting a target with counter>0 deals +counter).
+        let mut pos = skill_phase_pos(4);
+        pos.p1_money = 30;
+        // Champion A at e4 (28) with Lance — ticks the counter.
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Lance as u8);
+        // Champion B at g5 (38) with Blast — the "new champion" that combos.
+        place(&mut pos, 38, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 38, Skill::Blast as u8);
+        // Enemy T at e5 (36), HP 2, armor 2 so it survives to inspect HP/armor.
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 2);
+
+        // A strikes T: new champ at counter 0 → +0 bonus, base Lance dmg, tick→1.
+        let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
+        assert_eq!(pos.mailbox[36].combo(), 1, "A ticked T to 1");
+        let dur_after_a = pos.mailbox[36].hp() as i32 + pos.mailbox[36].armor() as i32;
+
+        // B Blasts T: new champ at counter 1 → tick→2 AND +1 bonus damage. The
+        // push relocates T (direction depends on caster geometry), so locate the
+        // surviving enemy by scanning the board.
+        let _ = make(&mut pos, skill_action(38, 36, Skill::Blast));
+        let land = (0u8..64).find(|&s| pos.is_occupied(s) && pos.p2_pieces.contains(s))
+            .expect("enemy survived the +1 bonus (HP2/armor1) and was pushed, not removed");
+        assert_eq!(pos.mailbox[land as usize].combo(), 2, "B (different champ) ticks 1→2");
+        let dur_after_b = pos.mailbox[land as usize].hp() as i32 + pos.mailbox[land as usize].armor() as i32;
+        assert_eq!(dur_after_a - dur_after_b, 1,
+            "Blast must deal +1 combo-bonus damage (counter was 1)");
+    }
+
+    #[test]
     fn blast_into_occupied_push_fizzles() {
         // Caster e4 (28), enemy e5 (36), blocker at e6 (44).
         let mut pos = skill_phase_pos(2);
