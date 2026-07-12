@@ -122,7 +122,7 @@ fn lmp_threshold(depth: i32) -> Option<usize> {
     }
 }
 
-use super::evaluator::{Evaluator, HeuristicEvaluator, MATE_SCORE};
+use super::evaluator::{AccHandle, Evaluator, HeuristicEvaluator, MATE_SCORE};
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
 use super::counters;
 use crate::game_logic::action::{Action, ActionKind};
@@ -298,6 +298,12 @@ pub(super) struct SearchCtx<'a> {
     pub(super) deadline: Option<u64>,
     pub(super) nodes:    u64,
     pub(super) aborted:  bool,
+    /// Incremental-eval accumulator stack, top = current node's state. Empty
+    /// (never touched) iff `!evaluator.uses_accumulator()` — so the default
+    /// `HeuristicEvaluator` pays nothing. Invariant: while `search`/`quiesce`
+    /// are between a `make` and its matching `unmake`, `acc_stack.last()`
+    /// reflects the CURRENT (post-make) `pos`; save/restore keeps it balanced.
+    pub(super) acc_stack: Vec<AccHandle>,
 }
 
 fn search(pos: &mut Position, depth: i32, ply: i32,
@@ -305,6 +311,10 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
           ctx: &mut SearchCtx) -> i32 {
     ctx.nodes += 1;
     counters::bump_ab_nodes();
+
+    // Whether to thread the incremental accumulator at this node. One vtable
+    // read per node; when false, every `*_acc` hook below is skipped.
+    let inc = ctx.evaluator.uses_accumulator();
 
     if ctx.nodes & TIME_CHECK_MASK == 0 {
         if let Some(d) = ctx.deadline {
@@ -321,7 +331,12 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 
     if depth <= 0 {
         if DISABLE_QS.load(AtomicOrdering::Relaxed) {
-            return adjust_for_ply(ctx.evaluator.evaluate(pos), ply);
+            let s = if inc {
+                ctx.evaluator.eval_acc(ctx.acc_stack.last().unwrap(), pos)
+            } else {
+                ctx.evaluator.evaluate(pos)
+            };
+            return adjust_for_ply(s, ply);
         }
         return super::quiescence::quiesce(pos, alpha, beta, ply, 0, ctx);
     }
@@ -369,6 +384,10 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
     {
         let null = Action::encode(0, 0, ActionKind::EndPhase, 0, 0);
         let undo = make_unmake::make(pos, null);
+        // Save/restore the accumulator across the null move (STM flips; the
+        // global re-encode in `apply` picks that up).
+        let saved = if inc { Some(ctx.evaluator.clone_acc(ctx.acc_stack.last().unwrap())) } else { None };
+        if inc { ctx.evaluator.push_acc(ctx.acc_stack.last_mut().unwrap(), &undo, pos); }
         // Null-window search around the appropriate bound. Since scores are
         // absolute P1-POV, the pruning condition depends on which side we're
         // trying to fail-high against: P1 (max) fails high vs beta, P2 (min)
@@ -384,6 +403,9 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
             search(pos, reduced, ply + 1, alpha, alpha + 1, false, ctx)
         };
         make_unmake::unmake(pos, &undo);
+        // Restore BEFORE the abort check — the parent must never read a stale
+        // (post-null) accumulator.
+        if inc { *ctx.acc_stack.last_mut().unwrap() = saved.unwrap(); }
         if ctx.aborted { return 0; }
         if maximising_before_null {
             // P1's turn: if the opponent-pass score already fails high, cut.
@@ -476,6 +498,11 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         let r = if reduce { lmr_reduction(depth, idx).min(depth - 1) } else { 0 };
 
         let undo = make_unmake::make(pos, a);
+        // Save the pre-make accumulator, then advance once — all PVS/LMR
+        // re-searches below run with `pos` fixed post-make, so a single
+        // push_acc covers them; restore on unmake.
+        let saved = if inc { Some(ctx.evaluator.clone_acc(ctx.acc_stack.last().unwrap())) } else { None };
+        if inc { ctx.evaluator.push_acc(ctx.acc_stack.last_mut().unwrap(), &undo, pos); }
         let s = if is_first || !pvs_on {
             // First move (or PVS off): full window, full depth.
             search(pos, depth - 1, ply + 1, alpha, beta, true, ctx)
@@ -504,6 +531,8 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         };
 
         make_unmake::unmake(pos, &undo);
+        // Restore BEFORE the abort check (parent must not read a stale acc).
+        if inc { *ctx.acc_stack.last_mut().unwrap() = saved.unwrap(); }
         if ctx.aborted { return 0; }
 
         if maximising {
@@ -616,7 +645,15 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
     let mut ord = OrderingTables::new();
 
     for d in 1..=max_depth.max(1) {
-        let mut ctx = SearchCtx { tt, ord: &mut ord, evaluator, deadline, nodes: 0, aborted: false };
+        // Root accumulator: one full refresh per ID iteration when the
+        // evaluator maintains one (negligible vs the iteration's node count);
+        // empty Vec (zero cost) for the default heuristic.
+        let acc_stack = if evaluator.uses_accumulator() {
+            vec![evaluator.fresh_acc(pos)]
+        } else {
+            Vec::new()
+        };
+        let mut ctx = SearchCtx { tt, ord: &mut ord, evaluator, deadline, nodes: 0, aborted: false, acc_stack };
         let score = search(pos, d as i32, 0, -INF, INF, true, &mut ctx);
         total_nodes += ctx.nodes;
 

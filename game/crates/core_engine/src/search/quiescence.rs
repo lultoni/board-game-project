@@ -164,6 +164,9 @@ pub(super) fn quiesce(
     ctx.nodes += 1;
     counters::bump_qs_nodes();
 
+    // Thread the incremental accumulator? One vtable read per QS node.
+    let inc = ctx.evaluator.uses_accumulator();
+
     if ctx.nodes & TIME_CHECK_MASK == 0 {
         if let Some(d) = ctx.deadline {
             if now_ms() >= d { ctx.aborted = true; return 0; }
@@ -177,12 +180,21 @@ pub(super) fn quiesce(
         };
     }
 
+    // Leaf eval for the CURRENT node: incremental read when available, else the
+    // scratch path. `acc_stack.last()` reflects `pos` (no make in this frame yet).
+    macro_rules! node_eval {
+        () => {
+            if inc { ctx.evaluator.eval_acc(ctx.acc_stack.last().unwrap(), pos) }
+            else   { ctx.evaluator.evaluate(pos) }
+        };
+    }
+
     if qs_ply >= MAX_QS_PLY || ply >= MAX_PLY {
-        return adjust_for_ply(ctx.evaluator.evaluate(pos), ply);
+        return adjust_for_ply(node_eval!(), ply);
     }
 
     let in_check = is_king_threatened(pos, pos.to_move);
-    let static_eval = adjust_for_ply(ctx.evaluator.evaluate(pos), ply);
+    let static_eval = adjust_for_ply(node_eval!(), ply);
     let maximising = pos.to_move == Player::P1;
 
     // Stand-pat — skip when in check (otherwise side-to-move can "stand still"
@@ -288,8 +300,13 @@ pub(super) fn quiesce(
     for k in 0..n_ordered {
         let a = ordered[k].1;
         let undo = make_unmake::make(pos, a);
+        // Save/advance the accumulator across the loud move; restore on unmake.
+        let saved = if inc { Some(ctx.evaluator.clone_acc(ctx.acc_stack.last().unwrap())) } else { None };
+        if inc { ctx.evaluator.push_acc(ctx.acc_stack.last_mut().unwrap(), &undo, pos); }
         let s = quiesce(pos, alpha, beta, ply + 1, qs_ply + 1, ctx);
         make_unmake::unmake(pos, &undo);
+        // Restore BEFORE the abort check (parent must not read a stale acc).
+        if inc { *ctx.acc_stack.last_mut().unwrap() = saved.unwrap(); }
         if ctx.aborted { return 0; }
 
         if maximising {

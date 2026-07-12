@@ -47,6 +47,7 @@ pub mod registry;
 pub mod breakdown;
 pub mod incremental;
 
+use crate::game_logic::action::Undo;
 use crate::state::Position;
 
 pub use params::EvalParams;
@@ -93,6 +94,48 @@ pub fn evaluate_dyn(pos: &Position) -> DynBreakdown {
     registry::evaluate_dyn(pos, terms, &params)
 }
 
+/// Opaque, evaluator-owned incremental-eval state for one search node.
+///
+/// `core_engine` never inspects the inner value — only the `Evaluator` that
+/// produced it downcasts back to its concrete type. This is the layering seam:
+/// the incremental NNUE `Accumulator` lives in `nn_trainer` (which depends on
+/// `core_engine`), so the search can't name it; it threads an `AccHandle`
+/// through make/unmake generically instead. `None` = the evaluator keeps no
+/// incremental state (the default; `HeuristicEvaluator`).
+///
+/// `Send` matches the `Evaluator: Send` bound; the handle lives in `SearchCtx`
+/// on the single search thread and never crosses threads. Deliberately NOT
+/// `Clone` — only the producing evaluator knows the concrete type, so cloning
+/// goes through [`Evaluator::clone_acc`].
+pub struct AccHandle(Option<Box<dyn core::any::Any + Send>>);
+
+impl AccHandle {
+    /// The empty handle — an evaluator with no incremental state.
+    #[inline]
+    pub fn none() -> Self { AccHandle(None) }
+
+    /// Wrap concrete evaluator-owned state.
+    #[inline]
+    pub fn new<T: core::any::Any + Send>(state: T) -> Self {
+        AccHandle(Some(Box::new(state)))
+    }
+
+    #[inline]
+    pub fn is_none(&self) -> bool { self.0.is_none() }
+
+    /// Downcast the inner state to `&T` (None if empty or the type mismatches).
+    #[inline]
+    pub fn downcast_ref<T: core::any::Any>(&self) -> Option<&T> {
+        self.0.as_ref().and_then(|b| b.downcast_ref::<T>())
+    }
+
+    /// Downcast the inner state to `&mut T` (None if empty or the type mismatches).
+    #[inline]
+    pub fn downcast_mut<T: core::any::Any>(&mut self) -> Option<&mut T> {
+        self.0.as_mut().and_then(|b| b.downcast_mut::<T>())
+    }
+}
+
 /// Position-rater interface. The search calls `evaluate` once per leaf; an
 /// `Evaluator` impl returns a P1-POV score (positive = P1, ±MATE_SCORE for
 /// terminals).
@@ -100,9 +143,44 @@ pub fn evaluate_dyn(pos: &Position) -> DynBreakdown {
 /// **Send-only** bound: the search is single-threaded but evaluators are owned
 /// by `Match` (one per AI seat) and moved between thread-pool tasks. Code that
 /// shares an evaluator across threads re-asserts `+ Sync` locally.
+///
+/// ## Incremental-accumulator seam (default no-op)
+///
+/// An evaluator MAY maintain an incrementally-updated accumulator that the
+/// search threads through make/unmake (NNUE). The five `*_acc` methods below
+/// default to a no-op / scratch-path fallback, so evaluators that don't use one
+/// (the default `HeuristicEvaluator`) pay nothing and stay object-safe (no
+/// `Self`-typed params, only `core_engine` types + the opaque [`AccHandle`]).
+/// Save/restore lifecycle: the search clones the current handle before a
+/// `make`, `push_acc`s it forward, reads it at leaves via `eval_acc`, and
+/// restores the saved clone on `unmake`.
 pub trait Evaluator: Send {
     fn evaluate(&self, pos: &Position) -> i32;
     fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown;
+
+    /// True iff this evaluator maintains an incremental accumulator. When
+    /// false, the search skips ALL handle machinery (empty stack, no clones).
+    #[inline]
+    fn uses_accumulator(&self) -> bool { false }
+
+    /// Build the root accumulator for `pos` (full recompute).
+    #[inline]
+    fn fresh_acc(&self, _pos: &Position) -> AccHandle { AccHandle::none() }
+
+    /// Independent copy of `h` to stash before a `make` (save/restore).
+    #[inline]
+    fn clone_acc(&self, _h: &AccHandle) -> AccHandle { AccHandle::none() }
+
+    /// Advance `h` in place AFTER `make(pos, action)` returned `undo`, with
+    /// `pos` already at the post-make state.
+    #[inline]
+    fn push_acc(&self, _h: &mut AccHandle, _undo: &Undo, _pos: &Position) {}
+
+    /// Evaluate the CURRENT `pos` via the incremental handle (leaf read). MUST
+    /// return bit-identically to `self.evaluate(pos)`. The default falls back to
+    /// the scratch path, so a `None`/mis-wired handle can never diverge.
+    #[inline]
+    fn eval_acc(&self, _h: &AccHandle, pos: &Position) -> i32 { self.evaluate(pos) }
 }
 
 /// Zero-size wrapper around the free eval functions. Default evaluator.
