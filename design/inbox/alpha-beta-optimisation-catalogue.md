@@ -545,6 +545,25 @@ windows (narrow root window → fewer top-of-tree nodes) or a further LMP nudge.
 
 ---
 
+### Phase 3b: Aspiration windows — REJECTED again (root re-search cost)
+
+Re-graded atop fast-eval + LMR/PVS + LMP (the Session 36 revisit condition).
+`ENABLE_ASPIRATION`, `ASP_MIN_DEPTH=5`, `ASP_DELTA=40`, ×3 exponential widen,
+keep-the-other-bound on a fail. Determinism held 30/30, but depth6 **regressed
++25.8%** (5,199ms → 6,543ms) and both remaining offenders got *worse*
+(opening-with-skills-03 1591→2238ms, midgame-move-03 1521→2234ms).
+
+Same mechanism as the Session 36 rejection: on these high-EBF positions the d5
+score is unstable, so the narrow d6 window fails (low or high) and the root
+re-search — now at a *bigger* tree thanks to LMR/PVS/LMP reaching deeper — costs
+more than the narrow window ever saved. LMR/PVS made the re-search *structurally*
+cheaper per node but there are more nodes under it, so the net is still a loss at
+d6. Rolled back completely (no lingering toggle/const). Not worth re-trying at
+this eval; would only pay off with a much more stable eval or a tighter δ that
+then saves nothing.
+
+---
+
 
 ## Cross-references
 
