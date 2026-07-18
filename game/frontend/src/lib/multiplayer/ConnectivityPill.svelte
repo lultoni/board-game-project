@@ -25,7 +25,7 @@
       copied = true;
       if (copyTimer) clearTimeout(copyTimer);
       copyTimer = setTimeout(() => (copied = false), 1200);
-    } catch { /* clipboard blocked — silent */ }
+    } catch { /* clipboard blocked - silent */ }
   }
 </script>
 

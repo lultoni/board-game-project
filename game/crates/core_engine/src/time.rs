@@ -9,7 +9,7 @@
 //! - **wasm32:** imports `engine_now_ms` from the host. The wrapper crate
 //!   (`wasm_wrapper`) supplies a JS-side `performance.now()` binding under
 //!   that name. Without the import the wasm module will fail to instantiate,
-//!   which is the correct failure mode — we want a load-time error, not a
+//!   which is the correct failure mode - we want a load-time error, not a
 //!   runtime panic deep inside alpha-beta.
 
 /// Monotonic milliseconds since some fixed origin in the process. Only the

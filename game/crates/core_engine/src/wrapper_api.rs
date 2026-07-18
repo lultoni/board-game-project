@@ -2,12 +2,12 @@
 //!
 //! Both wrappers translate from their respective boundary (wasm-bindgen /
 //! tauri::command) into calls on this surface. Keeping the wrappers thin
-//! ensures they stay in lockstep — drift means a divergent UI.
+//! ensures they stay in lockstep - drift means a divergent UI.
 //!
 //! # Conventions
 //!
 //! - **Hot path** (called per frame / per AI step) returns flat primitives,
-//!   `#[repr(C)]` structs, or `&[u16; 64]` slices — never JSON.
+//!   `#[repr(C)]` structs, or `&[u16; 64]` slices - never JSON.
 //! - **Cold path** (save/load, log export) returns owned `String` JSON.
 //! - `Match` lifetime is managed by the wrapper (one per Engine on wasm; a
 //!   handle table on Tauri). This module is stateless beyond the `&mut Match`
@@ -28,7 +28,7 @@ use crate::telemetry::{MatchResult, SearchMeta};
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct PositionView {
-    /// `[p1_pieces, p2_pieces, kings, champions, guards]` — five u64 bitboards.
+    /// `[p1_pieces, p2_pieces, kings, champions, guards]` - five u64 bitboards.
     pub bitboards:         [u64; 5],
     /// 0 = P1, 1 = P2.
     pub to_move:           u8,
@@ -45,7 +45,7 @@ pub struct PositionView {
     pub zobrist:           u64,
 }
 
-/// Per-step delta returned by `try_apply` / `step_ai`. Small on purpose —
+/// Per-step delta returned by `try_apply` / `step_ai`. Small on purpose -
 /// the worker posts this back to the UI thread on every move.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -97,7 +97,7 @@ pub fn position_view(m: &Match) -> PositionView {
 }
 
 /// Borrow the 64-entry packed mailbox. Each `u16` packs HP/armor/combo/skill1/
-/// skill2 — see `MailboxEntry`. Wrappers expose this as a zero-copy typed-array
+/// skill2 - see `MailboxEntry`. Wrappers expose this as a zero-copy typed-array
 /// view (wasm) or raw bytes (Tauri).
 #[inline]
 pub fn position_mailbox(m: &Match) -> &[u16; 64] {
@@ -117,7 +117,7 @@ pub fn position_fen(m: &Match) -> String {
 /// case; `Some(...)` only between the attacker's tentative Move-Attack and
 /// the defender's `BodyguardChoice`. The renderer uses this to drive the
 /// chooser overlay; clients drive the engine via `BodyguardChoice` actions
-/// — there is no side-channel.
+/// - there is no side-channel.
 #[inline]
 pub fn pending_bodyguard(m: &Match) -> Option<crate::state::position::PendingBodyguard> {
     m.position().pending_bodyguard
@@ -138,7 +138,7 @@ pub fn legal_actions_into(m: &Match, buf: &mut Vec<u32>) {
 }
 
 /// Apply a human action. Wrapper supplies `applied_at_unix_ms` (the wall
-/// clock — `Date.now()` on wasm, `SystemTime` on Tauri). Returns a
+/// clock - `Date.now()` on wasm, `SystemTime` on Tauri). Returns a
 /// `StepResult` with `applied_action`, `game_result`, and zeros for AI
 /// fields.
 pub fn try_apply(
@@ -182,7 +182,7 @@ pub fn step_ai_with_cb(
     let applied = if let Some(a) = r.best {
         let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
         // alpha-beta returning an illegal action would be a bug in search,
-        // not a runtime error — propagate as None so the UI can surface it.
+        // not a runtime error - propagate as None so the UI can surface it.
         match m.try_apply_timed(a, thought_ms, applied_at_unix_ms, Some(meta)) {
             Ok(()) => a.0,
             Err(_) => 0,
@@ -204,7 +204,7 @@ pub fn step_ai_with_cb(
 /// Inspector variant: runs the AI search for whoever is to move regardless
 /// of seat kind (Human vs Human positions included), returning the best
 /// action without applying it. The seat-restricted variant was removed as
-/// dead surface — the match route uses `step_ai` (which applies atomically),
+/// dead surface - the match route uses `step_ai` (which applies atomically),
 /// and the inspector wants the unrestricted form.
 pub fn request_ai_move_forced(m: &mut Match) -> Result<StepResult, AiError> {
     let t0 = crate::time::now_ms();
@@ -290,7 +290,7 @@ pub fn from_snapshot_json(s: &str, now_unix_ms: u64) -> Result<Match, SnapshotEr
         .map_err(SnapshotErrorOrParse::Snapshot)
 }
 
-/// Error union for `from_snapshot_json` — wrappers flatten this to a string.
+/// Error union for `from_snapshot_json` - wrappers flatten this to a string.
 #[derive(Debug)]
 pub enum SnapshotErrorOrParse {
     Parse(serde_json::Error),
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn try_apply_rejects_illegal_action() {
         let mut m = fresh_match();
-        // Action(0) is `default()` — unlikely to be legal at the start.
+        // Action(0) is `default()` - unlikely to be legal at the start.
         let r = try_apply(&mut m, 0, 0);
         assert!(matches!(r, Err(ApplyError::IllegalAction)));
     }

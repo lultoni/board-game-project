@@ -60,7 +60,7 @@
     | null;
 
   const strip = $derived.by<Strip>(() => {
-    // 1. Forfeit — hand off to GraceBanner. Strip stays hidden so the two
+    // 1. Forfeit - hand off to GraceBanner. Strip stays hidden so the two
     //    banners don't stack redundantly.
     if (pill === "forfeit") return null;
 
@@ -77,7 +77,7 @@
     }
 
     // 4. Paused (host-only). Only meaningful when the connection is otherwise
-    //    up — a full disconnect already renders state 2/3.
+    //    up - a full disconnect already renders state 2/3.
     if (paused) {
       return { kind: "paused", text: t("multiplayer.paused"), tone: "warn" };
     }

@@ -104,7 +104,7 @@ export function hasFocusModeChoice(
   return false;
 }
 
-/** Whether the (src, skillId) pair has retarget variants — i.e. Focus is
+/** Whether the (src, skillId) pair has retarget variants - i.e. Focus is
  *  staged and the engine emitted variants where `aux_sq` (or for non-aux
  *  skills, `target`) names a different recipient than the caster. Used to
  *  detect when a normally self-cast skill (Shield) needs to ARM and let the
@@ -157,7 +157,7 @@ export function variantIsSelfCast(v: SkillVariant, src: number): boolean {
 }
 
 /** True iff this variant is a retarget branch where the recipient ally
- *  differs from the destination — i.e. Dash/Retreat retarget. For Shield
+ *  differs from the destination - i.e. Dash/Retreat retarget. For Shield
  *  retarget the recipient IS the target square, so `auxSq == target`. */
 export function variantIsAllyMover(v: SkillVariant, src: number): boolean {
   if (!v.hasAux || v.auxSq === src) return false;

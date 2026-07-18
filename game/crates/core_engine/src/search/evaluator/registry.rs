@@ -4,7 +4,7 @@
 //! runs the terminal short-circuit, builds one [`EvalContext`], drives a single
 //! shared board pass for per-piece terms (fanning each occupied square out to
 //! every active per-piece term), runs side-level terms once, and returns a
-//! [`DynBreakdown`] — the source of truth from which the legacy fixed-field
+//! [`DynBreakdown`] - the source of truth from which the legacy fixed-field
 //! `EvalBreakdown` is projected.
 
 use crate::state::Position;
@@ -41,7 +41,7 @@ pub fn default_terms(_params: &EvalParams) -> Vec<Box<dyn EvalTerm>> {
     ]
 }
 
-/// Phase 1a (Session 48) — the term set is static: all terms are zero-size
+/// Phase 1a (Session 48) - the term set is static: all terms are zero-size
 /// stateless structs and read their weights from `ctx.params`, never from
 /// stored fields. `default_terms` used to box all 14 on **every** leaf eval
 /// (14 heap allocations + vtable setup per call, pure search-path overhead).
@@ -61,7 +61,7 @@ pub fn default_terms_static() -> &'static [Box<dyn EvalTerm>] {
 pub fn evaluate_dyn(pos: &Position, terms: &[Box<dyn EvalTerm>], params: &EvalParams) -> DynBreakdown {
     counters::bump_eval_calls();
 
-    // Terminal — overrules everything. No terms run.
+    // Terminal - overrules everything. No terms run.
     match pos.game_result {
         Some(GameResult::P1Wins) => return DynBreakdown::terminal(MATE_SCORE),
         Some(GameResult::P2Wins) => return DynBreakdown::terminal(-MATE_SCORE),
@@ -82,7 +82,7 @@ pub fn evaluate_dyn(pos: &Position, terms: &[Box<dyn EvalTerm>], params: &EvalPa
     // term to preserve emission order in the DynBreakdown.
     let mut acc: Vec<(i32, i32)> = vec![(0, 0); active.len()];
 
-    // Single shared board pass — fan each occupied square to every per-piece term.
+    // Single shared board pass - fan each occupied square to every per-piece term.
     let mut bits = ctx.all_occ;
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
@@ -106,7 +106,7 @@ pub fn evaluate_dyn(pos: &Position, terms: &[Box<dyn EvalTerm>], params: &EvalPa
     }
     let _ = &per_piece; // documents intent; the loop above already gates on is_per_piece.
 
-    // Side-level terms — once each.
+    // Side-level terms - once each.
     for (i, t) in active.iter().enumerate() {
         if t.is_per_piece() { continue; }
         let (p1, p2) = t.score_side(&ctx);
@@ -131,11 +131,11 @@ pub fn evaluate_dyn(pos: &Position, terms: &[Box<dyn EvalTerm>], params: &EvalPa
     DynBreakdown { terms: entries, total, terminal: false }
 }
 
-/// Phase 1b (Session 48) — scalar search-leaf eval. Returns just the `i32`
+/// Phase 1b (Session 48) - scalar search-leaf eval. Returns just the `i32`
 /// total, with **no `DynBreakdown`, no `Vec` of active-term borrows, no
 /// per-term `acc`/`entries` allocation, and no `to_legacy` projection.** All
 /// of that machinery exists to feed the frontend eval panel / telemetry /
-/// nn_trainer — none of which run in the inner search loop, which wants a
+/// nn_trainer - none of which run in the inner search loop, which wants a
 /// single scalar.
 ///
 /// This is a **monomorphic** rewrite of `evaluate_dyn(...).total`: it calls
@@ -143,7 +143,7 @@ pub fn evaluate_dyn(pos: &Position, terms: &[Box<dyn EvalTerm>], params: &EvalPa
 /// directly (static dispatch, no `dyn` vtable) and folds into one running
 /// `i32`. The term set, order, `is_active` gates, and per-term signs are the
 /// SAME as `default_terms` + each term's `signed_total`, so the result is
-/// byte-identical to `evaluate_breakdown(pos).total` — pinned by
+/// byte-identical to `evaluate_breakdown(pos).total` - pinned by
 /// `golden_eval_unchanged` (which routes `evaluate()` through here).
 ///
 /// Terms marked `is_per_piece` (material, hp, armor, skills, mobility,
@@ -156,7 +156,7 @@ pub fn evaluate_dyn(pos: &Position, terms: &[Box<dyn EvalTerm>], params: &EvalPa
 pub fn evaluate_scalar(pos: &Position, params: &EvalParams) -> i32 {
     counters::bump_eval_calls();
 
-    // Terminal — overrules everything. No terms run.
+    // Terminal - overrules everything. No terms run.
     match pos.game_result {
         Some(GameResult::P1Wins) => return MATE_SCORE,
         Some(GameResult::P2Wins) => return -MATE_SCORE,
@@ -191,7 +191,7 @@ pub(crate) mod pt {
 
 /// The per-side term sums that fold into the scalar total. Per-piece terms hold
 /// `(p1_magnitude, p2_magnitude)`; side-level terms hold their `(p1, p2)`
-/// directly. `fold_total` applies each term's sign/weight — the SINGLE source
+/// directly. `fold_total` applies each term's sign/weight - the SINGLE source
 /// of truth for the fold, shared by `evaluate_scalar` and the incremental path.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TermSums {
@@ -232,7 +232,7 @@ impl TermSums {
 /// Score one occupied square across all 9 per-piece terms, returning each term's
 /// owner-relative magnitude in `pt::*` order. `guards_present` / `champions_present`
 /// reproduce the `is_active` gates for GuardIsolation / ChampionThreat. Shared by
-/// the full accumulation pass and the incremental per-piece update — one source
+/// the full accumulation pass and the incremental per-piece update - one source
 /// of truth for per-square term math.
 #[inline]
 pub(crate) fn score_piece_all(

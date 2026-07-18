@@ -1,7 +1,7 @@
 // Dedupe helpers for custom loadouts.
 //
 // Custom loadouts are equal when their 12 skill IDs (in canonical piece +
-// slot order) match. Names are user-facing labels, not identity — the same
+// slot order) match. Names are user-facing labels, not identity - the same
 // skill tuple saved twice under different names is still a duplicate.
 //
 // `loadoutKey` produces a stable string form of a SideLoadout. `findDuplicate`
@@ -12,7 +12,7 @@
 import type { SideLoadout } from "$lib/engine";
 import type { SavedLoadout } from "./types";
 
-/** Canonical string form of a loadout — 12 skill IDs joined with
+/** Canonical string form of a loadout - 12 skill IDs joined with
  *  separators. Format: `"s1,s2|s1,s2|s1,s2|s1,s2|s1,s2|s1,s2"`. Slot 0
  *  (empty) is preserved so incomplete loadouts don't accidentally match
  *  complete ones. */

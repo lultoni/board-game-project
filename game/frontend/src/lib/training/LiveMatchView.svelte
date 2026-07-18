@@ -1,11 +1,11 @@
 <script lang="ts">
-  // Panel 1 — Live Match View.
+  // Panel 1 - Live Match View.
   //
   // Subscribes to per-ply updates via the `live.sub` sentinel, then polls
   // `read_training_live` at 4 Hz. Every fresh FEN gets fed to
   // `fen_to_position_view` so the existing Board.svelte renderer draws
-  // the position unchanged. Three eval bars sit beside the board —
-  // challenger NN, defender NN, heuristic — using the centipawn-scale
+  // the position unchanged. Three eval bars sit beside the board -
+  // challenger NN, defender NN, heuristic - using the centipawn-scale
   // numbers the trainer writes into live.json.
   //
   // Cleanup matters: on unmount, unsubscribe + the polling store stops on
@@ -61,7 +61,7 @@
     });
   });
 
-  // Dedupe on FEN — ETA-only or eval-only updates would otherwise trigger
+  // Dedupe on FEN - ETA-only or eval-only updates would otherwise trigger
   // a needless re-parse.
   let lastFen: string | null = $state(null);
   $effect(() => {
@@ -98,7 +98,7 @@
   {#if !live}
     <div class="empty">
       Waiting for the trainer to publish a live position. Start a run from
-      the top bar — the gauntlet phase produces self-play matches that
+      the top bar - the gauntlet phase produces self-play matches that
       stream here.
     </div>
   {:else}

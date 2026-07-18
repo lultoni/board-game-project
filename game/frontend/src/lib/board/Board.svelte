@@ -25,7 +25,7 @@
     /** Subset of `selectable` whose piece can be picked up for a drag-to-move
      *  gesture. Outside the Move Phase this is typically empty. */
     draggable?: Set<number>;
-    /** Squares whose piece has already used its Move this phase — greyed out. */
+    /** Squares whose piece has already used its Move this phase - greyed out. */
     usedSquares?: Set<number>;
     /** Approach-square chooser: when set, render highlights on these squares
      * and trigger `onApproachChoice` instead of normal clicks. */
@@ -45,7 +45,7 @@
     interactive?: boolean;
     /** Pause piece idle-breathing while overlay effects are mid-play. */
     effectsActive?: boolean;
-    /** Pointer-up handler — passes the clicked square index (0..63) and the
+    /** Pointer-up handler - passes the clicked square index (0..63) and the
      * cursor position within the SVG (used to pick a sub-tile approach for
      * multi-path Move-Attacks). */
     onSquareClick?: (square: number, x: number, y: number) => void;
@@ -74,7 +74,7 @@
      * Parent computes this from the live drag state.
      */
     dragTrail?: number[];
-    /** Square currently under the cursor during a drag — render an extra ring. */
+    /** Square currently under the cursor during a drag - render an extra ring. */
     dragHover?: number | null;
     /** Whether the dragHover square is a legal drop. Affects the ring colour. */
     dragHoverLegal?: boolean;
@@ -181,7 +181,7 @@
 
   // Static Bodyguard-protection edges (ns-40). One mark per (champion, covered
   // approach square). Each mark is drawn on the CHAMPION's tile boundary facing
-  // the approach square, so two Champions sharing a Guard stay unambiguous — a
+  // the approach square, so two Champions sharing a Guard stay unambiguous - a
   // mark always hugs the piece it belongs to. Gated behind the settings toggle.
   const bodyguardEdges = $derived(
     settings.showBodyguardCover
@@ -244,12 +244,12 @@
 
   const fileLabels = "abcdefgh".split("");
 
-  // Pieces occupy squares — we use this to differentiate Move-target tint
+  // Pieces occupy squares - we use this to differentiate Move-target tint
   // between "empty target" (relocation) and "occupied target" (Move-Attack
   // or, on the rare swap-like cases, an ally).
   const occupied = $derived(new Set(pieces.map((p) => p.square)));
 
-  // Hovered approach square — tracked while the approach chooser is active
+  // Hovered approach square - tracked while the approach chooser is active
   // so moving the cursor highlights which path would be selected on click.
   let approachHovered = $state<number | null>(null);
   $effect(() => {
@@ -259,7 +259,7 @@
 
   // --- Drag state -----------------------------------------------------------
   // Pointerdown on a selectable piece starts a "press". The press only becomes
-  // a drag once the pointer moves past DRAG_THRESHOLD_PX (in SVG coords) — this
+  // a drag once the pointer moves past DRAG_THRESHOLD_PX (in SVG coords) - this
   // way a still-pointer click works exactly like click-to-move and there's no
   // unwanted jitter when the user just taps.
 
@@ -275,13 +275,13 @@
     /** Live cursor x/y, in SVG coords. Updated on every pointermove. */
     x: number;
     y: number;
-    /** True once we've crossed DRAG_THRESHOLD_PX — drag visuals are on. */
+    /** True once we've crossed DRAG_THRESHOLD_PX - drag visuals are on. */
     dragging: boolean;
     /** Path of distinct squares visited (src first). Only meaningful when dragging. */
     path: number[];
     /** Square the cursor is currently over (or null if outside the board). */
     overSq: number | null;
-    /** False for presses started on non-selectable squares — these become
+    /** False for presses started on non-selectable squares - these become
      * taps only, never drags, and skip the parent's onPressStart. */
     draggable: boolean;
     /** True if the piece was already the active selection when pressed.
@@ -341,7 +341,7 @@
       wasSelected,
     };
     if (draggableHere) onPressStart?.(sq);
-    // Capture on the SVG root, not the rect — the rect can be re-rendered
+    // Capture on the SVG root, not the rect - the rect can be re-rendered
     // out from under us mid-drag and lose the capture, freezing the piece.
     svgEl?.setPointerCapture?.(ev.pointerId);
   }
@@ -365,7 +365,7 @@
     press.overSq = overSq;
     if (overSq !== null && press.path[press.path.length - 1] !== overSq) {
       // If the cursor has revisited an earlier square, truncate the path
-      // back to that index — backtracking should retract the trail, not
+      // back to that index - backtracking should retract the trail, not
       // extend it. This also keeps the trail free of duplicates, which
       // matters because the keyed `{#each dragTrail}` block crashes on
       // duplicate keys and the freeze cascades into a stuck sprite.
@@ -390,7 +390,7 @@
     // Draggable tap (no drag crossed). If the piece was already selected
     // when pressed, toggle it off by firing the click (the parent's
     // `onSquareClick` does the toggle). If it's a fresh selection,
-    // `onPressStart` already set it at pointerdown — bail.
+    // `onPressStart` already set it at pointerdown - bail.
     if (draggable && !dragging) {
       if (wasSelected) handleSquareClickInternal(src, x, y);
       return;
@@ -686,7 +686,7 @@
     />
   {/if}
 
-  <!-- Drag trail — faint tint on the squares the cursor has crossed since
+  <!-- Drag trail - faint tint on the squares the cursor has crossed since
        press. Helps the player see what path their drag has claimed. -->
   {#if isDragging && dragTrail.length > 1}
     <g class="drag-trail">
@@ -706,7 +706,7 @@
     </g>
   {/if}
 
-  <!-- Drag-hover ring — the square currently under the cursor, sized so it
+  <!-- Drag-hover ring - the square currently under the cursor, sized so it
        stands above the move-target dots/rings. Green if legal drop, red if not. -->
   {#if isDragging && dragHover !== null}
     {@const file = dragHover & 7}
@@ -724,7 +724,7 @@
     />
   {/if}
 
-  <!-- Drag landing marker — the square the attacker would actually end up on
+  <!-- Drag landing marker - the square the attacker would actually end up on
        if the drag were released right now. Distinct from `dragHover` because
        on Move-Attack the attacker stops one tile short of the defender. -->
   {#if isDragging && dragLanding !== null && dragLanding !== dragHover}
@@ -902,7 +902,7 @@
     {/each}
   </g>
 
-  <!-- Hit-test overlay — invisible rects on top to catch pointer events.
+  <!-- Hit-test overlay - invisible rects on top to catch pointer events.
        Pointer-down on a selectable square begins a drag; up routes to drop
        (if the cursor crossed squares) or click (if it stayed put). -->
   <g class="hits" role="presentation" onpointerleave={(e) => { approachHovered = null; onSquareHover?.(null, e.clientX, e.clientY); }}>

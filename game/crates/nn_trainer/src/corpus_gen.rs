@@ -1,7 +1,7 @@
 //! In-process training-corpus generation for the NNUE Phase-0 bootstrap.
 //!
 //! The Phase-0 bootstrap (`bootstrap.rs`) regresses the NNUE net to reproduce
-//! the hand-crafted `evaluate`. That needs *many* realistic positions — the
+//! the hand-crafted `evaluate`. That needs *many* realistic positions - the
 //! search benchmark corpus (`bench/corpus/raw_corpus.txt`, ~120 curated rows)
 //! is far too small and is a different artifact entirely (a hand-curated
 //! 6-bucket benchmark, not a training set). This module generates a large,
@@ -10,11 +10,11 @@
 //! Same *search-driven self-play* idea as `core_engine/examples/build_corpus.rs`
 //! (both sides play depth-N alpha-beta, depths cycled 2/3/4 across games so
 //! opening lines diverge), but tuned for **volume, not curation**: every
-//! deduped non-terminal position visited is kept — no 6-bucket classification,
+//! deduped non-terminal position visited is kept - no 6-bucket classification,
 //! no per-bucket cap. Realistic loadouts come from the shared
 //! `loadout::random_loadout` (ns-50 §5.3). Reproducible from a seed.
 //!
-//! Terminal positions are NOT emitted — they bypass the NN in-search (the
+//! Terminal positions are NOT emitted - they bypass the NN in-search (the
 //! bootstrap labeller skips them anyway), so there's no point storing them.
 
 use crate::loadout::random_loadout;
@@ -28,10 +28,10 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashSet;
 
-/// Ply cap per game (same as the benchmark builder — long games terminate).
+/// Ply cap per game (same as the benchmark builder - long games terminate).
 const MAX_PLIES: usize = 2_000;
 
-/// Search depths cycled as the play policy — game `i` uses `PLAY_DEPTHS[i %
+/// Search depths cycled as the play policy - game `i` uses `PLAY_DEPTHS[i %
 /// len]`. Different depths pick different opening moves, so games diverge
 /// beyond just their loadouts (mirrors the benchmark builder).
 const PLAY_DEPTHS: [u8; 3] = [2, 3, 4];
@@ -40,8 +40,8 @@ const PLAY_DEPTHS: [u8; 3] = [2, 3, 4];
 /// by search-driven self-play over up to `n_games` games seeded from `seed`.
 ///
 /// Dedup is two-layer (same as the benchmark builder):
-/// - `zobrist` — fast exact-state dedup.
-/// - view-key (board + STM + phase) — rejects positions differing only in
+/// - `zobrist` - fast exact-state dedup.
+/// - view-key (board + STM + phase) - rejects positions differing only in
 ///   counter values (money / actions_remaining / round), which are worthless
 ///   as separate training rows.
 ///
@@ -65,7 +65,7 @@ pub fn generate_training_corpus(
         let p1_loadout = random_loadout(&mut rng);
         let p2_loadout = random_loadout(&mut rng);
         let mut pos = Position::setup_stack_m_with_loadouts(&p1_loadout, &p2_loadout);
-        // Fresh TT per game — avoids cross-game contamination, bounds memory.
+        // Fresh TT per game - avoids cross-game contamination, bounds memory.
         let mut tt = TranspositionTable::with_capacity_mb(16);
 
         let mut plies = 0usize;
@@ -114,7 +114,7 @@ pub fn write_training_corpus_file(
         std::fs::create_dir_all(parent)?;
     }
     let mut buf = String::with_capacity(positions.len() * 96 + 128);
-    buf.push_str("# NN training corpus — auto-generated (ns-50). One FEN per line.\n");
+    buf.push_str("# NN training corpus - auto-generated (ns-50). One FEN per line.\n");
     buf.push_str("# Regenerated on demand by nn_trainer::corpus_gen; gitignored. NOT the search benchmark.\n");
     for pos in positions {
         buf.push_str(&to_fen(pos));

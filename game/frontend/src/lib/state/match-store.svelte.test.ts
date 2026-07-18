@@ -1,5 +1,5 @@
 // Pure-function coverage for the claim-win flow split in Phase 3e (M1).
-// `computeClaimResultByte` is pure and side-effect-free — testing it here
+// `computeClaimResultByte` is pure and side-effect-free - testing it here
 // pins the seat→resultByte mapping that the orchestrator relies on.
 import { describe, it, expect } from "vitest";
 import { computeClaimResultByte } from "./match-store.svelte";

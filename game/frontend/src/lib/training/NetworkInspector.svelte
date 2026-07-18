@@ -1,15 +1,15 @@
 <script lang="ts">
-  // Panel 4 — Network Inspector (pinned right pane).
+  // Panel 4 - Network Inspector (pinned right pane).
   //
   // Picks up two inputs from the route shell:
-  //   - selectedRaterId — set by clicking a node in the Lineage panel
-  //   - latest FEN — sourced from the live status polling stream, but we
+  //   - selectedRaterId - set by clicking a node in the Lineage panel
+  //   - latest FEN - sourced from the live status polling stream, but we
   //     re-poll `read_training_live` directly here at 0.5 Hz so the
   //     Inspector stays responsive even when the Live panel isn't mounted.
   //
   // On every (rater_id, fen) pair we invoke `inspect_rater` and show the
   // forward output + per-layer weight stats. Layer-level introspection is
-  // server-side only — the panel never sees raw weights.
+  // server-side only - the panel never sees raw weights.
 
   import { onMount, getContext } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -82,7 +82,7 @@
     <p class="hint">No rater selected. Switch to the <strong>Lineage</strong> tab and click a node to inspect it here.</p>
   {:else if !live}
     <p class="hint">
-      Rater <code>{selected}</code> selected — waiting for a live match position to evaluate against.
+      Rater <code>{selected}</code> selected - waiting for a live match position to evaluate against.
     </p>
   {:else}
     <header>

@@ -124,7 +124,7 @@
     "importErrors": "Fehler: {details}."
   },
   "setup": {
-    "title": "Lokales Spiel — Einrichtung",
+    "title": "Lokales Spiel - Einrichtung",
     "back": "← zurück",
     "p1Label": "Spieler 1",
     "p2Label": "Spieler 2",
@@ -145,7 +145,7 @@
       "custom": "Eigener Draft",
       "customHint": "Zwei Skills pro Zug auswählen, sechs Züge pro Seite.",
       "preMade": "Vorgefertigtes Loadout",
-      "preMadeHint": "Beide Seiten spielen dasselbe vorgefertigte Loadout — kein Draft."
+      "preMadeHint": "Beide Seiten spielen dasselbe vorgefertigte Loadout - kein Draft."
     },
     "preMadeLoadouts": {
       "header": "Loadout",
@@ -181,10 +181,10 @@
     "categoryShield": "Schutz",
     "categoryMove": "Bewegung",
     "categoryMystic": "Mystik",
-    "armed": "bereit — Ziel anklicken",
+    "armed": "bereit - Ziel anklicken",
     "staged": "vorgemerkt",
-    "focusStaged": "Fokus ist vorgemerkt — ein nicht-mystischer Skill diese Runde erhält +1 Reichweite (bei Bewegungs-Skills wählst du Aktivierungs- oder Effektreichweite).",
-    "chargeStaged": "Ladung ist vorgemerkt — ein Angriffs-Skill einer deiner Figuren diese Runde verursacht +1 Schaden."
+    "focusStaged": "Fokus ist vorgemerkt - ein nicht-mystischer Skill diese Runde erhält +1 Reichweite (bei Bewegungs-Skills wählst du Aktivierungs- oder Effektreichweite).",
+    "chargeStaged": "Ladung ist vorgemerkt - ein Angriffs-Skill einer deiner Figuren diese Runde verursacht +1 Schaden."
   },
   "controls": {
     "endPhase": "Phase beenden",
@@ -242,13 +242,13 @@
     "waitingForOpponent": "Warte auf Gegner…",
     "connecting": "Verbinde…",
     "connected": "Verbunden!",
-    "waitingForHost": "Verbunden — warte darauf, dass der Host die Partie einrichtet…",
+    "waitingForHost": "Verbunden - warte darauf, dass der Host die Partie einrichtet…",
     "sessionFull": "Diese Sitzung ist bereits voll.",
     "noSuchSession": "Keine Sitzung mit diesem Code gefunden.",
     "connectionError": "Verbindungsfehler: {msg}",
     "enterCode": "6-stelligen Code eingeben",
     "invalidCode": "Der Code muss 6 Ziffern haben.",
-    "sessionFor": "Mehrspieler-Sitzung — du bist Spieler {n}.",
+    "sessionFor": "Mehrspieler-Sitzung - du bist Spieler {n}.",
     "pillLive": "live",
     "pillUnstable": "instabil",
     "pillDisconnected": "getrennt",
@@ -258,7 +258,7 @@
     "rejoin": "Wieder beitreten",
     "dismiss": "Verwerfen",
     "youWerePlayer": "du warst Spieler {n}",
-    "rejoinFailedCodeTaken": "Dieser Code ist nicht mehr verfügbar — jemand anderes hat ihn beansprucht.",
+    "rejoinFailedCodeTaken": "Dieser Code ist nicht mehr verfügbar - jemand anderes hat ihn beansprucht.",
     "beforeUnloadPrompt": "Beim Verlassen wird die Mehrspieler-Sitzung beendet. Bist du sicher?",
     "startedAt": "begonnen {time}",
     "graceBannerHost": "Gegner getrennt. Wenn er nicht zurückkehrt, kannst du den Sieg beanspruchen.",
@@ -268,11 +268,11 @@
     "takeOverNow": "Als Host übernehmen",
     "takeOverIn": "Übernahme verfügbar in {time}",
     "takeOverInProgress": "Übernahme läuft…",
-    "takeOverFailed": "Übernahme fehlgeschlagen — versuche es erneut oder kehre zur Lobby zurück.",
+    "takeOverFailed": "Übernahme fehlgeschlagen - versuche es erneut oder kehre zur Lobby zurück.",
     "wonByForfeit": "Sieg durch Aufgabe",
-    "resumeFailedZobrist": "Fortsetzen fehlgeschlagen — lokaler Stand stimmte nicht mit der Aufzeichnung des Hosts überein. Die Sitzung wurde abgebrochen.",
-    "resumeFailedHost": "Fortsetzen fehlgeschlagen — der andere Spieler ist nicht mehr in dieser Partie.",
-    "resumeFailedNoSession": "Fortsetzen fehlgeschlagen — keine passende Sitzung unter diesem Code.",
+    "resumeFailedZobrist": "Fortsetzen fehlgeschlagen - lokaler Stand stimmte nicht mit der Aufzeichnung des Hosts überein. Die Sitzung wurde abgebrochen.",
+    "resumeFailedHost": "Fortsetzen fehlgeschlagen - der andere Spieler ist nicht mehr in dieser Partie.",
+    "resumeFailedNoSession": "Fortsetzen fehlgeschlagen - keine passende Sitzung unter diesem Code.",
     "redialLadder": "Verbinde erneut (Versuch {attempt}, nächster in {time})…",
     "redialLongtail": "Warte auf Rückkehr des Hosts (nächster Versuch in {time})…",
     "reconnecting": "Verbinde erneut…",
@@ -297,7 +297,7 @@
     "draw": "Unentschieden",
     "aborted": "Partie abgebrochen"
   },
-  "_comment_help": "TODO: German rules/controls prose below is a mirror translation of the English Simple Overview — precise rules text; wants a native-speaker review before release.",
+  "_comment_help": "TODO: German rules/controls prose below is a mirror translation of the English Simple Overview - precise rules text; wants a native-speaker review before release.",
   "help": {
     "title": "Hilfe",
     "tabSkills": "Fähigkeiten",
@@ -313,7 +313,7 @@
       "moveAttackTerm": "Bewegungsangriff",
       "moveAttackBody": "Statt auf ein leeres Feld zu ziehen, gibst du eine Aktion aus, um deine Figur auf ein gegnerisches Feld zu bewegen. Der Gegner erleidet 1 Schaden. Pro Zug ist höchstens ein Bewegungsangriff erlaubt (normale Bewegungen sind unbegrenzt).",
       "healthTerm": "Gesundheit",
-      "healthBody": "Jede Figur hat 2 LP: Normal → Verletzt → Entfernt. 1 Schaden bewegt eine Figur einen Schritt auf dieser Leiste. Verletzt ist rein ein LP-Zähler — Figuren agieren mit voller Geschwindigkeit und Reichweite.",
+      "healthBody": "Jede Figur hat 2 LP: Normal → Verletzt → Entfernt. 1 Schaden bewegt eine Figur einen Schritt auf dieser Leiste. Verletzt ist rein ein LP-Zähler - Figuren agieren mit voller Geschwindigkeit und Reichweite.",
       "armorTerm": "Rüstung",
       "armorBody": "Eine Figur kann bis zu 2 Rüstung halten. Jeder Punkt absorbiert 1 eingehenden Schaden, bevor LP betroffen sind, und wird dann zerstört.",
       "skillPhaseTerm": "Fähigkeitsphase",
@@ -323,13 +323,13 @@
       "pathTerm": "Fähigkeiten und Pfad",
       "pathBody": "Fähigkeiten verlaufen in gerader Linie vom Anwender (wie eine Schach-Dame). Dieser Pfad wird von jeder Figur im Weg blockiert. Die meisten Fähigkeiten haben eine Standardreichweite von 2 Feldern.",
       "strikeMoveTerm": "Angriffe bewegen den Anwender",
-      "strikeMoveBody": "Nachdem eine Angriffs-Fähigkeit aufgelöst ist, rückt der Anwender 1 Feld in Wirkrichtung auf das Ziel vor — aber nur, wenn dieses Feld nun leer ist. Ein Angriff aus nächster Nähe, der tötet, lässt dich auf das freigewordene Feld treten; einer, der nicht tötet, lässt dich stehen. Aggression kostet Position.",
+      "strikeMoveBody": "Nachdem eine Angriffs-Fähigkeit aufgelöst ist, rückt der Anwender 1 Feld in Wirkrichtung auf das Ziel vor - aber nur, wenn dieses Feld nun leer ist. Ein Angriff aus nächster Nähe, der tötet, lässt dich auf das freigewordene Feld treten; einer, der nicht tötet, lässt dich stehen. Aggression kostet Position.",
       "bodyguardTerm": "Leibwächter",
       "bodyguardBody": "Wenn ein Champion oder König von einem Bewegungsangriff getroffen wird, kannst du wählen, dass stattdessen ein angrenzender Wächter den Treffer einsteckt.",
       "draftingTerm": "Fähigkeiten-Draft",
       "draftingBody": "Vor dem Spiel wählen die Spieler abwechselnd Fähigkeiten aus einem gemeinsamen Pool und weisen sie ihren Champions und dem König zu. Jede Figur erhält 2 Fähigkeiten.",
       "progressionTerm": "Fortschritt",
-      "progressionBody": "Im Spielverlauf wachsen sowohl dein Geldeinkommen als auch die Anzahl der Aktionen in deiner Fähigkeitsphase — spätere Züge sind mächtiger, weil du mehr Fähigkeiten wirken kannst."
+      "progressionBody": "Im Spielverlauf wachsen sowohl dein Geldeinkommen als auch die Anzahl der Aktionen in deiner Fähigkeitsphase - spätere Züge sind mächtiger, weil du mehr Fähigkeiten wirken kannst."
     },
     "controls": {
       "selectTerm": "Eine Figur auswählen",

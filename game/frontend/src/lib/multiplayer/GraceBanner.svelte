@@ -18,7 +18,7 @@
 
   // Banner is presentational: the route supplies the `role`/`code` identity
   // and the two action policies (`onClaim`, `onTakeOver`). The banner owns
-  // ONLY the connectivity-derived rendering (pill state, countdowns) — that
+  // ONLY the connectivity-derived rendering (pill state, countdowns) - that
   // is intrinsic to its purpose and is sourced from `mpState`.
   let {
     eng,
@@ -48,7 +48,7 @@
   // cleared only by disconnect()). This suppresses the spurious banner shown
   // during the host's resume-rehost window, where `mpState.status ===
   // "hosting"` makes the pill report "disconnected" before the joiner has
-  // ever dialled — while still showing the banner on every real drop,
+  // ever dialled - while still showing the banner on every real drop,
   // including drops where lastPongAt has been reset to null.
   const visible = $derived(
     (pill === "disconnected" || pill === "forfeit") && mpState.peerEverPaired
@@ -64,7 +64,7 @@
   );
   const canClaim = $derived(remainingMs === 0);
 
-  // Takeover countdown — runs in parallel to the claim-win countdown but
+  // Takeover countdown - runs in parallel to the claim-win countdown but
   // unlocks earlier (30s vs 5min). Only the joiner sees the takeover CTA;
   // host has the claim-win path instead.
   const takeoverDeadline = $derived(

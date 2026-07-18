@@ -1,4 +1,4 @@
-//! Top-level training orchestrator — **mutation self-play** (ns-50 Phase 1).
+//! Top-level training orchestrator - **mutation self-play** (ns-50 Phase 1).
 //!
 //! Supersedes the retired gradient + three-track design. The loop:
 //!
@@ -7,7 +7,7 @@
 //!    as `v0001`, and use it as the initial champion parent. Otherwise load the
 //!    latest accepted rater as the parent.
 //! 2. **Mutate big.** Each iteration, add large randomized Gaussian noise to the
-//!    champion's weights (`perturb_model`) — the "big jump" bet of plan §4.
+//!    champion's weights (`perturb_model`) - the "big jump" bet of plan §4.
 //! 3. **Gauntlet-filter.** Quantize the candidate, wrap it as an `NnueEvaluator`
 //!    (the incremental in-search path), and play a mirrored best-of-three
 //!    against the current champion at 100 ms/ply. First acceptance target: beat
@@ -18,12 +18,12 @@
 //!    index. Repeat for `n_iterations`.
 //!
 //! Throughout, the driver writes:
-//! - `<run_dir>/status.json` — summary state (throttled).
-//! - `<run_dir>/live.json` — per-ply state during matches, only when the UI
+//! - `<run_dir>/status.json` - summary state (throttled).
+//! - `<run_dir>/live.json` - per-ply state during matches, only when the UI
 //!   sets the `live.sub` sentinel.
-//! - `<run_dir>/raters/index.json` — registry of accepted raters.
-//! - `<run_dir>/raters/vNNNN.{mpk,json}` — accepted rater blobs + sidecars.
-//! - `<run_dir>/matrix.json` — challenger×defender match matrix.
+//! - `<run_dir>/raters/index.json` - registry of accepted raters.
+//! - `<run_dir>/raters/vNNNN.{mpk,json}` - accepted rater blobs + sidecars.
+//! - `<run_dir>/matrix.json` - challenger×defender match matrix.
 //!
 //! ## Backends
 //!
@@ -75,7 +75,7 @@ const SEED_MIX: u64 = 0x9E37_79B9_7F4A_7C15;
 /// / matrix schema (rather than dropped) to avoid a format-version bump.
 const TRACK_LABEL: &str = "fast";
 
-/// One-time Phase-0 bootstrap hyperparameters — the supervised regression that
+/// One-time Phase-0 bootstrap hyperparameters - the supervised regression that
 /// seeds the very first champion. Only used when the index is empty.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BootstrapConfig {
@@ -110,7 +110,7 @@ pub struct RunConfig {
     /// Think time (ms/ply) for the single 100 ms gauntlet track.
     pub gauntlet_think_ms: u64,
     /// Std-dev of the Gaussian noise added to the champion's weights each
-    /// iteration — the "big jump" magnitude. Larger than the retired gradient
+    /// iteration - the "big jump" magnitude. Larger than the retired gradient
     /// perturb (0.03–0.05): mutation self-play bets on occasional large jumps.
     pub mutation_std: f32,
     /// Model topology. Must match a persisted champion's topology on resume.
@@ -260,7 +260,7 @@ impl std::fmt::Display for RunError {
             Self::Matrix(e) => write!(f, "matrix error: {}", e),
             Self::Live(e) => write!(f, "live error: {}", e),
             Self::Io(e) => write!(f, "io error: {}", e),
-            Self::EmptyBootstrapCorpus => write!(f, "bootstrap corpus was empty — no positions to regress"),
+            Self::EmptyBootstrapCorpus => write!(f, "bootstrap corpus was empty - no positions to regress"),
             Self::BackendUnavailable(b) => {
                 write!(f, "backend `{}` not supported (mutation self-play is CPU-only)", b.as_str())
             }
@@ -364,7 +364,7 @@ fn run_training_cpu(
             let boot_cfg: TrainingConfig = (&config.bootstrap).into();
             let (seed_model, losses) = train_scalar(&corpus, &boot_cfg);
             eprintln!(
-                "[training] bootstrap done — final epoch loss {:?}",
+                "[training] bootstrap done - final epoch loss {:?}",
                 losses.last()
             );
 
@@ -424,7 +424,7 @@ fn run_training_cpu(
         // Opponent = current champion evaluator. On the very first iterations
         // the champion is the bootstrapped seed; the plan's first acceptance
         // target (beat the heuristic) is enforced by ALSO gating on a heuristic
-        // gauntlet when the champion is still the seed (v0001) — see below.
+        // gauntlet when the champion is still the seed (v0001) - see below.
         let champion_inference: Mlp<InferenceBackend> =
             into_inference::<TrainingBackend>(champion_parent.clone());
         let champion_eval = evaluator_from_inference_model(&champion_inference);
@@ -469,13 +469,13 @@ fn run_training_cpu(
 
         // First-acceptance gate: while the champion is still the bootstrapped
         // seed (v0001, never beaten anyone), a candidate must ALSO beat the
-        // hand-crafted heuristic to be crowned — the plan's Phase-1 target.
+        // hand-crafted heuristic to be crowned - the plan's Phase-1 target.
         let mut accepted = acc.pass;
         let mut recorded = acc.tally;
         if accepted && champion_id == "v0001" {
             let vs_heur = accept_vs(&candidate_eval, &HeuristicEvaluator, iter_seed ^ 0xF00D, config.gauntlet_think_ms);
             eprintln!(
-                "[training] iter {}: first-acceptance check vs heuristic — win_rate {:.2} pass={}",
+                "[training] iter {}: first-acceptance check vs heuristic - win_rate {:.2} pass={}",
                 iter + 1, vs_heur.tally.win_rate(), vs_heur.pass,
             );
             matrix.record_series(&cand_tag, "heuristic", TRACK_LABEL, vs_heur.tally);
@@ -594,7 +594,7 @@ fn accept_vs_live(
 }
 
 /// Serialise one ply into `live.json` iff the UI is subscribed. Failures are
-/// swallowed — losing a live frame is not worth aborting a run.
+/// swallowed - losing a live frame is not worth aborting a run.
 #[allow(clippy::too_many_arguments)]
 fn write_live(
     run_dir: &Path,
@@ -819,11 +819,11 @@ mod tests {
 
     /// Manual end-to-end harness (ns-50 Phase 1): bootstrap + a real mutation
     /// loop at 100 ms/ply, printing per-iteration BO3 outcomes and the
-    /// beat-the-heuristic gate. `#[ignore]` — real 100 ms games take minutes;
+    /// beat-the-heuristic gate. `#[ignore]` - real 100 ms games take minutes;
     /// this is a diagnostic, not a gate. Run explicitly:
     /// `cargo test -p nn_trainer --release mutation_loop_end_to_end -- --ignored --nocapture`.
     /// Strength (does a candidate actually beat the heuristic) is a training
-    /// outcome — this asserts only that the loop runs, seeds v0001, and the
+    /// outcome - this asserts only that the loop runs, seeds v0001, and the
     /// run directory ends in a valid state.
     #[test]
     #[ignore = "slow (minutes): manual mutation-loop E2E diagnostic"]

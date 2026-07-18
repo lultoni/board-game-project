@@ -49,7 +49,7 @@
 //! `tracked_enemies`, `tracked_casters`, `champion_credit` are turn-scoped:
 //! cleared at end of turn. The encoder emits them only when at least one is
 //! non-zero (a between-turns FEN therefore looks identical to before this
-//! revision). The parser tolerates their absence and zeroes them — so legacy
+//! revision). The parser tolerates their absence and zeroes them - so legacy
 //! 9-field FEN strings still load. This is what lets mid-turn snapshots
 //! round-trip without losing combo state.
 //!
@@ -409,7 +409,7 @@ pub fn from_fen(s: &str) -> Result<Position, FenError> {
         pos.tracked_casters_len = tc.len() as u8;
         pos.champion_credit = credit;
     } else {
-        // Legacy 9-field FEN — trackers are implicitly empty.
+        // Legacy 9-field FEN - trackers are implicitly empty.
         debug_assert_eq!(pos.tracked_enemies_len, 0);
         debug_assert_eq!(pos.tracked_casters_len, 0);
         debug_assert_eq!(pos.champion_credit, 0);
@@ -444,7 +444,7 @@ fn split_ranks_respecting_brackets(board: &str) -> Result<Vec<&str>, FenError> {
             b']' => {
                 depth -= 1;
                 if depth < 0 {
-                    // Stray ']' — bubble up as malformed; we don't know the rank
+                    // Stray ']' - bubble up as malformed; we don't know the rank
                     // yet, so report against rank 0 with the offending char.
                     return Err(FenError::UnexpectedChar {
                         rank_idx_from_top: ranks.len(),
@@ -467,7 +467,7 @@ fn split_ranks_respecting_brackets(board: &str) -> Result<Vec<&str>, FenError> {
 }
 
 fn parse_board(board: &str, pos: &mut Position) -> Result<(), FenError> {
-    // Split on '/' but only when NOT inside a [...] bracket — bracket contents
+    // Split on '/' but only when NOT inside a [...] bracket - bracket contents
     // contain '/' as field separators (h/a/c/s1/s2).
     let ranks = split_ranks_respecting_brackets(board)?;
     if ranks.len() != 8 {
@@ -668,7 +668,7 @@ pub(crate) fn position_eq_for_fen(a: &Position, b: &Position) -> bool {
     if a.current_phase != b.current_phase { return false; }
     if a.round_number != b.round_number { return false; }
     if a.moved_this_phase.0 != b.moved_this_phase.0 { return false; }
-    // Turn-scoped trackers — included so the new optional-trailer round-trip
+    // Turn-scoped trackers - included so the new optional-trailer round-trip
     // is meaningful in tests.
     if a.tracked_enemies_len != b.tracked_enemies_len { return false; }
     if a.tracked_casters_len != b.tracked_casters_len { return false; }
@@ -677,7 +677,7 @@ pub(crate) fn position_eq_for_fen(a: &Position, b: &Position) -> bool {
     let tc_len = a.tracked_casters_len as usize;
     if a.tracked_enemies[..te_len] != b.tracked_enemies[..te_len] { return false; }
     if a.tracked_casters[..tc_len] != b.tracked_casters[..tc_len] { return false; }
-    // Pending-bodyguard state — included for Commit 1 round-trip parity.
+    // Pending-bodyguard state - included for Commit 1 round-trip parity.
     if a.pending_bodyguard != b.pending_bodyguard { return false; }
     // Mailbox: only the occupied squares matter.
     let occ = (a.p1_pieces | a.p2_pieces).0;
@@ -854,7 +854,7 @@ mod tests {
     fn rejects_two_kings_one_side() {
         // Two P1 Kings, no P2 King.
         let bad = "K6k/8/K7/8/8/8/8/8 P1 M 2 6 6 0 1 0x0";
-        // Wait — that has 1 P1 king and 1 P2 king. Fix: both K's on top rank.
+        // Wait - that has 1 P1 king and 1 P2 king. Fix: both K's on top rank.
         let _ = bad;
         let bad = "KK5k/8/8/8/8/8/8/8 P1 M 2 6 6 0 1 0x0";
         match from_fen(bad) {
@@ -1057,7 +1057,7 @@ mod tests {
 
     #[test]
     fn lax_accepts_wrong_counts() {
-        // Same FEN as strict_rejects_wrong_champion_count — plain from_fen accepts it.
+        // Same FEN as strict_rejects_wrong_champion_count - plain from_fen accepts it.
         let mid_game = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCG1 P1 M 2 6 6 0 1 0x0";
         from_fen(mid_game).expect("lax accepts mid-game piece counts");
     }
@@ -1077,7 +1077,7 @@ mod tests {
 
     #[test]
     fn empty_trackers_omit_trailer() {
-        // Encoder must NOT emit the trailer when trackers are empty — keeps
+        // Encoder must NOT emit the trailer when trackers are empty - keeps
         // the canonical between-turns FEN byte-stable.
         let p = Position::setup_stack_m();
         let s = to_fen(&p);
@@ -1171,7 +1171,7 @@ mod tests {
         assert_eq!(s.split_ascii_whitespace().count(), 13,
             "pending_bg FEN must be 13 fields: {}", s);
         assert!(s.contains(" 1:18:26:17,19,25"),
-            "pending_bg field must encode src:now:tgt:eligible — got: {}", s);
+            "pending_bg field must encode src:now:tgt:eligible - got: {}", s);
         let p2 = from_fen(&s).expect("round-trip parses");
         assert!(position_eq_for_fen(&p, &p2), "pending_bg state lost on round-trip");
         assert_eq!(p2.pending_bodyguard.unwrap().eligible_len, 3);
@@ -1248,7 +1248,7 @@ mod tests {
 
     #[test]
     fn from_fen_rejects_wrong_field_count_with_pending_bg() {
-        // 10/11 fields are not accepted — must be 9, 12, or 13.
+        // 10/11 fields are not accepted - must be 9, 12, or 13.
         let bad = "1ccckcc1/1gggggg1/8/8/8/8/1GGGGGG1/1CCKCCC1 P1 M 2 6 6 0 1 0x0 -";
         match from_fen(bad) {
             Err(FenError::WrongFieldCount { got: 10 }) => {}

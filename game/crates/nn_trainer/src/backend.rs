@@ -2,14 +2,14 @@
 //!
 //! Two always-available aliases pin the inference + (default) training backend
 //! to CPU `ndarray`:
-//! - `InferenceBackend` — `NdArray<f32>`. Used for forward-only paths
+//! - `InferenceBackend` - `NdArray<f32>`. Used for forward-only paths
 //!   (loading raters, running gauntlets, the NN evaluator inside search).
 //!   Always CPU: a search call burns microseconds per position; GPU dispatch
 //!   overhead at batch-size 1 would dominate, and enum-dispatching the
 //!   evaluator through every search call site is a worse outcome than a
 //!   cross-backend save→load at the acceptance boundary (which we already do
 //!   via burn's `NamedMpkFileRecorder`, see `lineage_checkpoint`).
-//! - `TrainingBackend` — `Autodiff<NdArray<f32>>`. The CPU training backend.
+//! - `TrainingBackend` - `Autodiff<NdArray<f32>>`. The CPU training backend.
 //!   Other training backends (wgpu / cuda) sit beside it as additional
 //!   aliases gated on Cargo features.
 //!
@@ -17,7 +17,7 @@
 //! of `run_training` / `train_lineages` / `train_step` is locked to one
 //! backend. To support a runtime "CPU vs GPU" UI choice within a single
 //! binary, the top-level `run_training` in `run.rs` matches `BackendChoice`
-//! and dispatches into the right monomorphisation — see A2 of the plan.
+//! and dispatches into the right monomorphisation - see A2 of the plan.
 //!
 //! Persistence is backend-agnostic at the wire level: `save_rater` /
 //! `load_rater` are generic over `B: Backend` and the `.mpk` recorder is
@@ -36,17 +36,17 @@ use burn::backend::{Autodiff, NdArray};
 /// inspector command) load through this.
 pub type InferenceBackend = NdArray<f32>;
 
-/// The always-available CPU training backend — autodiff layered on
+/// The always-available CPU training backend - autodiff layered on
 /// `InferenceBackend`. `BackendChoice::Cpu` dispatches here.
 pub type TrainingBackend = Autodiff<InferenceBackend>;
 
-/// `wgpu` training backend — Metal on Mac, Vulkan on Linux, DX12 on
+/// `wgpu` training backend - Metal on Mac, Vulkan on Linux, DX12 on
 /// Windows. Wired into `run_training`'s dispatch via
 /// `BackendChoice::Wgpu`.
 #[cfg(feature = "backend-wgpu")]
 pub type WgpuTrainingBackend = Autodiff<burn::backend::wgpu::Wgpu<f32, i32>>;
 
-/// CUDA training backend — Linux + NVIDIA only; requires CUDA Toolkit
+/// CUDA training backend - Linux + NVIDIA only; requires CUDA Toolkit
 /// 12.x at build time. Wired into `run_training`'s dispatch via
 /// `BackendChoice::Cuda`. The whole binary opts into the CUDA toolchain
 /// when this feature is on; built as a separate release artefact.
@@ -54,7 +54,7 @@ pub type WgpuTrainingBackend = Autodiff<burn::backend::wgpu::Wgpu<f32, i32>>;
 pub type CudaTrainingBackend = Autodiff<burn::backend::cuda::Cuda<f32, i32>>;
 
 /// Default-device shim, kept for callers that don't care which backend
-/// they're running on. Always returns the CPU device — the GPU backends
+/// they're running on. Always returns the CPU device - the GPU backends
 /// have their own `Default` device that the dispatcher in `run.rs`
 /// constructs at the right monomorphisation.
 pub fn default_device() -> burn::tensor::Device<InferenceBackend> {
@@ -64,7 +64,7 @@ pub fn default_device() -> burn::tensor::Device<InferenceBackend> {
 /// Runtime backend selector. Drives the dispatch in
 /// `run::run_training`. The set of variants is fixed at compile time
 /// (the enum is always whole), but `available()` returns only those
-/// variants whose Cargo feature was enabled in this build — that's the
+/// variants whose Cargo feature was enabled in this build - that's the
 /// list the UI dropdown gets to choose from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -95,11 +95,11 @@ impl BackendChoice {
         v
     }
 
-    /// The recommended default for this binary — the first entry of
+    /// The recommended default for this binary - the first entry of
     /// `available()`. UIs persist the user's last choice and fall back
     /// to this when no previous selection exists.
     pub fn default_choice() -> BackendChoice {
-        // Always at least one entry (Cpu) — unwrap is sound.
+        // Always at least one entry (Cpu) - unwrap is sound.
         Self::available().into_iter().next().unwrap()
     }
 

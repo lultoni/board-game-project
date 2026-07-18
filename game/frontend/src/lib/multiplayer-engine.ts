@@ -45,7 +45,7 @@ export interface SubmitResult {
 export interface OnAppliedMeta {
   /** Engine `PositionView` captured by the wrapper BEFORE `tryApply`. Routes
    *  use it for pre-state diffing (mailbox/bodyguard effects) without having
-   *  to re-read engine state — at the time `onApplied` fires the engine has
+   *  to re-read engine state - at the time `onApplied` fires the engine has
    *  already moved, so a fresh `positionView()` would return post-state. */
   prePositionView: PositionView;
   /** True when this `onApplied` fires for an action originated locally on
@@ -60,7 +60,7 @@ export interface OnAppliedMeta {
 export interface MpEngineDeps {
   /** The booted engine. AUTH on host/solo; MIRROR on joiner. */
   eng: EngineClient;
-  /** Send a wire message. Wrapper assumes this is best-effort — if the
+  /** Send a wire message. Wrapper assumes this is best-effort - if the
    *  channel is closed, the caller's implementation is responsible for
    *  swallowing the failure. */
   send: (m: WireMessageV2) => void;
@@ -69,7 +69,7 @@ export interface MpEngineDeps {
   subscribe: (cb: (m: WireMessageV2) => void) => () => void;
   /** Called after every successfully-applied action so callers can refresh
    *  reactive UI state (`match.position`, `match.legal`, draft view, etc).
-   *  Wrapper does not touch the reactive carrier itself — keeps it pure.
+   *  Wrapper does not touch the reactive carrier itself - keeps it pure.
    *  `meta.prePositionView` is the engine's view captured BEFORE `tryApply`;
    *  `meta.isLocalEcho` distinguishes locally-submitted from remotely-driven
    *  applies. See `OnAppliedMeta` for full semantics. */
@@ -94,7 +94,7 @@ export interface MpEngineDeps {
   onPausedChange: (paused: boolean) => void;
   /** Called by the wrapper after every committed action ON THE HOST so the
    *  caller can write to the host's IDB row. Joiner never writes its own
-   *  row — caller's implementation should no-op when `role === "joiner"`. */
+   *  row - caller's implementation should no-op when `role === "joiner"`. */
   onHostCommitted?: () => Promise<void> | void;
   /** Live role accessor. The wrapper reads this on every send/decide-branch
    *  so role changes (the handoff path writes `mpState.role = "host"`) take
@@ -106,12 +106,12 @@ export interface MpEngineDeps {
   /** Called by the wrapper immediately BEFORE it touches the shared engine
    *  with INCOMING REAL traffic (host: a joiner `intent`; joiner: a host
    *  `committed`/`snapshot`/`phase-change`). The route uses it to guarantee
-   *  the shared engine is on the true authoritative line before validation —
+   *  the shared engine is on the true authoritative line before validation -
    *  specifically, to auto-exit sandbox (restore the entry snapshot) so an
    *  in-progress local exploration can't mis-validate the opponent's real
    *  move (the false "engine disagreed" anti-cheat bug, ns-37). Awaited; must
    *  resolve before the wrapper calls tryApply / restoreFromSnapshot. Expected
-   *  to be a cheap no-op when not in sandbox. Optional — defaults to a no-op
+   *  to be a cheap no-op when not in sandbox. Optional - defaults to a no-op
    *  for solo and for tests that don't wire it. */
   ensureLiveEngine?: () => Promise<void> | void;
 }
@@ -126,7 +126,7 @@ export interface MpEngineOpts {
   matchId: string | null;
   /** Optional clock for nonces / debugging. Defaults to Math.random + Date.now. */
   nonceFactory?: () => string;
-  /** Diagnostics — captures internal warnings without spamming console.
+  /** Diagnostics - captures internal warnings without spamming console.
    *  Defaults to console.warn. */
   warn?: (stage: string, detail?: unknown) => void;
 }
@@ -160,7 +160,7 @@ export interface MpEngineHandle {
    *  "host"`; the wrapper's own `getRole()` read still sees "joiner" at entry
    *  (pre-flip check). After this returns, the caller flips `mpState.role`
    *  and `mpState.code`; the wrapper's deps pick those up reactively on the
-   *  next send/decide-branch — there's no internal `role`/`codeRef` to keep
+   *  next send/decide-branch - there's no internal `role`/`codeRef` to keep
    *  in sync. Pending intents are rejected with reason "promoted" since they
    *  targeted an authority that no longer exists. Preserves `seq`, the engine
    *  reference, and the wrapper's subscription. No-op on host/solo. */
@@ -175,7 +175,7 @@ export interface MpEngineHandle {
 
 export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngineHandle {
   // --- internal mutable state ------------------------------------------------
-  // Role and code are NOT held here — they live in `mpState` (the single
+  // Role and code are NOT held here - they live in `mpState` (the single
   // source) and are read through `deps.getRole()` / `deps.getCode()` on every
   // branch. This lets `promoteToHost` (or any future role/code mutator) flip
   // them via mpState without re-instantiating the wrapper.
@@ -187,7 +187,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
 
   // --- seq overflow guard ----------------------------------------------------
   // The wire protocol pins seq to u32. At 1 ply/sec that's 136 years, so this
-  // is mostly belt-and-braces — but a malicious/buggy actor could send a near-
+  // is mostly belt-and-braces - but a malicious/buggy actor could send a near-
   // max seq in `session-hello` and trip undefined behaviour on the next
   // increment. We cap at `SEQ_CAP` (well below 0xffffffff) and refuse to
   // increment past it: the host's `submitAction` returns `{accepted:false,
@@ -246,7 +246,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
 
   // Resync retry budget. Joiner: after sending `request-snapshot`, arm a
   // 10s timer. If no snapshot/phase-change arrives in that window, retry
-  // once. If the retry also times out, fire `onResyncFailed` and stop —
+  // once. If the retry also times out, fire `onResyncFailed` and stop -
   // we don't want to hammer the host forever. Successful snapshot or
   // phase-change clears the timer and counter via `clearResyncBudget`.
   const RESYNC_TIMEOUT_MS = 10_000;
@@ -312,7 +312,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         }
         matchId = m.matchId;
         phase = m.phase;
-        // Whatever seq the host says, we accept — we'll resync via snapshot
+        // Whatever seq the host says, we accept - we'll resync via snapshot
         // before applying anything. If the host's seq is 0, no snapshot is
         // needed; we'll wait for the first `committed`.
         seq = m.seq;
@@ -368,7 +368,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
             source: "phase-change",
           });
           // Auto-exit any local sandbox fork before overwriting the engine
-          // (ns-37) — same rationale as the `snapshot` case.
+          // (ns-37) - same rationale as the `snapshot` case.
           if (deps.ensureLiveEngine) await deps.ensureLiveEngine();
           await deps.eng.restoreFromSnapshot(m.snapshotJson);
           phase = m.to;
@@ -400,13 +400,13 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           deps.send({ kind: "intent-rejected", nonce: m.nonce, reason: "phase-mismatch" });
           return;
         }
-        // Rate-limit BEFORE the engine round-trip — a flood of illegal intents
+        // Rate-limit BEFORE the engine round-trip - a flood of illegal intents
         // would otherwise still pin tryApply.
         if (intentExceedsRateCap(Date.now())) {
           deps.send({ kind: "intent-rejected", nonce: m.nonce, reason: "rate-limit" });
           return;
         }
-        // Validate via tryApply — engine's deterministic rule check.
+        // Validate via tryApply - engine's deterministic rule check.
         // First ensure the shared engine is on the true authoritative line:
         // if this host is exploring a sandbox fork, auto-exit it now, else
         // tryApply would validate the joiner's real intent against the
@@ -426,7 +426,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         if (!bumpSeqOrFail()) {
           // Engine has accepted the action, but we can't sequence it. Rather
           // than emit a committed with overflowed seq, we surface the fault.
-          // The joiner's mirror is now ahead of any committed we'd send —
+          // The joiner's mirror is now ahead of any committed we'd send -
           // there's no clean recovery short of a fresh match.
           deps.send({ kind: "intent-rejected", nonce: m.nonce, reason: "seq-overflow" });
           warn("seq-overflow", { seq });
@@ -464,7 +464,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           }
           return;
         }
-        // Capture `isLocalEcho` BEFORE the pendingIntents.delete below — once
+        // Capture `isLocalEcho` BEFORE the pendingIntents.delete below - once
         // we delete, the .has() check would return false and we'd misreport
         // joiner-originated commits as remote-driven.
         const isLocalEcho = !!(m.originNonce && pendingIntents.has(m.originNonce));
@@ -490,7 +490,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           return;
         }
         if (mirrorZobrist.toString() !== m.postZobrist) {
-          // Accidental divergence — ask host for a snapshot to re-anchor.
+          // Accidental divergence - ask host for a snapshot to re-anchor.
           // We've already mutated the mirror; the incoming snapshot will
           // restore it.
           requestResync("audit-mismatch", seq);
@@ -545,7 +545,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       }
 
       case "handoff-announce": {
-        // Caller (lobby) handles this via its own subscription — wrapper
+        // Caller (lobby) handles this via its own subscription - wrapper
         // ignores it because handoff requires re-creating the wrapper with
         // a flipped role.
         return;
@@ -568,7 +568,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
   }
 
   // --- public API ------------------------------------------------------------
-  /** Engine `currentPhase` values come from `wrapper_api.rs` — 2 means
+  /** Engine `currentPhase` values come from `wrapper_api.rs` - 2 means
    *  Phase::Draft; anything else (Move=0, Skill=1, Ended=3) means play. The
    *  only wire-relevant transition is draft→play, so any post-apply phase
    *  that is NOT 2 while our wrapper's `phase` is still "draft" is the cue
@@ -581,7 +581,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
    *  the trigger action came from the host or from an accepted joiner intent.
    *
    *  Pre-this-refactor, only the manual `hostTransitionToPlay()` API drove
-   *  this — and route code only called it when the host's OWN local commit
+   *  this - and route code only called it when the host's OWN local commit
    *  filled the last draft slot. If the joiner placed the last pick, the
    *  host's engine moved to play but no broadcast fired and the host stayed
    *  on /draft/ (the softlock).
@@ -615,7 +615,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           seq,
         });
       } catch (e) {
-        // Snapshot serialisation failure — joiner will resync via the next
+        // Snapshot serialisation failure - joiner will resync via the next
         // `request-snapshot`. Local navigation still proceeds.
         warn("phase-change-snapshot-failed", e);
       }
@@ -687,7 +687,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     // joiner
     const nonce = nonceFactory();
     return new Promise<SubmitResult>((resolve) => {
-      // Timeout after 15s — if host hasn't replied, surface a failure so the
+      // Timeout after 15s - if host hasn't replied, surface a failure so the
       // UI doesn't hang forever. Joiner can retry.
       const timer = setTimeout(() => {
         if (pendingIntents.has(nonce)) {
@@ -717,7 +717,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       // If seq > 0 the joiner will request a snapshot; we wait passively.
       // If seq === 0 (fresh match) the first `committed` is enough.
     } else if (role === "joiner") {
-      // Reconnect path — pull a fresh snapshot to be safe.
+      // Reconnect path - pull a fresh snapshot to be safe.
       deps.send({ kind: "request-snapshot", mySeq: seq, reason: "reconnect" });
     }
   }
@@ -728,7 +728,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     if (role === "host") {
       paused = true;
       deps.onPausedChange(true);
-      // Best-effort broadcast — channel may already be gone. The runtime's
+      // Best-effort broadcast - channel may already be gone. The runtime's
       // send-on-closed-channel handler swallows.
       deps.send({ kind: "paused" });
     } else if (role === "joiner") {
@@ -768,7 +768,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     // clean up their optimistic UI / retry against the new self-host.
     clearPendingIntents("promoted");
     matchId = promoteOpts.matchId;
-    // Fresh host is by definition not paused — we just acquired the role.
+    // Fresh host is by definition not paused - we just acquired the role.
     paused = false;
     // seq stays put; new host continues the sequence from the last committed
     // action the mirror saw. The next `committed` we broadcast will be

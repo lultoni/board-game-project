@@ -1,4 +1,4 @@
-//! tauri_wrapper — Tauri 2 desktop wrapper.
+//! tauri_wrapper - Tauri 2 desktop wrapper.
 //!
 //! Mirrors the wasm_wrapper Engine surface 1:1, but as Tauri commands rather
 //! than a wasm-bindgen class. The Svelte frontend can be written against a
@@ -10,7 +10,7 @@
 //! Tauri commands are stateless; engine state lives in a process-global
 //! [`EngineRegistry`] managed by `tauri::State`. Frontend gets back a numeric
 //! `handle` from [`create_engine`] and passes it to every subsequent command.
-//! Handles are u64 monotonic counters — never reused, never zero (zero is
+//! Handles are u64 monotonic counters - never reused, never zero (zero is
 //! reserved for "invalid").
 //!
 //! # Concurrency
@@ -25,7 +25,7 @@
 //!
 //! - **Hot path** (board reads, legal actions, step): returns flat serde
 //!   structs / `Vec<u32>` / `Vec<u16>`. Tauri serialises these to JSON for
-//!   the IPC bridge — no zero-copy across the boundary, but native build is
+//!   the IPC bridge - no zero-copy across the boundary, but native build is
 //!   fast enough that the copy is invisible.
 //! - **Cold path** (snapshot, log export): owned JSON strings.
 
@@ -40,7 +40,7 @@ use core_engine::wrapper_api as api;
 use core_engine::Match;
 
 // ---------------------------------------------------------------------------
-// Handle table — process-global, one per Match.
+// Handle table - process-global, one per Match.
 // ---------------------------------------------------------------------------
 
 struct EngineEntry {
@@ -81,7 +81,7 @@ impl EngineRegistry {
 }
 
 // ---------------------------------------------------------------------------
-// Wire types — mirror the wasm_wrapper JS shape exactly. camelCase via serde
+// Wire types - mirror the wasm_wrapper JS shape exactly. camelCase via serde
 // so the frontend reads `appliedAction`, not `applied_action`.
 // ---------------------------------------------------------------------------
 
@@ -177,7 +177,7 @@ fn unix_ms_now() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
-// Commands — names mirror wasm_wrapper.Engine methods. Tauri exposes them on
+// Commands - names mirror wasm_wrapper.Engine methods. Tauri exposes them on
 // the JS side as `invoke('command_name', { args })`.
 // ---------------------------------------------------------------------------
 
@@ -362,7 +362,7 @@ fn try_apply(
     })?
 }
 
-/// AI step. CPU-bound — runs inside `block_in_place` so the Tauri async
+/// AI step. CPU-bound - runs inside `block_in_place` so the Tauri async
 /// runtime keeps responding to other IPC traffic.
 #[tauri::command]
 async fn step_ai(
@@ -447,7 +447,7 @@ fn snapshot_json(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Str
 }
 
 // ---------------------------------------------------------------------------
-// Training Observatory — orchestrator IPC (plan §7).
+// Training Observatory - orchestrator IPC (plan §7).
 //
 // The trainer writes status.json / live.json / matrix.json / raters/ into a
 // run directory. These commands let the frontend:
@@ -506,7 +506,7 @@ fn fen_to_position_view(fen: String) -> Result<PositionViewDto, String> {
     use core_engine::state::fen::from_fen;
     use core_engine::state::position::{Phase, Player};
     let pos = from_fen(&fen).map_err(|e| format!("fen parse error: {e:?}"))?;
-    // Mailbox: MailboxEntry is repr(transparent) over u16 — same trick as
+    // Mailbox: MailboxEntry is repr(transparent) over u16 - same trick as
     // wrapper_api::position_mailbox.
     let mailbox: Vec<u16> = pos.mailbox.iter().map(|m| m.0).collect();
     let game_result = match pos.game_result {
@@ -595,7 +595,7 @@ fn read_gauntlet_matrix(run_dir: String) -> Result<Option<nn_trainer::GauntletMa
 
 /// Network Inspector data for one (rater, position) pair. Returns weight
 /// summary stats per layer plus the raw forward output. Heatmap data is
-/// out-of-scope for v1 — we add it once the inspector panel is wired up.
+/// out-of-scope for v1 - we add it once the inspector panel is wired up.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WeightStats {
@@ -612,7 +612,7 @@ pub struct WeightStats {
 pub struct RaterInspection {
     pub rater_id: String,
     pub forward_output: f32,
-    /// Centipawn-scale conversion factor — either the calibrated value from
+    /// Centipawn-scale conversion factor - either the calibrated value from
     /// the sidecar (`RaterMetadata::eval_scale`) or `DEFAULT_EVAL_SCALE` when
     /// the rater hasn't been calibrated yet. UI can display
     /// `forward_output * eval_scale` to show the centipawn-scale score.
@@ -655,7 +655,7 @@ fn inspect_rater(
 // Rater discovery + per-seat evaluator selection.
 // ---------------------------------------------------------------------------
 
-/// `game/raters/blessed/` — the curated "good enough to play against" raters
+/// `game/raters/blessed/` - the curated "good enough to play against" raters
 /// promoted out of one or more `runs/active/` directories. May not exist on
 /// fresh checkouts.
 fn blessed_raters_dir() -> std::path::PathBuf {
@@ -786,7 +786,7 @@ fn set_ai_evaluator(
 }
 
 /// One entry in the `list_backends` response. `id` is the lowercase tag
-/// (`"cpu"`, `"wgpu"`, `"cuda"`) — same value the frontend should send back
+/// (`"cpu"`, `"wgpu"`, `"cuda"`) - same value the frontend should send back
 /// to `start_training_run`'s `backend` argument. `is_default` flags the
 /// recommended preselection (`BackendChoice::default_choice`).
 #[derive(serde::Serialize)]
@@ -851,13 +851,13 @@ fn start_training_run(
     let stop_clone = Arc::clone(&stop);
     let path = std::path::PathBuf::from(run_dir);
     let handle = std::thread::spawn(move || {
-        eprintln!("[training] thread started — preset={preset_name} backend={backend:?} run_dir={path:?}");
+        eprintln!("[training] thread started - preset={preset_name} backend={backend:?} run_dir={path:?}");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             nn_trainer::run_training(&cfg, &path, stop_clone, backend)
         }));
         match result {
             Ok(Ok(summary)) => eprintln!(
-                "[training] run finished — generations_completed={} accepted_raters={} stopped_early={}",
+                "[training] run finished - generations_completed={} accepted_raters={} stopped_early={}",
                 summary.generations_completed,
                 summary.accepted_raters,
                 summary.stopped_early,
@@ -954,12 +954,12 @@ pub fn run() {
         .run(|app_handle, event| {
             // When the user quits the app (Cmd+Q, menu Quit, last-window-close
             // on platforms that bind it), signal the orchestrator to stop. We
-            // do NOT call api.prevent_exit() — the runtime tears down and the
+            // do NOT call api.prevent_exit() - the runtime tears down and the
             // OS reaps the worker thread. The stop flag still lets the
             // orchestrator write a clean final snapshot before the process
             // disappears, so the next launch sees `phase=Idle` instead of a
             // stale "training" snapshot. WindowEvent::CloseRequested is the
-            // wrong hook on macOS — red-light only hides the window — so we
+            // wrong hook on macOS - red-light only hides the window - so we
             // use the app-level RunEvent::ExitRequested instead.
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 let state = app_handle.state::<TrainingState>();
@@ -969,7 +969,7 @@ pub fn run() {
 }
 
 // ---------------------------------------------------------------------------
-// Smoke tests — exercise the registry layer without spinning up Tauri.
+// Smoke tests - exercise the registry layer without spinning up Tauri.
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -1109,7 +1109,7 @@ mod tests {
 
     // --- Training Observatory smoke tests ------------------------------------
     //
-    // We can't spin up Tauri here, but the command functions are plain Rust —
+    // We can't spin up Tauri here, but the command functions are plain Rust -
     // we can exercise them directly and confirm the serde shapes round-trip.
 
     fn tempdir() -> std::path::PathBuf {

@@ -1,17 +1,17 @@
 //! Realistic Stack M loadout generation (shared shape with the corpus builder).
 //!
 //! Stack M draft constraints (`game_logic::skills::validate_loadout`):
-//!   - 15 skill ids (1..=15). 0 is the "unequipped" sentinel — never emitted
+//!   - 15 skill ids (1..=15). 0 is the "unequipped" sentinel - never emitted
 //!     here; every slot gets a real skill at game start.
 //!   - No same-skill-on-same-piece duplicates.
 //!
 //! ns-50 Phase 1 (§5.3): this generator was previously *uniform* (each slot an
-//! independent shuffle of the 15 ids), which produces unrealistic games — a net
+//! independent shuffle of the 15 ids), which produces unrealistic games - a net
 //! tuned on them mis-learns. It now uses the **weighted-incremental** algorithm
 //! ported from `core_engine/examples/build_corpus.rs::random_loadout`: fill the
 //! 12 slots (6 pieces × 2) in shuffled order under per-side skill caps, then
 //! require ≥3 of the 4 categories present AND at least one Strike (retry from
-//! scratch otherwise — retries are cheap). This is the corpus builder's
+//! scratch otherwise - retries are cheap). This is the corpus builder's
 //! realistic distribution, so self-play loadouts match the positions the net
 //! is graded on.
 //!
@@ -23,7 +23,7 @@
 //! both colours, draft luck cancels). This generates per-side loadouts; the
 //! mirroring wraps this generator at the gauntlet layer.
 //!
-//! All RNG flows from a `ChaCha8Rng` seed for reproducibility — a corpus built
+//! All RNG flows from a `ChaCha8Rng` seed for reproducibility - a corpus built
 //! from seed N can always be regenerated bit-exact.
 
 use core_engine::game_logic::skills::{
@@ -99,7 +99,7 @@ pub fn random_loadout(rng: &mut impl Rng) -> SideLoadout {
                 })
                 .collect();
             if candidates.is_empty() {
-                // Extremely unlikely given the caps — restart from scratch.
+                // Extremely unlikely given the caps - restart from scratch.
                 broke = true;
                 break;
             }
@@ -116,7 +116,7 @@ pub fn random_loadout(rng: &mut impl Rng) -> SideLoadout {
             continue;
         }
 
-        // Any zero slot means the inner loop broke early — retry.
+        // Any zero slot means the inner loop broke early - retry.
         if lo.iter().any(|(a, b)| *a == 0 || *b == 0) {
             continue;
         }
@@ -137,7 +137,7 @@ pub fn random_loadout(rng: &mut impl Rng) -> SideLoadout {
         }
         let n_cats = cat_present.iter().filter(|&&x| x).count();
         if n_cats < 3 || !strike_present {
-            // Retries are cheap — simpler than force-swapping a slot.
+            // Retries are cheap - simpler than force-swapping a slot.
             continue;
         }
 
@@ -149,7 +149,7 @@ pub fn random_loadout(rng: &mut impl Rng) -> SideLoadout {
 }
 
 /// Convenience wrapper: seed a `ChaCha8Rng` from `seed` and produce one
-/// loadout. Deterministic — same seed always yields the same loadout.
+/// loadout. Deterministic - same seed always yields the same loadout.
 pub fn random_loadout_from_seed(seed: u64) -> SideLoadout {
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     random_loadout(&mut rng)

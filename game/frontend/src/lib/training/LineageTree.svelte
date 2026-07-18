@@ -1,8 +1,8 @@
 <script lang="ts">
-  // Panel 3 — Lineage Tree.
+  // Panel 3 - Lineage Tree.
   //
   // Polls `read_rater_index` at 1 Hz. Each accepted rater is a node;
-  // parent_id wires the tree. We hand-roll the SVG layout (no D3) — the
+  // parent_id wires the tree. We hand-roll the SVG layout (no D3) - the
   // accepted set is small (tens of nodes for a long run) and a simple
   // tidy-tree algorithm keeps the dependency surface minimal.
   //
@@ -169,7 +169,7 @@
             {#if n.entry.bracket_results && Object.keys(n.entry.bracket_results).length > 0}
               {@const br = Object.values(n.entry.bracket_results)[0]}
               {@const g = br.games_played}
-              {@const wr = g > 0 ? ((br.candidate_wins + 0.5 * br.indecisive) / g * 100).toFixed(0) : "—"}
+              {@const wr = g > 0 ? ((br.candidate_wins + 0.5 * br.indecisive) / g * 100).toFixed(0) : "-"}
               {wr}% · {g}g · {n.entry.accepted_at.slice(0, 10)}
             {:else}
               {n.entry.accepted_at.slice(0, 10)}

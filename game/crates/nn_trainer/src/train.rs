@@ -1,14 +1,14 @@
 //! Training loop: corpus → trained `Mlp` weights.
 //!
 //! The pipeline is:
-//!   1. `batch_to_tensors` — fold a slice of `LabelledPosition` through
+//!   1. `batch_to_tensors` - fold a slice of `LabelledPosition` through
 //!      `encode_position` into `(inputs: Tensor<B,2>, labels: Tensor<B,1>)`.
-//!   2. `train_step` — one forward + MSE + backward + optimiser step. Returns
+//!   2. `train_step` - one forward + MSE + backward + optimiser step. Returns
 //!      the updated model and the scalar loss for the batch.
-//!   3. `train` — minibatch loop over a fixed corpus for N epochs.
+//!   3. `train` - minibatch loop over a fixed corpus for N epochs.
 //!
 //! The autodiff backend (`B: AutodiffBackend`) is what makes `loss.backward()`
-//! work. At inference time we use the bare backend (`NdArray<f32>`) — the
+//! work. At inference time we use the bare backend (`NdArray<f32>`) - the
 //! autograd graph is training-only overhead.
 //!
 //! Loss: mean squared error between the forward output (unbounded scalar) and
@@ -35,7 +35,7 @@ pub struct TrainingConfig {
 
 impl Default for TrainingConfig {
     fn default() -> Self {
-        // Conservative starting point — the gauntlet picks the winner across
+        // Conservative starting point - the gauntlet picks the winner across
         // sweeps, so these defaults only need to "not diverge."
         Self { learning_rate: 1e-3, batch_size: 64, epochs: 5 }
     }
@@ -71,7 +71,7 @@ pub struct ScalarLabelled {
 
 /// Scatter a set of active sparse feature indices into a dense f32 row of width
 /// `NUM_FEATURES` (zeroing first). Training-only: burn's `Linear` needs a dense
-/// tensor. Inference never scatters — it uses the accumulator.
+/// tensor. Inference never scatters - it uses the accumulator.
 pub fn scatter_dense(active: &[u32], row: &mut [f32]) {
     debug_assert_eq!(row.len(), NUM_FEATURES);
     for v in row.iter_mut() {
@@ -132,7 +132,7 @@ pub fn train_step<B: AutodiffBackend, O: Optimizer<Mlp<B>, B>>(
 ///
 /// The corpus is consumed in fixed `batch_size` chunks; the trailing partial
 /// batch is dropped (one short batch per epoch isn't worth the bookkeeping).
-/// Batches are taken in corpus order — there is no shuffling. Self-play
+/// Batches are taken in corpus order - there is no shuffling. Self-play
 /// already injects variance via random loadouts; in-epoch shuffle is a future
 /// refinement once we see a need for it.
 pub fn train<B: AutodiffBackend>(
@@ -190,7 +190,7 @@ mod tests {
     fn training_reduces_loss_on_small_corpus() {
         // End-to-end gradient-flow check: train for a few epochs and assert
         // the final epoch loss is below the first. The corpus is tiny so the
-        // model just memorises it — that's the point of a smoke test, the
+        // model just memorises it - that's the point of a smoke test, the
         // real generalisation check is the gauntlet later.
         let device = Default::default();
         let cfg = MlpConfig::new();

@@ -1,7 +1,7 @@
-// L8 — draft / loadout helpers used by /setup/, /draft/, and /match/.
+// L8 - draft / loadout helpers used by /setup/, /draft/, and /match/.
 //
 // The big makeshift-draft helpers that lived here (presets, merge,
-// FEN-rewrite glue) are gone — /draft/ now drives the real Phase::Draft
+// FEN-rewrite glue) are gone - /draft/ now drives the real Phase::Draft
 // flow on the engine via DraftTurn actions, and pre-made mode goes through
 // `createEngineWithLoadouts`. What remains: the canonical Stack M piece-
 // squares, a `squareName` helper, the pre-made loadout catalogue, and the
@@ -41,11 +41,11 @@ export function squareName(sq: number): string {
   return `${file}${rank}`;
 }
 
-// === L8 — pre-made loadouts (OQ-65) ========================================
+// === L8 - pre-made loadouts (OQ-65) ========================================
 //
 // Each entry is a `SideLoadout`: 6 `[skill1, skill2]` pairs in canonical
 // piece order (King at index 0, Champions 1..5 by ascending starting sq).
-// Both sides play the same loadout — pre-made mode is a mirror match.
+// Both sides play the same loadout - pre-made mode is a mirror match.
 //
 // Designed Session 33+ as **escalating teaching decks** (OQ-65). Framed as
 // "First / Second / Third game" rather than playstyle archetypes, so a new
@@ -58,12 +58,12 @@ export function squareName(sq: number): string {
 //    Mystic concept (Focus = +1 Range buff). King gains a Strike (Hook)
 //    so the player learns the King can defend itself. 6 distinct skills.
 //  - Game 3 explicitly teaches the Multi-Champion Combo Bonus via Tempest
-//    (Strike + AOE push — ticks the counter on the target and the whole
+//    (Strike + AOE push - ticks the counter on the target and the whole
 //    surrounding ring). Includes Heal (medic loop) and one each of Focus
 //    and Charge so the player sees both mystics. 9 distinct skills.
 //
 // Steal is intentionally excluded from all three (money-warfare adds a
-// resource axis on top of the mechanical lessons — saved for custom draft).
+// resource axis on top of the mechanical lessons - saved for custom draft).
 //
 // Skill IDs (per core_engine/src/game_logic/skills.rs):
 //   1 Lance · 2 Hook · 3 Break · 4 Steal · 5 Tempest · 6 Shield · 7 Heal
@@ -71,7 +71,7 @@ export function squareName(sq: number): string {
 //   14 Focus · 15 Charge
 
 export const PRE_MADE_LOADOUTS: Record<PreMadeLoadoutId, SideLoadout> = {
-  // Game 1 — "Pieces with personalities". Lance / Shield / Dash / Blast.
+  // Game 1 - "Pieces with personalities". Lance / Shield / Dash / Blast.
   firstGame: [
     [6, 9],   // King:        Shield + Dash    (mobile defender)
     [1, 6],   // Champion 1:  Lance + Shield   (tank-striker)
@@ -81,7 +81,7 @@ export const PRE_MADE_LOADOUTS: Record<PreMadeLoadoutId, SideLoadout> = {
     [1, 9],   // Champion 5:  Lance + Dash     (mobile striker)
   ] as const,
 
-  // Game 2 — "Reach, support, the King fights back". Adds Hook, Plate, Focus.
+  // Game 2 - "Reach, support, the King fights back". Adds Hook, Plate, Focus.
   secondGame: [
     [2, 6],   // King:        Hook + Shield    (range-2 self-defender)
     [1, 8],   // Champion 1:  Lance + Plate    (frontline support)
@@ -91,7 +91,7 @@ export const PRE_MADE_LOADOUTS: Record<PreMadeLoadoutId, SideLoadout> = {
     [1, 8],   // Champion 5:  Lance + Plate    (frontline support)
   ] as const,
 
-  // Game 3 — "Combos via Tempest". Adds Tempest, Blast, Heal, Charge.
+  // Game 3 - "Combos via Tempest". Adds Tempest, Blast, Heal, Charge.
   thirdGame: [
     [5, 6],   // King:        Tempest + Shield (combo-opener / self-defender)
     [2, 15],  // Champion 1:  Hook + Charge    (setup → big Strike finisher)
@@ -102,7 +102,7 @@ export const PRE_MADE_LOADOUTS: Record<PreMadeLoadoutId, SideLoadout> = {
   ] as const,
 };
 
-/** Returns true iff the loadout entry has been filled in by the designer —
+/** Returns true iff the loadout entry has been filled in by the designer -
  *  i.e. every slot is a valid skill id (1..15). UI should disable the
  *  matching radio button when this is false. */
 export function isPreMadeLoadoutReady(id: PreMadeLoadoutId): boolean {
@@ -115,7 +115,7 @@ export function isPreMadeLoadoutReady(id: PreMadeLoadoutId): boolean {
   return true;
 }
 
-/** Task 8 — resolve a `LoadoutRef` to a concrete `SideLoadout`. Pre-made
+/** Task 8 - resolve a `LoadoutRef` to a concrete `SideLoadout`. Pre-made
  *  ids hit the in-memory table; custom ids fetch from IDB's `loadouts`
  *  store. Returns `null` when a custom row can't be found (deleted between
  *  the setup pick and the /match/ boot). Callers should fall back to a
@@ -135,7 +135,7 @@ export async function resolveLoadout(ref: LoadoutRef): Promise<SideLoadout | nul
  *  The engine places each side's loadout in that side's own ascending-square
  *  frame, but the two back rows are not file-aligned (P1 King d1, P2 King e8).
  *  A point mirror (`sq' = 63 - sq`) maps P1's Champion squares [b,c,e,f,g]
- *  onto P2's [g,f,e,d,c] — i.e. the Champion order REVERSED — while the King
+ *  onto P2's [g,f,e,d,c] - i.e. the Champion order REVERSED - while the King
  *  (index 0) maps d1→e8 and stays put. So a preset's file-b Champion and the
  *  mirrored file-g Champion share skills, matching the visually rotated board.
  *

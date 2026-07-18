@@ -1,4 +1,4 @@
-//! Transposition table — preallocated `Vec<Entry>` keyed by Zobrist hash
+//! Transposition table - preallocated `Vec<Entry>` keyed by Zobrist hash
 //! modulo table size. No dynamic allocation in the hot path.
 //!
 //! # Replacement policy
@@ -11,7 +11,7 @@
 //!    (`existing.generation != tt.generation`).
 //! 3. The new entry's depth ≥ the existing entry's depth.
 //! 4. The new entry has the same key as the existing one (a re-search of
-//!    the same position always wins, even at shallower depth — the new
+//!    the same position always wins, even at shallower depth - the new
 //!    score reflects more recent information).
 //!
 //! Otherwise the store is rejected. This is the canonical scheme: deeper,
@@ -24,7 +24,7 @@
 //!
 //! We treat `key == 0` as "slot empty". Any real position whose Zobrist
 //! hash happens to be exactly 0 will be indistinguishable from an empty
-//! slot — a missed TT hit, never a correctness bug. The probability over
+//! slot - a missed TT hit, never a correctness bug. The probability over
 //! a 10⁹-node search horizon is ~5×10⁻¹¹; accepted.
 //!
 //! # Generation counter
@@ -32,7 +32,7 @@
 //! `new_search()` increments the table's generation byte and resets stats.
 //! Entries stored after that carry the new generation; old entries become
 //! eligible for replacement regardless of depth. This is an O(1) "soft
-//! clear" — far cheaper than zeroing the table. Wraparound at 256 is fine:
+//! clear" - far cheaper than zeroing the table. Wraparound at 256 is fine:
 //! by the time we cycle through 256 generations, every slot has been
 //! overwritten many times.
 //!
@@ -40,7 +40,7 @@
 //!
 //! Mate-in-N scores must be adjusted by ply distance when stored and
 //! probed (the same mate looks different from different search depths).
-//! This is a *search-side* concern — the TT doesn't know which ply it's
+//! This is a *search-side* concern - the TT doesn't know which ply it's
 //! at. Alpha-beta will wrap probe/store with the standard
 //! `score ± ply` adjustment when that slice lands. The TT itself stores
 //! raw scores.
@@ -52,11 +52,11 @@
 
 use crate::game_logic::action::Action;
 
-/// Score bound for a stored entry — alpha-beta interpretation of the score.
+/// Score bound for a stored entry - alpha-beta interpretation of the score.
 ///
-/// - `Exact` — score is the true minimax value (fully searched window).
-/// - `Lower` — score is a lower bound (fail-high; opponent had a better move).
-/// - `Upper` — score is an upper bound (fail-low; we couldn't reach alpha).
+/// - `Exact` - score is the true minimax value (fully searched window).
+/// - `Lower` - score is a lower bound (fail-high; opponent had a better move).
+/// - `Upper` - score is an upper bound (fail-low; we couldn't reach alpha).
 ///
 /// `#[repr(u8)]` keeps the field one byte; the variant order matches the
 /// pre-Slice-8 raw-u8 encoding (0/1/2) so any future serialised TT dumps
@@ -81,17 +81,17 @@ pub struct Entry {
     pub key:        u64,        // 8
     pub score:      i32,        // 4
     /// Best-known move from this position. Drives move ordering across
-    /// iterative-deepening passes — the single biggest pruning improvement
+    /// iterative-deepening passes - the single biggest pruning improvement
     /// after alpha-beta itself. `Action::default()` (= `Action(0)`) is the
     /// "no entry" sentinel, never a valid encoded action.
     pub best_move:  Action,     // 4 (u32)
     pub depth:      u8,         // 1
     pub flag:       BoundFlag,  // 1
     pub generation: u8,         // 1
-    _pad:           u8,         // 1 — alignment to 8
+    _pad:           u8,         // 1 - alignment to 8
 }
 
-/// Snapshot of stats counters — returned by `TranspositionTable::stats()`.
+/// Snapshot of stats counters - returned by `TranspositionTable::stats()`.
 /// Holds the values at the moment of the call; subsequent operations on
 /// the TT don't mutate the snapshot.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -108,7 +108,7 @@ pub struct TranspositionTable {
     entries:    Vec<Entry>,
     mask:       u64,
     generation: u8,
-    // Stats — single-threaded, no atomics needed.
+    // Stats - single-threaded, no atomics needed.
     probes:       u64,
     hits:         u64,
     collisions:   u64,
@@ -136,7 +136,7 @@ impl TranspositionTable {
 
     /// Construct a TT sized to fit within `mb` MiB. Picks the largest
     /// power-of-two slot count whose total byte size is ≤ `mb * 1 MiB`.
-    /// `mb == 0` still yields a 1-slot table — the TT is never empty.
+    /// `mb == 0` still yields a 1-slot table - the TT is never empty.
     pub fn with_capacity_mb(mb: usize) -> Self {
         let entry_size = core::mem::size_of::<Entry>();
         let target_bytes = mb.saturating_mul(1024 * 1024);
@@ -259,7 +259,7 @@ mod tests {
 
     /// Build a key K2 that hashes to the same index as K1 under `mask`,
     /// but differs in some bit above the mask. For a power-of-two table
-    /// of size N, the mask covers the low log2(N) bits — flipping a bit
+    /// of size N, the mask covers the low log2(N) bits - flipping a bit
     /// above that leaves `key & mask` unchanged.
     fn collide_with(k1: u64, mask: u64) -> u64 {
         // Find the lowest bit position strictly above the mask.
@@ -365,7 +365,7 @@ mod tests {
         let mut tt = TranspositionTable::with_capacity_pow2(4);
         let key = 0x3333_3333_3333_3333;
         tt.store(Entry { key, depth: 10, score: 100, ..Default::default() });
-        // Re-search of same position at shallower depth — should still overwrite.
+        // Re-search of same position at shallower depth - should still overwrite.
         tt.store(Entry { key, depth: 2, score: 999, ..Default::default() });
         let e = tt.probe(key).expect("hit");
         assert_eq!(e.depth, 2);

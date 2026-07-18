@@ -1,4 +1,4 @@
-// Telemetry store boot — resolves to IDB (both dev and Tauri desktop).
+// Telemetry store boot - resolves to IDB (both dev and Tauri desktop).
 // See tauri-backend.ts header for why the Tauri FS backend is stubbed.
 
 import type { TelemetryStore } from "./types";
@@ -8,7 +8,7 @@ let store: TelemetryStore | null = null;
 
 /** Returns the singleton telemetry store. Throws if no storage backend is
  *  available in this environment (e.g. tests running without an IDB
- *  polyfill). Caller should catch and degrade gracefully — telemetry must
+ *  polyfill). Caller should catch and degrade gracefully - telemetry must
  *  never block gameplay. */
 export function getTelemetryStore(): TelemetryStore {
   if (store) return store;

@@ -48,7 +48,7 @@
   function refreshLiveness(): void {
     // Both matches-row cards and joined-code cards represent "you have a
     // session under this code, click to resume". Probe both uniformly.
-    // Skip codes we're currently hosting from THIS machine — the probe would
+    // Skip codes we're currently hosting from THIS machine - the probe would
     // report `live=true` off our own relay session, which is not useful info
     // to the user.
     const own = mpState.code;
@@ -88,7 +88,7 @@
       const store = getTelemetryStore();
       const all = await store.listJoinedCodes();
       const cutoff = Date.now() - RECENT_WINDOW_MS;
-      // Filter out codes for which we already own a matches row — the row is
+      // Filter out codes for which we already own a matches row - the row is
       // the source of truth (has phase + status), the joined-code entry is
       // for pre-match sessions only.
       const rows = await store.listMatches({ mode: "multiplayer" });
@@ -135,7 +135,7 @@
         codeCopied = true;
         setTimeout(() => (codeCopied = false), 1200);
       }
-    } catch { /* clipboard blocked — silent */ }
+    } catch { /* clipboard blocked - silent */ }
   }
 
   async function startHost(): Promise<void> {
@@ -184,7 +184,7 @@
           route = logIsMidDraftCheap(matchLogJson) ? "../draft/" : "../match/";
         }
       }
-    } catch { /* IDB failure — fall back to /setup/ */ }
+    } catch { /* IDB failure - fall back to /setup/ */ }
     return { route, matchId };
   }
 
@@ -202,7 +202,7 @@
       resetMatchState();
       // Restore any explicitly pinned seat AFTER reset. Rejoining an ex-host
       // whose ex-joiner has since promoted, or an ex-joiner whose ex-host is
-      // gone, requires the seat to survive the relay's role assignment —
+      // gone, requires the seat to survive the relay's role assignment -
       // otherwise identities swap. Seat is a game-identity, role is a
       // network concept; they must not be inferred from each other on rejoin.
       if (opts.pinSeat !== undefined) {
@@ -222,7 +222,7 @@
       // The relay may have promoted us to host (host slot was empty when we
       // joined). If we do have a matches row, flip its multiplayerRole so the
       // authoritative record reflects the new state. Do NOT overwrite
-      // match.localSeat — a pinned seat from rejoinFromRow must survive
+      // match.localSeat - a pinned seat from rejoinFromRow must survive
       // promotion (an ex-joiner promoted to host still plays seat 1).
       if (mpState.role === "host") {
         if (match.localSeat === null) {
@@ -233,7 +233,7 @@
         if (matchId) {
           try {
             await getTelemetryStore().updateMultiplayerRole(matchId, "host");
-          } catch { /* best-effort — the row is still usable */ }
+          } catch { /* best-effort - the row is still usable */ }
         }
         hostNavigated = true;
         void goto(route);
@@ -270,20 +270,20 @@
 
   // NOTE: No "Take over as host" affordance lives in the lobby. The takeover
   // CTA is intentionally only surfaced from inside an active match via
-  // <GraceBanner /> — the operation requires a live mpEngine handle and the
+  // <GraceBanner /> - the operation requires a live mpEngine handle and the
   // engine state currently in memory, neither of which the lobby has. A user
   // who has navigated back to the lobby has effectively abandoned the session
   // and should Rejoin (which restores from IDB) rather than take over.
 
   // Unified rejoin handler for a `matches` row (both host- and joiner-role
-  // rows land here — the split into two handlers was a legacy of L7c when
+  // rows land here - the split into two handlers was a legacy of L7c when
   // only hosts persisted a row). The row's `multiplayerRole` pins the peer's
   // board seat (host → seat 0, joiner → seat 1) so identities can't swap
-  // even if the relay assigns a different role on rebind — e.g. an ex-joiner
+  // even if the relay assigns a different role on rebind - e.g. an ex-joiner
   // whose ex-host is gone gets promoted to host role but must stay seat 1.
   //
-  // Everything else — WS bind, role promotion, IDB role flip, snapshot
-  // hydration, phase routing — is already handled by startJoin({keepState:
+  // Everything else - WS bind, role promotion, IDB role flip, snapshot
+  // hydration, phase routing - is already handled by startJoin({keepState:
   // true}) + resumeFromOwnRow(code). No probeHost, no hostWithCode retry
   // ladder: bindJoiner is role-agnostic and the relay decides whether we
   // attach as joiner or get promoted to host.
@@ -292,13 +292,13 @@
     // Pin seat from the row's role. Passed through startJoin so it survives
     // the `resetMatchState()` at the top of that function. Even if the relay
     // re-issues us the OTHER role on rebind (promoted joiner, or displaced
-    // host), we keep the same board seat — role is a network concept, seat
+    // host), we keep the same board seat - role is a network concept, seat
     // is a game-identity concept.
     const seat: 0 | 1 = meta.multiplayerRole === "joiner" ? 1 : 0;
     // Best-effort: clear the network-lost status now so a subsequent takeover
     // can't accumulate a second row for the same code (two lobby cards for
     // one game). startJoin's resumeFromOwnRow re-selects the newest row and
-    // updateMultiplayerRole flips its role in place — the same matchId
+    // updateMultiplayerRole flips its role in place - the same matchId
     // continues to own the log.
     try {
       await getTelemetryStore().dismissNetworkLost(meta.matchId);
@@ -307,7 +307,7 @@
     await startJoin({ keepState: true, pinSeat: seat });
   }
 
-  // Rejoin from a `joined_codes` entry — a setup-phase drop where no
+  // Rejoin from a `joined_codes` entry - a setup-phase drop where no
   // matches row exists yet. Defaults to seat 1 (joiners are player 2 at
   // setup); if we get promoted to host on rebind, startJoin's promoted-host
   // branch handles the role flip but keeps seat 1.
@@ -356,19 +356,19 @@
    *  bleed into a subsequent local-play session), then navigate home. Without
    *  this, the lobby's Back link was a plain `<a href="../">` and left
    *  `multiplayerRole` / `match.mode = "multiplayer"` set if the user had
-   *  hosted or joined — /setup/ then forced HvH and /draft/ booted in MP
+   *  hosted or joined - /setup/ then forced HvH and /draft/ booted in MP
    *  mode and reported "disconnected". */
   async function leaveLobby(ev: MouseEvent): Promise<void> {
     ev.preventDefault();
     cancel();
-    // Reset mode too — cancel() leaves match.mode alone because it's still
+    // Reset mode too - cancel() leaves match.mode alone because it's still
     // owned by the lobby flow until the user actually leaves.
     if (match.mode === "multiplayer") match.mode = "idle";
     await goto("../");
   }
 
   // Host: once a joiner connects (transport onOpen fires with `peer-connected`
-  // from the relay), advance to /setup/. Direct callback, not a $effect —
+  // from the relay), advance to /setup/. Direct callback, not a $effect -
   // navigation is a protocol event, not a UI concern. See PROTOCOL_TRACE.md
   // Part 2 §2. Registered in onMount and disposed in onDestroy.
   let unsubConnected: (() => void) | null = null;
@@ -387,7 +387,7 @@
   }
 
   // Joiner: raw-message subscription. session-hello is no longer used for
-  // navigation (host and joiner navigate together on transport.onOpen — see
+  // navigation (host and joiner navigate together on transport.onOpen - see
   // startJoin's post-await goto). This subscription now only surfaces the
   // relay's session-full kick so the lobby can show the right error state.
   // Anything else (session-hello, committed, snapshot, …) is left buffered
@@ -444,7 +444,7 @@
       clearInterval(livenessRefreshTimer);
       livenessRefreshTimer = null;
     }
-    // Don't disconnect on unmount — the host/joiner navigates onward and the
+    // Don't disconnect on unmount - the host/joiner navigates onward and the
     // connection must persist for the match.
   });
 </script>

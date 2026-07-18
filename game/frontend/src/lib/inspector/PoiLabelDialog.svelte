@@ -22,7 +22,7 @@
 
   // When `open` flips true, sync `value` to the latest initial and showModal().
   // When it flips false, close the dialog. We track via $effect rather than
-  // bind-with-attribute because <dialog>'s `open` attribute is non-modal —
+  // bind-with-attribute because <dialog>'s `open` attribute is non-modal -
   // we want the modal (showModal) variant.
   $effect(() => {
     if (!dialogEl) return;

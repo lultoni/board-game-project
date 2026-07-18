@@ -43,7 +43,7 @@ export function casterAnchor(
   return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
 }
 
-/** Deterministic small wobble sign for a src/target pair — so bezier control
+/** Deterministic small wobble sign for a src/target pair - so bezier control
  *  offsets feel intentional rather than random. Same pair always produces the
  *  same wobble. */
 export function pairSign(from: number, to: number): 1 | -1 {
@@ -128,7 +128,7 @@ type SkillRenderer = (
   size: number,
 ) => void;
 
-// === Skill 1: Lance — the stab ==============================================
+// === Skill 1: Lance - the stab ==============================================
 // A thin spear-mark grows from caster toward target, punches 8px past target
 // center, then retracts. Timing: 140ms extend + 60ms hold + 200ms retract +
 // 200ms fade = 600ms.
@@ -188,7 +188,7 @@ const renderLance: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 2: Hook — the pull ===============================================
+// === Skill 2: Hook - the pull ===============================================
 // Curved hook-line draws from caster to target (200ms, pronounced drop
 // mid-path). Catches (80ms hold). Line pulls taut over 180ms while target
 // piece slides. Fade 200ms. Total ~660ms.
@@ -207,7 +207,7 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   // instead of sticking on the pre-move square.
   const pulled = eff.outcome?.targetPostSq;
   const pulledPt = pulled !== undefined ? squareCenter(pulled, size) : to;
-  // Bezier control offset — sags "downward" perpendicular to the ray, plus a
+  // Bezier control offset - sags "downward" perpendicular to the ray, plus a
   // deterministic sign so left-to-right and right-to-left casts curve
   // opposite ways rather than always the same side.
   const sign = pairSign(eff.from, eff.to);
@@ -228,7 +228,7 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   let sag: number;
   let alpha: number;
   if (phase === "attack") {
-    // Draw sweep across the curve — we truncate the bezier at t=local.
+    // Draw sweep across the curve - we truncate the bezier at t=local.
     sag = 1;
     alpha = 0.9;
   } else if (phase === "hold") {
@@ -304,9 +304,9 @@ const renderHook: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 6: Shield (self) — the brace =====================================
+// === Skill 6: Shield (self) - the brace =====================================
 // A heater-shield silhouette draws itself over the piece top-down (140ms),
-// holds (200ms), fades (180ms). Timing total ~520ms — we hold a bit longer
+// holds (200ms), fades (180ms). Timing total ~520ms - we hold a bit longer
 // than a strike because "becoming armored" reads slower than "stabbing".
 
 const SHIELD_TTL = 620;
@@ -369,7 +369,7 @@ const renderShieldToAlly: SkillRenderer = (ctx, eff, age, size) => {
   // Shield glyph flying from caster to ally, then settling onto the ally.
   let cx: number, cy: number, scale: number, glyphA: number;
   if (t < reachEnd) {
-    // No glyph yet — thread is just being drawn.
+    // No glyph yet - thread is just being drawn.
     return;
   } else if (t < travelEnd) {
     const localT = (t - reachEnd) / (travelEnd - reachEnd);
@@ -435,7 +435,7 @@ const renderShieldSelf: SkillRenderer = (ctx, eff, age, size) => {
   // Top of shield sits slightly above piece center.
   const topY = c.y - h * 0.55;
 
-  // "Draw itself top-down" — reveal via clipping. During attack, the shield
+  // "Draw itself top-down" - reveal via clipping. During attack, the shield
   // is revealed from top down; during hold it's fully visible; during
   // release it fades in alpha but stays fully drawn.
   const reveal = phase === "attack" ? local : 1;
@@ -463,7 +463,7 @@ const renderShieldSelf: SkillRenderer = (ctx, eff, age, size) => {
   ctx.restore();
 };
 
-// === Skill 14: Focus — the sharpen ==========================================
+// === Skill 14: Focus - the sharpen ==========================================
 // Four crosshair ticks converge on piece from N/S/E/W (140ms). Hold with a
 // subtle outline glow (300ms). Fade (200ms).
 
@@ -529,7 +529,7 @@ const renderFocus: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 15: Charge — the wind-up =========================================
+// === Skill 15: Charge - the wind-up =========================================
 // Spiral coil draws outward from piece center (220ms, 1.5 turns, r=14px).
 // Holds with a slow ~10° clockwise rotation (240ms). Fades (180ms).
 
@@ -559,7 +559,7 @@ const renderCharge: SkillRenderer = (ctx, eff, age, size) => {
   } else if (phase === "hold") {
     drawFrac = 1;
     alpha = 0.9;
-    // Slow clockwise rotation during hold — ~10° over the hold.
+    // Slow clockwise rotation during hold - ~10° over the hold.
     rotationOffset = (Math.PI / 18) * local;
   } else {
     drawFrac = 1;
@@ -621,7 +621,7 @@ const renderFallback: SkillRenderer = (ctx, eff, age, size) => {
   ctx.stroke();
 };
 
-// === Skill 3: Break — the shatter ===========================================
+// === Skill 3: Break - the shatter ===========================================
 // Short thick chisel-mark stamps down (100ms), radial crack-lines emanate
 // from impact (60ms draw, 250ms fade). Total ~410ms.
 
@@ -702,10 +702,10 @@ const renderBreak: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 4: Steal — the pickpocket ========================================
+// === Skill 4: Steal - the pickpocket ========================================
 // Thin dashed line darts caster→target (120ms). Coin flies back caster→target
 // (200ms) after grab. Caster scale-pulse can't be done from Canvas without
-// coupling to Piece — instead, we add a small "gotcha" burst at caster on
+// coupling to Piece - instead, we add a small "gotcha" burst at caster on
 // arrival. Total ~600ms.
 
 const STEAL_TTL = 700;
@@ -756,7 +756,7 @@ const renderSteal: SkillRenderer = (ctx, eff, age, size) => {
   // Coin: after grab (t > grabEnd), a filled disk travels target → caster.
   // Skip when the outcome tells us nothing was actually stolen (target was
   // broke). The reach + burst still fire so the *attempt* reads, but no
-  // coin flies back — matches the actual game state.
+  // coin flies back - matches the actual game state.
   const moneyMoved = eff.outcome?.moneyStolen !== false;
   if (moneyMoved && t > grabEnd && t < returnEnd) {
     const coinT = (t - grabEnd) / (returnEnd - grabEnd);
@@ -800,7 +800,7 @@ const renderSteal: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 5: Tempest — the shock-burst =====================================
+// === Skill 5: Tempest - the shock-burst =====================================
 // Mechanic: target takes 1 damage, all 8 neighbours of the target get pushed
 // 1 tile outward. Animation: quick strike-line caster → target (140ms),
 // then an expanding shock-ring around the target with 8 short push-ticks
@@ -881,7 +881,7 @@ const renderTempest: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 7: Heal — the mending thread =====================================
+// === Skill 7: Heal - the mending thread =====================================
 // Twin thread caster → ally. At ally, thread wraps into a closed loop. Loop
 // pulses once as +HP appears. Total ~660ms.
 
@@ -955,7 +955,7 @@ const renderHeal: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 8: Plate — the shield handed over ================================
+// === Skill 8: Plate - the shield handed over ================================
 // Small shield-glyph travels caster → ally along arc, settles onto ally.
 
 const PLATE_TTL = 620;
@@ -1021,10 +1021,10 @@ const renderPlate: SkillRenderer = (ctx, eff, age, size) => {
   ctx.stroke();
 };
 
-// === Skill 9: Dash — no dedicated fx (dust trail already carries it) ========
+// === Skill 9: Dash - no dedicated fx (dust trail already carries it) ========
 // Fall through to fallback (which is quiet).
 
-// === Skill 10: Blast — the leap-and-strike ==================================
+// === Skill 10: Blast - the leap-and-strike ==================================
 // Piece slide (dust trail) already handles the movement; we add a red radial
 // burst at the LANDING square.
 
@@ -1128,7 +1128,7 @@ const renderBlast: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 11: Shove — the push =============================================
+// === Skill 11: Shove - the push =============================================
 // Thick arrow-stroke from caster's edge toward target (100ms), then arrow
 // follows the piece as it slides. We don't have access to the slide start
 // time directly, so we render the arrow-stroke fully within the effect
@@ -1237,7 +1237,7 @@ const renderShove: SkillRenderer = (ctx, eff, age, size) => {
   ctx.fill();
 };
 
-// === Skill 12: Swap — the exchange ==========================================
+// === Skill 12: Swap - the exchange ==========================================
 // Two ally pieces exchange squares. Signature = two interlocking curved
 // strokes meeting at midpoint + a small purple diamond glyph at the
 // crossing.
@@ -1257,7 +1257,7 @@ const renderSwap: SkillRenderer = (ctx, eff, age, size) => {
 
   // Two arcs curving opposite directions, each starts at one endpoint,
   // curls toward the midpoint, and stops at the OTHER endpoint (broken
-  // lemniscate — the arcs cross visually at midpoint).
+  // lemniscate - the arcs cross visually at midpoint).
   const perp1 = perpOffset(from, to, size * 0.4);
   const perp2 = perpOffset(from, to, -size * 0.4);
   const straightMid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
@@ -1314,7 +1314,7 @@ const renderSwap: SkillRenderer = (ctx, eff, age, size) => {
   }
 };
 
-// === Skill 13: Retreat — the pull-back ======================================
+// === Skill 13: Retreat - the pull-back ======================================
 // Piece slides with dust trail (already handled elsewhere); we add a short
 // trailing "arrow-tail" at the origin square.
 
@@ -1375,7 +1375,7 @@ const SKILL_RENDERERS: Record<number, SkillRenderer> = {
   6: renderShieldSelf,
   7: renderHeal,
   8: renderPlate,
-  9: renderFallback,   // dash — dust already covers it
+  9: renderFallback,   // dash - dust already covers it
   10: renderBlast,
   11: renderShove,
   12: renderSwap,

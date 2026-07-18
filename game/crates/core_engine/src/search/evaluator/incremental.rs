@@ -10,13 +10,13 @@
 //!
 //! ## Design constraints (owner, Session 48)
 //!
-//! - Eval must still work as a normal full standalone call — the free
+//! - Eval must still work as a normal full standalone call - the free
 //!   `evaluate` / `evaluate_breakdown` fns and `HeuristicEvaluator` are
 //!   unchanged; the frontend / telemetry / nn_trainer keep using them.
 //! - **No make/unmake hooks.** The cache is NOT updated between calls; it is a
 //!   memo of "the last position I was asked to score". On each `evaluate` call
 //!   it diffs the new position against the memo and updates. So the number of
-//!   incremental *term-recomputes* equals the number of eval *calls* — we never
+//!   incremental *term-recomputes* equals the number of eval *calls* - we never
 //!   pay for nodes the search skipped (TT cutoffs, LMP prunes, NMP null branch).
 //! - **Byte-identical to `evaluate_scalar`.** Pinned by
 //!   `incremental_matches_scalar_over_playout` (this module) + the existing
@@ -28,7 +28,7 @@
 //!
 //! - **Phase 1 (this commit):** cache scaffold + full-rebuild path only. Every
 //!   call does a full `accumulate_terms`, populates the cache, returns the
-//!   identical total. No speedup yet — this is the correctness foundation and
+//!   identical total. No speedup yet - this is the correctness foundation and
 //!   the A/B scaffold. Opt-in (`ENABLE_INCREMENTAL_EVAL`, default off).
 //! - **Phase 2/3:** per-piece diff + local-radius term recompute.
 
@@ -47,7 +47,7 @@ use super::{Evaluator, EvalBreakdown, MATE_SCORE};
 pub(crate) struct EvalCache {
     /// Is the cache populated with a valid (non-terminal) position?
     valid: bool,
-    /// Zobrist of the cached position — a fast "identical position" check.
+    /// Zobrist of the cached position - a fast "identical position" check.
     zobrist: u64,
 
     /// Per-square, per-term owner-relative magnitude. `piece_mag[sq][t]` is the
@@ -62,12 +62,12 @@ pub(crate) struct EvalCache {
     /// The rolled-up per-side/per-term sums (the thing `fold_total` consumes).
     sums: TermSums,
 
-    /// Mailbox snapshot (raw `MailboxEntry.0`) — the diff source and the source
+    /// Mailbox snapshot (raw `MailboxEntry.0`) - the diff source and the source
     /// of the OLD kind/hp/skills when subtracting a changed square's old term
     /// contributions.
     mailbox: [u16; 64],
 
-    // Cached side-scalars — used (Phase 2) to decide side-term dirtiness.
+    // Cached side-scalars - used (Phase 2) to decide side-term dirtiness.
     c_p1_money: u16,
     c_p2_money: u16,
     c_phase: Phase,
@@ -164,7 +164,7 @@ pub static ENABLE_INCREMENTAL_EVAL: std::sync::atomic::AtomicBool =
 
 /// Stateful evaluator that caches the per-square decomposition and updates it
 /// incrementally. `evaluate` is `&self` (the `Evaluator` trait), so the cache
-/// lives behind a `RefCell` — the search is single-threaded and each AI seat
+/// lives behind a `RefCell` - the search is single-threaded and each AI seat
 /// owns its own evaluator (matching `HeuristicEvaluator`'s `Send`-only bound;
 /// we do NOT add `Sync`).
 pub struct IncrementalEvaluator {
@@ -187,7 +187,7 @@ impl IncrementalEvaluator {
     /// Scalar eval, using the cache. Phase 1: always full-rebuild (byte-identical
     /// to `evaluate_scalar`). Phase 2/3 add the incremental diff.
     fn eval_scalar(&self, pos: &Position) -> i32 {
-        // Terminal — overrules everything; do not touch the cache (leave it
+        // Terminal - overrules everything; do not touch the cache (leave it
         // valid for the next real position). Matches `evaluate_scalar`.
         match pos.game_result {
             Some(GameResult::P1Wins) => return MATE_SCORE,
@@ -213,7 +213,7 @@ impl Evaluator for IncrementalEvaluator {
     fn evaluate(&self, pos: &Position) -> i32 { self.eval_scalar(pos) }
     #[inline]
     fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown {
-        // Breakdown is a frontend/telemetry path, not hot — always full.
+        // Breakdown is a frontend/telemetry path, not hot - always full.
         super::evaluate_breakdown(pos)
     }
 }
@@ -254,7 +254,7 @@ mod tests {
                     "incremental != scalar (forward)"
                 );
                 if pos.game_result.is_some() {
-                    // terminal — unwind one.
+                    // terminal - unwind one.
                     if let Some(u) = undo_stack.pop() { make_unmake::unmake(&mut pos, &u); }
                     continue;
                 }

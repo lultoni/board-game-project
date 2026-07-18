@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Panel 2 — Tournament Standings.
+  // Panel 2 - Tournament Standings.
   //
   // Reads the population + active match from the shared status store
   // (populated globally by the route shell at 1 Hz). Renders a sortable
@@ -54,7 +54,7 @@
   }
 
   function fmtEta(s: number | null | undefined): string {
-    if (s === null || s === undefined || !Number.isFinite(s)) return "—";
+    if (s === null || s === undefined || !Number.isFinite(s)) return "-";
     const total = Math.max(0, Math.round(s));
     const h = Math.floor(total / 3600);
     const m = Math.floor((total % 3600) / 60);
@@ -94,7 +94,7 @@
               {#if role}<span class="playing-dot" title={role}>▶</span>{/if}
               <code>{p.rater_id}</code>
             </td>
-            <td>{p.parent_id ?? "—"}</td>
+            <td>{p.parent_id ?? "-"}</td>
             <td class="num">{p.lineage}</td>
             <td class="num">{p.generation}</td>
             <td class="num">{p.wins}</td>

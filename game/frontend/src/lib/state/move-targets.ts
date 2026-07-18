@@ -81,7 +81,7 @@ export function moveTargetsFor(
   }
   // Sort each redirects list by choiceIdx so the k-th entry maps to the
   // k-th eligible Guard. (The engine emits them in order, but be defensive
-  // — Move actions for a given (src, target, approach) may arrive
+  // - Move actions for a given (src, target, approach) may arrive
   // interleaved with other variants.)
   for (const perTarget of byTarget.values()) {
     for (const variants of perTarget.values()) {
@@ -147,7 +147,7 @@ export function movableSources(legal: Uint32Array): Set<number> {
   return out;
 }
 
-/** Squares that own either a Move or a Skill action — i.e. pieces the
+/** Squares that own either a Move or a Skill action - i.e. pieces the
  *  player can pick up / select to act with. Used to drive piece-selection
  *  interactivity; the resulting selection opens the radial wheel, whose
  *  internal slice legality decides which actions are actually castable. */

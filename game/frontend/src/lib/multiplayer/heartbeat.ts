@@ -54,7 +54,7 @@ export function createHeartbeat(cbs: HeartbeatCallbacks): Heartbeat {
     if (pingTimer) clearInterval(pingTimer);
     ensureTicking();
     // Fire the first ping immediately so the pong roundtrip confirms
-    // liveness right away — waiting 5s means the pill sits yellow after
+    // liveness right away - waiting 5s means the pill sits yellow after
     // every (re)connect even though the relay already told us both peers
     // are paired.
     try { cbs.onPing(); } catch { /* subscriber crash must not stop the loop */ }

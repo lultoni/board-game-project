@@ -2,7 +2,7 @@
 //!
 //! `<raters_dir>/index.json` is the authoritative list of accepted rater
 //! versions in acceptance order. It also names the current **champion** (the
-//! single track, ns-50 — the retired best-fast / best-slow / best-overall
+//! single track, ns-50 - the retired best-fast / best-slow / best-overall
 //! triple was collapsed to one 100 ms track) so the gauntlet can pick the
 //! baseline to play new candidates against.
 //!
@@ -27,7 +27,7 @@
 //! ```
 //!
 //! `IndexEntry::stem` is relative to the directory holding `index.json`, so
-//! the registry is portable — moving `raters/` to another machine doesn't
+//! the registry is portable - moving `raters/` to another machine doesn't
 //! break the pointers.
 
 use crate::persistence::BracketWinRate;
@@ -59,7 +59,7 @@ impl Track {
 /// holding `index.json` (e.g. `"v0042"` → `raters/v0042.{mpk,json}`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IndexEntry {
-    /// Stable identifier — matches the file stem on disk. Used to look up
+    /// Stable identifier - matches the file stem on disk. Used to look up
     /// the entry and to set track pointers.
     pub id: String,
 
@@ -92,7 +92,7 @@ pub struct RaterIndex {
     /// Accepted raters in acceptance order. Never reordered, never shrinks.
     pub entries: Vec<IndexEntry>,
     /// Current leader per track. `None` until the first acceptance at that
-    /// bracket. Values are `IndexEntry::id` strings — must reference an
+    /// bracket. Values are `IndexEntry::id` strings - must reference an
     /// entry in `entries`.
     #[serde(default)]
     pub tracks: BTreeMap<Track, String>,
@@ -151,7 +151,7 @@ impl RaterIndex {
     }
 
     /// Load `<dir>/index.json`. Returns `Default::default()` (empty) if the
-    /// file doesn't exist — bootstrap-friendly.
+    /// file doesn't exist - bootstrap-friendly.
     pub fn load(dir: &Path) -> Result<Self, IndexError> {
         let path = Self::index_path(dir);
         match std::fs::read_to_string(&path) {

@@ -11,11 +11,11 @@
 //   2. Relay replies {"type":"created","code":"XXXXXX"}
 //   3. Joiner connects to /ws, sends {"type":"join","code":"XXXXXX"}
 //   4. Relay replies {"type":"joined"} to joiner; {"type":"peer-connected"} to host
-//   5. Both peers exchange game messages freely — relay forwards verbatim
+//   5. Both peers exchange game messages freely - relay forwards verbatim
 //   6. On disconnect: relay notifies remaining peer with {"type":"peer-disconnected"}
 //
 // HTTP endpoints:
-//   GET /probe/:code  — liveness probe used by the lobby's status dots
+//   GET /probe/:code  - liveness probe used by the lobby's status dots
 
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
@@ -79,7 +79,7 @@ function generateUniqueCode(): string {
 
 function generatePeerId(): string {
   // Short random ID for correlating log lines to a specific peer socket.
-  // 4 hex chars = 16 bits — plenty for a relay whose peer count is bounded
+  // 4 hex chars = 16 bits - plenty for a relay whose peer count is bounded
   // by concurrent sessions.
   return Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
 }
@@ -92,7 +92,7 @@ function send(ws: ServerWebSocket<WsData>, msg: RelayMsg): void {
   try {
     ws.send(JSON.stringify(msg));
   } catch {
-    // Socket already closed — ignore.
+    // Socket already closed - ignore.
   }
 }
 
@@ -102,7 +102,7 @@ function forward(from: ServerWebSocket<WsData>, session: Session, raw: string): 
     try {
       peer.send(raw);
     } catch {
-      // Peer socket closed — the close handler will fire shortly and notify.
+      // Peer socket closed - the close handler will fire shortly and notify.
     }
   }
 }
@@ -117,7 +117,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
     if (typeof parsed !== "object" || parsed === null) throw new Error("not object");
     msg = parsed as RelayMsg;
   } catch {
-    // Not valid JSON or not an object — this is a game message that slipped
+    // Not valid JSON or not an object - this is a game message that slipped
     // through before session setup. Drop it.
     return;
   }
@@ -138,12 +138,12 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
       forward(ws, session, raw);
       return;
     }
-    // Peer tried to create/join while already in a session — ignore.
+    // Peer tried to create/join while already in a session - ignore.
     console.log(`[relay][peer=${peer}] ignored ${String(t)} while in session ${code}`);
     return;
   }
 
-  // Not yet in a session — handle setup envelopes.
+  // Not yet in a session - handle setup envelopes.
   const type = msg.type;
 
   if (type === "create") {
@@ -154,7 +154,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
     if (prefer && /^[1-9][0-9]{5}$/.test(prefer)) {
       const existing = sessions.get(prefer);
       if (!existing || (existing.host === null && existing.joiner === null)) {
-        // Slot is free — honour the request.
+        // Slot is free - honour the request.
         code = prefer;
         if (existing) {
           // Reuse the existing empty session object.
@@ -167,8 +167,8 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
           return;
         }
       } else {
-        // Preferred code is taken — fall through to generate a new one.
-        console.log(`[relay][peer=${peer}] preferCode=${prefer} taken — allocating new`);
+        // Preferred code is taken - fall through to generate a new one.
+        console.log(`[relay][peer=${peer}] preferCode=${prefer} taken - allocating new`);
         code = generateUniqueCode();
       }
     } else {
@@ -198,7 +198,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
     }
     const session = sessions.get(joinCode);
 
-    // No session exists for this code — the original host left and the session
+    // No session exists for this code - the original host left and the session
     // expired (or was never created). Treat the first joiner as the new host
     // so both sides can reconnect by just pressing "Join" with the old code.
     if (!session) {
@@ -218,10 +218,10 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
       return;
     }
 
-    // Session exists — check if the host slot is free or stale.
+    // Session exists - check if the host slot is free or stale.
     const hostAlive = session.host !== null && (session.host as ServerWebSocket<WsData>).readyState === 1;
     if (!hostAlive) {
-      // Host slot is empty or stale — this peer becomes the host.
+      // Host slot is empty or stale - this peer becomes the host.
       const displacedPeer = session.host?.data.peerId ?? null;
       if (session.host) { try { session.host.close(); } catch { /* noop */ } }
       session.host = ws;
@@ -240,7 +240,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
       return;
     }
 
-    // Host slot is live — this peer is the joiner.
+    // Host slot is live - this peer is the joiner.
     const joinerAlive = session.joiner !== null && (session.joiner as ServerWebSocket<WsData>).readyState === 1;
     if (joinerAlive) {
       console.log(`[relay][peer=${peer}] reject: session-full (code=${joinCode}, existing joiner=${session.joiner!.data.peerId})`);
@@ -262,7 +262,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string): void {
     return;
   }
 
-  // Unknown envelope — drop silently.
+  // Unknown envelope - drop silently.
   console.log(`[relay][peer=${peer}] recv unknown kind=${String(type)}`);
 }
 
@@ -281,7 +281,7 @@ function handleClose(ws: ServerWebSocket<WsData>): void {
 
   const role = ws.data.role;
   if (role === "host") {
-    // Only act if this socket is still the current host — a rejoining peer
+    // Only act if this socket is still the current host - a rejoining peer
     // may have already replaced the stale slot (and closed the old socket),
     // which would fire this handler for the old socket. Sending
     // peer-disconnected for a socket that's no longer in the session would

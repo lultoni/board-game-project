@@ -1,6 +1,6 @@
 // Unit tests for the multiplayer wire protocol helpers.
 //
-// All four exported helpers are pure functions — no transport, no DOM. Run
+// All four exported helpers are pure functions - no transport, no DOM. Run
 // under the default node env via `npm test`.
 
 import { describe, it, expect } from "vitest";
@@ -54,7 +54,7 @@ describe("encode/decode round-trip", () => {
     expect(decodeMessage('{"kind":"unknown"}')).toBeNull();
     expect(decodeMessage('{"kind":"ping"}')).toBeNull(); // missing t
     expect(decodeMessage('{"kind":"error"}')).toBeNull(); // missing reason
-    // V1 kinds removed in L7c Step 5 — these now decode as null.
+    // V1 kinds removed in L7c Step 5 - these now decode as null.
     expect(decodeMessage('{"kind":"snapshot","snapshotJson":"{}"}')).toBeNull();
     expect(decodeMessage('{"kind":"ready"}')).toBeNull();
     expect(decodeMessage('{"kind":"action","raw":0}')).toBeNull();

@@ -1,4 +1,4 @@
-// Telemetry storage — types shared across backends.
+// Telemetry storage - types shared across backends.
 //
 // A "match" is the full record of a played game (HvH / HvAI / AIvAI / MP).
 // Sandbox and Inspector are NOT logged here; they're analysis surfaces.
@@ -15,7 +15,7 @@ import type { SideLoadout } from "$lib/engine";
 // metadata. Per-ply records are kept for replay / inspector use.
 
 /** The shape of a match's run-time mode. Lives here (not in state/) so the
- *  storage layer doesn't import upward into the rune store — the engine and
+ *  storage layer doesn't import upward into the rune store - the engine and
  *  storage layers are leaves with respect to state. `state/match-store`
  *  re-exports this so route code can keep its existing import path. */
 export type MatchMode =
@@ -75,7 +75,7 @@ export interface FinalisedMatch extends MatchMeta {
 }
 
 /** A single per-ply entry as recorded incrementally. Body is the raw JSON
- *  string returned by engine.latestPlyJson() — kept opaque to avoid
+ *  string returned by engine.latestPlyJson() - kept opaque to avoid
  *  re-parsing on the hot path. The library / replay views parse on demand. */
 export interface PlyEntry {
   matchId: string;
@@ -95,7 +95,7 @@ export interface MatchFilter {
 /** A multiplayer code the user has joined as the non-host peer. Kept
  *  separately from `MatchMeta` so a peer who entered a code but never
  *  started a match (setup-phase drop) still shows up in the lobby's
- *  "recently joined" list — those sessions have no `matches` row yet.
+ *  "recently joined" list - those sessions have no `matches` row yet.
  *  Once a match row exists for the code, the lobby prefers the row (it
  *  has phase + status info); this table is the pre-match fallback. */
 export interface JoinedCodeEntry {
@@ -112,7 +112,7 @@ export interface JoinedCodeEntry {
 
 /** A user-authored custom loadout, saved in the loadouts store. `loadout` is
  *  a `SideLoadout` (6 pairs of skill IDs, King @ 0 + 5 Champions). The
- *  dedupe check runs on the skill tuple only — two rows with the same
+ *  dedupe check runs on the skill tuple only - two rows with the same
  *  skills and different names are still duplicates. */
 export interface SavedLoadout {
   id: string;              // ULID, time-sortable (via `newMatchId`).
@@ -149,7 +149,7 @@ export interface TelemetryStore {
    *  always reflects the engine's latest state. Distinct from
    *  `markNetworkLost` (which is a one-shot status transition that ignores
    *  writes after the first flip): this is idempotent and runs on every
-   *  ply, regardless of current `status` — except `ended`, which is
+   *  ply, regardless of current `status` - except `ended`, which is
    *  terminal and must not be overwritten. No-op if the row is missing. */
   checkpointMatchLog(
     matchId: string,
@@ -177,7 +177,7 @@ export interface TelemetryStore {
 
   // --- joiner-side multiplayer code memory (v2 redesign) -------------------
   /** Record (or refresh `lastJoinedAtUnixMs` on) a code the user joined as
-   *  the non-host peer. Idempotent on `code` — re-recording updates the
+   *  the non-host peer. Idempotent on `code` - re-recording updates the
    *  timestamp and any newer fields. */
   recordJoinedCode(entry: { code: string; hostPeerId?: string | null; lastSeenSeq?: number }): Promise<void>;
   /** All codes the user has joined, most-recent first. */
@@ -194,7 +194,7 @@ export interface TelemetryStore {
 
   // --- custom loadouts store (Task 8) ---------------------------------------
   /** Persist a new custom loadout row. Caller supplies the full `SavedLoadout`
-   *  including a freshly-minted ULID (`newMatchId()` reused). No dedupe here —
+   *  including a freshly-minted ULID (`newMatchId()` reused). No dedupe here -
    *  the caller runs `findDuplicate` against `listLoadouts()` first and either
    *  disables the save button (manual save) or skips-and-reports (import). */
   saveLoadout(row: SavedLoadout): Promise<void>;
@@ -205,7 +205,7 @@ export interface TelemetryStore {
   /** Remove a loadout by ID. No-op if the row is missing. */
   deleteLoadout(id: string): Promise<void>;
   /** Rename a loadout in place. No-op if the row is missing. Name is a
-   *  display label only — dedupe is on the skill tuple, so a rename can
+   *  display label only - dedupe is on the skill tuple, so a rename can
    *  never introduce or resolve a duplicate. */
   updateLoadoutName(id: string, name: string): Promise<void>;
 }
@@ -214,7 +214,7 @@ export interface TelemetryStore {
 //
 // ULID (https://github.com/ulid/spec): 26-char Crockford-base32, time-sortable.
 // First 10 chars are 48-bit ms timestamp, next 16 chars are 80-bit randomness.
-// Lex-sortable matches chronological order — exactly what the library view
+// Lex-sortable matches chronological order - exactly what the library view
 // wants ("most recent first" is `.reverse()` of a sorted key list).
 
 const CROCKFORD32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";

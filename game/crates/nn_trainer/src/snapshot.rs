@@ -2,7 +2,7 @@
 //!
 //! The trainer is the source of truth. The Training Observatory UI is a
 //! passive observer that polls a JSON file at low cadence (~1 Hz). This
-//! module owns the snapshot schema and the atomic-write plumbing — the
+//! module owns the snapshot schema and the atomic-write plumbing - the
 //! tournament driver populates a `StatusSnapshot` and calls
 //! `write_snapshot` whenever its state advances.
 //!
@@ -14,7 +14,7 @@
 //!
 //! ## Live-position state lives elsewhere
 //!
-//! This module only carries summary state — what the §10 panels 2/3 need
+//! This module only carries summary state - what the §10 panels 2/3 need
 //! at 1 Hz. The per-ply live-position stream (panel 1) has different
 //! cadence + sentinel-flag subscription requirements and lives in a
 //! separate writer (sub-slice 6e).
@@ -37,7 +37,7 @@ pub enum TrainingPhase {
     Training,
     /// A gauntlet round is in progress (candidate vs baseline matches).
     Gauntlet,
-    /// Between rounds — bookkeeping, persistence, registry updates.
+    /// Between rounds - bookkeeping, persistence, registry updates.
     Bookkeeping,
 }
 
@@ -80,14 +80,14 @@ pub struct ActiveMatch {
     pub ply: u32,
     /// Think budget per move in milliseconds.
     pub think_ms: u32,
-    /// Bracket label — `"fast" | "medium" | "slow"`.
+    /// Bracket label - `"fast" | "medium" | "slow"`.
     pub bracket: String,
 }
 
 /// One full snapshot of training state. Trainer writes this at ~1 Hz.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StatusSnapshot {
-    /// Schema version — checked against `STATUS_SNAPSHOT_VERSION` on load.
+    /// Schema version - checked against `STATUS_SNAPSHOT_VERSION` on load.
     pub format_version: u32,
     /// UNIX epoch milliseconds when the snapshot was written. Lets the UI
     /// detect a stalled trainer ("snapshot is 30s old → training died").
@@ -111,7 +111,7 @@ pub struct StatusSnapshot {
 }
 
 impl StatusSnapshot {
-    /// Idle snapshot — used at startup before the driver has anything to
+    /// Idle snapshot - used at startup before the driver has anything to
     /// report, and again when a run finishes.
     pub fn idle() -> Self {
         Self {
@@ -157,7 +157,7 @@ impl From<serde_json::Error> for SnapshotError {
     fn from(e: serde_json::Error) -> Self { Self::Json(e) }
 }
 
-/// Default filename — trainer writes `<run_dir>/status.json`.
+/// Default filename - trainer writes `<run_dir>/status.json`.
 pub const STATUS_FILENAME: &str = "status.json";
 
 /// Write `snapshot` to `<dir>/status.json` atomically (`.tmp` + rename).
@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn rapid_writes_dont_leave_partial_file() {
         // Atomic-rename property: between two writes, the reader should
-        // always see a fully-formed snapshot — never an empty/partial one.
+        // always see a fully-formed snapshot - never an empty/partial one.
         // We can't easily race a reader, but we can at least confirm
         // sequential writes always reload to valid state, and the .tmp
         // file is cleaned up.

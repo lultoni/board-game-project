@@ -6,7 +6,7 @@
 // (or `renderApplied` for the MP non-acting-peer path). The driver:
 //
 //   * holds the current rendered `position` + `legal` (or writes through to a
-//     supplied carrier — see `positionSink`),
+//     supplied carrier - see `positionSink`),
 //   * tracks `pieceIds` so Board's `{#each}` key stays stable across moves and
 //     CSS slide transitions actually run,
 //   * tracks `shakingSquares` for hit-shake animation,
@@ -52,7 +52,7 @@ export interface PreStateSnapshot {
   preP1Money: number;
   preP2Money: number;
   /** Engine `pendingBodyguard` state at the pre-state of a BodyguardChoice
-   *  ply — the attacker/target/eligible squares cached between the tentative
+   *  ply - the attacker/target/eligible squares cached between the tentative
    *  Move-Attack and the defender's choice. Non-null only for choice plies;
    *  the choice-ply renderer reads this to animate the intercept/decline. */
   preBodyguardPending: PendingBodyguardView | null;
@@ -67,7 +67,7 @@ export interface PositionSink {
 }
 
 /** Opaque timer handle. Browser's `setTimeout` returns `number`; Node's
- *  returns an object — we don't care which, only that callers thread it
+ *  returns an object - we don't care which, only that callers thread it
  *  back through `clearTimeout`. */
 export type TimerHandle = ReturnType<typeof globalThis.setTimeout>;
 
@@ -134,7 +134,7 @@ export interface ApplyAndRenderOpts {
  *  When `lungeReturnTo` is set (mutually exclusive with `killLungeTo`), the
  *  piece leans ~55% of the way toward the given square then RETURNS to the
  *  last waypoint (its resting square). This is the non-kill move-attack lunge
- *  and the bodyguard intercept — a jab that recoils, driven through the same
+ *  and the bodyguard intercept - a jab that recoils, driven through the same
  *  WAAPI channel as the walk/kill so it plays and replays reliably. */
 export interface PieceMotion {
   waypoints: number[];
@@ -151,7 +151,7 @@ export interface PieceMotion {
 }
 
 export interface PlyRenderer {
-  // Reactive state — bind into Board / EffectsLayer.
+  // Reactive state - bind into Board / EffectsLayer.
   readonly position: PositionView | null;
   readonly legal: Uint32Array;
   readonly pieceIds: Map<number, number>;
@@ -170,7 +170,7 @@ export interface PlyRenderer {
 
   // Lifecycle.
   /** Capture pre-state from the currently-rendered position, run `applyFn`
-   *  (which is expected to advance the engine — caller's choice whether
+   *  (which is expected to advance the engine - caller's choice whether
    *  that's `eng.tryApply` directly or via an MP wrapper), then emit effects
    *  + SFX and flip rendered state. Any pending deferred refresh is drained
    *  synchronously at entry. */
@@ -215,7 +215,7 @@ export interface PlyRenderer {
   /** Pull fresh position+legal+pieceIds from the engine. Used after a
    *  snapshot restore (sandbox enter/exit, MP onSnapshotApplied) or on
    *  initial boot. Also resets effectQueue / shakingSquares / deferred
-   *  refresh — call this when crossing match boundaries. */
+   *  refresh - call this when crossing match boundaries. */
   resyncFromEngine(): Promise<void>;
 
   /** Hard reset: clear pieceIds, effectQueue, shakingSquares, drain pending
@@ -332,7 +332,7 @@ function chebyshevMidpoint(
     const mr = fR + Math.sign(dyTotal);
     return (mr << 3) | mf;
   }
-  // L-shape (2/±1 or 1/±2): two candidates — the corner via file first, or
+  // L-shape (2/±1 or 1/±2): two candidates - the corner via file first, or
   // via rank first. Prefer the empty one; fall back to file-first.
   const c1F = fF + Math.sign(dxTotal) * Math.min(1, Math.abs(dxTotal));
   const c1R = fR + (Math.abs(dyTotal) === 2 ? Math.sign(dyTotal) : 0);
@@ -506,7 +506,7 @@ export function createPlyRenderer(
     timers.clear();
   }
 
-  // Driver-local position/legal — used only when no positionSink is supplied.
+  // Driver-local position/legal - used only when no positionSink is supplied.
   let localPosition = $state<PositionView | null>(null);
   let localLegal = $state<Uint32Array>(new Uint32Array());
 
@@ -517,7 +517,7 @@ export function createPlyRenderer(
   let pieceMotion = $state<Map<number, PieceMotion>>(new Map());
 
   // Pending animationDone gate. `animationEndsAt` is a monotonic timestamp
-  // (clock.now() basis) — when the current wall clock passes it, the
+  // (clock.now() basis) - when the current wall clock passes it, the
   // animation is finished. Resolved by a scheduled timer. Multiple callers
   // (e.g. AI loop + replay autoplay) can await the same underlying promise.
   let animationEndsAt = 0;
@@ -582,7 +582,7 @@ export function createPlyRenderer(
 
   // Reconcile against an explicit position rather than the current sink value.
   // Used by resyncFromEngine so pieceIds is consistent before the position
-  // write lands on the reactive sink — preventing a Svelte flush from
+  // write lands on the reactive sink - preventing a Svelte flush from
   // observing an empty pieceIds map between setPosition and reconcile.
   function reconcilePieceIdsAgainst(pos: PositionView): void {
     const occupied = new Set<number>();
@@ -734,7 +734,7 @@ export function createPlyRenderer(
   /** Render the Stack N strike-moves-caster forced step: a pure relocation
    *  (dust trail + pieceId follow), emitting NO heal/damage for the caster.
    *  When `killSq !== null` the caster stepped onto a tile whose enemy just
-   *  died (point-blank kill) — emit that victim's death visuals on `killSq`
+   *  died (point-blank kill) - emit that victim's death visuals on `killSq`
    *  here, since the anonymous diff no longer carries them. `pre` is the
    *  pre-skill mailbox so the victim's pre-death HP/armor is available. */
   function emitCasterRelocation(
@@ -985,7 +985,7 @@ export function createPlyRenderer(
     //   1. Wait one rAF (piece is still at old square, browser paints it).
     //   2. Fetch the new engine state (async, but DOM hasn't changed yet).
     //   3. Compute kill detection upfront from the fresh position.
-    //   4. In one synchronous block: update pieceIds AND position together —
+    //   4. In one synchronous block: update pieceIds AND position together -
     //      both writes land in the same Svelte flush so the DOM element's
     //      transform transitions from the old painted position to the new one.
     if (decoded.kind === ActionKind.Move) {
@@ -994,7 +994,7 @@ export function createPlyRenderer(
       if (fresh) {
         const approach = decoded.hasAux ? decoded.auxSq : decoded.target;
         // Pending-bodyguard short-circuit: a Move-Attack against a Champion/King
-        // with an eligible adjacent Guard is applied TENTATIVELY by the engine —
+        // with an eligible adjacent Guard is applied TENTATIVELY by the engine -
         // no damage dealt, `pendingBodyguard` set, side flipped to the defender.
         // The attack ply must stay SILENT (no lunge, no damage, no death); the
         // actual hit + intercept/decline animation happens on the following
@@ -1072,7 +1072,7 @@ export function createPlyRenderer(
         ? (killed ? decoded.target : decoded.auxSq)
         : decoded.target;
       const tiles = chebyshev(decoded.src, finalAttackerSq);
-      // Move SFX (footstep) fires immediately — that's the walk start.
+      // Move SFX (footstep) fires immediately - that's the walk start.
       // Attack SFX (impact) and death SFX are deferred until the piece
       // actually reaches the target, so audio matches the lunge landing.
       if (!decoded.hasAux) playSfx("move", { tiles });
@@ -1080,7 +1080,7 @@ export function createPlyRenderer(
       // Piece-motion emission: derive the waypoint list from the decoded
       // action + kill outcome. Rules match .claude/plans/swirling-floating-alpaca.md:
       //   pure move (no aux): [src, target], or [src, mid, target] if cheb 2.
-      //   move-attack, no kill: [src(, approach)] + lungeReturnTo=target — the
+      //   move-attack, no kill: [src(, approach)] + lungeReturnTo=target - the
       //     attacker leans toward the target and recoils to its resting square.
       //   move-attack, kill (approach != target): [src, approach] + killLungeTo=target.
       //   move-attack, kill (approach == target): [src, target] with kill lunge implicit.
@@ -1131,7 +1131,7 @@ export function createPlyRenderer(
       opts.onMoveLanding?.(finalSq);
 
       // Attack contact timing: damage numbers, hit-shake, damage SFX all fire
-      // when the attacker would visually reach the target — after the walk
+      // when the attacker would visually reach the target - after the walk
       // finishes, plus the fraction of the lunge segment where it peaks. Both
       // kill and non-kill lunges are one WAAPI hop (`dur`) that peaks at offset
       // ~0.40 (see buildKeyframes in Piece.svelte), so the timing is uniform.
@@ -1202,10 +1202,10 @@ export function createPlyRenderer(
         auxSq: decoded.hasAux ? decoded.auxSq : undefined,
         outcome: { moneyStolen, targetPostSq, casterPostSq },
       });
-      // Global caster spotlight — subtle attention ring on the casting piece
+      // Global caster spotlight - subtle attention ring on the casting piece
       // so effects like Focus/Charge/Shield are readable even if the eye is
       // elsewhere. Uses the skill's category tint. Drawn UNDER the choreography
-      // because it's pushed after (canvas draws in queue order — later entries
+      // because it's pushed after (canvas draws in queue order - later entries
       // paint on top; the spotlight paints on top of the per-skill draw. That
       // matches the fireworks-ring-around-caster feel: the ring surrounds the
       // caster's centre and the skill mark extends beyond it toward target).
@@ -1256,7 +1256,7 @@ export function createPlyRenderer(
     await renderApplied(raw, pre);
 
     // Opportunistic checkpoint capture. We log a checkpoint at the ply
-    // *after* this one — i.e., we just finished applying `plyHint` so the
+    // *after* this one - i.e., we just finished applying `plyHint` so the
     // engine is now at position-after-ply-N. Replay's `currentPly` is
     // incremented to N+1 only after applyAndRender returns, so passing the
     // pre-apply index here is correct: the checkpoint represents "state
@@ -1365,7 +1365,7 @@ export function createPlyRenderer(
     }
 
     // Silent fast-forward from startIndex through plies[clamped-2]. No
-    // effects, no SFX, no position writes — we only care about engine state
+    // effects, no SFX, no position writes - we only care about engine state
     // at the end. Along the way, capture a checkpoint every CHECKPOINT_STRIDE
     // plies (using "ply count from base" as the key, not array index) so a
     // future scrub through the same range gets the perf win on the first

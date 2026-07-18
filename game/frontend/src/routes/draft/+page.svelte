@@ -120,7 +120,7 @@
   // === Draft-from-custom-loadout (brick 8d) ==================================
   //
   // Auto-fills the remaining picks for the current side from a saved custom
-  // loadout, in randomised order. The dropdown is single-player only —
+  // loadout, in randomised order. The dropdown is single-player only -
   // multiplayer keeps a single shared pre-made source so both peers agree on
   // fairness. Compatibility filter: a saved loadout is only shown if every
   // already-drafted slot on the current side matches the loadout's stored
@@ -144,7 +144,7 @@
 
   /** Compatibility check: every already-drafted slot on the current side must
    *  match the loadout's stored skill for that (piece, slot). Reads slot
-   *  skills off the mailbox — same source of truth as the piece list. */
+   *  skills off the mailbox - same source of truth as the piece list. */
   function loadoutIsCompatible(lo: SideLoadout): boolean {
     if (!position || !draftState) return false;
     const usedSlots = draftState.usedSlots;
@@ -189,7 +189,7 @@
     if (busy || autoDrafting) return;
     // Discard any tentative picks so the auto-fill starts from a clean slate.
     clearPicks();
-    // Capture the starting side once — the loop only fills for THIS side, so
+    // Capture the starting side once - the loop only fills for THIS side, so
     // as soon as `isP1Turn` flips (turn commits to the other player) we stop.
     const startedAsP1 = isP1Turn;
     const startingOffset = startedAsP1 ? 0 : 6;
@@ -206,7 +206,7 @@
             }
           }
         }
-        if (remaining.length < 2) return; // shouldn't happen — sanity guard
+        if (remaining.length < 2) return; // shouldn't happen - sanity guard
         const order = shuffle(remaining);
         const a = order[0], b = order[1];
         const s1 = lo[a.piece][a.slot];
@@ -247,7 +247,7 @@
   // === Picker state ==========================================================
   //
   // The two picks of the in-progress turn live on the board itself as
-  // "tentative" slots — there is no separate staging area. A pick is
+  // "tentative" slots - there is no separate staging area. A pick is
   // (skillId, sq, slot); empty pick = skillId === 0.
 
   interface PendingPick { skillId: number; sq: number; slot: number; }
@@ -351,8 +351,8 @@
   //
   // dragPayload is the source of truth (HTML5 dataTransfer is opaque during
   // dragover so we can't gate hover styling off it). Two payload kinds:
-  //   - { kind: "skill", id }                  — from the catalogue
-  //   - { kind: "pick",  sq, slot }            — from an existing tentative slot
+  //   - { kind: "skill", id }                  - from the catalogue
+  //   - { kind: "pick",  sq, slot }            - from an existing tentative slot
   // Stored as a module-level `$state` so individual slot components can ask
   // "would this current drag be legal on me?" for hover feedback.
 
@@ -381,7 +381,7 @@
   function dragEnd(): void { dragPayload = null; }
 
   // Placement/move attempt for the current dragPayload. Returns true on
-  // success. Does NOT null dragPayload — the caller does that so a failed
+  // success. Does NOT null dragPayload - the caller does that so a failed
   // direct-hit can bubble to dropOnPiecesCol's proximity retry.
   function tryDrop(sq: number, slot: number): boolean {
     const p = dragPayload;
@@ -451,7 +451,7 @@
         if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
       }
     } else if (p.kind === "pick") {
-      if (p.sq === sq && p.slot === slot) return; // same slot — no-op
+      if (p.sq === sq && p.slot === slot) return; // same slot - no-op
       if (canDropSkillOn(skillIdOfPick(p), sq, slot)) {
         ev.preventDefault();
         if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
@@ -488,7 +488,7 @@
       clearPickAt(sq, slot);
       return;
     }
-    // Otherwise: ignored — placement requires drag-and-drop.
+    // Otherwise: ignored - placement requires drag-and-drop.
   }
 
   // === Commit ================================================================
@@ -513,7 +513,7 @@
         result = await mpEngine.submitAction(raw);
       } else {
         // Defensive fallback if wrapper failed to instantiate. Should not
-        // happen — `booted` only flips true after bootMpEngine.
+        // happen - `booted` only flips true after bootMpEngine.
         await eng.tryApply(raw);
         await recordPly(eng);
         clearPicks();
@@ -540,7 +540,7 @@
 
   /** Single owned timer handle replaces the prior `aiScheduled` boolean. The
    *  handle is set synchronously inside the $effect and cleared inside the
-   *  callback or by `cancelAiTimer()` on teardown — no microtask window for
+   *  callback or by `cancelAiTimer()` on teardown - no microtask window for
    *  a re-entrant $effect run to schedule a duplicate. */
   let aiTimer: ReturnType<typeof setTimeout> | null = null;
   function cancelAiTimer(): void {
@@ -575,16 +575,16 @@
       if (r.appliedAction === 0) {
         // AI returned no draft action. The scheduler is keyed off
         // `currentSeatIsAi` which is derived from `match.position`; since
-        // nothing changed it won't re-fire on its own — the route just
+        // nothing changed it won't re-fire on its own - the route just
         // stalls silently. Surface the wedge so the user sees why drafting
         // halted instead of staring at a frozen screen.
-        bootError = "AI returned no draft pick — drafting paused";
+        bootError = "AI returned no draft pick - drafting paused";
         return;
       }
       sfx.play("draftPick");
       await refresh();
       // AI applies bypass the wrapper (no submitAction call), so the wrapper's
-      // automatic phase-change detection doesn't fire. Solo-only path — drive
+      // automatic phase-change detection doesn't fire. Solo-only path - drive
       // the transition manually.
       if ((draftState?.turnNo ?? 0) >= 12) await finishAndForward();
     } catch (e) {
@@ -636,13 +636,13 @@
         const store = getTelemetryStore();
         await store.markNetworkLost(id, partial);
       } catch {
-        // Swallow — telemetry must never block gameplay.
+        // Swallow - telemetry must never block gameplay.
       }
     })();
   });
 
   // Page-hide handler: fires on tab hide / close. Any async work started here
-  // may be discarded before the IDB transaction commits — we use sync-entry
+  // may be discarded before the IDB transaction commits - we use sync-entry
   // telemetry variants and accept the loss. `onDestroy` keeps the full async
   // path for client-side nav (where awaits resolve normally).
   function pageHideHandler(): void {
@@ -721,7 +721,7 @@
           bootError = "anti-cheat: opponent's engine disagreed";
         },
         onResyncFailed: ({ reason, attempts }) => {
-          mpState.lastError = `lost sync with host (${reason}, ${attempts} attempts) — try Rejoin`;
+          mpState.lastError = `lost sync with host (${reason}, ${attempts} attempts) - try Rejoin`;
         },
         onPausedChange: (p) => { mpPaused = p; },
         onHostCommitted: async () => { /* recordPly fires via onApplied */ },
@@ -747,7 +747,7 @@
     ownershipToken = claimRouteOwnership();
     console.log(`[mp] /draft/ mounted (mode=${match.mode}, role=${multiplayerRole()}, localSeat=${match.localSeat}, status=${mpState.status})`);
     try {
-      // Use multiplayerRole (not match.mode) as the multiplayer indicator —
+      // Use multiplayerRole (not match.mode) as the multiplayer indicator -
       // resetMatchState() doesn't clear multiplayerRole, but it does flip mode
       // to "idle". Reading mode here means a reset between routes silently
       // turns off the multiplayer branch below.
@@ -770,7 +770,7 @@
         // KEEP the engine and fall through to the normal draft mount path
         // (skipping createEngineWithDraft). This is the resume path from
         // the multiplayer lobby's Rejoin flow. Otherwise the snapshot
-        // represents a finished draft (Phase F's symmetric handoff) — push
+        // represents a finished draft (Phase F's symmetric handoff) - push
         // it forward to /match/.
         const probeView = await e.positionView();
         // Phase::Draft = 2 (see wrapper_api.rs:84).
@@ -791,7 +791,7 @@
         booted = true;
         // Telemetry: skip startTelemetrySession when a carrier id is present;
         // the existing row in IDB continues to accumulate plies. Start a
-        // fresh session only if we don't have one (defensive — shouldn't
+        // fresh session only if we don't have one (defensive - shouldn't
         // happen for the rejoin flow which sets it).
         if (!match.telemetryMatchId) {
           await startTelemetrySession(match.mode, {
@@ -810,7 +810,7 @@
       }
       // Stale-entry guard: a page reload mid-draft drops the in-memory engine
       // handle AND the match carrier ($state lives in memory). The user lands
-      // back at `mode === "idle"` with no pending snapshot — the previous
+      // back at `mode === "idle"` with no pending snapshot - the previous
       // draft is irretrievably gone. Rather than silently restarting in a
       // default HvH setup, bounce back to /setup/ so the user explicitly
       // re-picks seats and draft mode. Multiplayer is exempt: re-entry mid-
@@ -843,7 +843,7 @@
       // Instantiate the wrapper. In multiplayer this also fires
       // notifyConnectionOpen on the host (sending session-hello). Both peers
       // construct identical empty draft engines from identical configs, so
-      // seq=0 is correct — first commit advances both lockstep. See plan §Q13.
+      // seq=0 is correct - first commit advances both lockstep. See plan §Q13.
       const roleFresh: Role = !wasMultiplayer
         ? "solo"
         : mpRole === "host" ? "host" : "joiner";
@@ -917,7 +917,7 @@
   // === Display helpers =======================================================
 
   function skillName(id: number): string {
-    if (id === 0) return "—";
+    if (id === 0) return "-";
     const info = SKILLS[id];
     return info ? t(`skills.${info.key}.name`) : `?${id}`;
   }
@@ -949,7 +949,7 @@
   /** Snapshot the drafting side's currently-committed skills as a
    *  `SideLoadout`, for the read-only LoadoutBoard preview (brick 8i).
    *  Unfilled slots are 0 and render as empty placeholders in the mini-board.
-   *  Tentative picks are NOT included — only committed slots — so the
+   *  Tentative picks are NOT included - only committed slots - so the
    *  preview stays authoritative against the engine state. */
   const draftedSideLoadout = $derived.by(() => {
     if (!position) return null;
@@ -1119,7 +1119,7 @@
                         ondrop={(ev) => dropOnSlot(ev, sq, slot)}
                         onclick={() => clickSlot(sq, slot)}
                         aria-label={`${pieceLabel(sq, isKing, i)} slot ${slot + 1}`}
-                        title={showId === 0 ? "" : `${skillName(showId)} — ${categoryLabel(showId)}`}
+                        title={showId === 0 ? "" : `${skillName(showId)} - ${categoryLabel(showId)}`}
                       >
                         {#if showId === 0}
                           <span class="slot-empty">slot {slot + 1}</span>

@@ -35,7 +35,7 @@ pub enum Skill {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SkillCategory { Strike, Shield, Move, Mystic }
 
-/// Skill target-owner contract — applied at generator time so emitted Skill
+/// Skill target-owner contract - applied at generator time so emitted Skill
 /// actions are already semantically well-typed by the time `apply_skill`
 /// sees them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,9 +44,9 @@ pub enum TargetOwner {
     Enemy,
     /// Target square must be ally-occupied (Heal/Plate/Swap).
     Ally,
-    /// Target may be either side (Shove — push ally OR enemy).
+    /// Target may be either side (Shove - push ally OR enemy).
     Either,
-    /// Target must be an empty square along the Path (Dash/Retreat — Slice 5).
+    /// Target must be an empty square along the Path (Dash/Retreat - Slice 5).
     Empty,
     /// Caster targets itself (Shield/Focus/Charge). `src == tgt`.
     SelfOnly,
@@ -100,7 +100,7 @@ pub fn skill_cost(s: Skill) -> u8 {
 
 /// Default Range in tiles. Stack-M default Range = 2. Skills override:
 ///   - Range 0: Self-targeting (Shield, Focus, Charge).
-///   - Range 1: Adjacent (Lance — "Range-1", Heal, Plate).
+///   - Range 1: Adjacent (Lance - "Range-1", Heal, Plate).
 ///   - Range 2: Default (Hook, Break, Steal, Tempest, Blast, Swap, Dash).
 ///   - Range 3: Default + 1 baked in (Shove, Retreat).
 ///
@@ -141,7 +141,7 @@ pub fn skill_category(s: Skill) -> SkillCategory {
     }
 }
 
-/// Target-owner contract — see `TargetOwner`. Used by the generator to filter
+/// Target-owner contract - see `TargetOwner`. Used by the generator to filter
 /// emitted skill-target squares to those the skill could actually accept.
 #[inline]
 pub fn skill_target_owner(s: Skill) -> TargetOwner {
@@ -170,7 +170,7 @@ pub fn skill_target_owner(s: Skill) -> TargetOwner {
 // covering the side's 6 skill-bearing pieces (1 King + 5 Champions). 0 is the
 // "empty slot" sentinel (matches the mailbox encoding); a fully-equipped side
 // has no zeros. Index 0 is the King; indices 1..6 are Champions ordered by
-// starting square ascending — matches the iteration order of `setup_stack_m`'s
+// starting square ascending - matches the iteration order of `setup_stack_m`'s
 // `place_back_row` (files b→g, with the King's file replaced by the King). The
 // `setup_stack_m_with_loadouts` constructor walks the same iteration so callers
 // don't need to materialise square indices themselves.
@@ -185,7 +185,7 @@ pub enum DraftError {
     BadSkillId { piece_index: u8, slot: u8, skill_id: u8 },
 }
 
-/// Validate a single side's loadout. Allows 0 ("empty") in either slot — useful
+/// Validate a single side's loadout. Allows 0 ("empty") in either slot - useful
 /// for partial states during `Phase::Draft`. Rejects same-skill-on-same-piece
 /// duplicates (e.g. one Champion with Lance in both slots) and out-of-range ids.
 pub fn validate_loadout(l: &SideLoadout) -> Result<(), DraftError> {
@@ -206,7 +206,7 @@ pub fn validate_loadout(l: &SideLoadout) -> Result<(), DraftError> {
 /// (index 0 = King, 1..6 = Champions b→g with the King's file skipped). The
 /// two back rows are NOT file-aligned: P1's King sits on d1, P2's on e8, so a
 /// point-symmetric board (`sq' = 63 - sq`) maps P1's Champion squares
-/// [1,2,4,5,6] onto P2's squares [62,61,59,58,57] — which, read back in P2's
+/// [1,2,4,5,6] onto P2's squares [62,61,59,58,57] - which, read back in P2's
 /// own ascending frame [57,58,59,61,62], is the Champion order REVERSED.
 /// The King (index 0) maps d1→e8 and stays at index 0.
 ///

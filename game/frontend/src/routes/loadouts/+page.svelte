@@ -2,7 +2,7 @@
   // Custom loadout manager route.
   //
   // Left column: list of saved loadouts (with rename/delete + a 12-skill preview
-  // strip). Right column: editor pane — LoadoutBoard on top, SkillPicker in
+  // strip). Right column: editor pane - LoadoutBoard on top, SkillPicker in
   // "click" mode below for whichever piece is currently selected.
   //
   // Persistence goes through `getTelemetryStore()` (IDB v3 loadouts store).

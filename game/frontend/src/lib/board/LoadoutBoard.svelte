@@ -2,12 +2,12 @@
   // Mini board for the loadout editor + draft-screen "what's drafted so far"
   // preview. Renders a small 8x8 SVG with one side's King + 5 Champions on
   // their Stack M starting squares plus 3 skill-less Guards on the adjacent
-  // rank. Guards are visible but greyed and non-interactive — they're chassis
+  // rank. Guards are visible but greyed and non-interactive - they're chassis
   // context, not skill targets.
   //
   // Each King/Champion square shows the two currently-assigned skill glyphs
   // stacked; the "selected" piece gets a highlight ring. Clicking a piece
-  // fires onPieceClick(pieceIdx) — index 0..5 into a SideLoadout.
+  // fires onPieceClick(pieceIdx) - index 0..5 into a SideLoadout.
   //
   // Consumers:
   //   - /loadouts/ editor: interactive=true, mutable loadout, selectedPieceIdx
@@ -23,7 +23,7 @@
 
   interface Props {
     /** Which side's starting squares to draw. Loadout data itself is side-
-     *  agnostic — this only controls board orientation and piece placement. */
+     *  agnostic - this only controls board orientation and piece placement. */
     side: Owner;
     /** The 6 skill pairs to display, in piece order (King @ 0, Champions 1..5).
      *  Slot value 0 renders as an empty placeholder. */
@@ -62,14 +62,14 @@
   const CROP_H = $derived(SIZE * CROP_RANKS);
   // The drawing side's back rank sits at the bottom (y = 7*SIZE for a P1
   // view, y = 0 for a P2 view since we flip). The crop always starts at the
-  // bottom for P1 and at the top for P2 — that keeps the back rank on-screen
+  // bottom for P1 and at the top for P2 - that keeps the back rank on-screen
   // regardless of which side is being edited.
   const CROP_Y = $derived(side === "p1" ? BOARD_H - CROP_H : 0);
 
   // Convert an engine square (0..63, file = sq & 7, rank = sq >> 3) into SVG
   // coordinates. P1 is drawn with rank 1 at the bottom (SVG y grows downward,
   // so we flip). Viewing "as P2" mirrors the board vertically so the P2 back
-  // rank sits at the bottom of the mini-board — that's the frame the user
+  // rank sits at the bottom of the mini-board - that's the frame the user
   // thinks in when authoring "P2's loadout".
   function sqToXY(sq: number): { x: number; y: number } {
     const file = sq & 7;
@@ -97,7 +97,7 @@
   }
 
   function skillTitle(id: number): string {
-    if (id === 0) return "—";
+    if (id === 0) return "-";
     const info = SKILLS[id];
     return info ? t(`skills.${info.key}.name`) : `?${id}`;
   }

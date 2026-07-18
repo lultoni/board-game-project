@@ -2,7 +2,7 @@
 //!
 //! # Design (post-audit, see ADR-005 + session-28 audit + session-30 fixup)
 //!
-//! Action is **thin and uniform-width** — a single u32 encoding the player's
+//! Action is **thin and uniform-width** - a single u32 encoding the player's
 //! *choice*. Effects (AOE expansion, path-implicit destinations, captured
 //! pieces, cleared combo bits) are computed by the resolver in `make()` and
 //! recorded in a separate `Undo` record for reversibility. This matches the
@@ -38,7 +38,7 @@
 //!                                                  Generator emits this bit
 //!                                                  per legal interpretation;
 //!                                                  resolver reads it.
-//!   bits 23..29  aux_sq /     (6 bits, 0..=63)   DUAL-USE — disambiguated
+//!   bits 23..29  aux_sq /     (6 bits, 0..=63)   DUAL-USE - disambiguated
 //!                approach_sq                       by `kind()`:
 //!                                                  - kind=Skill: aux_sq, the
 //!                                                    Focus-retargeted Self-only
@@ -60,10 +60,10 @@
 //!                                                  Plain moves leave this 0
 //!                                                  and the mover's destination
 //!                                                  is `target`.
-//!   bits 30..32  reserved (bit 30 used for DRAFT_TURN_TAG — see below)
+//!   bits 30..32  reserved (bit 30 used for DRAFT_TURN_TAG - see below)
 //! ```
 //!
-//! ## DraftTurn (L8 — pre-game skill assignment)
+//! ## DraftTurn (L8 - pre-game skill assignment)
 //!
 //! When **bit 30** is set, the action is a `DraftTurn` and the rest of the
 //! u32 is reinterpreted entirely. The `kind` / `src` / `target` accessors are
@@ -113,18 +113,18 @@
 //!
 //! Stack M Tempest: "Target takes 1 damage. All pieces *adjacent to the
 //! target* are pushed 1 tile away from the target. Caster not affected."
-//! The target itself is NOT pushed — only its (up to 8) neighbours, minus
+//! The target itself is NOT pushed - only its (up to 8) neighbours, minus
 //! the caster if the caster sits on a neighbour square. The resolver
 //! computes the push set inside `make()`; the Undo stores prior mailbox
 //! entries for any neighbour that ended up displaced or pushed off the
-//! board (which removes it, per the no-falling-off rule once defined —
+//! board (which removes it, per the no-falling-off rule once defined -
 //! TODO file as OQ if Stack M is silent on push-off-board).
 //!
 //! Direction-only skills (Shove) use `choice_idx` for the 8 cardinal/
 //! diagonal directions. Path-implicit skills (Retreat) pre-resolve their
 //! destination in the generator and write it into `target`.
 //!
-//! ## BodyguardChoice (Commit 2 — defender-driven Bodyguard resolution)
+//! ## BodyguardChoice (Commit 2 - defender-driven Bodyguard resolution)
 //!
 //! Bit **31** is `BG_CHOICE_TAG`. When set, the action is a `BodyguardChoice`
 //! ply played by the *defender* in response to a tentatively-applied Move-Attack
@@ -139,10 +139,10 @@
 //! ```
 //!
 //! `kind()`, `src()`, `target()`, `skill_id()`, `has_aux()`, `has_approach()`
-//! are MEANINGLESS on a BodyguardChoice action — callers MUST check
+//! are MEANINGLESS on a BodyguardChoice action - callers MUST check
 //! `is_bodyguard_choice()` first and use `bg_guard_idx()` instead. The
 //! attacker / target / approach squares are recovered from
-//! `pos.pending_bodyguard` rather than from the action bits themselves —
+//! `pos.pending_bodyguard` rather than from the action bits themselves -
 //! the defender is committing only to "which of the eligible squares takes
 //! the hit," and the engine has the rest cached.
 //!
@@ -153,7 +153,7 @@
 //!
 //! BodyguardChoice is distinct from DraftTurn (bit 30) and from regular
 //! Move/Skill actions (bits 30, 31 both 0). The three families partition
-//! the legal action space — at most one of `is_draft_turn()` /
+//! the legal action space - at most one of `is_draft_turn()` /
 //! `is_bodyguard_choice()` may be true on a well-formed action.
 //!
 //! ## Focus retargeting Self-only skills (Slice 6 / oq-70 final)
@@ -223,14 +223,14 @@ impl Action {
         a
     }
 
-    /// Encode a Move-Attack action. `approach_sq` is the penultimate tile —
+    /// Encode a Move-Attack action. `approach_sq` is the penultimate tile -
     /// the empty tile adjacent to `target` that the attacker physically moves
     /// onto along the attack path. For speed-1 attackers, `approach_sq` == `src`.
     /// For speed-2 attackers at Chebyshev distance 2, it is one of the empty
     /// neighbours of `target` reachable from `src` in exactly one BFS step.
     ///
     /// `approach_sq` is stored in bits 23..29 and bit 29 is set as a tag
-    /// (sharing the layout with `aux_sq` — disambiguated by `kind() == Move`).
+    /// (sharing the layout with `aux_sq` - disambiguated by `kind() == Move`).
     /// `choice_idx`: 0 = no Bodyguard redirect; 1..=k = redirect to k-th
     /// eligible Guard (sorted ascending by square index), where eligibility is
     /// "Guard adjacent to BOTH the defender AND `approach_sq`."
@@ -255,10 +255,10 @@ impl Action {
     }
     #[inline] pub fn skill_id(self)   -> u8 { ((self.0 >> 14) & 0b1111)   as u8 }
     #[inline] pub fn choice_idx(self) -> u8 { ((self.0 >> 18) & 0b1111)   as u8 }
-    /// True iff bit 22 is set — Focus is buffing this skill's effect-range
+    /// True iff bit 22 is set - Focus is buffing this skill's effect-range
     /// rather than its activation-range. See `encode_focus_effect`.
     #[inline] pub fn focus_effect_mode(self) -> bool { (self.0 >> 22) & 1 != 0 }
-    /// True iff bit 29 is set — `aux_sq()` carries a real square.
+    /// True iff bit 29 is set - `aux_sq()` carries a real square.
     #[inline] pub fn has_aux(self)    -> bool { (self.0 >> 29) & 1 != 0 }
     /// Auxiliary square (Focus-retargeted recipient). Only meaningful when
     /// `has_aux()` is true; otherwise reads back the reserved zero bits.
@@ -278,10 +278,10 @@ impl Action {
     // ---- DraftTurn (bit 30 = 1) ----
 
     /// Bit mask for the DraftTurn tag (bit 30). When set, the action's other
-    /// bits are reinterpreted entirely — see the module doc-comment for layout.
+    /// bits are reinterpreted entirely - see the module doc-comment for layout.
     pub const DRAFT_TURN_TAG: u32 = 1 << 30;
 
-    /// Encode a draft turn — two (skill_id, sq, slot) picks the side-to-move
+    /// Encode a draft turn - two (skill_id, sq, slot) picks the side-to-move
     /// is committing in one DraftTurn ply. Each `skill_id` must be 1..=15
     /// (0 is illegal in a pick), each `sq` must be 0..=63, each `slot` is
     /// 0 (slot1) or 1 (slot2). Caller is responsible for cross-validation
@@ -309,7 +309,7 @@ impl Action {
         Action(bits)
     }
 
-    /// True iff bit 30 is set — this action is a DraftTurn and its other
+    /// True iff bit 30 is set - this action is a DraftTurn and its other
     /// bits use the draft layout (see module doc-comment). When this is
     /// true, `kind()` / `src()` / `target()` / etc. are meaningless and
     /// must not be consulted.
@@ -343,7 +343,7 @@ impl Action {
 
     /// Bit mask for the BodyguardChoice tag (bit 31). When set, the action's
     /// regular fields (kind/src/target/skill/has_aux/has_approach) are
-    /// meaningless — the action carries only an `idx` in bits 0..4 (0 = no
+    /// meaningless - the action carries only an `idx` in bits 0..4 (0 = no
     /// redirect, k = redirect to `pending_bodyguard.eligible[k-1]`). Bit 31
     /// is the only truly free bit (bits 23..29 dual-encode aux_sq whose
     /// upper values would collide with anything mid-word; bit 30 is DraftTurn).
@@ -360,7 +360,7 @@ impl Action {
     /// Encode a defender's BodyguardChoice ply. `idx == 0` declines the
     /// redirect (the named target takes the hit). `idx` in `1..=eligible_len`
     /// redirects damage to `pos.pending_bodyguard.eligible[idx-1]`. Caller
-    /// must consult `pos.pending_bodyguard` for the upper bound — this
+    /// must consult `pos.pending_bodyguard` for the upper bound - this
     /// encoder only enforces the type-level `BG_CHOICE_MAX_IDX` cap.
     ///
     /// The encoding deliberately omits src/target/kind: those are recovered
@@ -374,7 +374,7 @@ impl Action {
         Action((idx as u32 & 0b1111) | Self::BG_CHOICE_TAG)
     }
 
-    /// True iff bit 31 is set — this action is a `BodyguardChoice` reply.
+    /// True iff bit 31 is set - this action is a `BodyguardChoice` reply.
     /// When this is true, `kind()` / `src()` / `target()` etc. are
     /// meaningless and must not be consulted; use `bg_guard_idx()` instead.
     #[inline]
@@ -385,7 +385,7 @@ impl Action {
     /// Defender's pick index for a BodyguardChoice action. `0` = decline
     /// redirect (named target takes the hit), `k` = redirect to
     /// `pending_bodyguard.eligible[k-1]`. Reading this from a non-
-    /// BodyguardChoice action yields garbage — caller must check
+    /// BodyguardChoice action yields garbage - caller must check
     /// `is_bodyguard_choice()` first.
     #[inline]
     pub fn bg_guard_idx(self) -> u8 {
@@ -393,12 +393,12 @@ impl Action {
     }
 }
 
-/// Undo Record — written by `make()`, consumed by `unmake()` to perfectly
+/// Undo Record - written by `make()`, consumed by `unmake()` to perfectly
 /// reverse an Action. Reversibility cannot live inside the Action itself
 /// because effects are state-dependent (AOE membership, captured HP/armor,
 /// turn-scoped modifier bits that were consumed, combo-credit bits set).
 ///
-/// Width is permitted to be much larger than Action — there is one Undo per
+/// Width is permitted to be much larger than Action - there is one Undo per
 /// search-stack frame, not one per Position.
 #[derive(Clone, Debug, Default)]
 pub struct Undo {
@@ -409,7 +409,7 @@ pub struct Undo {
     /// so that a King-capturing Move-Attack is perfectly reversible. Stored
     /// as a `u8` tag: 0 = None, 1 = P1Wins, 2 = P2Wins. Keeping the Undo
     /// `Default` derivable trumps the type-safety win of `Option<GameResult>`
-    /// here — the conversion lives in two helpers on `make()` / `unmake()`.
+    /// here - the conversion lives in two helpers on `make()` / `unmake()`.
     pub prev_game_result: u8,
 
     /// Snapshot of `pending_modifiers` before this action consumed any.
@@ -445,7 +445,7 @@ pub struct Undo {
     pub prev_tracked_casters: [u8; crate::state::position::MAX_TRACKED_CASTERS],
     pub prev_tracked_casters_len: u8,
 
-    /// Per-square mailbox snapshots — entries that this action mutated.
+    /// Per-square mailbox snapshots - entries that this action mutated.
     /// `affected_count` is the active length of `affected_squares` /
     /// `affected_prev_entries`. Capacity 16 is sized for the worst-case AOE
     /// (Tempest: target + 8 neighbours = 9; Swap = 2; most skills ≤ 2).
@@ -453,14 +453,14 @@ pub struct Undo {
     pub affected_squares: [u8; 16],
     pub affected_prev_entries: [u16; 16],
 
-    /// Bitboard deltas — XOR these to revert.
+    /// Bitboard deltas - XOR these to revert.
     pub p1_pieces_xor: u64,
     pub p2_pieces_xor: u64,
     pub kings_xor:     u64,
     pub champions_xor: u64,
     pub guards_xor:    u64,
 
-    /// Zobrist delta — XOR to revert.
+    /// Zobrist delta - XOR to revert.
     pub zobrist_xor: u64,
 }
 
@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn bodyguard_choice_default_action_is_not_bg() {
-        // Default action (zeroed u32) must not look like a BodyguardChoice —
+        // Default action (zeroed u32) must not look like a BodyguardChoice -
         // the TT relies on Action::default() being a recognisable sentinel.
         assert!(!Action::default().is_bodyguard_choice());
     }
@@ -579,7 +579,7 @@ mod tests {
         // Move-Attack with non-zero approach/choice mustn't either.
         let mv = Action::encode_move_attack(/*src*/ 5, /*tgt*/ 12, /*choice*/ 3, /*approach*/ 6);
         assert!(!mv.is_bodyguard_choice());
-        // Focus-effect, aux-encoded — none should collide with bit 28.
+        // Focus-effect, aux-encoded - none should collide with bit 28.
         let fx = Action::encode_focus_effect(0, 0, ActionKind::Skill, 1, 0);
         assert!(!fx.is_bodyguard_choice());
         let ax = Action::encode_with_aux(0, 0, ActionKind::Skill, 1, 0, 1);
@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn bodyguard_choice_only_sets_tag_and_idx() {
-        // Encoding must not bleed into other bit ranges — src/target/kind/
+        // Encoding must not bleed into other bit ranges - src/target/kind/
         // skill/aux/approach/has_aux/has_approach must read back as zero.
         // (They are meaningless on BG, but we still want the raw bits clean.)
         let a = Action::encode_bodyguard_choice(3);

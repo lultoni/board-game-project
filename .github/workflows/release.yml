@@ -157,10 +157,10 @@ jobs:
           body: |
             Desktop builds for `${{ github.ref_name }}`.
 
-            - **macOS (Apple Silicon)** — `.dmg`. Ad-hoc signed; on first launch macOS will say the app is damaged. Workaround until v0.2 signing: `xattr -cr "/Applications/(game-name).app"` after dragging to Applications, then double-click.
-            - **Linux x86_64** — `.AppImage` (CPU + GPU via wgpu/Vulkan). `chmod +x` then run.
-            - **Linux x86_64 + CUDA** — `.AppImage` (CPU + NVIDIA CUDA). Requires CUDA 12.x runtime.
-            - **Windows x86_64** — `.msi` or `.exe` (CPU + GPU via wgpu/DX12).
-            - **Windows x86_64 + CUDA** — `.msi` or `.exe` (CPU + NVIDIA CUDA). Requires CUDA 12.x runtime.
+            - **macOS (Apple Silicon)** - `.dmg`. Ad-hoc signed; on first launch macOS will say the app is damaged. Workaround until v0.2 signing: `xattr -cr "/Applications/(game-name).app"` after dragging to Applications, then double-click.
+            - **Linux x86_64** - `.AppImage` (CPU + GPU via wgpu/Vulkan). `chmod +x` then run.
+            - **Linux x86_64 + CUDA** - `.AppImage` (CPU + NVIDIA CUDA). Requires CUDA 12.x runtime.
+            - **Windows x86_64** - `.msi` or `.exe` (CPU + GPU via wgpu/DX12).
+            - **Windows x86_64 + CUDA** - `.msi` or `.exe` (CPU + NVIDIA CUDA). Requires CUDA 12.x runtime.
 
             In the app, open the Training Observatory and pick a backend from the dropdown.

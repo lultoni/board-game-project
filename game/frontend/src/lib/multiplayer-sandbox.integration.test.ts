@@ -88,7 +88,7 @@ class SharedFakeEngine implements EngineClient {
   }
 }
 
-// Minimal route-shaped carrier — the fields the sandbox flow touches.
+// Minimal route-shaped carrier - the fields the sandbox flow touches.
 interface RouteCarrier {
   mode: "multiplayer" | "sandbox";
   trueSnapshotJson: string | null;
@@ -167,7 +167,7 @@ describe("sandbox ↔ MP integration (ns-37)", () => {
 
     // Now the joiner enters sandbox and explores (forks the shared engine).
     await t.enterSandbox();
-    await t.sandboxApply(999); // exploratory move — engine is now [10, 999]
+    await t.sandboxApply(999); // exploratory move - engine is now [10, 999]
     expect(t.match.mode).toBe("sandbox");
     expect(t.eng.applied).toEqual([10, 999]);
 
@@ -177,7 +177,7 @@ describe("sandbox ↔ MP integration (ns-37)", () => {
     t.push({ kind: "committed", seq: 2, phase: "play", raw: 20, postZobrist: trueZ, originNonce: null });
     for (let i = 0; i < 6; i++) await Promise.resolve();
 
-    // Auto-exited sandbox, applied on the TRUE line — not rolled back, not cheat.
+    // Auto-exited sandbox, applied on the TRUE line - not rolled back, not cheat.
     expect(t.cheats).toEqual([]);
     expect(t.sent.filter((m) => m.kind === "cheat-detected")).toEqual([]);
     expect(t.sent.filter((m) => m.kind === "request-snapshot")).toEqual([]);

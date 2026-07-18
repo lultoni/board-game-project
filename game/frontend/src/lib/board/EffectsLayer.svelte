@@ -11,7 +11,7 @@
      *  WHEEL_PAD. The canvas fills the SVG element's outer box, so we
      *  use this to map from grid-local coords to canvas pixels. */
     wheelPad?: number;
-    /** Effect queue — read-only from this component's perspective. The
+    /** Effect queue - read-only from this component's perspective. The
      *  caller (PlyRenderer) owns the array and resets it at match-reset
      *  boundaries. We track expiry internally via `expired` below so we
      *  never mutate the caller's `$state` array (which would trigger
@@ -30,7 +30,7 @@
   const particlesByEffect = new WeakMap<Effect, Particle[]>();
   // Effects whose lifetime has elapsed. Skipped in future frames. WeakSet so
   // the caller's queue reset (queue.length = 0) drops the references and lets
-  // GC reclaim entries here too — no manual cleanup needed.
+  // GC reclaim entries here too - no manual cleanup needed.
   const expired = new WeakSet<Effect>();
   // Smallest index in `queue` that might still contain a live effect. Advanced
   // as prefix effects expire so we don't rescan them every frame. Reset to 0
@@ -114,7 +114,7 @@
     if (queue.length < lastLen) scanStart = 0;
     lastLen = queue.length;
 
-    // Iterate, render, mark expired. Do NOT mutate `queue` — it's the
+    // Iterate, render, mark expired. Do NOT mutate `queue` - it's the
     // caller's $state array; mutating it here triggers Svelte's
     // ownership_invalid_mutation. The caller resets it at match boundaries.
     let alive = 0;

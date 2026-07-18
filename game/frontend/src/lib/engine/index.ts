@@ -1,4 +1,4 @@
-// Engine client — always TauriClient (WASM path removed; the game ships as a
+// Engine client - always TauriClient (WASM path removed; the game ships as a
 // Tauri desktop app only; WASM cannot run the CUDA training backend).
 
 import type { EngineClient } from "./types";
@@ -45,7 +45,7 @@ export async function getEngine(): Promise<EngineClient> {
   return cached;
 }
 
-/** For tests / hot-reload scenarios — drop the cached client. */
+/** For tests / hot-reload scenarios - drop the cached client. */
 export function resetEngine(): void {
   cached?.dispose();
   cached = null;

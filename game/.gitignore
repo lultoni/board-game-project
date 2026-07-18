@@ -4,13 +4,13 @@ target/
 # Tauri auto-generated schemas (regenerated each build)
 crates/tauri_wrapper/gen/
 
-# Training Observatory run dir — large, churny JSON snapshots + .mpk
+# Training Observatory run dir - large, churny JSON snapshots + .mpk
 # rater blobs. Keep the directory shell (.gitkeep) so the trainer can
 # write there out of the box. Promote interesting runs to runs/archive/.
 runs/active/*
 !runs/active/.gitkeep
 
-# NN training corpus — large (~27 MB at 100k), generated on demand by
+# NN training corpus - large (~27 MB at 100k), generated on demand by
 # nn_trainer::corpus_gen, deterministic from seed. NOT the search benchmark
 # (bench/corpus/raw_corpus.txt / corpus.txt stay committed).
 bench/corpus/nn_training_corpus.txt

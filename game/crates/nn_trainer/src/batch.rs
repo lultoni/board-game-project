@@ -11,10 +11,10 @@
 //! a deterministic function of the input seed when:
 //!   - both raters are deterministic given the same input (the heuristic
 //!     evaluator is; the NN evaluator is once its weights are fixed);
-//!   - `max_depth` is fixed (no time limit — time-limited search introduces
+//!   - `max_depth` is fixed (no time limit - time-limited search introduces
 //!     wall-clock nondeterminism);
 //!   - the rayon thread pool is otherwise unconstrained (rayon's work
-//!     stealing doesn't affect which inputs map to which outputs — each
+//!     stealing doesn't affect which inputs map to which outputs - each
 //!     game's loadouts and seed are derived deterministically from `seed_base`
 //!     before any parallel work begins).
 //!
@@ -31,7 +31,7 @@ use rayon::prelude::*;
 /// Game `i` uses loadouts derived from `(seed_base, i)` so each call with
 /// the same `seed_base` produces the same corpus. Games where the engine
 /// fails to terminate (returns `None` from `play_game`) are silently
-/// dropped — the corpus is best-effort.
+/// dropped - the corpus is best-effort.
 pub fn generate_corpus(
     n_games: usize,
     seed_base: u64,
@@ -59,7 +59,7 @@ mod tests {
 
     #[test]
     fn parallel_corpus_smoke() {
-        // 4 games at depth 2 — small enough to run in CI in a few seconds.
+        // 4 games at depth 2 - small enough to run in CI in a few seconds.
         let corpus = generate_corpus(4, /*seed_base=*/100,
             &HeuristicEvaluator, &HeuristicEvaluator, 2);
         assert!(!corpus.is_empty(),

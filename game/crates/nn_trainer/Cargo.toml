@@ -13,7 +13,7 @@ crate-type = ["rlib"]
 # Backend features are additive: enabling several gives the resulting
 # binary the runtime choice between them via `BackendChoice`. The default
 # release binary bundles ndarray (CPU) + wgpu (Metal / Vulkan / DX12).
-# `backend-cuda` is opt-in and produces a separate Linux-only artefact —
+# `backend-cuda` is opt-in and produces a separate Linux-only artefact -
 # `burn-cuda` requires CUDA Toolkit 12.x at build time and won't compile
 # on Mac.
 default = ["backend-ndarray", "backend-wgpu"]

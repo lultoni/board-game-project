@@ -1,24 +1,24 @@
-//! Layer 1 — Path/Range/Block primitives and movement geometry.
+//! Layer 1 - Path/Range/Block primitives and movement geometry.
 //!
 //! Single interface for all board geometry used by the generator and evaluator:
 //!
-//! - `skill_attacks(sq, occ, range)` — queen-ray skill targeting with range cap
-//! - `movement_targets_speed1(sq)` — 8-adjacent squares (Champion/King moves)
-//! - `movement_targets_speed2(sq, occ)` — Chebyshev-BFS-2 with path blocking (Guard moves)
-//! - `movement_attack_targets_speed2(sq, occ, reach_empty, opp_bb)` — enemies attackable in a Guard move
-//! - `cheby_dist(a, b)` — precomputed Chebyshev distance (0..=7)
+//! - `skill_attacks(sq, occ, range)` - queen-ray skill targeting with range cap
+//! - `movement_targets_speed1(sq)` - 8-adjacent squares (Champion/King moves)
+//! - `movement_targets_speed2(sq, occ)` - Chebyshev-BFS-2 with path blocking (Guard moves)
+//! - `movement_attack_targets_speed2(sq, occ, reach_empty, opp_bb)` - enemies attackable in a Guard move
+//! - `cheby_dist(a, b)` - precomputed Chebyshev distance (0..=7)
 //! - `between(a, b)`, `on_ray(a, b)`, `step_toward`, `step_away`, `neighbour_in_dir`
 //!
 //! ## This module actually is magic bitboards (the slider path)
 //!
-//! `skill_attacks` — the only occupancy-dependent *sliding* query — resolves via
+//! `skill_attacks` - the only occupancy-dependent *sliding* query - resolves via
 //! classic **split rook + bishop plain-magic bitboards**: per-square
 //! `(mask, magic, shift, attack-table)` so a query is
 //! `(occ & mask).wrapping_mul(magic) >> shift → table[idx]` with NO per-call ray
 //! walk. The rook + bishop tables are OR'd (queen = rook ∪ bishop) and the
 //! Chebyshev range cap is applied afterward via `within_range`. Tables (~0.82 MB
 //! total) and the 128 magic numbers are built once at first use in the same
-//! `OnceLock` idiom as `RAYS`/`BETWEEN`. **PEXT is deliberately NOT used** — it's a
+//! `OnceLock` idiom as `RAYS`/`BETWEEN`. **PEXT is deliberately NOT used** - it's a
 //! BMI2 (x86) instruction; this project targets aarch64, where plain multiply-
 //! shift magics are the correct technique.
 //!
@@ -29,7 +29,7 @@
 //!
 //! Everything else here is a pure precomputed table lookup (`between`, `cheby`,
 //! `MOVE1`, `within_range`) or cheaper-than-a-lookup integer math (`on_ray`,
-//! `step_*`, `neighbour_in_dir`) — none benefit from magic, so they are left as-is.
+//! `step_*`, `neighbour_in_dir`) - none benefit from magic, so they are left as-is.
 
 use super::bitboard::Bitboard;
 use std::sync::OnceLock;
@@ -149,7 +149,7 @@ impl MagicRng {
         self.0 = x;
         x
     }
-    /// Sparse candidate — AND of three draws biases toward few set bits, which
+    /// Sparse candidate - AND of three draws biases toward few set bits, which
     /// is where good magics cluster.
     #[inline]
     fn sparse(&mut self) -> u64 {
@@ -166,7 +166,7 @@ fn is_ortho(d: usize) -> bool {
 
 /// Relevant-occupancy mask for a rook (`ortho=true`) or bishop (`ortho=false`)
 /// at `sq`: every ray square whose *next* step is still on-board (the edge
-/// square can't block anything beyond it, so it's excluded — the standard
+/// square can't block anything beyond it, so it's excluded - the standard
 /// magic relevant mask).
 fn slider_relevant_mask(sq: u8, ortho: bool) -> u64 {
     let mut m = 0u64;
@@ -436,7 +436,7 @@ fn move1_table() -> &'static [u64; 64] {
 }
 
 /// King-dilate a whole bitboard: OR every set square with its 8 immediate
-/// neighbours (the result INCLUDES the input set). Branchless shift-mask form —
+/// neighbours (the result INCLUDES the input set). Branchless shift-mask form -
 /// faster than iterating set bits, and the single shared primitive for all
 /// bitboard dilation in the engine (SEE fanout, evaluator neighbourhoods, the
 /// speed-2 flood-fill below).
@@ -452,7 +452,7 @@ pub fn king_expand(x: u64) -> u64 {
 
 /// The 8 immediately adjacent squares for a speed-1 piece at `sq`.
 ///
-/// Returns empty squares AND occupied squares — callers should mask out
+/// Returns empty squares AND occupied squares - callers should mask out
 /// own pieces to get legal move destinations and AND with opp pieces for
 /// move-attack targets.
 #[inline]
@@ -465,7 +465,7 @@ pub fn movement_targets_speed1(sq: u8) -> Bitboard {
 /// the given occupancy mask `occ`.
 ///
 /// Returns bitmask of reachable **empty** squares only (occupied squares are
-/// blocking — piece cannot enter or pass through). Caller should:
+/// blocking - piece cannot enter or pass through). Caller should:
 ///   - AND with `!own_pieces` for legal move destinations (already empty)
 ///   - separately compute attack targets as enemies adjacent to any reachable
 ///     square or `sq` itself (see `movement_attack_targets_speed2`)
@@ -488,8 +488,8 @@ pub fn movement_targets_speed2(sq: u8, occ: u64) -> Bitboard {
 /// Move-attack targets for a speed-2 piece at `sq`: enemy squares that can be
 /// reached in the final step from any reachable square (including `sq` itself).
 ///
-/// `reach_empty` — result of `movement_targets_speed2(sq, occ)`.
-/// `opp_bb`      — bitmask of enemy pieces to check.
+/// `reach_empty` - result of `movement_targets_speed2(sq, occ)`.
+/// `opp_bb`      - bitmask of enemy pieces to check.
 ///
 /// Returns bitmask of enemy squares that are attackable. Equivalent to the
 /// attack-target loop in `generator::reachable()`, lifted here for symmetry.
@@ -715,7 +715,7 @@ mod tests {
 
     #[test]
     fn between_ray_squares_correct() {
-        // a1 = sq 0, h8 = sq 63. Diagonal — between should be {b2, c3, d4, e5, f6, g7}.
+        // a1 = sq 0, h8 = sq 63. Diagonal - between should be {b2, c3, d4, e5, f6, g7}.
         let b = between(0, 63);
         assert_eq!(b.0, bb_of(&[9, 18, 27, 36, 45, 54]));
     }
@@ -754,15 +754,15 @@ mod tests {
         assert_eq!(step_toward(28, 60), Some(36));
         // Same-square is None.
         assert_eq!(step_toward(28, 28), None);
-        // Off-ray: a1 → b4 (sq 25). dr=3, df=1 — not a queen-ray.
+        // Off-ray: a1 → b4 (sq 25). dr=3, df=1 - not a queen-ray.
         assert_eq!(step_toward(0, 25), None);
     }
 
     #[test]
     fn step_away_diagonal_and_orthogonal() {
-        // pivot a1 (0), at b2 (9) — step away → c3 (sq 18).
+        // pivot a1 (0), at b2 (9) - step away → c3 (sq 18).
         assert_eq!(step_away(0, 9), Some(18));
-        // pivot e8 (60), at e7 (52) — step away → e6 (sq 44).
+        // pivot e8 (60), at e7 (52) - step away → e6 (sq 44).
         assert_eq!(step_away(60, 52), Some(44));
         // pivot == at → None.
         assert_eq!(step_away(0, 0), None);
@@ -823,7 +823,7 @@ mod tests {
     #[test]
     fn move2_empty_board_centre_reaches_24() {
         // BFS-2 from a fully interior square reaches the 5×5 block = 24 squares.
-        // sq 27 = rank 3 file 3 — all 5×5 neighbours are on-board.
+        // sq 27 = rank 3 file 3 - all 5×5 neighbours are on-board.
         let m = movement_targets_speed2(27, 0); // d4
         assert_eq!(m.0.count_ones(), 24);
     }
@@ -858,7 +858,7 @@ mod tests {
     #[test]
     fn move2_full_column_blocks_pass() {
         // Place blockers at sq 36 AND sq 37 (N and NE of sq 28).
-        // sq 44 and 45 can still be reached via W path (28→35→43→44) — wait, that's 3 steps.
+        // sq 44 and 45 can still be reached via W path (28→35→43→44) - wait, that's 3 steps.
         // Actually with both sq 36 and 37 blocked, sq 44 requires going through sq 35
         // then sq 44: 28→35→44 (2 steps). sq 35 is empty, sq 44 is empty. So reachable!
         // To truly block sq 44: need to block the entire N half.

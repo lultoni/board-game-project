@@ -289,7 +289,7 @@ describe("IdbTelemetryStore", () => {
       await expect(store.updateMultiplayerRole("does-not-exist", "host")).resolves.toBeUndefined();
     });
 
-    it("is idempotent — same role is a no-op", async () => {
+    it("is idempotent - same role is a no-op", async () => {
       const id = await store.startMatch({ mode: "multiplayer", multiplayerRole: "host" });
       await store.updateMultiplayerRole(id, "host");
       const meta = await store.getMatchMeta(id);

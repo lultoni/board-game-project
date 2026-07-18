@@ -1,4 +1,4 @@
-//! Single-track gauntlet — the selection layer that decides which mutated
+//! Single-track gauntlet - the selection layer that decides which mutated
 //! candidates advance and which get discarded.
 //!
 //! Implements plan §5 (ns-50 rework: **single 100 ms/ply track**, superseding
@@ -10,7 +10,7 @@
 //!   baseline twice on the same loadout (once as P1, once as P2), then a
 //!   tiebreaker on a fresh loadout if neither has clinched. Cancels draft luck.
 //! - **Acceptance** (`accept_vs`): a candidate is accepted iff it wins the
-//!   mirrored BO3 against the current champion. One opponent, one think time —
+//!   mirrored BO3 against the current champion. One opponent, one think time -
 //!   the mutation loop makes one candidate at a time, so there is no candidate
 //!   pool to pre-filter (the retired Tier-1/Tier-2 split is gone).
 //! - **Champion tracker** (`ChampionTracker`): a single champion pointer,
@@ -24,7 +24,7 @@
 //!
 //! ## Why the gauntlet lives in this crate (not core_engine)
 //!
-//! The gauntlet only matters during training — a training-time concept, not a
+//! The gauntlet only matters during training - a training-time concept, not a
 //! runtime one. Putting it next to the orchestrator keeps all training
 //! infrastructure in `nn_trainer/`.
 
@@ -39,7 +39,7 @@ use core_engine::state::position::{GameResult, Player};
 use core_engine::state::Position;
 
 /// Outcome of a single head-to-head game from P1's POV. `None` means the game
-/// hit the ply cap without terminating — caller decides how to score it (we
+/// hit the ply cap without terminating - caller decides how to score it (we
 /// adjudicate via the heuristic in `play_match_with_callback`).
 pub type MatchOutcome = Option<GameResult>;
 
@@ -66,7 +66,7 @@ pub fn play_match(
 /// Same as `play_match`, but invokes `on_ply(position_after_ply, ply_index,
 /// action_played)` after every move. The callback is the hook the orchestrator
 /// uses to write `live.json` for the UI's Live Match View. When nobody is
-/// subscribed, `on_ply` becomes a cheap noop — the orchestrator gates
+/// subscribed, `on_ply` becomes a cheap noop - the orchestrator gates
 /// expensive work inside the closure on `live::is_subscribed`.
 pub fn play_match_with_callback<F>(
     eval_p1: &dyn Evaluator,
@@ -98,7 +98,7 @@ where
     }
 
     // Adjudicate at ply cap via heuristic: positive score → P1 leads. On exact
-    // zero (symmetric position) award P1 as a tiebreak — this avoids all-draw
+    // zero (symmetric position) award P1 as a tiebreak - this avoids all-draw
     // series when both sides are equally matched at the cap.
     pos.game_result.or_else(|| {
         let score = HeuristicEvaluator.evaluate(&pos);
@@ -204,10 +204,10 @@ pub struct Acceptance {
 
 /// Single-track acceptance: the candidate plays one mirrored BO3 against the
 /// current champion at `time_ms`. Accepted iff the candidate out-wins the
-/// champion. This is the whole gate — the mutation loop makes one candidate at
+/// champion. This is the whole gate - the mutation loop makes one candidate at
 /// a time, so there is no pool to rank and no non-regression sweep to run.
 /// (A hall-of-fame non-regression check can be added later if mutation causes
-/// cycling — plan §5.2.)
+/// cycling - plan §5.2.)
 pub fn accept_vs(
     candidate: &dyn Evaluator,
     champion: &dyn Evaluator,
@@ -252,7 +252,7 @@ impl ChampionTracker {
 
     /// Consider `candidate` (which already passed `accept_vs`) for the title.
     /// It takes the title (returns `true`) iff it beats the current champion's
-    /// win-rate floor — the first accepted candidate always wins. Callers only
+    /// win-rate floor - the first accepted candidate always wins. Callers only
     /// call this when acceptance passed, so this is the tie-break between
     /// multiple passers over a run.
     pub fn consider(&mut self, candidate: RaterId, win_rate: f32) -> bool {
@@ -272,7 +272,7 @@ mod tests {
     use core_engine::search::evaluator::HeuristicEvaluator;
 
     /// A degenerate evaluator that returns a fixed score regardless of
-    /// position — forces obviously bad decisions so we can verify plumbing
+    /// position - forces obviously bad decisions so we can verify plumbing
     /// without relying on real rater strength differences.
     #[derive(Clone, Copy, Debug)]
     struct ConstEval(i32);
@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn mirrored_bo3_plays_at_least_two_games() {
-        // Two identical evaluators on the same loadout — outcome depends on
+        // Two identical evaluators on the same loadout - outcome depends on
         // colour-symmetry; we don't predict the winner, only that the tally
         // totals at least the mirror pair (2 games).
         let tally = mirrored_bo3(&HeuristicEvaluator, &HeuristicEvaluator, 7, 10);

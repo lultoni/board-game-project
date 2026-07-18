@@ -1,14 +1,14 @@
 // Shared error/timeout shell for engine AI calls. The two existing call sites
 // (`routes/match/+page.svelte` stepAi, `routes/inspector/+page.svelte`
 // requestAiMoveAtDepth in the deepening loop) had near-identical try/catch
-// shapes — same `(e as Error).message` stringification, no timeout, no
+// shapes - same `(e as Error).message` stringification, no timeout, no
 // uniform cancellation hook. Funnel through `runAiCall` so future work
 // (e.g., a global "engine wedged" toast or a settings-driven timeout) has
 // one place to land.
 //
 // IMPORTANT: There is no engine-side cancellation API. A `timeoutMs` rejection
 // drops the result on the floor; the engine keeps searching until it finishes
-// naturally. `cancelled` is *cooperative* — it is polled at well-known points
+// naturally. `cancelled` is *cooperative* - it is polled at well-known points
 // (today: only on resolve, since the engine doesn't yield mid-search). The
 // outer iterative-deepening loop in inspector remains the authoritative
 // cancellation channel for that flow.
@@ -30,7 +30,7 @@ export interface AiCallOpts {
   timeoutMs?: number;
   /** Cooperative-cancellation flag. Checked after `fn` resolves; if true the
    *  result is discarded and the promise rejects with `AiCallError("cancelled")`.
-   *  We deliberately don't poll mid-flight — the engine doesn't yield. */
+   *  We deliberately don't poll mid-flight - the engine doesn't yield. */
   cancelled?: () => boolean;
 }
 

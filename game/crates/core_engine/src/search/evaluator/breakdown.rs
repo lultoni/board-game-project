@@ -33,7 +33,7 @@ pub struct TermEntry {
     pub signed: i32,
 }
 
-/// Dynamic breakdown — the registry's native output. Only active terms appear.
+/// Dynamic breakdown - the registry's native output. Only active terms appear.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynBreakdown {
     pub terms:    Vec<TermEntry>,
@@ -83,7 +83,7 @@ impl DynBreakdown {
 /// Per-component decomposition of the static eval (legacy fixed-field view).
 /// `total` is exactly what `evaluate()` returns. Per-bucket fields are
 /// sign-corrected: P1 contributions to `*_p1`, P2 to `*_p2`, both positive
-/// magnitudes. Serialized to the frontend / telemetry — shape is a stable API.
+/// magnitudes. Serialized to the frontend / telemetry - shape is a stable API.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EvalBreakdown {
     pub material_p1:  i32,
@@ -98,29 +98,29 @@ pub struct EvalBreakdown {
     pub money_p2:     i32,
     pub mobility_p1:  i32,
     pub mobility_p2:  i32,
-    /// Threat term — REMOVED (Pass 4). Always 0. Kept for schema compat.
+    /// Threat term - REMOVED (Pass 4). Always 0. Kept for schema compat.
     pub threat_p1:    i32,
     pub threat_p2:    i32,
-    /// Skill-activity — REMOVED (Pass 4++). Always 0. Kept for schema compat.
+    /// Skill-activity - REMOVED (Pass 4++). Always 0. Kept for schema compat.
     pub skill_act_p1: i32,
     pub skill_act_p2: i32,
-    /// E2 — exposure penalty (positive magnitude here; subtracts in total).
+    /// E2 - exposure penalty (positive magnitude here; subtracts in total).
     pub exposure_p1:  i32,
     pub exposure_p2:  i32,
-    /// E6 — bodyguard coverage bonus.
+    /// E6 - bodyguard coverage bonus.
     pub coverage_p1:  i32,
     pub coverage_p2:  i32,
-    /// E8 — tempo bonus (side-to-move).
+    /// E8 - tempo bonus (side-to-move).
     pub tempo_p1:     i32,
     pub tempo_p2:     i32,
-    /// E9 — offensive-range flag (raw max range). Signed with weight in total.
+    /// E9 - offensive-range flag (raw max range). Signed with weight in total.
     pub offensive_range_p1: i32,
     pub offensive_range_p2: i32,
     pub total:        i32,
 }
 
 // ============================================================
-// Per-square diagnostic view — moved verbatim from the pre-ns-43 evaluator.
+// Per-square diagnostic view - moved verbatim from the pre-ns-43 evaluator.
 // Not called from search; drives the frontend hover popup. Its math is
 // intentionally independent of the term registry (a self-contained second
 // implementation) and is cross-checked against the registry total by the
@@ -194,7 +194,7 @@ impl Default for EvalBreakdownBySquare {
     }
 }
 
-/// Diagnostic entry point — same math as the aggregate eval, but one record per
+/// Diagnostic entry point - same math as the aggregate eval, but one record per
 /// square. Uses `EvalParams::DEFAULT` (the diagnostic UI always reflects the
 /// shipped weights). Invariant: `.total == evaluate_breakdown(pos).total`.
 pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
@@ -287,7 +287,7 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
         let (coverage_term, empty_ring_total, empty_ring_shielded): (i32, u8, u8) = if is_guard {
             (0, 0, 0)
         } else {
-            // Threat-gated coverage — mirrors terms::Coverage exactly. Only empty
+            // Threat-gated coverage - mirrors terms::Coverage exactly. Only empty
             // ring squares with an enemy in their direction (within r3 of the
             // defender) count; no threat → 0 (not full credit).
             let enemy_bb = if is_p1 { p2_bb } else { p1_bb };
@@ -324,7 +324,7 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
             }
         };
 
-        // E11 — guard isolation penalty (folds into total; not itemised in the
+        // E11 - guard isolation penalty (folds into total; not itemised in the
         // per-square struct yet). Mirrors terms::GuardIsolation exactly so the
         // `evaluate_by_square.total == evaluate_breakdown.total` invariant holds.
         let guard_iso_pen: i32 = if is_guard {
@@ -347,7 +347,7 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
         let piece_total = material + hp_term + armor_term + skills_term
             + mob_score + coverage_term - exposure_term - guard_iso_pen;
 
-        // E12 — champion threat (folds into total; not itemised in the
+        // E12 - champion threat (folds into total; not itemised in the
         // per-square struct yet). Mirrors terms::champion_threat_score exactly.
         let champ_threat: i32 = if is_champion {
             super::terms::champion_threat_score(
@@ -406,7 +406,7 @@ pub fn evaluate_by_square(pos: &Position) -> EvalBreakdownBySquare {
     let off_p1 = max_offensive_range(pos, p1_bb, pos.p1_money) as i32;
     let off_p2 = max_offensive_range(pos, p2_bb, pos.p2_money) as i32;
 
-    // E13 — endgame closing (folds into total; mirrors terms::endgame_closing_score).
+    // E13 - endgame closing (folds into total; mirrors terms::endgame_closing_score).
     let (p1_val, p1_mat) = side_value_and_material(pos, p1_bb, params);
     let (p2_val, p2_mat) = side_value_and_material(pos, p2_bb, params);
     let stage = classify_stage(p1_mat + p2_mat, pos.round_number, params);

@@ -16,7 +16,7 @@ use super::params::EvalParams;
 /// Coarse game stage (ns-43 stage infra). Derived from total material on the
 /// board with a round-number bias (rounds drive income + skill budget in this
 /// game, so a long game is "later" even at high material). Consumed by phase-
-/// gated terms via [`EvalTerm::is_active`](super::term::EvalTerm::is_active) —
+/// gated terms via [`EvalTerm::is_active`](super::term::EvalTerm::is_active) -
 /// notably the asymmetric `endgame_closing` term.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GameStage {
@@ -105,7 +105,7 @@ impl<'a> EvalContext<'a> {
 /// `total_value` = material + hp + armor + equipped-skill base value (the
 /// `advantage` differential uses this); `material_value` = piece material only
 /// (the stage classifier uses the board total). Reuses the same weights the
-/// material/hp/armor/skills terms use — single source of truth via `params`.
+/// material/hp/armor/skills terms use - single source of truth via `params`.
 #[inline]
 pub fn side_value_and_material(pos: &Position, side_bb: u64, params: &EvalParams) -> (i32, i32) {
     let mut total = 0i32;
@@ -254,7 +254,7 @@ pub fn actions_per_round(phase: Phase, round_number: u16) -> u8 {
     }
 }
 
-/// E3 — money value with diminishing returns capped at `cap`. Cap 0 → 0.
+/// E3 - money value with diminishing returns capped at `cap`. Cap 0 → 0.
 #[inline]
 pub fn useful_money(money: u16, cap: u16, params: &EvalParams) -> i32 {
     if cap == 0 { return 0; }
@@ -269,9 +269,9 @@ pub fn useful_money(money: u16, cap: u16, params: &EvalParams) -> i32 {
     value as i32
 }
 
-/// E9 — side's max offensive range across castable strike + Shove skills.
+/// E9 - side's max offensive range across castable strike + Shove skills.
 /// Verbatim from the pre-ns-43 evaluator (only the const `Phase::Draft` guard
-/// and `skill_*` lookups are used; no params needed — this is pure reach).
+/// and `skill_*` lookups are used; no params needed - this is pure reach).
 pub fn max_offensive_range(pos: &Position, side_bb: u64, money: u16) -> u8 {
     if pos.current_phase == Phase::Draft { return 0; }
     if money < 2 { return 0; }

@@ -3,7 +3,7 @@
 //! A converged rater returns roughly {−1, +1} for "P2 winning" / "P1 winning"
 //! positions, but the search compares those scores against a heuristic
 //! evaluator working in centipawns. Multiplying the raw NN output by
-//! `DEFAULT_EVAL_SCALE = 3000` is a reasonable starting heuristic — but a
+//! `DEFAULT_EVAL_SCALE = 3000` is a reasonable starting heuristic - but a
 //! *fitted* scale makes the NN's preferences land in the same magnitude as
 //! the heuristic's, which keeps move ordering and alpha-beta windows sensible
 //! when the two evaluators ever sit side-by-side (e.g. as separate seats in
@@ -15,7 +15,7 @@
 //!   Σ (k·nn_raw_i − heuristic_cp_i)²
 //! over a calibration probe set. The closed form is
 //!   k = Σ(x_i · y_i) / Σ(x_i²)
-//! where `x_i = nn_raw_i` and `y_i = heuristic_cp_i`. No intercept — the NN
+//! where `x_i = nn_raw_i` and `y_i = heuristic_cp_i`. No intercept - the NN
 //! is sign-symmetric around 0 by construction (`{−1,+1}` labels averaged to
 //! 0), and adding an offset would distort the symmetry we rely on for
 //! `evaluate(pos) == −evaluate(mirror(pos))`-style invariants in the search.
@@ -24,7 +24,7 @@
 //!
 //! The caller picks the positions. The orchestrator passes a hold-out slice
 //! from `generate_corpus` (a small fraction the trainer didn't see); ad-hoc
-//! callers can build whatever probe set they like. Calibration is *cheap* —
+//! callers can build whatever probe set they like. Calibration is *cheap* -
 //! one forward pass + one heuristic evaluation per probe.
 //!
 //! ## Edge cases
@@ -77,7 +77,7 @@ pub fn calibrate_rater<E: Evaluator>(
         let cp = heuristic.evaluate(pos);
         // The heuristic returns ±MATE_SCORE on terminal positions; those
         // dominate the fit and aren't what we're trying to scale (the NN
-        // never sees them — terminals short-circuit in `NnEvaluator`).
+        // never sees them - terminals short-circuit in `NnEvaluator`).
         // Drop them.
         if cp.unsigned_abs() > 100_000 { continue; }
 
@@ -123,7 +123,7 @@ mod tests {
             Some(k) => assert!(k.is_finite() && k != 0.0,
                 "fitted scale must be finite and non-zero, got {}", k),
             None => {
-                // Acceptable — untrained rater might output exactly 0 here.
+                // Acceptable - untrained rater might output exactly 0 here.
             }
         }
     }

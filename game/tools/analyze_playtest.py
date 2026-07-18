@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-analyze_playtest.py — extract design-relevant player-behaviour metrics from a
+analyze_playtest.py - extract design-relevant player-behaviour metrics from a
 `boardgame-bundle-v1` telemetry export (the "send to designer" blob).
 
 The bundle is one giant single-line JSON. This tool never prints the raw blob;
@@ -394,7 +394,7 @@ def print_game_report(g):
 
 
 def print_combo_trace(log, idx):
-    print(f"\n{'#'*70}\nCOMBO-BONUS AUDIT — GAME {idx}")
+    print(f"\n{'#'*70}\nCOMBO-BONUS AUDIT - GAME {idx}")
     print("Flagging Skill plies whose target already carried a combo counter>0")
     print("in the pre-move FEN. est_damage = armor lost + hp lost. Compare vs the")
     print("skill's base damage to see whether the +counter bonus was applied.")

@@ -16,7 +16,7 @@
     focusActive: boolean;
     chargeActive: boolean;
     /** Whether the slice is currently armed (target-pending). Drives the
-     * "armed — click a target" hint on a skill card. */
+     * "armed - click a target" hint on a skill card. */
     armed: boolean;
   }
 
@@ -39,7 +39,7 @@
     if (slice.kind === "modifierBadge") {
       // Hover-only marker shown when a modifier is currently active on
       // pendingModifiers. Cast was already done from the piece's skill
-      // slot — this card explains what's about to apply.
+      // slot - this card explains what's about to apply.
       const id = slice.modifier === "focus" ? 14 : 15;
       const s = SKILLS[id];
       if (!s) return null;

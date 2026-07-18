@@ -8,7 +8,7 @@
 //! balance change lands later, update these defaults AND re-capture the goldens
 //! in the same commit.
 //!
-//! Params holds only *eval weights* — game rules (skill costs, ranges, phase
+//! Params holds only *eval weights* - game rules (skill costs, ranges, phase
 //! budgets) stay pulled live from `game_logic::skills` / `make_unmake`, never
 //! restated here.
 
@@ -32,7 +32,7 @@ pub struct EvalParams {
     pub king_mob_per_sq:          i32,
     /// Champion real movement-space (ns-43 Term 3a): reachable empty squares ×
     /// this. Champions are speed-1. Mild positional value (skill-cast paths,
-    /// endgame maneuvering) — not the main event. The former champion
+    /// endgame maneuvering) - not the main event. The former champion
     /// "mobility" (enemies-in-range) moved to the `champion_threat` term.
     pub champ_mob_per_sq:         i32,
 
@@ -52,15 +52,15 @@ pub struct EvalParams {
     // Offensive-range (E9).
     pub offensive_range_weight: i32,
 
-    // Wasted-modifier penalty (E10 — ns-43). A live Focus/Charge bit with no
+    // Wasted-modifier penalty (E10 - ns-43). A live Focus/Charge bit with no
     // castable consumer this Skill phase is money already spent for nothing.
     // Penalty = this × the buff's own skill_cost (Focus 2 / Charge 3), so a
     // wasted Charge (3 money) stings more than a wasted Focus (2 money).
     pub wasted_modifier_per_cost: i32,
 
-    // Guard isolation (E11 — ns-43). A guard that is locally OUTNUMBERED (more
+    // Guard isolation (E11 - ns-43). A guard that is locally OUTNUMBERED (more
     // enemy pieces than friendly pieces within `guard_iso_radius` Chebyshev
-    // tiles) is a hanging piece — the "crammed alone deep among enemies" case
+    // tiles) is a hanging piece - the "crammed alone deep among enemies" case
     // that `exposure` (direct-attacker only) misses. Penalty scales by the
     // outnumber count. `guard_iso_depth_pct` optionally amplifies when the
     // guard is past the midline on the enemy's half (100 = neutral/off).
@@ -68,7 +68,7 @@ pub struct EvalParams {
     pub guard_iso_per_step:  i32,
     pub guard_iso_depth_pct: i32,
 
-    // Champion threat (E12 — ns-43 Term 3b). Two symmetric sub-scores per
+    // Champion threat (E12 - ns-43 Term 3b). Two symmetric sub-scores per
     // champion: OFFENSIVE (enemy pieces its Strike/Shove/Blast skills can hit,
     // value-weighted, safety-scaled) + DEFENSIVE (ally pieces its Heal/Plate/
     // Swap skills can reach, value+vulnerability-weighted). Each soft-capped so
@@ -92,7 +92,7 @@ pub struct EvalParams {
     pub stage_end_threshold: i32,
     pub stage_round_bias:    i32,
 
-    // Endgame closing (E13 — ns-43 Term 4). Active only when stage == End.
+    // Endgame closing (E13 - ns-43 Term 4). Active only when stage == End.
     // Asymmetric by `advantage`: the LEADER is rewarded for closing (king
     // pressure + denying the enemy king escape squares), the TRAILER for
     // stalling (own-king safety + compactness). `close_lead_min` is the
@@ -163,7 +163,7 @@ impl EvalParams {
         stage_round_bias:    150,
 
         // Endgame closing. Only fires in the End stage; magnitudes kept modest
-        // (low-hundreds) so material still dominates — this shapes HOW a won/
+        // (low-hundreds) so material still dominates - this shapes HOW a won/
         // lost endgame is played, it doesn't invent advantages.
         close_lead_min:      400,  // < ~0.7 guard of lead → treat as even, stay neutral.
         close_king_pressure: 40,   // per tile closer the nearest threatener is to enemy king.

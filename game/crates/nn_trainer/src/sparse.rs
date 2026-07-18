@@ -1,7 +1,7 @@
 //! Sparse binary feature encoding for the NNUE-style position evaluator.
 //!
 //! Replaces the dense `encoding::encode_position` (2825 f32) with a **sparse
-//! set of active binary feature indices** — the input shape an incrementally
+//! set of active binary feature indices** - the input shape an incrementally
 //! updatable accumulator (`accumulator.rs`) needs. See
 //! `design/inbox/nnue-rework-plan.md` §3.1.
 //!
@@ -14,7 +14,7 @@
 //!
 //! Every feature is binary. Within each logical group at most one feature is
 //! active (one-hot), so changing a single attribute flips **exactly two**
-//! features (old off, new on) — the property that keeps the accumulator delta
+//! features (old off, new on) - the property that keeps the accumulator delta
 //! small and makes `apply == refresh` cheap.
 //!
 //! Per-square block (64 squares × PER_SQUARE = 3328), for square `sq` at base
@@ -348,7 +348,7 @@ mod tests {
             let diff = before.symmetric_difference(&after).count();
             // A full refresh touches ~326 features; any single action must flip
             // dramatically fewer. AOE (Tempest, ≤9 squares) is the worst case:
-            // ≤ 9 squares × 6 feature-flips + a few globals — comfortably < 80.
+            // ≤ 9 squares × 6 feature-flips + a few globals - comfortably < 80.
             assert!(
                 diff <= 80,
                 "action flipped {diff} features (expected a small bounded set)"

@@ -7,7 +7,7 @@
   //   - Controls: how-to-play tips (help.controls.*).
   // Structure and styling mirror SettingsModal.svelte (native <dialog>).
   // Deliberately does NOT reuse SkillInfoCard (coupled to the wheel's
-  // SliceKind prop) — the skill list here is rendered inline. Component
+  // SliceKind prop) - the skill list here is rendered inline. Component
   // unification is ns-35 part B, deferred.
 
   import { SKILLS, CATEGORY_COLOR, type SkillCategory } from "$lib/engine";

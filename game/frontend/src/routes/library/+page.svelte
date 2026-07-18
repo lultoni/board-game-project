@@ -145,7 +145,7 @@
       const { bundle, skipped } = await getTelemetryStore().bundleMatches([matchId]);
       download(`boardgame-match-${matchId}.json`, bundle);
       if (skipped.length > 0) {
-        exportSkipNotice = `Could not export this match — its stored log is missing or corrupt.`;
+        exportSkipNotice = `Could not export this match - its stored log is missing or corrupt.`;
       }
     } finally {
       busy = false;
@@ -161,7 +161,7 @@
       const { bundle, skipped } = await getTelemetryStore().bundleMatches(ids);
       download(bundleFilename(), bundle);
       if (skipped.length > 0) {
-        exportSkipNotice = `Exported ${ids.length - skipped.length} of ${ids.length} matches — ${skipped.length} skipped due to missing or corrupt logs.`;
+        exportSkipNotice = `Exported ${ids.length - skipped.length} of ${ids.length} matches - ${skipped.length} skipped due to missing or corrupt logs.`;
       }
       selected = new Set();
     } finally {

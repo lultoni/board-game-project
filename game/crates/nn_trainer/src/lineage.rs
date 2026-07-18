@@ -2,12 +2,12 @@
 //!
 //! Plan §4 (perturbation injection) + §6 (population-based selection):
 //!
-//! - `perturb_model` — add seeded Gaussian noise to every weight tensor.
+//! - `perturb_model` - add seeded Gaussian noise to every weight tensor.
 //!   Same seed + same std-dev + same source model ⇒ same perturbed model.
-//! - `Lineage` — one (model, training-config, rng-seed) bundle. Knows how to
+//! - `Lineage` - one (model, training-config, rng-seed) bundle. Knows how to
 //!   take a *training burst* (N gradient steps over a corpus) and how to
 //!   *fork* into a perturbed sibling.
-//! - `train_lineages` — top-level driver: K lineages, R rounds. Each round
+//! - `train_lineages` - top-level driver: K lineages, R rounds. Each round
 //!   every lineage does a training burst in parallel. After the burst, each
 //!   lineage forks a perturbed copy, trains *that* for a shorter burst, and
 //!   keeps whichever has lower validation loss (the "perturb and keep best"
@@ -22,7 +22,7 @@
 //!
 //! Each lineage carries its own `ChaCha8Rng` seed. Within one process, a
 //! `train_lineages` call with the same `(corpus, base_seed, config)` is
-//! deterministic up to rayon's parallel order — but the *outputs* are
+//! deterministic up to rayon's parallel order - but the *outputs* are
 //! collected in lineage order, so the returned `Vec<Lineage>` is stable.
 //!
 //! Noise generation is external (`rand_chacha`) rather than via burn's
@@ -76,7 +76,7 @@ impl<B: AutodiffBackend> ModuleMapper<B> for GaussianNoiseMapper<B> {
 ///
 /// Determinism: identical `(model, std_dev, seed)` produces an identical
 /// perturbed model. Different seeds with the same model produce independent
-/// perturbations — that's the parallel-lineage primitive.
+/// perturbations - that's the parallel-lineage primitive.
 ///
 /// **Lazy-init caveat:** burn `Param`s are lazily initialised on first
 /// `consume`/`val`. If you clone a never-touched module and perturb both
@@ -170,7 +170,7 @@ impl<B: AutodiffBackend> Lineage<B> {
         mean
     }
 
-    /// Produce a perturbed sibling — same id (still the same lineage), but
+    /// Produce a perturbed sibling - same id (still the same lineage), but
     /// the model has noise added and the seed is advanced.
     pub fn perturbed_clone(&mut self, std_dev: f32, device: &B::Device) -> Mlp<B>
     where
@@ -214,7 +214,7 @@ impl Default for LineageConfig {
 }
 
 /// Compute mean MSE of `model` on `corpus` (no gradient step, no parameter
-/// update — just forward + loss). Used to decide whether a perturbed
+/// update - just forward + loss). Used to decide whether a perturbed
 /// candidate is better than the unperturbed lineage.
 fn validation_loss<B: AutodiffBackend>(
     model: &Mlp<B>,
@@ -244,7 +244,7 @@ fn validation_loss<B: AutodiffBackend>(
 /// Note on parallelism: burn's `Autodiff<NdArray<f32>>` backend isn't `Send`-
 /// friendly in all configurations, so this driver is sequential across
 /// lineages by default. Rayon-parallel lineages can be added once we've
-/// confirmed the autodiff backend is thread-safe — the time-dominant work
+/// confirmed the autodiff backend is thread-safe - the time-dominant work
 /// is corpus generation anyway, which already parallelises elsewhere.
 pub fn train_lineages<B: AutodiffBackend>(
     corpus: &[LabelledPosition],
@@ -355,7 +355,7 @@ mod tests {
         let cfg = MlpConfig::new();
         let m1: Mlp<B> = cfg.init(&device);
         // Force lazy parameter initialization to materialise before the
-        // clone — otherwise each clone independently lazily-initializes
+        // clone - otherwise each clone independently lazily-initializes
         // from the backend RNG and the two source models diverge.
         let warmup = TensorData::new(vec![0.0_f32; INPUT_DIM], [1, INPUT_DIM]);
         let _ = m1.forward(Tensor::from_data(warmup, &device));
@@ -419,7 +419,7 @@ mod tests {
         for lin in &lineages {
             // Each round records one loss entry. Each perturbation also
             // calls train_burst on the candidate, but that's on a
-            // disposable lineage — only the kept lineage's history matters.
+            // disposable lineage - only the kept lineage's history matters.
             assert_eq!(lin.loss_history.len(), cfg.n_rounds);
             for &l in &lin.loss_history {
                 assert!(l.is_finite(), "lineage {} produced non-finite loss", lin.id);

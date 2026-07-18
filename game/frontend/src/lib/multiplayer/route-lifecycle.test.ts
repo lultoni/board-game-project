@@ -35,7 +35,7 @@ describe("tearDownMultiplayerOnLeave", () => {
   });
 
   it("no-op when navigatingForward=true, even if telemetry is finalised", () => {
-    // navigatingForward takes precedence — a forward handoff shouldn't tear
+    // navigatingForward takes precedence - a forward handoff shouldn't tear
     // down even at the end of the pipeline. (Setup→match with preMade mode
     // isn't strictly a natural end, but the flag combination shouldn't cause
     // a hard disconnect either.)

@@ -55,7 +55,7 @@
   }
 
   function skillName(id: number): string {
-    if (id === 0) return "—";
+    if (id === 0) return "-";
     const s = SKILKlookup(id);
     return s ? s.key : `#${id}`;
   }

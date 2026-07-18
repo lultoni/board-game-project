@@ -9,7 +9,7 @@
 // and A), NOT to the shared Guard or the approach square. That is what keeps
 // two Champions guarded by the same Guard unambiguous: each Champion's marks
 // live on its own tile boundary, so the owner of a mark is always the piece it
-// hugs — even when their protected approach squares coincide.
+// hugs - even when their protected approach squares coincide.
 
 import { bitboardHas, readPieces, type Owner } from "$lib/engine/mailbox";
 import type { PositionView } from "$lib/engine/types";
@@ -75,7 +75,7 @@ export function bodyguardCover(position: PositionView | null): BodyguardCover[] 
     // An adjacent approach square A is protected iff some friendly Guard near C
     // is also adjacent to A. The square may be empty OR hold an enemy piece (a
     // real threat standing on a covered square still reads as "protected from
-    // here"). Only a FRIENDLY piece on A suppresses the mark — an ally there is
+    // here"). Only a FRIENDLY piece on A suppresses the mark - an ally there is
     // not an attack vector.
     const protectedApproaches: number[] = [];
     for (const a of cNeighbours) {

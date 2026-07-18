@@ -1,10 +1,10 @@
-// WebSocket relay transport — the multiplayer transport for this app.
+// WebSocket relay transport - the multiplayer transport for this app.
 //
 // Implements the `Transport` interface. The relay server owns session
 // routing; this module owns the WebSocket lifecycle, relay-envelope handling,
 // and the joiner-side auto-redial ladder.
 //
-// Relay control frames use `type`; game messages use `kind` — zero collision.
+// Relay control frames use `type`; game messages use `kind` - zero collision.
 // Control frames are consumed here and never reach the wrapper's onData.
 
 import { RELAY_WS_URL, RELAY_HTTP_URL } from "./transport-config";
@@ -175,12 +175,12 @@ export function createWebSocketTransport(
 
   /** Open a new WebSocket to the relay and resolve/reject via callbacks.
    *
-   *  `onOpen`  — fires after WS open AND after the relay confirms the session
+   *  `onOpen`  - fires after WS open AND after the relay confirms the session
    *              (either "created" for host, or "joined" for joiner).
-   *  `onMsg`   — called for every relay control message received on this socket.
+   *  `onMsg`   - called for every relay control message received on this socket.
    *              Returns `true` if the message was consumed (relay control);
    *              `false` means it's a game message and should be forwarded.
-   *  `onClose` / `onError` — forwarded to reject + cleanup.
+   *  `onClose` / `onError` - forwarded to reject + cleanup.
    */
   function openWs(
     onRelayOpen: (socket: WebSocket) => void,
@@ -204,7 +204,7 @@ export function createWebSocketTransport(
         const consumed = onRelayMsg(socket, relay);
         if (consumed) return;
       } else {
-        // Cheap kind peek — game envelopes are JSON with a top-level `kind`.
+        // Cheap kind peek - game envelopes are JSON with a top-level `kind`.
         // Avoid full parse noise; just skim the field name.
         let kind = "?";
         try {
@@ -215,7 +215,7 @@ export function createWebSocketTransport(
           console.log(`[mp][transport] recv envelope: ${kind} (paired=${paired}, role=${cbs.getRole()})`);
         }
       }
-      // Game message — forward to wrapper.
+      // Game message - forward to wrapper.
       cbs.onData(raw);
     };
 
@@ -289,7 +289,7 @@ export function createWebSocketTransport(
             paired = false;
             cbs.onStatusChange("disconnected");
             cbs.onClose();
-            // Host stays put — joiner will redial back.
+            // Host stays put - joiner will redial back.
             return true;
           }
           if (env.type === "error") {
@@ -348,7 +348,7 @@ export function createWebSocketTransport(
             return true;
           }
           if (env.type === "peer-connected") {
-            // Arrives after promotion — we're now paired as the host.
+            // Arrives after promotion - we're now paired as the host.
             paired = true;
             redialAttempts = 0;
             redialPending = false;
@@ -381,7 +381,7 @@ export function createWebSocketTransport(
   function destroyWsKeepState(): void {
     if (ws) {
       // Null out first so the onclose/onerror handlers see a stale socket and
-      // skip their disconnect/redial logic — we're driving that ourselves.
+      // skip their disconnect/redial logic - we're driving that ourselves.
       const old = ws;
       ws = null;
       try { old.close(); } catch { /* noop */ }
@@ -403,7 +403,7 @@ export function createWebSocketTransport(
     disconnect();
     cbs.onStatusChange("hosting");
 
-    // Retry a few times — the relay may still hold the session slot briefly
+    // Retry a few times - the relay may still hold the session slot briefly
     // after the old host disconnected (TTL cleanup runs every 10s).
     const delays = opts.hostRetryDelays ?? DEFAULT_HOST_RETRY_DELAYS;
     let attemptIdx = 0;

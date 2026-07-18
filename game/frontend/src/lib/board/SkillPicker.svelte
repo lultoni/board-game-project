@@ -4,7 +4,7 @@
   // Two consumers:
   //   - Draft (`interaction: "drag"`): chips are draggable; the draft page's
   //     existing drop-target logic (dragPayload / dropOnSlot) reads dataTransfer
-  //     and knows what to do. The picker itself doesn't own the drag state — it
+  //     and knows what to do. The picker itself doesn't own the drag state - it
   //     just fires onDragStart/onDragEnd callbacks so the parent can track its
   //     dragPayload the way it did before extraction.
   //   - Loadout editor (`interaction: "click"`): chips emit onPick(id) on click.
@@ -15,7 +15,7 @@
   // slot's currently-selected skill is greyed in the picker while editing the
   // first slot, and vice versa).
   //
-  // The `disabled` prop is a blanket lock (e.g. draft: not your turn) —
+  // The `disabled` prop is a blanket lock (e.g. draft: not your turn) -
   // everything is uninteractive but still visible.
 
   import { SKILLS, SKILL_COUNT, skillColor } from "$lib/engine";
@@ -26,7 +26,7 @@
     skills?: number[];
     /** Interaction mode. Draft = drag source. Loadout editor = click emits pick. */
     interaction: "click" | "drag";
-    /** Blanket disable — everything visible but uninteractive. */
+    /** Blanket disable - everything visible but uninteractive. */
     disabled?: boolean;
     /** Individual skill IDs to gray out and block. */
     disabledIds?: number[];
@@ -51,7 +51,7 @@
   const disabledSet = $derived(new Set(disabledIds));
 
   function skillName(id: number): string {
-    if (id === 0) return "—";
+    if (id === 0) return "-";
     const info = SKILLS[id];
     return info ? t(`skills.${info.key}.name`) : `?${id}`;
   }
@@ -92,7 +92,7 @@
           ? (ev) => onDragStart?.(ev, id)
           : undefined}
         ondragend={interaction === "drag" ? () => onDragEnd?.() : undefined}
-        title={`${skillName(id)} — ${categoryLabel(id)}\n${skillDesc(id)}`}
+        title={`${skillName(id)} - ${categoryLabel(id)}\n${skillDesc(id)}`}
       >
         <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
           <use href="#skill-glyph-{id}" />

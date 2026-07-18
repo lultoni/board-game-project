@@ -18,7 +18,7 @@
     return (clamped + barCap) / (2 * barCap);
   });
   const display = $derived.by(() => {
-    if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+    if (value === null || value === undefined || !Number.isFinite(value)) return "-";
     return value >= 0 ? `+${value}` : `${value}`;
   });
 </script>
@@ -75,7 +75,7 @@
     );
     background-size: 200% 100%;
     background-position: right;
-    /* No fill animation — the polling cadence is already 4 Hz; an extra
+    /* No fill animation - the polling cadence is already 4 Hz; an extra
        transition just lags the cell vs. the underlying number. */
   }
   .zero {

@@ -1,7 +1,7 @@
 // Build a Rust `core_engine::session::Config` JSON blob from the current
 // UI seat assignments and AI budgets. Passed to
 // `EngineClient.createEngine(configJson)` so the engine's seat config
-// matches what the UI expects — without this, `step_ai` returns NotAiTurn
+// matches what the UI expects - without this, `step_ai` returns NotAiTurn
 // when the engine thinks the current side is Human while the UI thinks it
 // is AI (or vice versa).
 //
@@ -14,7 +14,7 @@
 export type SeatTag = "Human" | "Ai";
 
 export interface EngineConfigInput {
-  /** Seat assignments — already mapped to Rust's enum values. */
+  /** Seat assignments - already mapped to Rust's enum values. */
   p1: SeatTag;
   p2: SeatTag;
   /** AI budgets, one bag per side. Time limits are in milliseconds and are

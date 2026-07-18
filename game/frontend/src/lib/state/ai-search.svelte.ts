@@ -107,7 +107,7 @@ export function setLastRoundSeen(round: number | null): void {
   state.lastRoundSeen = round;
 }
 
-/** Full reset — route teardown or entering a new match. */
+/** Full reset - route teardown or entering a new match. */
 export function resetAiSearch(): void {
   state.p1 = emptySide();
   state.p2 = emptySide();

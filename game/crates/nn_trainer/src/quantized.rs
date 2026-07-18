@@ -45,7 +45,7 @@ const QA_SHIFT: u32 = 10; // 2^10 == 1024
 pub const QW: f32 = 64.0;
 const QW_SHIFT: u32 = 6; // 2^6 == 64
 
-/// Clipped-ReLU ceiling in activation units (scale 1). Generous — activations
+/// Clipped-ReLU ceiling in activation units (scale 1). Generous - activations
 /// rarely exceed this after the trained net's ReLUs; clipping high is benign.
 const CR_MAX: i32 = 8192;
 
@@ -71,7 +71,7 @@ impl Default for QuantScales {
 /// Weights are **output-major**, **pre-widened i16**, and each output row is
 /// **zero-padded to a multiple of `LANES`** (`in_pad`). So `w[o*in_pad + i]` is
 /// the weight from input `i` to output `o`, and the accumulate-over-inputs for a
-/// fixed `o` walks a contiguous, lane-aligned run — vectorizable with `wide`.
+/// fixed `o` walks a contiguous, lane-aligned run - vectorizable with `wide`.
 /// (burn hands us input-major i8 `w[i*out+o]`; the transpose + widen + pad
 /// happens once in `quantize_linear`, not per node.)
 struct QLinear {
@@ -88,7 +88,7 @@ impl QLinear {
     /// when `relu` is set (hidden layers), else the raw shifted sum (output).
     ///
     /// `act` is the i16 activation buffer, zero-padded to `in_pad` (the padding
-    /// weights are zero, so padded lanes contribute nothing — the sum is
+    /// weights are zero, so padded lanes contribute nothing - the sum is
     /// identical to the scalar `in_dim` dot product). Integer SIMD reordering is
     /// exact, so this matches the scalar sum bit-for-bit.
     fn forward(&self, act_padded: &[i16], relu: bool, out: &mut [i32]) {
@@ -191,7 +191,7 @@ impl QuantizedNet {
         assert_eq!(*out0, ACCUM_WIDTH, "layer0 output must equal ACCUM_WIDTH");
         let mut weights = vec![[0i16; ACCUM_WIDTH]; NUM_FEATURES];
         // burn weight is input-major: w0[f*out + o] is the contribution of
-        // feature f to accumulator lane o — exactly the column for feature f.
+        // feature f to accumulator lane o - exactly the column for feature f.
         for f in 0..NUM_FEATURES {
             for o in 0..ACCUM_WIDTH {
                 weights[f][o] = round_i16(w0[f * ACCUM_WIDTH + o] * scales.qa);

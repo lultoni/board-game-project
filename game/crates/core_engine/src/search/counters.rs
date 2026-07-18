@@ -2,7 +2,7 @@
 //!
 //! Compiles to no-ops unless `--features bench_counters` is set (the
 //! `search_bench` crate enables this transitively). Ships as no-ops in
-//! Tauri/nn_trainer builds — zero cost on the shipped hot path.
+//! Tauri/nn_trainer builds - zero cost on the shipped hot path.
 //!
 //! Thread-local storage: each thread accumulates its own counts. The bench
 //! is single-threaded so `snapshot()` returns the current thread's totals.
@@ -14,7 +14,7 @@
 
 /// AttackerList capacity is 8 (see evaluator.rs). Histogram covers 0..=8
 /// so we can see when the list is empty (all 0-cost enemies filtered upstream)
-/// versus saturated (rare — the geometric ceiling).
+/// versus saturated (rare - the geometric ceiling).
 pub const ATTACKER_LIST_HIST_BUCKETS: usize = 9;
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -22,14 +22,14 @@ pub struct Snapshot {
     // Evaluator entry counts.
     pub eval_calls: u64,
 
-    // Phase gates — how often did each gate fire?
+    // Phase gates - how often did each gate fire?
     pub maee_gate_pass: u64,       // Phase::Move at eval entry
     pub maee_gate_skip: u64,       // Phase::Skill or Phase::Draft at eval entry
     pub skill_gate_pass: u64,      // Phase::Skill at eval entry
     pub skill_gate_skip: u64,      // Phase::Move or Phase::Draft at eval entry
     pub actions_zero_hit: u64,     // actions_remaining == 0 short-circuit fired
 
-    // MAEE internals — kept as fields for search_bench backwards compat
+    // MAEE internals - kept as fields for search_bench backwards compat
     // after Pass 4 removed MAEE from eval. Always zero; bumps are dead code
     // via the `#[cfg(not(feature = "bench_counters"))]` shim below.
     pub maee_side_calls: u64,      // maee_side() invocations (2 per eval when gate passes)
@@ -41,7 +41,7 @@ pub struct Snapshot {
     pub see_table_builds: u64,
     pub see_capture_calls: u64,
 
-    // AttackerList size histogram — bucket i is #enumerations that produced i attackers.
+    // AttackerList size histogram - bucket i is #enumerations that produced i attackers.
     pub attacker_list_hist: [u64; ATTACKER_LIST_HIST_BUCKETS],
 
     // Skill-activity call count (whole function; per-piece iteration is not counted).
@@ -53,7 +53,7 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// Total attackers observed (weighted by bucket index) — useful for a mean.
+    /// Total attackers observed (weighted by bucket index) - useful for a mean.
     pub fn attackers_total(&self) -> u64 {
         self.attacker_list_hist
             .iter()

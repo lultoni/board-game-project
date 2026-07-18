@@ -1,8 +1,8 @@
 //! Static Exchange Evaluation (SEE) for move ordering.
 //!
 //! Called from quiescence to score capture moves before descent. The exchange
-//! math is the same rollout the evaluator's now-removed MAEE term performed —
-//! per-target, LVA-ordered, HP/armor multi-hit, kill-follow-through — but the
+//! math is the same rollout the evaluator's now-removed MAEE term performed -
+//! per-target, LVA-ordered, HP/armor multi-hit, kill-follow-through - but the
 //! caller now asks a different question: *this specific capture (src, target),
 //! is it a winning exchange?* MAEE asked *for each hanging enemy, what's the
 //! best outcome?* Same rollout, different framing.
@@ -23,10 +23,10 @@
 //! - [`see_capture`]: score one candidate capture (src → target). Returns net
 //!   material from the *initiator's* POV; positive = winning exchange.
 //!
-//! Kings are excluded as both attackers and targets — king captures are
+//! Kings are excluded as both attackers and targets - king captures are
 //! terminal (±MATE_SCORE) and handled upstream by [`crate::search::evaluator`].
 //! A capture whose target is a king is scored `+∞` (MATE_SCORE) at the call
-//! site — callers must check for that before invoking `see_capture`.
+//! site - callers must check for that before invoking `see_capture`.
 
 use crate::state::Position;
 use crate::state::position::Player;
@@ -35,7 +35,7 @@ use crate::state::magic;
 // ─── Skill-attacker LUT ──────────────────────────────────────────────────
 //
 // SEE participates skill damage in exchange rollouts. Only "strike" skills that
-// deal direct HP/armor damage on the target square are modeled — Blast/Shove
+// deal direct HP/armor damage on the target square are modeled - Blast/Shove
 // are excluded (0 direct damage, combo-stateful); movement + shield skills are
 // excluded (don't hit the target square). Money is gated at table build time
 // only (the caster's side has ≥ cost); not decremented per ply.
@@ -66,8 +66,8 @@ const SKILL_LUT: [(u8, u8, u8); 16] = [
     (0,                  0, 0),  // 7  = Heal
     (0,                  0, 0),  // 8  = Plate
     (0,                  0, 0),  // 9  = Focus
-    (0,                  0, 0),  // 10 = Blast (excluded — combo-stateful)
-    (0,                  0, 0),  // 11 = Shove (excluded — combo-stateful)
+    (0,                  0, 0),  // 10 = Blast (excluded - combo-stateful)
+    (0,                  0, 0),  // 11 = Shove (excluded - combo-stateful)
     (0,                  0, 0),  // 12 = Dash
     (0,                  0, 0),  // 13 = Swap
     (0,                  0, 0),  // 14 = Retreat
@@ -76,7 +76,7 @@ const SKILL_LUT: [(u8, u8, u8); 16] = [
 
 /// Kind priority for tie-break when a piece equips two participating strikes:
 /// STRIKE > ENDER > BREAK. Higher = preferred. Used so a Champion with (Lance,
-/// Tempest) is scored as a strike attacker, not a terminating one — strikes
+/// Tempest) is scored as a strike attacker, not a terminating one - strikes
 /// are unconditionally more useful in exchanges.
 #[inline]
 fn kind_priority(k: u8) -> u8 {
@@ -91,7 +91,7 @@ fn kind_priority(k: u8) -> u8 {
 // ─── Piece / damage weights ──────────────────────────────────────────────
 //
 // Kept in sync with evaluator.rs's material weights. Duplicated here rather
-// than imported because SEE is a self-contained module — the eval could
+// than imported because SEE is a self-contained module - the eval could
 // eventually diverge (different piece weights for tactical ordering vs
 // positional scoring) without breaking SEE.
 
@@ -131,7 +131,7 @@ struct Attacker {
     kind: u8,
 }
 
-/// Fixed-size sorted-cheapest-first list — heap-free.
+/// Fixed-size sorted-cheapest-first list - heap-free.
 struct AttackerList {
     items: [Attacker; SEE_MAX_ATTACKERS],
     len:   u8,
@@ -237,7 +237,7 @@ impl AttackersTable {
         skill_bits & !phys_bits & !SQ_BIT[target_sq as usize]
     }
 
-    /// Any attackers of `side` on this square (physical only — kept for
+    /// Any attackers of `side` on this square (physical only - kept for
     /// external callers that don't care about skill reach).
     #[inline]
     pub fn any_attackers_of(&self, side: Player, target_sq: u8) -> u64 {
@@ -277,7 +277,7 @@ pub fn build_attackers_table(pos: &Position, all_occ: u64) -> AttackersTable {
 /// and leaves the skill-scatter fields (`*_skill_of`, `*_skill_kind`) zeroed.
 ///
 /// The **evaluator** (`EvalContext::new` → exposure / champion_threat) reads only
-/// the physical scatter via [`AttackersTable::any_attackers_of`] — it never
+/// the physical scatter via [`AttackersTable::any_attackers_of`] - it never
 /// touches the skill fields, which exist solely for the `see_capture` exchange
 /// rollout. Building the skill scatter traces a queen-ray per champion/king
 /// (`scatter_skills_side` → `magic::skill_attacks`), the dominant per-call cost;
@@ -335,7 +335,7 @@ fn scatter_side(pos: &Position, all_occ: u64, mut side_bits: u64, of: &mut [u64;
 /// and scatter the source bit into each hit target. Record the winning kind
 /// in `kind_of[sq]`.
 ///
-/// Money-gate uses the current `money` budget only — we do not decrement it
+/// Money-gate uses the current `money` budget only - we do not decrement it
 /// per attacker. Overestimates when a side would need multiple casts.
 #[inline]
 fn scatter_skills_side(
@@ -348,8 +348,8 @@ fn scatter_skills_side(
 ) {
     // Which side are we scattering? Determined by whether side_bits is a
     // subset of p1_pieces (only both sides are disjoint, so a single sample
-    // bit suffices). Currently the side identity isn't needed downstream — we
-    // just walk the pieces and project their skill reach — but the sample
+    // bit suffices). Currently the side identity isn't needed downstream - we
+    // just walk the pieces and project their skill reach - but the sample
     // gives an early-out for empty side_bits and lets us assert consistency.
     if side_bits == 0 { return; }
     let _side_is_p1 = (pos.p1_pieces.0 & side_bits) != 0;
@@ -380,7 +380,7 @@ fn scatter_skills_side(
         if best_kind == 0 { continue; }
 
         // Fanout: queen-ray up to range, blocker-inclusive. We intentionally
-        // do NOT mask to enemy-occupied squares — during an exchange rollout
+        // do NOT mask to enemy-occupied squares - during an exchange rollout
         // the target square's occupant flips (swap-in), and the caller only
         // invokes see_capture on a legal enemy target so we don't need to
         // filter own-side squares (they're never asked).
@@ -399,14 +399,14 @@ fn scatter_skills_side(
 
 /// Build an attacker list combining physical + skill sources on the same
 /// target. Physical wins classification when a piece appears in both. Skill
-/// attackers use their caster's material cost for LVA ordering — this over-
+/// attackers use their caster's material cost for LVA ordering - this over-
 /// prioritises cheap-material Champions over expensive-material Champions
 /// even though the skill-caster doesn't lose material on hit, but a
 /// consistent LVA order for tie-break is what matters for reproducibility.
 ///
 /// Kings can be skill attackers but not physical; their material is treated
 /// as CHAMPION_VALUE for LVA purposes (kings are never captured mid-
-/// exchange so their absolute cost doesn't matter — only their relative
+/// exchange so their absolute cost doesn't matter - only their relative
 /// ordering).
 #[inline]
 fn build_attacker_list_mixed(
@@ -455,7 +455,7 @@ fn piece_material_of(pos: &Position, sq: u8) -> i32 {
     let bit = SQ_BIT[sq as usize];
     if pos.champions.0 & bit != 0 { CHAMPION_VALUE }
     else if pos.guards.0 & bit != 0 { GUARD_VALUE }
-    else { 0 } // kings excluded — see_capture rejects king targets upstream
+    else { 0 } // kings excluded - see_capture rejects king targets upstream
 }
 
 #[inline]
@@ -477,7 +477,7 @@ fn other(p: Player) -> Player {
 /// - killing     → `piece_value + HP_PER_POINT + armor*ARMOR_PER_POINT`
 ///
 /// Returns 0 for empty squares or king targets (callers handle king specially).
-/// Cheap — no AttackersTable needed.
+/// Cheap - no AttackersTable needed.
 pub fn see_single_hit(pos: &Position, target: u8) -> i32 {
     let target_bit = SQ_BIT[target as usize];
     let victim_val = piece_material_of(pos, target);
@@ -534,7 +534,7 @@ pub fn see_capture(pos: &Position, table: &AttackersTable, src: u8, target: u8) 
 
     // Victim state.
     let mut victim_val = piece_material_of(pos, target);
-    if victim_val == 0 { return 0; } // king or empty — caller shouldn't invoke us
+    if victim_val == 0 { return 0; } // king or empty - caller shouldn't invoke us
     let entry = pos.mailbox[target as usize];
     let mut victim_hp = entry.hp();
     let mut victim_armor = entry.armor();
@@ -556,7 +556,7 @@ pub fn see_capture(pos: &Position, table: &AttackersTable, src: u8, target: u8) 
     let mut attackers_dfd = build_attacker_list_mixed(
         pos, attackers_dfd_phys_bb, attackers_dfd_skill_bb, dfd_kind_of);
 
-    // Ply 0: the fixed initiator (always physical — the caller invoked us
+    // Ply 0: the fixed initiator (always physical - the caller invoked us
     // because a Move-Attack landed on `target`).
     let initiator = match attackers_stm.remove_sq(src) {
         Some(a) => a,
@@ -600,7 +600,7 @@ pub fn see_capture(pos: &Position, table: &AttackersTable, src: u8, target: u8) 
                 None => break None,
                 Some(x) => {
                     if x.kind == KIND_SKILL_BREAK && victim_armor == 0 {
-                        // Break can't contribute — armor is already stripped.
+                        // Break can't contribute - armor is already stripped.
                         // Also clear its skill bit so it doesn't come back on
                         // a rebuild.
                         let bit = SQ_BIT[x.sq as usize];
@@ -634,7 +634,7 @@ pub fn see_capture(pos: &Position, table: &AttackersTable, src: u8, target: u8) 
     // Stand-pat fold-back. Ply indices from stm's POV:
     //   even i → stm ply → clamp low at 0 (stm won't take a losing step)
     //   odd  i → dfd ply → clamp high at 0 (dfd won't take a losing step)
-    // Ply 0 is the initiator's forced attack — we do NOT clamp it.
+    // Ply 0 is the initiator's forced attack - we do NOT clamp it.
     let mut val: i32 = gains[n_gains - 1];
     let mut i = n_gains as i32 - 2;
     while i >= 0 {
@@ -652,7 +652,7 @@ pub fn see_capture(pos: &Position, table: &AttackersTable, src: u8, target: u8) 
 /// On a *physical* killing blow the killer moves onto the target square; the
 /// new occupant's stats become the victim state and previously-blocked Guards
 /// unlock via the vacated-origin trick. On a *skill-strike* killing blow the
-/// caster does NOT swap in — the target square goes empty. Subsequent
+/// caster does NOT swap in - the target square goes empty. Subsequent
 /// attackers have nothing left to hit, so the outer loop naturally ends via
 /// `victim_val = 0` at the next apply_hit call. (For safety we also mark
 /// terminate=true on skill-kills.)
@@ -685,7 +685,7 @@ fn apply_hit(
         *victim_armor -= 1;
         gains[*n_gains] = sign * ARMOR_PER_POINT;
         *n_gains += 1;
-        // Skill attackers spend themselves — clear their bit even on non-kill.
+        // Skill attackers spend themselves - clear their bit even on non-kill.
         if att.kind != KIND_PHYS {
             let bit = SQ_BIT[att.sq as usize];
             let killer_is_stm = sign > 0;
@@ -738,7 +738,7 @@ fn apply_hit(
     }
 
     // Newly-reachable Guards from the vacated square (only if vacated sits
-    // cheby-1 of the target). Skill bitmasks stay frozen — see doc comment.
+    // cheby-1 of the target). Skill bitmasks stay frozen - see doc comment.
     if target_cheby1 & att_bit != 0 {
         let neigh = magic::king_expand(att_bit) & pos.guards.0 & !*vacated & !target_bit;
         let (stm_own, dfd_own) = match stm {
@@ -778,7 +778,7 @@ mod tests {
     }
 
     /// P1 Champion adjacent to a P2 Champion with HP=1, no armor. Single hit
-    /// kills — SEE should return CHAMPION_VALUE + HP_PER_POINT (the killing
+    /// kills - SEE should return CHAMPION_VALUE + HP_PER_POINT (the killing
     /// blow rolls in the final HP).
     #[test]
     fn single_hit_kill_of_bare_champion() {
@@ -863,7 +863,7 @@ mod tests {
 
     /// P1 Champion (HP=2) captures a P2 Guard (HP=1) at sq 28. The Guard has
     /// no physical defenders on cheby-1 of 28, but P2 has a Champion at sq 20
-    /// (cheby-1 of 28) equipped with Lance and 2 gold — it counter-strikes
+    /// (cheby-1 of 28) equipped with Lance and 2 gold - it counter-strikes
     /// after P1 lands. Ply 0 kills the Guard (+GUARD+HP). Ply 1 is a skill-
     /// strike that shaves P1's Champion (which now occupies 28, HP=2 → 1)
     /// for -HP_PER_POINT. Net = GUARD_VALUE + HP_PER_POINT - HP_PER_POINT.
@@ -907,7 +907,7 @@ mod tests {
     /// P1 Champion (HP=1) attempts to Move-Attack sq 28 (P2 Guard, HP=1). P2
     /// has a Champion at sq 20 with Hook (cost 3, range 2) that could counter-
     /// strike from 2 squares away. Ply 0 kills the guard. Ply 1 = Hook killing
-    /// blow on P1's Champion (HP=1) — this must NOT swap the P2 caster in;
+    /// blow on P1's Champion (HP=1) - this must NOT swap the P2 caster in;
     /// exchange terminates. Net = GUARD_KILL - CHAMPION_KILL.
     #[test]
     fn skill_hook_range2_kills_no_swap_in() {
@@ -916,7 +916,7 @@ mod tests {
         place(&mut pos, 28, Player::P2, 2, MailboxEntry::default().with_hp(1));
         // Hook at range 2 → sq 20 to sq 28 is a queen-ray at chebyshev 2 (both
         // on the same column at offset 8+8=... actually 28-20=8, one file
-        // down. That's a knight offset — not on a queen ray. Use sq 12 instead
+        // down. That's a knight offset - not on a queen ray. Use sq 12 instead
         // (28-12=16, two rows above target, same file → N ray).
         place(&mut pos, 12, Player::P2, 1,
               MailboxEntry::default().with_hp(2).with_skill1(HOOK));
@@ -928,7 +928,7 @@ mod tests {
         assert_eq!(s, (GUARD_VALUE + HP_PER_POINT) - (CHAMPION_VALUE + HP_PER_POINT));
     }
 
-    /// Tempest terminates the exchange. Setup: P1 Champion (HP=3) — wait, HP
+    /// Tempest terminates the exchange. Setup: P1 Champion (HP=3) - wait, HP
     /// max is 2. Use HP=2 with armor=1. Ply 0: P1 attacks P2 Guard (HP=1) at
     /// 28, kills → +GUARD_KILL. Now P1's Champion (HP=2, AR=1) occupies 28.
     /// Ply 1: P2 defender at sq 12 with Tempest → strips 1 armor from the
@@ -942,7 +942,7 @@ mod tests {
         place(&mut pos, 28, Player::P2, 2, MailboxEntry::default().with_hp(1));
         // P2 Tempest caster at sq 12 (N ray, range 2 from 28). Also give P2 a
         // second physical defender at sq 29 (adj cheby-1 of 28) that WOULD
-        // recapture if Tempest didn't terminate — this proves termination.
+        // recapture if Tempest didn't terminate - this proves termination.
         place(&mut pos, 12, Player::P2, 1,
               MailboxEntry::default().with_hp(2).with_skill1(TEMPEST));
         place(&mut pos, 29, Player::P2, 1, MailboxEntry::default().with_hp(1));
@@ -956,11 +956,11 @@ mod tests {
         // the physical HP=1 defender at 29? Depends on LVA ordering).
         //
         // Attacker costs: sq 29 (HP=1) = 1000+150 = 1150. sq 12 (HP=2,
-        // Tempest) = 1000+300 = 1300. Cheaper attacker (sq 29) pops first —
+        // Tempest) = 1000+300 = 1300. Cheaper attacker (sq 29) pops first -
         // it kills the P1 Champion (which now occupies 28 with HP=2/AR=1).
         // Ply 1 pops phys@29: armor-strip (-120). Ply 2 pops Tempest@12:
         // armor was 0 now, so HP-strip (-150), then terminate. Ply 3 wouldn't
-        // execute even if it could — Tempest ended things.
+        // execute even if it could - Tempest ended things.
         //
         // Gains stm-POV: [+750, -120, -150]. Fold-back from right:
         //   val = -150

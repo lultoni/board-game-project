@@ -69,7 +69,7 @@ describe("bodyguardCover", () => {
     expect(cover.length).toBe(1);
     expect(cover[0].championSq).toBe(champion);
     // Covered approaches = empty neighbours of the Champion also adjacent to
-    // the Guard: the three squares around d5's lower band — c4, e4, and the
+    // the Guard: the three squares around d5's lower band - c4, e4, and the
     // guard's own-row diagonals c5/e5 are adjacent to guard too. Assert the
     // guard's tile is NOT an approach (occupied) and that all reported
     // approaches are adjacent to BOTH champion and guard.
@@ -115,7 +115,7 @@ describe("bodyguardCover", () => {
     expect(cover.find((c) => c.championSq === guardDefender)).toBeUndefined();
   });
 
-  it("two Champions sharing one Guard each get their own distinct edge set", () => {    // Guard at d4 (center). Champions at d5 (above) and d3 (below) — both
+  it("two Champions sharing one Guard each get their own distinct edge set", () => {    // Guard at d4 (center). Champions at d5 (above) and d3 (below) - both
     // adjacent to the guard. Each Champion is a separate cover entry keyed by
     // its own square, so the marks are unambiguous.
     const guard = sq(3, 3);
@@ -156,7 +156,7 @@ describe("bodyguardCover", () => {
   });
 
   it("a FRIENDLY piece on a covered approach square suppresses the mark (not a vector)", () => {
-    // Same as above but the piece on c5 is friendly — no attacker comes from an
+    // Same as above but the piece on c5 is friendly - no attacker comes from an
     // ally's tile, so the mark is suppressed there.
     const champion = sq(3, 3);
     const guard = sq(3, 4);

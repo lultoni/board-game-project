@@ -1,4 +1,4 @@
-//! Make / Unmake — apply an action to a Position, or perfectly reverse it
+//! Make / Unmake - apply an action to a Position, or perfectly reverse it
 //! using a previously-written Undo record.
 //!
 //! Reversibility is mandatory: tree search must not copy state. `make`
@@ -10,13 +10,13 @@
 //! Implements Move-Phase mechanics only:
 //! - Plain Move: clear src, set dest, mark dest in `moved_this_phase`.
 //! - Move-Attack: attacker advances to `approach_sq` (penultimate tile carried
-//!   in the action bits — `src` for speed-1, an empty neighbour of target for
+//!   in the action bits - `src` for speed-1, an empty neighbour of target for
 //!   speed-2), then the defender takes 1 damage. Bodyguard eligibility is
 //!   dual-adjacency (Guard adjacent to BOTH defender AND approach_sq);
 //!   `choice_idx` picks the k-th eligible Guard.
 //! - EndPhase: Move → Skill transition (clear `moved_this_phase`, reset
 //!   actions, flip current_phase). Skill→EndTurn deferred to a later slice.
-//! - EndTurn: full delegation to `turn_manager::end_turn` — not exercised
+//! - EndTurn: full delegation to `turn_manager::end_turn` - not exercised
 //!   by Slice-1 tests but wired so the action surface is complete.
 //!
 //! Skill-kind actions are not implemented yet; calling `make` with one is
@@ -97,7 +97,7 @@ pub fn unmake(pos: &mut Position, undo: &Undo) {
     pos.tracked_casters_len = undo.prev_tracked_casters_len;
     pos.game_result        = game_result_from_tag(undo.prev_game_result);
 
-    // Money — invert deltas. Wrapping arithmetic is safe: any value that
+    // Money - invert deltas. Wrapping arithmetic is safe: any value that
     // produced a valid forward delta produces a valid reverse delta.
     if undo.p1_money_delta != 0 {
         pos.p1_money = (pos.p1_money as i32 - undo.p1_money_delta as i32) as u16;
@@ -112,7 +112,7 @@ pub fn unmake(pos: &mut Position, undo: &Undo) {
 
 // === Move-kind dispatch ====================================================
 
-/// Apply a Move-kind action — plain move or Move-Attack — and populate Undo.
+/// Apply a Move-kind action - plain move or Move-Attack - and populate Undo.
 fn apply_move(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let tgt = action.target();
@@ -186,7 +186,7 @@ fn apply_plain_move(pos: &mut Position, src: u8, tgt: u8, undo: &mut Undo) {
 /// (`bodyguard_guards_for(pos, tgt, approach)` is non-empty), this is a
 /// *tentative* apply: the attacker relocates to `approach`, the engine stores
 /// `pos.pending_bodyguard = Some(...)`, flips STM to the defender, and
-/// returns early — no damage, no kill-follow-through, no actions decrement,
+/// returns early - no damage, no kill-follow-through, no actions decrement,
 /// no moved-this-phase mark. The defender's next ply must be a
 /// `BodyguardChoice` (see `apply_bodyguard_choice`), which finishes the
 /// transaction by resolving damage on the chosen square, optionally doing
@@ -196,7 +196,7 @@ fn apply_plain_move(pos: &mut Position, src: u8, tgt: u8, undo: &mut Undo) {
 /// out-of-band UI handshake.
 ///
 /// When `bodyguard_guards_for(...)` is empty (the common case), the existing
-/// single-ply path runs unchanged — damage on the named target, optional
+/// single-ply path runs unchanged - damage on the named target, optional
 /// kill-follow-through, attacker ends on `approach` or `tgt`. The
 /// generator no longer emits Move-Attacks with `choice_idx != 0`, so this
 /// branch ignores `choice_idx` entirely.
@@ -211,7 +211,7 @@ fn apply_plain_move(pos: &mut Position, src: u8, tgt: u8, undo: &mut Undo) {
 /// For speed-1 attackers (Champion/King), `approach_sq == src`, so no
 /// physical relocation occurs in the first hop and the function degenerates
 /// to "attacker stays put, defender takes damage" UNLESS the kill-follow-
-/// through triggers — in which case the attacker advances from src → target.
+/// through triggers - in which case the attacker advances from src → target.
 ///
 /// Returns `true` when the apply was *tentative* (pending bodyguard set,
 /// STM already flipped, actions NOT decremented). The caller in `apply_move`
@@ -238,7 +238,7 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) -> boo
         "Move-Attack applied while a Bodyguard choice was already pending");
 
     // Stack N (staged S45): cap Move-Attacks at 1 per turn. Set the turn-scoped
-    // flag now, before the tentative/direct split — a tentative (bodyguard-
+    // flag now, before the tentative/direct split - a tentative (bodyguard-
     // pending) apply has already committed the move-attack action, so it counts.
     // Idempotent: the generator suppresses a second move-attack, so this bit is
     // normally unset here; add_pending is a no-op if it's already set.
@@ -249,7 +249,7 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) -> boo
     // Bodyguard eligibility decides whether this is a tentative or direct apply.
     let bg_guards = super::generator::bodyguard_guards_for(pos, tgt, approach);
 
-    // Snapshot attacker identity now — we may need it for the kill-follow-
+    // Snapshot attacker identity now - we may need it for the kill-follow-
     // through second hop. Reading from src here is correct because the
     // first-hop relocation (if any) below preserves the same piece kind/owner
     // at `approach`.
@@ -370,7 +370,7 @@ fn apply_move_attack(pos: &mut Position, action: Action, undo: &mut Undo) -> boo
 /// the kill-follow-through second hop on the original attacker, clears the
 /// pending state, flips STM back to the attacker, and decrements
 /// `actions_remaining`. This is the second half of the two-ply Bodyguard
-/// transaction — see `apply_move_attack` for the first half.
+/// transaction - see `apply_move_attack` for the first half.
 fn apply_bodyguard_choice(pos: &mut Position, action: Action, undo: &mut Undo) {
     let pbg = pos.pending_bodyguard
         .expect("BodyguardChoice applied without a pending_bodyguard state");
@@ -449,12 +449,12 @@ fn deal_one_damage(pos: &mut Position, hit_sq: u8, undo: &mut Undo) {
     let prev_entry = pos.mailbox[hit_sq as usize];
 
     if prev_entry.armor() > 0 {
-        // Armor absorbs the hit — HP unchanged.
+        // Armor absorbs the hit - HP unchanged.
         write_mailbox(pos, undo, hit_sq, prev_entry.with_armor(prev_entry.armor() - 1));
         return;
     }
 
-    // No armor — HP drops.
+    // No armor - HP drops.
     let new_hp = prev_entry.hp().saturating_sub(1);
     if new_hp == 0 {
         // Piece removed. Capture King + owner identity *before* mutating any
@@ -513,10 +513,10 @@ fn apply_skill(pos: &mut Position, action: Action, undo: &mut Undo) {
     // so a Mystic skill (Focus/Charge) cast does NOT consume a pending Focus.
     // The legal sequence Charge → Focus → Strike applies BOTH buffs to the
     // Strike; Focus → Charge → Strike applies only Charge (the Focus was
-    // consumed by Charge if Charge were non-Mystic — but it isn't, so we
+    // consumed by Charge if Charge were non-Mystic - but it isn't, so we
     // must NOT clear here). For non-Mystic skills, the generator already
     // enumerated them at +1 Range when Focus is pending, so no recomputation
-    // is needed here — the legal-action set already reflects the buff. For
+    // is needed here - the legal-action set already reflects the buff. For
     // Move-skills where Focus chose effect-range, the resolver below reads
     // `action.focus_effect_mode()` to pick the buffed effect.
     let is_mystic = matches!(skill_category(skill), SkillCategory::Mystic);
@@ -577,7 +577,7 @@ fn apply_break(pos: &mut Position, action: Action, undo: &mut Undo) {
         existing_combo.saturating_sub(1)
     };
 
-    // Armor reduction — applies regardless of HP-damage gating. Read the
+    // Armor reduction - applies regardless of HP-damage gating. Read the
     // mailbox AGAIN because combo_tick may have written a new entry.
     let post_tick = pos.mailbox[tgt as usize];
     let new_armor = post_tick.armor().saturating_sub(1);
@@ -696,7 +696,7 @@ fn apply_dash(pos: &mut Position, action: Action, undo: &mut Undo) {
     let src = action.src();
     let dest = action.target();
     // Focus retarget: when has_aux, the ally at aux_sq moves (Range 2) and
-    // the caster (src) stays put — caster only pays the cost. The caster's
+    // the caster (src) stays put - caster only pays the cost. The caster's
     // square (used as the lookup for which side pays) is `src` if retargeted
     // (caster didn't move), `dest` otherwise (caster moved there).
     let (mover, payer_sq) = if action.has_aux() {
@@ -873,7 +873,7 @@ fn apply_retreat(pos: &mut Position, action: Action, undo: &mut Undo) {
 ///
 /// Stack-M (session-31): "The next non-Mystic skill used by any of your
 /// pieces this turn gains +1 Range." A subsequent Mystic skill (Focus or
-/// Charge) does NOT consume the pending Focus — only a Strike/Shield/Move
+/// Charge) does NOT consume the pending Focus - only a Strike/Shield/Move
 /// skill does. At most one Focus may be active at a time (generator filters
 /// the duplicate; we debug-assert here as defence-in-depth). No combo-tick
 /// (pure buff). Action encoding: `src == tgt == caster`.
@@ -883,7 +883,7 @@ fn apply_focus(pos: &mut Position, action: Action, undo: &mut Undo) {
     debug_assert!(pos.is_occupied(src));
     debug_assert_eq!(
         pos.pending_modifiers & modifier_bits::FOCUS, 0,
-        "generator emitted Focus while Focus already pending — illegal per Stack-M"
+        "generator emitted Focus while Focus already pending - illegal per Stack-M"
     );
     add_pending(pos, undo, modifier_bits::FOCUS);
     debit_money(pos, src, /*cost=*/ 2, undo); // Stack N (staged S45): Focus 1→2.
@@ -904,7 +904,7 @@ fn apply_charge(pos: &mut Position, action: Action, undo: &mut Undo) {
     debug_assert!(pos.is_occupied(src));
     debug_assert_eq!(
         pos.pending_modifiers & modifier_bits::CHARGE, 0,
-        "generator emitted Charge while Charge already pending — illegal per Stack-M"
+        "generator emitted Charge while Charge already pending - illegal per Stack-M"
     );
     add_pending(pos, undo, modifier_bits::CHARGE);
     debit_money(pos, src, /*cost=*/ 3, undo);
@@ -920,7 +920,7 @@ fn apply_charge(pos: &mut Position, action: Action, undo: &mut Undo) {
 fn apply_strike_damage(pos: &mut Position, src_sq: u8, tgt_sq: u8,
                        base: u8, undo: &mut Undo) -> u8 {
     let prev = pos.mailbox[tgt_sq as usize];
-    // Snapshot the prior mailbox even if no damage is dealt — combo_tick or
+    // Snapshot the prior mailbox even if no damage is dealt - combo_tick or
     // deal_damage may not actually mutate this square (if the target survives
     // with combo bumped only), and we still want the dedup'd prior recorded.
     record_affected(undo, tgt_sq, prev);
@@ -967,7 +967,7 @@ fn deal_damage(pos: &mut Position, hit_sq: u8, dmg: u8, undo: &mut Undo) {
 /// target this turn. Allocates new slots in `tracked_casters` /
 /// `tracked_enemies` as needed. Increments target's combo counter (clamped
 /// to 7) and writes a new mailbox entry. Records the pre-tick mailbox in
-/// `undo` (dedup-safe — no-op if the caller already snapshot'd this square).
+/// `undo` (dedup-safe - no-op if the caller already snapshot'd this square).
 /// Returns true iff a tick happened.
 fn combo_tick(pos: &mut Position, src_sq: u8, tgt_sq: u8, undo: &mut Undo) -> bool {
     use crate::state::position::MAX_TRACKED_ENEMIES;
@@ -1007,7 +1007,7 @@ fn ensure_tracked_caster(pos: &mut Position, sq: u8) -> u8 {
         if pos.tracked_casters[i] == sq { return i as u8; }
     }
     let i = pos.tracked_casters_len;
-    // See ensure_tracked_enemy — same reasoning, same hard panic instead of
+    // See ensure_tracked_enemy - same reasoning, same hard panic instead of
     // a stripped debug_assert.
     assert!((i as usize) < MAX_TRACKED_CASTERS,
             "tracked_casters capacity exhausted in single turn (cap={})", MAX_TRACKED_CASTERS);
@@ -1020,7 +1020,7 @@ fn ensure_tracked_caster(pos: &mut Position, sq: u8) -> u8 {
 /// effect have fully resolved, the caster steps 1 tile toward the (former)
 /// target along the cast direction, IFF that destination tile is now empty.
 ///
-/// Single uniform rule — call this as the LAST spatial step of each Strike
+/// Single uniform rule - call this as the LAST spatial step of each Strike
 /// resolver, after the effect + money debit. Reads live occupancy so all the
 /// documented consequences fall out automatically:
 ///   - point-blank (adjacent) NON-kill → dest is the target tile, still
@@ -1035,7 +1035,7 @@ fn ensure_tracked_caster(pos: &mut Position, sq: u8) -> u8 {
 /// target is on-board), so the only no-move cases are `dest` occupied or the
 /// degenerate caster==target (never happens for a real ranged strike).
 /// `relocate_piece` records all deltas into `undo`, so `unmake` reverses this
-/// step for free — no new Undo field required.
+/// step for free - no new Undo field required.
 ///
 /// Returns the caster's final square (unchanged if no move happened).
 fn strike_move_caster(pos: &mut Position, caster_sq: u8, target_sq: u8, undo: &mut Undo) -> u8 {
@@ -1146,14 +1146,14 @@ fn apply_end_phase(pos: &mut Position, undo: &mut Undo) {
             super::turn_manager::end_turn(pos, undo);
         }
         Phase::Draft => {
-            debug_assert!(false, "EndPhase invoked during Phase::Draft — draft uses DraftTurn actions to advance, not EndPhase");
+            debug_assert!(false, "EndPhase invoked during Phase::Draft - draft uses DraftTurn actions to advance, not EndPhase");
         }
     }
 }
 
 /// Skill-Phase action budget for the given round (Stack M).
 ///
-/// Formula: `2 + (round_number - 1) / 10`. Unbounded — +1 per 10 rounds.
+/// Formula: `2 + (round_number - 1) / 10`. Unbounded - +1 per 10 rounds.
 /// The paper rule sheet shows "R31+: 5" as a table cut-off, not a cap;
 /// R41–50 is 6, R51–60 is 7, and so on. Saturates at u8::MAX defensively
 /// (games will never reach that, but we don't want to panic on overflow).
@@ -1176,10 +1176,10 @@ pub(crate) fn skill_phase_budget(round_number: u16) -> u8 {
 // turn" during draft).
 
 /// Apply a DraftTurn action. Writes skill1/skill2 fields on the two target
-/// mailbox entries, flips side-to-move, and — once both sides are fully
-/// equipped — transitions to Phase::Move with the standard Move-Phase budget.
+/// mailbox entries, flips side-to-move, and - once both sides are fully
+/// equipped - transitions to Phase::Move with the standard Move-Phase budget.
 ///
-/// Invariants checked in debug (caller is responsible — the generator filters
+/// Invariants checked in debug (caller is responsible - the generator filters
 /// these out):
 ///   - `pos.current_phase == Phase::Draft`
 ///   - both picks target stm-owned skill-bearing pieces (King or Champion)
@@ -1265,13 +1265,13 @@ fn draft_complete(pos: &Position) -> bool {
 }
 
 /// Enumerate every legal DraftTurn the side-to-move can play from this
-/// position. Each DraftTurn is two picks — every ordered pair of legal
+/// position. Each DraftTurn is two picks - every ordered pair of legal
 /// individual picks is emitted (modulo the same-piece-same-skill filter).
 ///
 /// Cost note: with 15 skills × ~12 empty slots per side at draft start, the
 /// raw cross-product is ~32 400 actions. After per-piece duplicate filtering
 /// and same-piece-conflict filtering the number is smaller but still large.
-/// This is acceptable for L8 — the AI uses a random heuristic, not a search.
+/// This is acceptable for L8 - the AI uses a random heuristic, not a search.
 /// A future slice can replace this with a smaller move list (pick-set + slot
 /// assignment) if draft-tree search becomes desirable.
 pub(crate) fn legal_draft_turns(pos: &Position) -> Vec<Action> {
@@ -1324,13 +1324,13 @@ pub(crate) fn legal_draft_turns(pos: &Position) -> Vec<Action> {
 
 pub(super) fn record_affected(undo: &mut Undo, sq: u8, prev: MailboxEntry) {
     // Dedup: if this square is already recorded, leave the *original* snapshot
-    // in place — that's the value we need to restore back to.
+    // in place - that's the value we need to restore back to.
     for i in 0..undo.affected_count as usize {
         if undo.affected_squares[i] == sq { return; }
     }
     let i = undo.affected_count as usize;
     debug_assert!(i < undo.affected_squares.len(),
-        "affected_squares capacity exceeded — bump size or split action");
+        "affected_squares capacity exceeded - bump size or split action");
     undo.affected_squares[i] = sq;
     undo.affected_prev_entries[i] = prev.0;
     undo.affected_count += 1;
@@ -1748,7 +1748,7 @@ mod tests {
         place(&mut pos, 9, Player::P2, PieceKind::Champion, 2, 0);
         place(&mut pos, 1, Player::P2, PieceKind::Guard, 2, 0);
 
-        // Stage 1: tentative — pending set, no damage.
+        // Stage 1: tentative - pending set, no damage.
         let attack = Action::encode_move_attack(0, 9, 0, 0);
         let _u1 = make(&mut pos, attack);
         assert!(pos.pending_bodyguard.is_some());
@@ -1907,7 +1907,7 @@ mod tests {
         let choice = Action::encode_bodyguard_choice(1);
         let undo_choice = make(&mut pos, choice);
 
-        assert!(pos.kings.contains(1), "King survives — Bodyguard absorbed");
+        assert!(pos.kings.contains(1), "King survives - Bodyguard absorbed");
         assert_eq!(pos.mailbox[1].hp(), 1);
         assert_eq!(pos.mailbox[9].hp(), 1, "Guard HP 2→1");
         assert_eq!(pos.game_result, None);
@@ -1946,7 +1946,7 @@ mod tests {
     #[test]
     fn move_attack_on_guard_offers_no_bodyguard_choice() {
         // Generator-side: Move-Attack on a Guard must not enumerate any
-        // Bodyguard redirect — Bodyguard protects only Champion/King.
+        // Bodyguard redirect - Bodyguard protects only Champion/King.
         // Setup: P1 Champion at sq 0, P2 Guards at sq 1 (target) and sq 2
         // (would-be protector). Generator should emit exactly one Move-Attack
         // action against sq 1 (choice_idx = 0).
@@ -2222,7 +2222,7 @@ mod tests {
     #[test]
     fn move_attack_multiple_approaches_emit_distinct_actions() {
         // A speed-2 Guard at b1 (sq 1) attacking a defender at b3 (sq 17) can
-        // physically end up on a2 (sq 8), b2 (sq 9), or c2 (sq 10) — three
+        // physically end up on a2 (sq 8), b2 (sq 9), or c2 (sq 10) - three
         // different penultimate tiles, each a distinct legal action with
         // potentially different Bodyguard sets and different attacker end
         // positions. The generator must emit one action per distinct
@@ -2257,7 +2257,7 @@ mod tests {
         place(&mut pos, 9, Player::P1, PieceKind::Guard, 2, 0);     // b2
         place(&mut pos, 3, Player::P1, PieceKind::Champion, 2, 0);  // d1
         place(&mut pos, 11, Player::P2, PieceKind::Guard, 2, 0);    // d2
-        // Kings need to exist for game_result invariants — give each side
+        // Kings need to exist for game_result invariants - give each side
         // an inert King far from the action.
         place(&mut pos, 56, Player::P1, PieceKind::King, 2, 0);     // a8
         place(&mut pos, 63, Player::P2, PieceKind::King, 2, 0);     // h8
@@ -2336,7 +2336,7 @@ mod tests {
         assert_eq!(parsed.game_result, None);
     }
 
-    // === Slice 4 — Strike-skill resolvers ===================================
+    // === Slice 4 - Strike-skill resolvers ===================================
 
     use super::super::skills::Skill;
 
@@ -2420,7 +2420,7 @@ mod tests {
 
         let undo = make(&mut pos, skill_action(28, 36, Skill::Lance));
         // Target (P2) removed at HP 0. Stack N (staged S45): this is a
-        // point-blank kill, so the caster steps onto the vacated tile —
+        // point-blank kill, so the caster steps onto the vacated tile -
         // 36 is now occupied by the P1 caster, not empty.
         assert!(!pos.p2_pieces.contains(36), "target removed at HP 0");
         assert!(!pos.champions.contains(28), "caster left its origin (strike-moves-caster)");
@@ -2623,7 +2623,7 @@ mod tests {
         let undo = make(&mut pos, skill_action(28, 44, Skill::Hook));
         assert!(!pos.is_occupied(44), "target removed, nothing pulled");
         // Stack N (staged S45): the kill vacated the target tile, so the caster
-        // steps 1 tile toward it — from e4 (28) to the intermediate e5 (36).
+        // steps 1 tile toward it - from e4 (28) to the intermediate e5 (36).
         assert!(!pos.champions.contains(28), "caster left origin");
         assert!(pos.p1_pieces.contains(36), "caster stepped to e5");
 
@@ -2661,7 +2661,7 @@ mod tests {
     #[test]
     fn hook_combo_tick_two_casters() {
         // Two casters on rays to a tough target. P1 Champion A at d3 (sq 19),
-        // P1 Champion B at f5 (sq 37), P2 target Champion at e4 (sq 28) —
+        // P1 Champion B at f5 (sq 37), P2 target Champion at e4 (sq 28) -
         // both casters within range 2 (Chebyshev dist 1, diagonal).
         // Target Armor=2 to absorb damage so it survives two casts.
         let mut pos = skill_phase_pos(4);
@@ -2695,7 +2695,7 @@ mod tests {
         // the same caster is recognised as a RETURNING champion on the same
         // victim. Combo-bonus ruling: returning champ at counter 1 gets
         // +(1-1)=0 bonus (and no tick), so this second hit collects nothing
-        // extra — identical numbers to the old "gated" behaviour at counter 1.
+        // extra - identical numbers to the old "gated" behaviour at counter 1.
         //
         // Setup: P1 Champion A at e4 (sq 28), P2 target at e6 (sq 44).
         // Hook pulls e6 → e5 (sq 36). Second Hook from sq 28 targets sq 36.
@@ -2719,7 +2719,7 @@ mod tests {
         // (caster, victim) pair → returning champ, no re-tick, bonus = (1-1)=0.
         // Total damage = base 1 only. Armor absorbs it (1→0). HP stays at 2.
         let _ = make(&mut pos, skill_action(28, 36, Skill::Hook));
-        assert!(pos.is_occupied(36) || !pos.is_occupied(36)); // survives or dies — we check HP
+        assert!(pos.is_occupied(36) || !pos.is_occupied(36)); // survives or dies - we check HP
         // If still alive: HP must be 2 (returning bonus at counter 1 is 0).
         if pos.is_occupied(36) || pos.is_occupied(28) {
             // Target may have been pulled to sq 28's neighbour; find where it went.
@@ -2731,9 +2731,9 @@ mod tests {
                     !pos.p1_pieces.contains(s)).unwrap_or(36)
             };
             assert_eq!(pos.mailbox[tgt_sq as usize].combo(), 1,
-                "combo must remain 1 — same caster does not re-tick its own victim");
+                "combo must remain 1 - same caster does not re-tick its own victim");
             assert_eq!(pos.mailbox[tgt_sq as usize].hp(), 2,
-                "HP unchanged — 1 base dmg absorbed by remaining Armor, returning bonus (1-1)=0");
+                "HP unchanged - 1 base dmg absorbed by remaining Armor, returning bonus (1-1)=0");
         }
     }
 
@@ -2787,7 +2787,7 @@ mod tests {
         place(&mut pos, 42, Player::P2, PieceKind::Guard,    2, 0); // blocks d6→c6
 
         let _ = make(&mut pos, skill_action(28, 44, Skill::Tempest));
-        assert!(pos.is_occupied(43), "d6 stays — push blocked by c6");
+        assert!(pos.is_occupied(43), "d6 stays - push blocked by c6");
         assert!(pos.is_occupied(42), "c6 unchanged");
     }
 
@@ -2798,11 +2798,11 @@ mod tests {
         // force off-board, use a4 target and a5 neighbour: push dir tgt→a5
         // is dr=+1, df=0 → a6 on-board too. The truly off-board case for
         // Tempest is on the rank/file edge: target a4, neighbour b4 (sq 25)
-        // — push direction tgt(a4)→b4 is dr=0 df=+1 → c4 (caster!). Use
-        // target a1 (sq 0), neighbour a2 (sq 8) — pivot a1, push_away → a3 (16).
+        // - push direction tgt(a4)→b4 is dr=0 df=+1 → c4 (caster!). Use
+        // target a1 (sq 0), neighbour a2 (sq 8) - pivot a1, push_away → a3 (16).
         // Truly off-board: target a1, neighbour-that-would-push-off would
         // sit at sq -1 etc. So use target h8 (sq 63), neighbour h7 (sq 55)
-        // — push direction (63,55) is dr=-1,df=0 → h6 on-board too.
+        // - push direction (63,55) is dr=-1,df=0 → h6 on-board too.
         //
         // The off-board case: target square at edge AND neighbour sits in
         // a corner-direction. Target a1 (sq 0), neighbour b1 (sq 1): push
@@ -2820,7 +2820,7 @@ mod tests {
         place(&mut pos, 0,  Player::P2, PieceKind::Guard,    2, 0); // a1 neighbour
 
         let _ = make(&mut pos, skill_action(17, 8, Skill::Tempest));
-        assert!(pos.is_occupied(0), "a1 stays — push would go off-board");
+        assert!(pos.is_occupied(0), "a1 stays - push would go off-board");
     }
 
     #[test]
@@ -2942,7 +2942,7 @@ mod tests {
         // counter stays 2. armor 0, hp 1→ removed (2 dmg on 1 hp).
         let _ = make(&mut pos, skill_action(18, 27, Skill::Lance));
         // Target (P2) removed. Stack N (staged S45): this is a point-blank kill,
-        // so caster A steps onto the vacated tile 27 — assert the target is gone
+        // so caster A steps onto the vacated tile 27 - assert the target is gone
         // via the P2 bitboard rather than square-emptiness.
         assert!(!pos.p2_pieces.contains(27),
                 "A returning at counter 2 deals base 1 + bonus 1 = 2, removing the 1-hp target");
@@ -2957,7 +2957,7 @@ mod tests {
         equip(&mut pos, 19, Skill::Lance as u8);
         place(&mut pos, 37, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 37, Skill::Lance as u8);
-        // Lance is range 1 — both casters are diagonal-adjacent to sq 28.
+        // Lance is range 1 - both casters are diagonal-adjacent to sq 28.
         place(&mut pos, 28, Player::P2, PieceKind::Champion, 2, 2);
 
         let _ = make(&mut pos, skill_action(19, 28, Skill::Lance));
@@ -2995,7 +2995,7 @@ mod tests {
         let mut pos = skill_phase_pos(6);
         pos.p1_money = 20;
         pos.p2_money = 8;
-        // Three P1 Champions adjacent to a tough target — all within range 1.
+        // Three P1 Champions adjacent to a tough target - all within range 1.
         place(&mut pos, 19, Player::P1, PieceKind::Champion, 2, 0); // d3
         equip(&mut pos, 19, Skill::Lance as u8);
         place(&mut pos, 37, Player::P1, PieceKind::Champion, 2, 0); // f5
@@ -3053,7 +3053,7 @@ mod tests {
         assert!(pos_eq(&snapshot, &pos));
     }
 
-    // === Slice 5 — Shield-class + Move-class resolvers ====================
+    // === Slice 5 - Shield-class + Move-class resolvers ====================
 
     use super::super::generator::generate;
 
@@ -3130,7 +3130,7 @@ mod tests {
         let mut pos = skill_phase_pos(2);
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 28, Skill::Heal as u8);
-        // Ally at full HP — not a legal Heal target.
+        // Ally at full HP - not a legal Heal target.
         place(&mut pos, 36, Player::P1, PieceKind::Champion, 2, 0);
 
         let heal_id = Skill::Heal as u8;
@@ -3221,7 +3221,7 @@ mod tests {
         place(&mut pos, 27, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 27, Skill::Dash as u8);
 
-        // d4 (27) → f6 (45) — diagonal NE, range 2.
+        // d4 (27) → f6 (45) - diagonal NE, range 2.
         let _ = make(&mut pos, skill_action(27, 45, Skill::Dash));
         assert!(!pos.is_occupied(27));
         assert!(pos.is_occupied(45));
@@ -3232,7 +3232,7 @@ mod tests {
     fn dash_path_blocked_no_emission() {
         // Dash 2-tile target on a ray blocked by piece in between.
         // Caster at e4 (sq 28). Ally at e5 (36). e6 (44) is the 2-tile target
-        // along the N-ray, but skill_attacks treats the ally as a blocker —
+        // along the N-ray, but skill_attacks treats the ally as a blocker -
         // so e6 must not appear as a Dash destination.
         let mut pos = skill_phase_pos(2);
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
@@ -3299,10 +3299,10 @@ mod tests {
         // damage (any skill affecting a target with counter>0 deals +counter).
         let mut pos = skill_phase_pos(4);
         pos.p1_money = 30;
-        // Champion A at e4 (28) with Lance — ticks the counter.
+        // Champion A at e4 (28) with Lance - ticks the counter.
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 28, Skill::Lance as u8);
-        // Champion B at g5 (38) with Blast — the "new champion" that combos.
+        // Champion B at g5 (38) with Blast - the "new champion" that combos.
         place(&mut pos, 38, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 38, Skill::Blast as u8);
         // Enemy T at e5 (36), HP 2, armor 2 so it survives to inspect HP/armor.
@@ -3335,7 +3335,7 @@ mod tests {
         place(&mut pos, 44, Player::P1, PieceKind::Champion, 2, 0);
 
         let _ = make(&mut pos, skill_action(28, 36, Skill::Blast));
-        assert!(pos.is_occupied(36), "enemy stays — push blocked");
+        assert!(pos.is_occupied(36), "enemy stays - push blocked");
         assert!(pos.is_occupied(44), "blocker undisturbed");
     }
 
@@ -3378,7 +3378,7 @@ mod tests {
         // Enemy at d4 = sq 27 (rank 3, file 3). Expected push targets:
         // 0=N→35, 1=NE→36, 2=E→28(caster!), 3=SE→20, 4=S→19, 5=SW→18,
         // 6=W→26, 7=NW→34.
-        // Direction 2 (E) toward sq 28 would push onto the caster — blocked,
+        // Direction 2 (E) toward sq 28 would push onto the caster - blocked,
         // generator wouldn't emit. We test 7 of the 8 directions here.
         let expected: [(u8, u8); 7] = [
             (0, 35), (1, 36), (3, 20), (4, 19),
@@ -3401,7 +3401,7 @@ mod tests {
     #[test]
     fn shove_pushes_ally_does_not_tick_combo() {
         // Caster e4 (28), ally at d4 (27, combo=0). Shove N → d5 (35).
-        // Ally push — combo on ally must remain 0.
+        // Ally push - combo on ally must remain 0.
         let mut pos = skill_phase_pos(2);
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 28, Skill::Shove as u8);
@@ -3416,7 +3416,7 @@ mod tests {
     fn shove_off_board_no_emission() {
         // Caster b1 (1), enemy a1 (0). Pushes W or any S-ish dir are
         // off-board; pushing E lands on caster (blocked); pushing N lands
-        // on a2 (sq 8) — legal. Generator should emit some dirs and skip
+        // on a2 (sq 8) - legal. Generator should emit some dirs and skip
         // off-board ones.
         let mut pos = skill_phase_pos(2);
         place(&mut pos, 1, Player::P1, PieceKind::Champion, 2, 0);
@@ -3513,7 +3513,7 @@ mod tests {
     fn swap_path_blocked_no_emission() {
         // Caster e4 (28) with Swap (range 2). Ally e5 (36) is fine (range 1).
         // Far ally e6 (44) is range 2 but blocked by e5 (the first piece on
-        // the ray). path::skill_targets only returns first-blocker — so e6
+        // the ray). path::skill_targets only returns first-blocker - so e6
         // must NOT be a Swap target.
         let mut pos = skill_phase_pos(2);
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
@@ -3557,7 +3557,7 @@ mod tests {
         equip(&mut pos, 28, Skill::Retreat as u8);
         place(&mut pos, 0, Player::P1, PieceKind::Guard, 2, 1);
 
-        // e4 → b1: dr=-3, df=-3 — pure SW diagonal at Chebyshev 3 ✓.
+        // e4 → b1: dr=-3, df=-3 - pure SW diagonal at Chebyshev 3 ✓.
         let _ = make(&mut pos, skill_action(28, 1, Skill::Retreat));
         assert!(!pos.is_occupied(28));
         assert!(pos.is_occupied(1));
@@ -3693,7 +3693,7 @@ mod tests {
 
     #[test]
     fn dash_then_lance_uses_new_caster_position() {
-        // Caster at e4 (28) with Dash + Lance. Enemy at h4 (sq 31) — out of
+        // Caster at e4 (28) with Dash + Lance. Enemy at h4 (sq 31) - out of
         // Lance range (1) from e4 but in range from e.g. g4 (30). Dash e4→g4
         // first (dir E, range 2), then Lance from g4 hits h4.
         let mut pos = skill_phase_pos(2);
@@ -3762,7 +3762,7 @@ mod tests {
         assert_eq!(skill_phase_budget(100), 11);
     }
 
-    // === Slice 6 — Focus / Charge / end_turn ===============================
+    // === Slice 6 - Focus / Charge / end_turn ===============================
 
     #[test]
     fn focus_sets_pending_bit_and_consumes_action() {
@@ -3793,7 +3793,7 @@ mod tests {
     #[test]
     fn focus_is_not_consumed_by_charge() {
         // Stack-M (session-31): Focus = next non-Mystic skill. Casting Charge
-        // (Mystic) while Focus is pending MUST leave Focus pending — so a
+        // (Mystic) while Focus is pending MUST leave Focus pending - so a
         // subsequent Strike skill gets BOTH buffs.
         let mut pos = skill_phase_pos(3);
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
@@ -3823,7 +3823,7 @@ mod tests {
         equip(&mut pos, 28, Skill::Lance as u8);
         let _ = make(&mut pos, skill_action(28, 36, Skill::Lance));
         // Stack N (staged S45): the point-blank KO vacates 36, so the caster
-        // steps onto it — assert the enemy is gone via the P2 bitboard.
+        // steps onto it - assert the enemy is gone via the P2 bitboard.
         assert!(!pos.p2_pieces.contains(36), "Charge+Lance should KO a HP2/armor0 enemy");
         assert!(pos.p1_pieces.contains(36), "caster took the vacated square");
         // CHARGE bit cleared.
@@ -3850,7 +3850,7 @@ mod tests {
         assert!(!pos.is_occupied(36), "ally moved off origin");
         assert!( pos.is_occupied(52), "ally arrived at destination");
         assert!( pos.champions.contains(52));
-        // Caster (still at 28) pays — that's the only P1 piece paying.
+        // Caster (still at 28) pays - that's the only P1 piece paying.
         assert_eq!(pos.p1_money, pre_money - 3);
         // FOCUS bit consumed.
         assert_eq!(pos.pending_modifiers & modifier_bits::FOCUS, 0);
@@ -3910,7 +3910,7 @@ mod tests {
         assert_eq!(pos.current_phase, Phase::Move);
         assert_eq!(pos.actions_remaining, 2);
         assert_eq!(pos.pending_modifiers, 0);
-        // Stack M: R1 grants NO income to either side — both play the opening
+        // Stack M: R1 grants NO income to either side - both play the opening
         // round on starting money. Neither balance changes here.
         assert_eq!(pos.p2_money, 5, "no R1 income");
         assert_eq!(pos.p1_money, 5);
@@ -3937,7 +3937,7 @@ mod tests {
         assert_eq!(pos.round_number, 2);
         // R2 income = 2 + 2/5 = 2.
         assert_eq!(pos.p1_money, 7, "P1 collects R2 income");
-        assert_eq!(pos.p2_money, 5, "P2 unaffected — they already spent R1");
+        assert_eq!(pos.p2_money, 5, "P2 unaffected - they already spent R1");
         unmake(&mut pos, &undo);
         assert_eq!(pos.p1_money, 5);
         assert_eq!(pos.round_number, 1);
@@ -3971,7 +3971,7 @@ mod tests {
     fn end_turn_clears_combo_on_just_acted_side_too() {
         // Per Stack M: combo counter "resets at the end of your turn." This
         // includes the just-acting side's pieces (e.g. when a self-buff like
-        // Tempest places combo on the caster's own pieces — those must NOT
+        // Tempest places combo on the caster's own pieces - those must NOT
         // survive into the opponent's turn, or the opponent gets free
         // combo-bonus damage on them.
         let mut pos = skill_phase_pos(0);
@@ -4039,7 +4039,7 @@ mod tests {
         assert_eq!(pos.zobrist, zobrist::full_recompute(&pos),
             "after end-phase: incremental matches full_recompute");
 
-        // Action 4: end Skill Phase (triggers end_turn — flip + income + reset).
+        // Action 4: end Skill Phase (triggers end_turn - flip + income + reset).
         let _u4 = make(&mut pos, Action::encode(0, 0, ActionKind::EndPhase, 0, 0));
         assert_eq!(pos.zobrist, zobrist::full_recompute(&pos),
             "after end-turn: incremental matches full_recompute");
@@ -4069,7 +4069,7 @@ mod tests {
             assert_eq!(pos.zobrist, snap, "end-phase round-trip preserves zobrist");
         }
 
-        // 3. Skill action (Lance) — uses the same harness as the strike tests.
+        // 3. Skill action (Lance) - uses the same harness as the strike tests.
         {
             let mut pos = skill_phase_pos(2);
             place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
@@ -4282,7 +4282,7 @@ mod tests {
     fn move_attack_sets_used_flag_and_suppresses_second() {
         // P1 champion at sq 9 (b2), enemy champions at sq 10 (c2) and 17 (b3),
         // both reachable as speed-1 move-attacks. After the first move-attack,
-        // the generator must emit NO further move-attacks — only plain moves +
+        // the generator must emit NO further move-attacks - only plain moves +
         // EndPhase (and, for a speed-1 champ that killed, follow-through already
         // consumed the move).
         let mut pos = empty_pos_with_actions(2);
@@ -4398,7 +4398,7 @@ mod tests {
     #[test]
     fn strike_move_caster_ranged_kill_steps_one_not_onto_target() {
         // Ranged Steal (range 2) kills target at e6 (44). Caster at e4 (28) steps
-        // ONE tile to e5 (36) — not two tiles onto the far target tile.
+        // ONE tile to e5 (36) - not two tiles onto the far target tile.
         let mut pos = skill_phase_pos(2);
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 28, Skill::Steal as u8);
@@ -4415,8 +4415,8 @@ mod tests {
     fn strike_move_caster_blocked_dest_no_move() {
         // Ranged Steal: caster e4 (28), a friendly piece sits on the 1-step tile
         // e5 (36), target at e6 (44). After the kill, dest (36) is occupied by
-        // the ally → no caster move. (This also blocks the skill Path — Steal is
-        // Range 2 and the Path is blocked by ALL pieces — so instead place the
+        // the ally → no caster move. (This also blocks the skill Path - Steal is
+        // Range 2 and the Path is blocked by ALL pieces - so instead place the
         // blocker where it only blocks the step, not the path: use a diagonal.)
         //
         // Diagonal cast: caster at a1 (0), target at c3 (18), 1-step tile b2 (9).
@@ -4425,7 +4425,7 @@ mod tests {
         // case is exercised by the Hook interaction test below, which frees/keeps
         // the dest tile via the pull. Assert the simple invariant instead:
         // an occupied 1-step tile yields no move when the strike still resolves
-        // by using Lance (adjacent) with a surviving target — already covered by
+        // by using Lance (adjacent) with a surviving target - already covered by
         // strike_move_caster_point_blank_non_kill_no_move. This test documents
         // that reasoning and asserts the helper is a no-op when dest occupied.
         let mut pos = skill_phase_pos(2);
@@ -4444,7 +4444,7 @@ mod tests {
         // target is pulled 44→36 (e5), which then occupies the caster's 1-step
         // dest → caster does NOT move. On a KILL, the tile stays empty → caster
         // steps to 36.
-        // Case A — survives, pulled onto dest → no caster move.
+        // Case A - survives, pulled onto dest → no caster move.
         let mut a = skill_phase_pos(2);
         place(&mut a, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut a, 28, Skill::Hook as u8);
@@ -4454,7 +4454,7 @@ mod tests {
         assert!(a.p2_pieces.contains(36), "target pulled to e5");
         assert!(a.champions.contains(28), "caster blocked by pulled target → no move");
 
-        // Case B — dies, no pull, dest e5 empty → caster steps.
+        // Case B - dies, no pull, dest e5 empty → caster steps.
         let mut b = skill_phase_pos(2);
         place(&mut b, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut b, 28, Skill::Hook as u8);
@@ -4476,7 +4476,7 @@ mod tests {
         let _ = make(&mut pos, skill_action(28, 28, Skill::Shield));
         assert!(pos.champions.contains(28), "Shield must not move the caster");
 
-        // Blast (Move category, pushes enemy) — caster stays put even though it
+        // Blast (Move category, pushes enemy) - caster stays put even though it
         // affects an enemy. Caster e4 (28), enemy e5 (36).
         let mut pos2 = skill_phase_pos(2);
         place(&mut pos2, 28, Player::P1, PieceKind::Champion, 2, 0);

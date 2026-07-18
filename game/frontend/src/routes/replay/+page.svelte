@@ -84,7 +84,7 @@
 
   onDestroy(() => {
     // Cancel timers, empty effectQueue, clear checkpoints. Same shape as
-    // inspector/match — replay had none until now, so long-lived replay
+    // inspector/match - replay had none until now, so long-lived replay
     // sessions leaked renderer state on route exit.
     renderer?.dispose();
     renderer = null;
@@ -238,7 +238,7 @@
   // is triggered when currentPly changes (which retriggers this $effect).
   //
   // With `respectAnimation` on, the step is gated on MAX(user-delay,
-  // animation-done) — cinematic viewers get the full walk + lunge, "fast"
+  // animation-done) - cinematic viewers get the full walk + lunge, "fast"
   // users with short delay values keep their pacing. With it off, only the
   // user delay matters and the next ply can interrupt an in-flight animation.
   $effect(() => {
@@ -389,7 +389,7 @@
             <em>{t("replay.atStart")}</em>
           {:else if currentPly >= plies.length}
             <em>{t("replay.atEnd")}</em>
-            <span class="last-action">— {actionLabel}</span>
+            <span class="last-action">- {actionLabel}</span>
           {:else}
             <span class="last-action">{actionLabel}</span>
           {/if}

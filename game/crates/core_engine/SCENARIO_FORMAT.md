@@ -6,7 +6,7 @@ Plain-text formats the engine's debug harness understands. Frozen so the designe
 
 ---
 
-## 1. FEN — position serialisation
+## 1. FEN - position serialisation
 
 Single-line, space-separated:
 
@@ -40,17 +40,17 @@ Field ranges:
 - `combo` ∈ 0..=7
 - `skill1`, `skill2` ∈ 0..=15 (0 = unequipped)
 
-Guards may not carry skills — `skill1` and `skill2` must both be 0 on any `G`/`g` token. Strict and lax parsers both reject Guards with non-zero skill fields.
+Guards may not carry skills - `skill1` and `skill2` must both be 0 on any `G`/`g` token. Strict and lax parsers both reject Guards with non-zero skill fields.
 
 ### Trailing scalars
 
 - `<to_move>` ∈ `{P1, P2}`
-- `<phase>` ∈ `{M, S}` — Move phase or Skill phase
+- `<phase>` ∈ `{M, S}` - Move phase or Skill phase
 - `<actions_remaining>` decimal 0..=255
 - `<p1_money>`, `<p2_money>` decimal 0..=65535
 - `<pending_modifiers>` decimal 0..=255 (bit 0 = FOCUS, bit 1 = CHARGE; other bits reserved)
-- `<round_number>` decimal 1..=65535 — a Round = P1 turn + P2 turn. Increments when the turn flips back to P1. Drives round-based progression (income scaling, Skill-Phase action budget).
-- `<moved_this_phase>` `0x<hex>` — u64 bitboard of squares whose piece has already been moved in the current Move Phase. Must be a subset of the side-to-move's pieces; must be `0x0` whenever `<phase>` is `S`.
+- `<round_number>` decimal 1..=65535 - a Round = P1 turn + P2 turn. Increments when the turn flips back to P1. Drives round-based progression (income scaling, Skill-Phase action budget).
+- `<moved_this_phase>` `0x<hex>` - u64 bitboard of squares whose piece has already been moved in the current Move Phase. Must be a subset of the side-to-move's pieces; must be `0x0` whenever `<phase>` is `S`.
 
 ### Fields not in FEN
 
@@ -74,8 +74,8 @@ P1 King at a1, P2 King at h8, otherwise empty. P1 to move, Move phase, 2 actions
 
 Two entry points, same grammar:
 
-- **`from_fen(s)`** — structural validity only. Verifies the board syntax parses, every rank sums to 8 squares, exactly one King per side, and bracketed fields are in-range. Accepts any reachable mid-game position (captures, depleted armies, etc.).
-- **`from_fen_strict(s)`** — also enforces **Stack M setup invariants**: per side, exactly 1 King + 5 Champions + 6 Guards, and the two Kings on different files. Use this for setup-position scenarios and any FEN that claims to be a legal starting position.
+- **`from_fen(s)`** - structural validity only. Verifies the board syntax parses, every rank sums to 8 squares, exactly one King per side, and bracketed fields are in-range. Accepts any reachable mid-game position (captures, depleted armies, etc.).
+- **`from_fen_strict(s)`** - also enforces **Stack M setup invariants**: per side, exactly 1 King + 5 Champions + 6 Guards, and the two Kings on different files. Use this for setup-position scenarios and any FEN that claims to be a legal starting position.
 
 Mid-game scenarios (slice 1+ make/unmake tests, opening-fragment captures) must use plain `from_fen`. The strict variant will reject them as soon as a piece is taken.
 
@@ -83,7 +83,7 @@ Mid-game scenarios (slice 1+ make/unmake tests, opening-fragment captures) must 
 
 ---
 
-## 2. Action text — single-action notation
+## 2. Action text - single-action notation
 
 Used by the (future) `gamedbg apply / trace` CLI and `.scenario` files.
 
@@ -110,7 +110,7 @@ endturn            ; end turn (closes both phases)
 
 ---
 
-## 3. Scenario file (`.scenario`) — single test
+## 3. Scenario file (`.scenario`) - single test
 
 A `.scenario` file declares one starting position, one action, and one or more assertions. The slice-0 runner reads `tests/scenarios/*.scenario`.
 
@@ -129,7 +129,7 @@ Rules:
 - Lines starting with `#` are comments.
 - `given` and `action` are required.
 - At least one `expect_*` clause must be present.
-- Multi-action sequences are out of scope for slice 0 — author them as multiple files chained by FEN, or wait for the slice-N batch-runner extension.
+- Multi-action sequences are out of scope for slice 0 - author them as multiple files chained by FEN, or wait for the slice-N batch-runner extension.
 
 The runner reports per-file pass/fail with a diff of position-after when `expect_position` mismatches.
 

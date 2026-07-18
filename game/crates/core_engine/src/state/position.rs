@@ -4,7 +4,7 @@
 //!
 //! **Bitboards are authoritative for occupancy.** A square is occupied iff
 //! `(p1_pieces | p2_pieces).contains(sq)`. The `mailbox` entry for an
-//! unoccupied square is *undefined* — never read it without first checking
+//! unoccupied square is *undefined* - never read it without first checking
 //! the bitboards. As a discipline, `make/unmake` clears the mailbox slot to
 //! `EMPTY_MAILBOX_ENTRY` on piece removal, but correctness must not depend
 //! on that. This matches Stockfish's bitboard+mailbox convention.
@@ -42,7 +42,7 @@ pub const CHAMPIONS_PER_PLAYER: usize = 5;
 /// session-37: multi-Tempest turns can legitimately accumulate >8 distinct
 /// enemy targets across the turn (each Tempest can tick its pivot plus any
 /// enemy neighbours pushed). 16 is the absolute upper bound for a single
-/// player's reachable enemies — opponent has at most 12 pieces (1 King + 5
+/// player's reachable enemies - opponent has at most 12 pieces (1 King + 5
 /// Champions + 6 Guards), capped further by board geometry. See
 /// `champion_credit` for the cross-product packing.
 pub const MAX_TRACKED_ENEMIES: usize = 16;
@@ -60,7 +60,7 @@ pub const MAX_TRACKED_CASTERS: usize = 8;
 /// Eligible = `eight_neighbours(target) ∩ eight_neighbours(approach_sq) ∩
 /// guards ∩ defender_pieces`. The geometric intersection of two king-move
 /// neighbourhoods (which always share an edge or corner since the approach is
-/// adjacent to the target) is at most 4 squares — and friendly-Guard filtering
+/// adjacent to the target) is at most 4 squares - and friendly-Guard filtering
 /// can only shrink it. `[u8; 4]` is the exact tight bound.
 pub const MAX_BODYGUARD_ELIGIBLE: usize = 4;
 
@@ -91,7 +91,7 @@ pub mod modifier_bits {
     pub const CHARGE: u8 = 1 << 1;  // next Strike skill: +1 damage
     /// Stack N (staged S45): a Move-Attack has been used this turn. Turn-scoped
     /// (cleared by end_turn's 0xFF clear; NOT cleared at Move→Skill phase end,
-    /// which is fine — move-attacks only occur in the Move Phase). The generator
+    /// which is fine - move-attacks only occur in the Move Phase). The generator
     /// suppresses further Move-Attacks while this is set, capping them at 1/turn.
     pub const MOVE_ATTACK_USED: u8 = 1 << 2;
     // bits 3..8 reserved for future turn-scoped modifiers.
@@ -99,14 +99,14 @@ pub mod modifier_bits {
 
 #[derive(Clone, Debug)]
 pub struct Position {
-    // === Layer 1: Spatial state (bitboards) — 5× u64. ===
+    // === Layer 1: Spatial state (bitboards) - 5× u64. ===
     pub p1_pieces: Bitboard,
     pub p2_pieces: Bitboard,
     pub kings:     Bitboard,
     pub champions: Bitboard,
     pub guards:    Bitboard,
 
-    // === Layer 1: Entity state — packed per-square piece data. ===
+    // === Layer 1: Entity state - packed per-square piece data. ===
     // Reads valid only for squares where (p1_pieces | p2_pieces) contains the bit.
     pub mailbox: [MailboxEntry; 64],
 
@@ -119,12 +119,12 @@ pub struct Position {
 
     /// Current Round number. A Round = P1 turn + P2 turn. Increments when the
     /// turn flips back to P1 (i.e. at the *start* of P1's next turn). Used
-    /// for round-based progression — both curves are **unbounded** (+1 per
+    /// for round-based progression - both curves are **unbounded** (+1 per
     /// N rounds, no cap):
-    ///   * Per-turn income: `2 + round_number / 5` — +1 per 5 rounds.
-    ///   * Skill-Phase action budget: `2 + (round_number - 1) / 10` — +1 per
+    ///   * Per-turn income: `2 + round_number / 5` - +1 per 5 rounds.
+    ///   * Skill-Phase action budget: `2 + (round_number - 1) / 10` - +1 per
     ///     10 rounds. The paper rule sheet's "R31+: 5" line was shorthand
-    ///     for the table cut-off, NOT a cap — R41+ is 6, R51+ is 7, etc.
+    ///     for the table cut-off, NOT a cap - R41+ is 6, R51+ is 7, etc.
     /// Income is disbursed at the start of each Player turn (per Stack M).
     pub round_number: u16,
 
@@ -228,14 +228,14 @@ impl Position {
     ///
     /// Layout (a..h on files, 1..=8 on ranks):
     /// ```text
-    /// rank 8: .ccckcc.    P2 back  — King on e8
+    /// rank 8: .ccckcc.    P2 back  - King on e8
     /// rank 7: .gggggg.    P2 front
     /// rank 6: ........
     /// rank 5: ........
     /// rank 4: ........
     /// rank 3: ........
     /// rank 2: .GGGGGG.    P1 front
-    /// rank 1: .CCKCCC.    P1 back  — King on d1
+    /// rank 1: .CCKCCC.    P1 back  - King on d1
     /// ```
     /// Counts per side: 1 King + 5 Champions + 6 Guards = 12 pieces.
     /// Starting money 6 each, P1 to move, Move Phase, 2 actions.
@@ -263,7 +263,7 @@ impl Position {
     /// Stack M setup with pre-assigned skill loadouts. Builds the canonical
     /// `setup_stack_m()` layout, then writes the supplied skill IDs into the
     /// mailbox of each of the 12 skill-bearing pieces (1 King + 5 Champions
-    /// per side). Phase = Move, ready for play — bypasses the draft.
+    /// per side). Phase = Move, ready for play - bypasses the draft.
     ///
     /// Piece order within a `SideLoadout`: index 0 is the King; indices 1..6
     /// are Champions ordered by starting square ascending (files b..g with
@@ -282,18 +282,18 @@ impl Position {
         // P1 King is on file 3 (d1), P2 King is on file 4 (e8). Each side's
         // `SideLoadout` is expressed in that side's own ascending-square frame
         // (index 0 = King, 1..6 = Champions b→g with the King's file skipped),
-        // so P1 and P2 are applied independently — no cross-side mirroring here.
+        // so P1 and P2 are applied independently - no cross-side mirroring here.
         // Preset (same-array-for-both) mirroring is handled by the caller that
         // builds the P2 loadout; see `mirror_loadout`.
         apply_back_row_loadout(&mut p, /*rank=*/ 0, /*king_file=*/ 3, p1);
         apply_back_row_loadout(&mut p, /*rank=*/ 7, /*king_file=*/ 4, p2);
-        // The mailbox entries changed but the bitboards didn't — recompute the
+        // The mailbox entries changed but the bitboards didn't - recompute the
         // hash from scratch rather than trying to deduce per-square deltas.
         p.zobrist = super::zobrist::full_recompute(&p);
         p
     }
 
-    /// Stack M canonical starting position **in Draft phase** — every
+    /// Stack M canonical starting position **in Draft phase** - every
     /// skill-bearing piece has skill1=skill2=0, awaiting `DraftTurn` actions
     /// to populate the slots. Otherwise identical to `setup_stack_m()`.
     pub fn setup_stack_m_for_draft() -> Self {
@@ -304,7 +304,7 @@ impl Position {
         p.zobrist ^= super::zobrist::phase_key_for(Phase::Move)
                    ^ super::zobrist::phase_key_for(Phase::Draft);
         p.current_phase = Phase::Draft;
-        // Draft has no per-turn action budget — the only legal action while in
+        // Draft has no per-turn action budget - the only legal action while in
         // draft is a DraftTurn, and that uses its own enumeration path.
         // Setting to 0 keeps the actions_key contribution to the hash stable
         // and means `actions_remaining` reads as a meaningful "no actions
@@ -345,7 +345,7 @@ impl Position {
             // Both Kings removed in a single state is impossible in Stack M:
             // a Move-Phase action removes at most one piece, and FEN parsing
             // already requires ≥1 King per side via the strict validator
-            // (or accepts 0 Kings under lax mode — in which case we pick
+            // (or accepts 0 Kings under lax mode - in which case we pick
             // P2Wins as a deterministic fallback rather than introduce a
             // Draw variant).
             (false, false) => Some(GameResult::P2Wins),
@@ -395,7 +395,7 @@ fn place_front_row(p: &mut Position, rank: u8, player: Player) {
 
 /// Apply a `SideLoadout` to a back row that's already been populated by
 /// `place_back_row`. Index 0 of the loadout is the King; indices 1..6 are
-/// Champions in starting-square ascending order — matching the file iteration
+/// Champions in starting-square ascending order - matching the file iteration
 /// (files b..g with the King's file skipped for Champion ordering). Both sides
 /// are expressed in their own ascending-square frame; see `mirror_loadout` for
 /// the preset case where P2 must be a 180° rotation of P1.
@@ -475,7 +475,7 @@ mod tests {
             assert_eq!(pos.mailbox[sq as usize].skill2(), s2, "P2 champ sq {} slot2", sq);
         }
 
-        // Hash is recomputed from scratch — sanity-check it matches full_recompute.
+        // Hash is recomputed from scratch - sanity-check it matches full_recompute.
         assert_eq!(pos.zobrist, super::super::zobrist::full_recompute(&pos));
     }
 
@@ -483,7 +483,7 @@ mod tests {
     fn mirror_loadout_produces_point_symmetric_board() {
         // Regression for the preset-mirroring bug: a preset is authored in P1's
         // frame; feeding `mirror_loadout(&preset)` as the P2 argument must make
-        // P2 a 180° rotation of P1 — a P1 file-b Champion (Lance+Shield) and a
+        // P2 a 180° rotation of P1 - a P1 file-b Champion (Lance+Shield) and a
         // P2 file-g Champion must share skills.
         use crate::game_logic::skills::mirror_loadout;
         let preset: SideLoadout = [(1,2), (3,4), (5,6), (7,8), (9,10), (11,12)];
@@ -531,7 +531,7 @@ mod tests {
 
     #[test]
     fn validate_loadout_accepts_partial_empty_slots() {
-        // Mid-draft state — some pieces still 0/0, allowed.
+        // Mid-draft state - some pieces still 0/0, allowed.
         let l: SideLoadout = [(0,0), (1,2), (0,0), (3,4), (0,0), (0,0)];
         assert!(validate_loadout(&l).is_ok());
     }
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn validate_loadout_accepts_zero_on_both_slots() {
-        // (0, 0) means an unfilled piece — not a duplicate.
+        // (0, 0) means an unfilled piece - not a duplicate.
         let mut l = full_p1_loadout();
         l[1] = (0, 0);
         assert!(validate_loadout(&l).is_ok());

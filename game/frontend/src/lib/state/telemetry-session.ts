@@ -4,9 +4,9 @@
 // These helpers mutate `match.telemetryMatchId` and read `match.mode`
 // through the passed reference. Failures are swallowed: telemetry must
 // never block gameplay. If IDB is unavailable (e.g. private browsing in
-// some Safari modes), the match still plays — it just doesn't get logged.
+// some Safari modes), the match still plays - it just doesn't get logged.
 //
-// The module exports `createTelemetrySession()` — a factory that closes
+// The module exports `createTelemetrySession()` - a factory that closes
 // over the `disabledForSession` flag. The flag flips on the FIRST IDB
 // failure observed within a session and stays set until the next
 // `startTelemetrySession`. Keeping it per-instance (not module-scoped)
@@ -42,7 +42,7 @@ export interface TelemetrySession {
   abandonTelemetrySessionSync(carrier: TelemetryCarrier): void;
   networkLostTelemetrySessionSync(carrier: TelemetryCarrier): void;
   /** Test seam: clears the disabled-for-session latch without starting a new
-   *  session. Production callers should never need this — startMatch resets
+   *  session. Production callers should never need this - startMatch resets
    *  the flag on its own. */
   reset(): void;
 }
@@ -100,7 +100,7 @@ export function createTelemetrySession(): TelemetrySession {
       if (!plyJson) return;
       const plyNo = extractPlyNo(plyJson);
       if (plyNo === null) {
-        // Engine returned a record without a parseable ply_no — surface loudly
+        // Engine returned a record without a parseable ply_no - surface loudly
         // rather than silently dropping. The library row will be incomplete but
         // a console.warn lets us notice serialiser drift in dev.
         console.warn(
@@ -112,7 +112,7 @@ export function createTelemetrySession(): TelemetrySession {
       const store = getTelemetryStore();
       await store.appendPly(carrier.telemetryMatchId, plyJson, plyNo);
       // Refresh the consolidated MatchLog on the matches row too. Without
-      // this, `markNetworkLost` is the only writer of `matchLogJson` — and it
+      // this, `markNetworkLost` is the only writer of `matchLogJson` - and it
       // is a one-shot transition that no-ops after the first flip, so any
       // plies applied AFTER the row turned `mid-match-network-lost` would be
       // dropped from the resume snapshot.
@@ -120,7 +120,7 @@ export function createTelemetrySession(): TelemetrySession {
         const logJson = await eng.matchLogJson();
         if (logJson) await store.checkpointMatchLog(carrier.telemetryMatchId, logJson);
       } catch {
-        // Engine without auto_log on, or a transient failure — appendPly
+        // Engine without auto_log on, or a transient failure - appendPly
         // already succeeded, so the per-ply log is preserved. Skip silently.
       }
     } catch (e) {
@@ -179,7 +179,7 @@ export function createTelemetrySession(): TelemetrySession {
         try {
           partial = (await eng.matchLogJson()) ?? undefined;
         } catch {
-          // Engine in a bad state — store the abandonment marker without a log.
+          // Engine in a bad state - store the abandonment marker without a log.
         }
       }
       const store = getTelemetryStore();
@@ -202,7 +202,7 @@ export function createTelemetrySession(): TelemetrySession {
         try {
           partial = (await eng.matchLogJson()) ?? undefined;
         } catch {
-          // Engine in a bad state — store the marker without a log.
+          // Engine in a bad state - store the marker without a log.
         }
       }
       const store = getTelemetryStore();

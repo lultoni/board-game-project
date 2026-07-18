@@ -10,7 +10,7 @@
 //     pending-timer count, fire them on demand, and verify `dispose()`
 //     drains every outstanding timer (P2 regression).
 //
-// We deliberately do NOT stub legality / game rules — the renderer is a
+// We deliberately do NOT stub legality / game rules - the renderer is a
 // view-layer driver; correctness of the underlying ply is the engine's job.
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -323,7 +323,7 @@ describe("createPlyRenderer", () => {
   });
 
   it("speed-1 attack (hasAux=true, auxSq === src) capture: kills target, no relocation", async () => {
-    // Engine encodes speed-1 attacks with auxSq == src (action.rs:228) — the
+    // Engine encodes speed-1 attacks with auxSq == src (action.rs:228) - the
     // attacker doesn't move. Post-state: src still has attacker, target empty.
     const raw = encodeMove({ src: 0, target: 16, hasAux: true, auxSq: 0 });
     eng.setNextView(makePositionView({
@@ -410,7 +410,7 @@ describe("createPlyRenderer", () => {
     await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
     // Attack-contact effects (damage, shake) are deferred until the piece
     // visually reaches the target. Fire the pending contact-fire timer,
-    // but *not* the shake-clear timer it schedules — that's what dispose
+    // but *not* the shake-clear timer it schedules - that's what dispose
     // is supposed to drain in this test.
     const contactHandles = scheduler.pendingHandles();
     for (const h of contactHandles) scheduler.fire(h);
@@ -460,7 +460,7 @@ describe("createPlyRenderer", () => {
     // still reflect the pre-state (relocation hasn't visually applied).
     expect(renderer.pieceIds.get(0)).toBeDefined();
 
-    // Fire all timers — the deferred refresh applies the position update
+    // Fire all timers - the deferred refresh applies the position update
     // and emits relocation/death events.
     scheduler.fireAll();
 
@@ -787,7 +787,7 @@ describe("createPlyRenderer", () => {
   // `plyHint` + `plyHintBase` (replay's forward-play path).
 
   it("checkpoint cache: second fast-forward through 64 plies caps tryApply at ≤31", async () => {
-    // Build 64 dummy plies (raw values don't matter — the stub's tryApply
+    // Build 64 dummy plies (raw values don't matter - the stub's tryApply
     // doesn't validate). The renderer never inspects the action payload
     // during the silent inner loop; it only feeds them to eng.tryApply.
     const plies = Array.from({ length: 64 }, (_, i) => encodeMove({ src: 0, target: (i + 1) & 0x3f }));
@@ -828,7 +828,7 @@ describe("createPlyRenderer", () => {
     eng.tryApplyCalls.length = 0;
     eng.restoreFromSnapshotCalls.length = 0;
 
-    // Different base — cache must be cleared. With no live checkpoints we
+    // Different base - cache must be cleared. With no live checkpoints we
     // should pay the full silent loop (63 silent + 1 landing = 64 tryApply).
     await renderer.fastForwardTo('{"snapshot":"base-B"}', plies, 64);
     expect(eng.tryApplyCalls.length).toBe(64);
@@ -849,7 +849,7 @@ describe("createPlyRenderer", () => {
     eng.tryApplyCalls.length = 0;
     eng.restoreFromSnapshotCalls.length = 0;
 
-    // After reset the checkpoint at ply 32 should be gone — full silent loop again.
+    // After reset the checkpoint at ply 32 should be gone - full silent loop again.
     await renderer.fastForwardTo(baseSnap, plies, 64);
     expect(eng.tryApplyCalls.length).toBe(64);
     expect(eng.restoreFromSnapshotCalls[0]).toBe(baseSnap);
@@ -898,7 +898,7 @@ describe("createPlyRenderer", () => {
   // flush between setPosition and reconcilePieceIds could observe an empty
   // pieceIds map, causing Board's {#each} to use fallback "sq-N" string keys.
   // When reconcilePieceIds then assigned numeric ids, Svelte destroyed and
-  // remounted all piece nodes — resetting CSS state and (on Tauri) causing
+  // remounted all piece nodes - resetting CSS state and (on Tauri) causing
   // King/Champion pieces to render as Guards until a Move action re-reconciled.
   //
   // Fix: reconcile pieceIds against the fresh position BEFORE writing to the
@@ -921,7 +921,7 @@ describe("createPlyRenderer", () => {
 
     await renderer.resyncFromEngine();
 
-    // All four squares must have numeric ids — no undefined, no "sq-N" strings.
+    // All four squares must have numeric ids - no undefined, no "sq-N" strings.
     expect(renderer.pieceIds.get(0)).toBeTypeOf("number");
     expect(renderer.pieceIds.get(7)).toBeTypeOf("number");
     expect(renderer.pieceIds.get(56)).toBeTypeOf("number");
@@ -939,7 +939,7 @@ describe("createPlyRenderer", () => {
     // Resync with same squares still occupied (same position).
     await renderer.resyncFromEngine();
 
-    // Ids must be stable — same square keeps the same numeric id so that
+    // Ids must be stable - same square keeps the same numeric id so that
     // Svelte's {#each} key doesn't change and no DOM remount occurs.
     expect(renderer.pieceIds.get(0)).toBe(idSq0);
     expect(renderer.pieceIds.get(16)).toBe(idSq16);

@@ -5,7 +5,7 @@
 // iterated unbounded `plies[]` from clipboard paste; etc.).
 //
 // The validator is intentionally permissive on `config` shape and `start_fen`
-// content — those are engine-arbitrated. It is strict on:
+// content - those are engine-arbitrated. It is strict on:
 //   - the JSON envelope size,
 //   - the actions array length,
 //   - per-action u32 range,
@@ -62,7 +62,7 @@ export interface SnapshotValidationOpts {
 }
 
 /** Validated engine `Snapshot` JSON. The `json` field is the ORIGINAL input
- *  string, not a re-serialised copy — `restoreFromSnapshot` consumes the same
+ *  string, not a re-serialised copy - `restoreFromSnapshot` consumes the same
  *  bytes the host or peer produced, so the engine doesn't see a different
  *  shape than what we audited. */
 export interface ValidatedSnapshot {
@@ -117,7 +117,7 @@ export function validateSnapshot(raw: unknown, opts: SnapshotValidationOpts): Va
 
 /** Validate a `MatchLog` JSON envelope: `{ start_fen, config, plies: [{action:{raw}}] }`.
  *  Used by the inspector / replay paths that consume persisted match logs
- *  rather than engine snapshots. Output is shape-checked but NOT converted —
+ *  rather than engine snapshots. Output is shape-checked but NOT converted -
  *  callers still pass the original string into `snapshotJsonFromMatchLog` or
  *  similar to derive the engine-shaped Snapshot. */
 export function validateMatchLog(raw: unknown, opts: SnapshotValidationOpts): ValidatedSnapshot {
@@ -165,9 +165,9 @@ export function validateMatchLog(raw: unknown, opts: SnapshotValidationOpts): Va
 
 /** Default budgets, exported so callers don't sprinkle magic numbers. */
 export const SNAPSHOT_BUDGETS = {
-  /** Resume from IDB or host snapshot — a real match can be hundreds of plies. */
+  /** Resume from IDB or host snapshot - a real match can be hundreds of plies. */
   RESUME_MAX_ACTIONS: 4096,
-  /** Paste / library handoff — same upper bound, room to grow. */
+  /** Paste / library handoff - same upper bound, room to grow. */
   PASTE_MAX_ACTIONS: 4096,
   /** 4 MiB. Engine snapshots are tiny; this catches pathological clipboard
    *  payloads without limiting legitimate ones. */

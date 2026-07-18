@@ -1,7 +1,7 @@
 //! Search-speed benchmark for `core_engine`.
 //!
 //! See `design/inbox/digital/search-speed-benchmark-plan.md` for the design.
-//! Manual-run-only tool — not part of CI.
+//! Manual-run-only tool - not part of CI.
 //!
 //! Usage:
 //!   cargo run -p search_bench --release -- \
@@ -274,7 +274,7 @@ fn parse_args() -> Args {
 /// # Columns (5, comma-separated): id, category, expected_best_move_depth_N, expected_score_range, fen
 /// # Use '-' for any unused expectation field. Score range syntax: "lo..hi" inclusive.
 /// # Expected-best-move encodings can be appended after the FEN, comma-separated.
-/// # The FEN itself contains spaces — its commas are the only commas after the score range.
+/// # The FEN itself contains spaces - its commas are the only commas after the score range.
 /// # So we split on the FIRST FOUR commas, treat the rest as "fen [;move1,move2,...]" where
 /// # the optional best-move list is appended after a `;` separator.
 /// opening-01, opening, -, -, <fen> ; <action_u32>[,<action_u32>...]
@@ -293,7 +293,7 @@ fn load_corpus(path: &PathBuf) -> Vec<CorpusEntry> {
             continue;
         }
 
-        // Split on first four commas only — the FEN may contain spaces but no
+        // Split on first four commas only - the FEN may contain spaces but no
         // commas before the optional ';' best-move trailer.
         let mut parts = Vec::with_capacity(5);
         let mut rest = line;
@@ -565,7 +565,7 @@ fn json_escape(s: &str) -> String {
 }
 
 /// Inline-serialize a CounterSnapshot as a JSON object. `indent` is the
-/// leading whitespace already at the start of the caller's line — used for
+/// leading whitespace already at the start of the caller's line - used for
 /// nested object formatting.
 fn write_counter_snapshot(s: &mut String, c: &CounterSnapshot, indent: &str) {
     s.push_str("{\n");
@@ -854,7 +854,7 @@ fn main() {
 
     let evaluator = build_evaluator(args.eval_choice);
     if args.eval_choice == EvalChoice::Nnue {
-        eprintln!("evaluator: NNUE (quantized, refresh-per-call) — ns-50 A/B");
+        eprintln!("evaluator: NNUE (quantized, refresh-per-call) - ns-50 A/B");
     }
 
     if args.determinism {

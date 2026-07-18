@@ -1,4 +1,4 @@
-//! L4 smoke test — AIvAI to completion.
+//! L4 smoke test - AIvAI to completion.
 //!
 //! Builds `Config::local_aivai()`, optionally overrides per-side time/depth
 //! budgets from CLI, then loops `step_ai` until the game ends or `max_plies`

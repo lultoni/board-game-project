@@ -8,7 +8,7 @@
 // Pure types + codec. No transport, no DOM, no runes. Sister module
 // `multiplayer-protocol.ts` still holds the legacy union while routes are
 // migrated; this file is the eventual replacement. Both files re-export
-// `derivePillState`, `generateCode`, `isValidCode`, `GRACE_MS` — those are
+// `derivePillState`, `generateCode`, `isValidCode`, `GRACE_MS` - those are
 // orthogonal to the wire layer and stay in the v1 file as the canonical
 // home.
 
@@ -20,7 +20,7 @@ export type IntentRejectReason =
   | "phase-mismatch"   // intent.phase !== host's current phase
   | "paused"           // host is paused (waiting for reconnect)
   | "rate-limit"       // joiner exceeded the intent flood threshold
-  | "seq-overflow";    // host's seq counter is at SEQ_CAP — protocol fault
+  | "seq-overflow";    // host's seq counter is at SEQ_CAP - protocol fault
 
 export type SnapshotRequestReason =
   | "audit-mismatch"   // mirror's Zobrist disagreed with host's
@@ -45,12 +45,12 @@ export type WireMessageV2 =
   | { kind: "intent"; phase: WirePhase; nonce: string; raw: number }
 
   // Host → joiner. Authoritative commit. Emitted after host's AUTH engine
-  // accepts an action — whether host-originated or accepted from a joiner
+  // accepts an action - whether host-originated or accepted from a joiner
   // `intent`. Joiner re-runs `raw` on its mirror; if the mirror rejects, the
   // joiner emits `cheat-detected`. If it accepts but post-state Zobrist
   // differs from `postZobrist`, the joiner emits `request-snapshot`.
   //   seq:         monotonic u32, starts at 1 for the first committed action.
-  //                Spans both draft and play phases — never resets.
+  //                Spans both draft and play phases - never resets.
   //   postZobrist: decimal string of the engine's u64 zobrist after applying
   //                this action (engines use bigint internally; JSON can't
   //                round-trip those without loss).
@@ -68,7 +68,7 @@ export type WireMessageV2 =
   // Host → joiner. Joiner's intent was refused. Reason tells the joiner
   // whether to retry (paused → wait for resumed), surface to the user
   // (illegal → "move not allowed"), or quietly drop (out-of-turn,
-  // phase-mismatch — usually means joiner's UI lagged).
+  // phase-mismatch - usually means joiner's UI lagged).
   | { kind: "intent-rejected"; nonce: string; reason: IntentRejectReason }
 
   // Host → joiner. Phase transition driven by host (draft → play). Includes a
@@ -78,12 +78,12 @@ export type WireMessageV2 =
 
   // Host → joiner. Full state push. Issued on first connect (joiner has no
   // engine yet), in reply to `request-snapshot`, and after a reconnect when
-  // the host's seq is ahead of the joiner's. Idempotent — receiving a
+  // the host's seq is ahead of the joiner's. Idempotent - receiving a
   // snapshot for a seq the joiner already has is a no-op.
   | { kind: "snapshot"; snapshotJson: string; seq: number; phase: WirePhase; matchId: string }
 
   // Joiner → host. Joiner needs a fresh snapshot. `mySeq` lets the host
-  // decide whether the joiner is merely stale (push delta — not implemented
+  // decide whether the joiner is merely stale (push delta - not implemented
   // here; we always send a full snapshot) or wildly diverged.
   | { kind: "request-snapshot"; mySeq: number; reason: SnapshotRequestReason }
 
@@ -104,7 +104,7 @@ export type WireMessageV2 =
   // Host → joiner. Host has refused to act locally because the joiner is
   // disconnected (anti-tamper guard from the user's spec: "during no
   // connection to the client the host is not allowed to make any actions").
-  // Mirror displays a "paused — waiting for opponent" indicator. Cleared by
+  // Mirror displays a "paused - waiting for opponent" indicator. Cleared by
   // `resumed`.
   | { kind: "paused" }
   | { kind: "resumed" }
@@ -117,7 +117,7 @@ export type WireMessageV2 =
   // draft-mode choice + preMade loadout id (when mode="preMade"), plus the
   // authoritative matchId adopted by the host. Both peers navigate onward
   // (draft or match) when the host sends this and the joiner receives it.
-  // Lives at the setup layer only — the wrapper in /draft/ or /match/ still
+  // Lives at the setup layer only - the wrapper in /draft/ or /match/ still
   // sends its own `session-hello` afterward to anchor seq.
   | {
       kind: "game-config";
@@ -131,7 +131,7 @@ export function encodeMessageV2(m: WireMessageV2): string {
   return JSON.stringify(m);
 }
 
-/** JSON-decode and validate. Returns null on any structural issue — callers
+/** JSON-decode and validate. Returns null on any structural issue - callers
  *  treat null as "drop the message" rather than throwing, since a malformed
  *  payload from a peer is a network event, not a programmer bug. */
 export function decodeMessageV2(s: string): WireMessageV2 | null {
@@ -339,7 +339,7 @@ function isSnapshotRequestReason(v: unknown): v is SnapshotRequestReason {
 }
 
 /** Generate a joiner-side nonce for an intent. Opaque, unique-enough per
- *  session. Format: `i-{base36 random}` — short enough not to bloat the wire,
+ *  session. Format: `i-{base36 random}` - short enough not to bloat the wire,
  *  random enough that two consecutive intents won't collide. */
 export function newIntentNonce(): string {
   return "i-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);

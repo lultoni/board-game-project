@@ -41,7 +41,7 @@ pub struct PieceContext {
 
 /// One evaluation term.
 pub trait EvalTerm: Send + Sync {
-    /// Stable machine name — the dynamic-breakdown key and the legacy-projection key.
+    /// Stable machine name - the dynamic-breakdown key and the legacy-projection key.
     fn name(&self) -> &'static str;
 
     /// Cheap gating predicate. Phase gating hooks here in a later pass; today

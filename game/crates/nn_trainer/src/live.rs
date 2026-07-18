@@ -20,13 +20,13 @@
 //! ## Files
 //!
 //! ```text
-//! <run_dir>/live.sub       sentinel — UI creates/removes
-//! <run_dir>/live.json      per-ply state — trainer writes
+//! <run_dir>/live.sub       sentinel - UI creates/removes
+//! <run_dir>/live.json      per-ply state - trainer writes
 //! ```
 //!
 //! ## What this is NOT
 //!
-//! This isn't a replay buffer — only the *current* ply is on disk. The
+//! This isn't a replay buffer - only the *current* ply is on disk. The
 //! UI catches up by reading the same file again next poll cycle. If the
 //! UI wants a full game log, it should subscribe with a longer-cadence
 //! summary that records ply history (out of scope here).
@@ -37,11 +37,11 @@ use std::path::{Path, PathBuf};
 /// Schema version. Bump on incompatible changes.
 pub const LIVE_POSITION_VERSION: u32 = 1;
 
-/// Sentinel filename — the UI creates this to subscribe to live-position
+/// Sentinel filename - the UI creates this to subscribe to live-position
 /// writes, removes it to unsubscribe.
 pub const LIVE_SUBSCRIBE_FILENAME: &str = "live.sub";
 
-/// State filename — the trainer writes per-ply state here.
+/// State filename - the trainer writes per-ply state here.
 pub const LIVE_STATE_FILENAME: &str = "live.json";
 
 /// Eval-bar values for one ply, from three independent evaluators
@@ -67,7 +67,7 @@ pub struct EvalBars {
 /// One ply's worth of live state.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LivePosition {
-    /// Schema version — checked against `LIVE_POSITION_VERSION` on load.
+    /// Schema version - checked against `LIVE_POSITION_VERSION` on load.
     pub format_version: u32,
     /// UNIX epoch milliseconds at write time. UI uses this to detect a
     /// stalled stream ("file is 30s old → trainer crashed mid-game").
@@ -82,7 +82,7 @@ pub struct LivePosition {
     pub last_action: String,
     /// 0-based ply number within the current game.
     pub ply: u32,
-    /// Challenger rater ID — same as the active match in the status snap.
+    /// Challenger rater ID - same as the active match in the status snap.
     pub challenger: String,
     /// Defender rater ID.
     pub defender: String,
@@ -139,7 +139,7 @@ pub fn subscribe(dir: &Path) -> Result<(), LiveError> {
     Ok(())
 }
 
-/// UI calls this to stop receiving per-ply state. Idempotent — removing
+/// UI calls this to stop receiving per-ply state. Idempotent - removing
 /// an already-absent sentinel is a noop.
 pub fn unsubscribe(dir: &Path) -> Result<(), LiveError> {
     let path = dir.join(LIVE_SUBSCRIBE_FILENAME);
@@ -152,7 +152,7 @@ pub fn unsubscribe(dir: &Path) -> Result<(), LiveError> {
 
 /// Write `live.json` *only if* the sentinel is present. Returns `true`
 /// if a write happened, `false` if the UI is unsubscribed (the caller
-/// can use this to skip downstream compute — generating eval bars etc.).
+/// can use this to skip downstream compute - generating eval bars etc.).
 ///
 /// Always stamps `written_at_ms` so freshness checks are honest.
 pub fn write_if_subscribed(dir: &Path, live: &LivePosition) -> Result<bool, LiveError> {

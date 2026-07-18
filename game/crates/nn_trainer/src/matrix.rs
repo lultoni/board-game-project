@@ -7,7 +7,7 @@
 //!
 //! ## Why a flat `Vec` and not a `BTreeMap`
 //!
-//! Serde / JSON can't round-trip a `BTreeMap` whose key is a tuple — JSON
+//! Serde / JSON can't round-trip a `BTreeMap` whose key is a tuple - JSON
 //! objects only accept string keys. We could flatten the key into a
 //! `"challenger|defender|bracket"` string, but that wedges a delimiter
 //! into rater IDs forever. A flat `Vec<MatrixEntry>` is simpler, diff-
@@ -30,7 +30,7 @@ pub const MATRIX_FORMAT_VERSION: u32 = 1;
 /// Default filename inside the run directory.
 pub const MATRIX_FILENAME: &str = "matrix.json";
 
-/// One cell in the gauntlet matrix — outcomes of (challenger vs defender)
+/// One cell in the gauntlet matrix - outcomes of (challenger vs defender)
 /// at one bracket. Bracket is a free-form string (`"fast" | "medium" |
 /// "slow"`) so the schema can absorb new brackets without a code change.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -102,7 +102,7 @@ impl GauntletMatrix {
 
     /// Append a series tally into the cell `(challenger, defender, bracket)`.
     /// Idempotent in the sense that re-recording the same series adds to the
-    /// existing counters — callers that want overwrite semantics should
+    /// existing counters - callers that want overwrite semantics should
     /// remove the entry first or build a fresh matrix.
     ///
     /// The plan calls for an N×N grid where each cell is a single series,

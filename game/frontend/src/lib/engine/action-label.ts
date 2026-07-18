@@ -46,7 +46,7 @@ export function formatAction(raw: number): string {
     // Plain Move: src→target. Move-Attack: hasAux + auxSq = approach square,
     // optionally choiceIdx > 0 = Bodyguard redirect onto the (choiceIdx-1)-th
     // adjacent friendly Guard. The engine always sets hasAux on a Move-Attack
-    // (it's what distinguishes attack from plain move) — for speed-1 attackers
+    // (it's what distinguishes attack from plain move) - for speed-1 attackers
     // approach_sq == src by convention (action.rs:228). Don't render "via src"
     // in that case; the attacker didn't relocate before striking.
     if (!d.hasAux) {

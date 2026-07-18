@@ -1,4 +1,4 @@
-// Polling store — reads a Tauri command at a fixed cadence into a Svelte store.
+// Polling store - reads a Tauri command at a fixed cadence into a Svelte store.
 //
 // Used by every panel in the Training Observatory. The trainer is the source
 // of truth; the UI just polls a JSON file at low rate. No exponential

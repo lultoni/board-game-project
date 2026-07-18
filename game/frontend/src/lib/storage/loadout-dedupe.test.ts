@@ -7,7 +7,7 @@ import { findDuplicate, loadoutKey } from "./loadout-dedupe";
 
 const A: SideLoadout = [[6, 9], [1, 6], [1, 10], [1, 9], [6, 10], [1, 9]] as const;
 const B: SideLoadout = [[2, 6], [1, 8], [2, 9], [1, 14], [2, 6], [1, 8]] as const;
-// A with slots swapped on the first piece — different order = different key.
+// A with slots swapped on the first piece - different order = different key.
 const A_SWAPPED: SideLoadout = [[9, 6], [1, 6], [1, 10], [1, 9], [6, 10], [1, 9]] as const;
 
 function row(id: string, name: string, l: SideLoadout): SavedLoadout {

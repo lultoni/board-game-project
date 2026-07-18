@@ -1,4 +1,4 @@
-//! Layer 3 — AI & Search.
+//! Layer 3 - AI & Search.
 //!
 //! Alpha-beta + iterative deepening + transposition table. Heuristic eval
 //! lives in `evaluator`. Search is parameterised by both time budget and

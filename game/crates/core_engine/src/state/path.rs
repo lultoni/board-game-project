@@ -1,4 +1,4 @@
-//! Layer 1 — Position-aware path helpers built on top of `state::magic`.
+//! Layer 1 - Position-aware path helpers built on top of `state::magic`.
 //!
 //! These functions take a `Position` and return owner-agnostic geometry:
 //! - `skill_targets(pos, src, range)` → bitboard of "first piece per ray"
@@ -7,7 +7,7 @@
 //!   generator (`game_logic::generator`) using `skill_target_owner`.
 //! - `path_clear(pos, src, tgt)` → true iff every square strictly between
 //!   `src` and `tgt` on the queen-ray is empty. `tgt` itself is NOT
-//!   required to be empty — skill resolvers decide that.
+//!   required to be empty - skill resolvers decide that.
 //!
 //! Both are thin wrappers over `state::magic`; the only reason they live in
 //! a separate module is to keep `state::magic` free of `Position`.
@@ -24,14 +24,14 @@ pub fn skill_targets(pos: &Position, src: u8, range: u8) -> Bitboard {
     let attacks = magic::skill_attacks(src, occ, range);
     // `skill_attacks` returns reachable empties + first blocker per ray. The
     // intersection with `occ` drops the empty squares, leaving just the
-    // blockers — i.e. the legal targets.
+    // blockers - i.e. the legal targets.
     Bitboard(attacks.0 & occ)
 }
 
 /// True iff every square strictly between `src` and `tgt` on the queen-ray
 /// connecting them is empty. Returns false if `src` and `tgt` are not on a
 /// ray or are the same square. The occupancy of `tgt` itself is NOT
-/// considered — empty-target skills (Move-skills) and piece-target skills
+/// considered - empty-target skills (Move-skills) and piece-target skills
 /// (Strike/Heal/etc.) both rely on this primitive and decide on their own
 /// what `tgt` must look like.
 pub fn path_clear(pos: &Position, src: u8, tgt: u8) -> bool {

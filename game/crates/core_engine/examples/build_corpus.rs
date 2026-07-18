@@ -4,18 +4,18 @@
 //! (depth-2 alpha-beta as the policy for both sides) and emits FEN snapshots
 //! covering the 6 search-behaviour buckets we want to measure:
 //!
-//!   A. opening-with-skills      — round 1-3, Move phase, full board, drafted loadouts.
-//!   B. midgame-move             — round 4-8, Move phase, some pieces engaged.
-//!   C. skill-phase-full         — Skill phase with ≥3 money and pieces with skills.
-//!   D. combo-loaded             — tracked_casters or tracked_enemies non-empty.
-//!   F. endgame-with-skills      — round 12+, ≤10 pieces per side, real loadouts.
-//!   G. king-in-danger           — enemy Champion within Chebyshev 2 of a King.
+//!   A. opening-with-skills      - round 1-3, Move phase, full board, drafted loadouts.
+//!   B. midgame-move             - round 4-8, Move phase, some pieces engaged.
+//!   C. skill-phase-full         - Skill phase with ≥3 money and pieces with skills.
+//!   D. combo-loaded             - tracked_casters or tracked_enemies non-empty.
+//!   F. endgame-with-skills      - round 12+, ≤10 pieces per side, real loadouts.
+//!   G. king-in-danger           - enemy Champion within Chebyshev 2 of a King.
 //!
 //! Category E (mate-in-N) is hand-curated separately; the builder does not
 //! attempt to synthesise tactical positions.
 //!
 //! Why search-driven play rather than random: uniform-random play produces
-//! positions no human/AI would ever reach — a Champion casting Dash on itself
+//! positions no human/AI would ever reach - a Champion casting Dash on itself
 //! to hurl into enemy territory in round 1, for instance. Every downstream
 //! position inherits that unrealism. Search-driven play (depths 2/3/4 cycled
 //! across games) is deep enough to see immediate replies (won't burn a skill
@@ -76,12 +76,12 @@ const CANDIDATES_PER_BUCKET: usize = 20;
 
 /// Diversity guard: cap candidates per (bucket, STM) per single game.
 /// Prevents one long game from dominating a bucket with 20 near-identical
-/// positions AND ensures both P1 and P2 turns get represented — a
+/// positions AND ensures both P1 and P2 turns get represented - a
 /// per-bucket-only cap would fill up on P1's opening turns and never record
 /// P2's, since search-driven play produces a deterministic P1-first sequence.
 const MAX_PER_STM_PER_GAME: usize = 2;
 
-/// Search depths cycled through as the play policy — game i uses depth
+/// Search depths cycled through as the play policy - game i uses depth
 /// PLAY_DEPTHS[i % len]. Different depths pick different opening moves,
 /// which produces genuinely different downstream games (not just different
 /// loadouts on the same tactical line).
@@ -119,7 +119,7 @@ const ALL_SKILLS: [Skill; 15] = [
 /// After all slots are filled we check the category-diversity and Strike-
 /// presence rules and force-swap slots if they fail. Loadout is then validated
 /// via `validate_loadout` as a final sanity check (panics if we produced an
-/// invalid one — indicates a bug in this function).
+/// invalid one - indicates a bug in this function).
 fn random_loadout(rng: &mut StdRng) -> SideLoadout {
     loop {
         let mut lo: SideLoadout = [(0, 0); 6];
@@ -143,7 +143,7 @@ fn random_loadout(rng: &mut StdRng) -> SideLoadout {
                 })
                 .collect();
             if candidates.is_empty() {
-                // Extremely unlikely given the caps — restart from scratch.
+                // Extremely unlikely given the caps - restart from scratch.
                 break;
             }
             let pick = *candidates.choose(rng).unwrap();
@@ -152,7 +152,7 @@ fn random_loadout(rng: &mut StdRng) -> SideLoadout {
             if slot == 0 { lo[piece].0 = id; } else { lo[piece].1 = id; }
         }
 
-        // Any zero slot means the inner loop broke early — retry.
+        // Any zero slot means the inner loop broke early - retry.
         if lo.iter().any(|(a, b)| *a == 0 || *b == 0) {
             continue;
         }
@@ -172,7 +172,7 @@ fn random_loadout(rng: &mut StdRng) -> SideLoadout {
         let n_cats = cat_present.iter().filter(|&&x| x).count();
         if n_cats < 3 || !strike_present {
             // Force-fix: swap one slot to introduce a missing category.
-            // Simpler to just retry — retries are cheap.
+            // Simpler to just retry - retries are cheap.
             continue;
         }
 
@@ -272,23 +272,23 @@ fn classify(pos: &Position) -> Option<Cat> {
     let pc = piece_count(pos);
     let combo_loaded = pos.tracked_casters_len > 0 || pos.tracked_enemies_len > 0;
 
-    // King-in-danger overrides other buckets — it's the most search-stressing regime.
+    // King-in-danger overrides other buckets - it's the most search-stressing regime.
     if king_in_danger(pos) && pc >= 6 {
         return Some(Cat::KingInDanger);
     }
 
-    // Combo-loaded — any Skill phase with tracked entity present.
+    // Combo-loaded - any Skill phase with tracked entity present.
     if combo_loaded && phase == Phase::Skill {
         return Some(Cat::ComboLoaded);
     }
 
-    // Skill-phase-full — Skill phase, mover has money, at least a few pieces
+    // Skill-phase-full - Skill phase, mover has money, at least a few pieces
     // on the board with skills.
     if phase == Phase::Skill && skill_money_available(pos) && pc >= 10 {
         return Some(Cat::SkillPhaseFull);
     }
 
-    // Opening — early rounds, Move phase, both sides mostly intact.
+    // Opening - early rounds, Move phase, both sides mostly intact.
     if r <= 3 && phase == Phase::Move
         && side_piece_count(pos, Player::P1) >= 6
         && side_piece_count(pos, Player::P2) >= 6
@@ -296,12 +296,12 @@ fn classify(pos: &Position) -> Option<Cat> {
         return Some(Cat::OpeningWithSkills);
     }
 
-    // Midgame-move — rounds 4-8, Move phase, plenty of pieces.
+    // Midgame-move - rounds 4-8, Move phase, plenty of pieces.
     if (4..=8).contains(&r) && phase == Phase::Move && pc >= 14 {
         return Some(Cat::MidgameMove);
     }
 
-    // Endgame — late round, board thinned.
+    // Endgame - late round, board thinned.
     if r >= 12 && pc <= 20 && pc >= 4 {
         return Some(Cat::EndgameWithSkills);
     }
@@ -361,7 +361,7 @@ fn main() {
         let p2_loadout = random_loadout(&mut rng);
         let mut pos = Position::setup_stack_m_with_loadouts(&p1_loadout, &p2_loadout);
         let mut plies = 0usize;
-        // Fresh TT per game — avoids cross-game contamination and keeps memory bounded.
+        // Fresh TT per game - avoids cross-game contamination and keeps memory bounded.
         let mut tt = TranspositionTable::with_capacity_mb(16);
         // Per-(bucket, STM) cap for THIS game. Keyed by (Cat, Player) so both
         // P1 and P2 turns can land, but neither monopolises.
@@ -384,8 +384,8 @@ fn main() {
             if king_in_danger(&pos) { diag_king_danger += 1; }
 
             // Classify + record. Two-layer dedup:
-            //  (a) zobrist — fast exact-state dedup.
-            //  (b) view-key — board + STM + phase. Positions differing only in
+            //  (a) zobrist - fast exact-state dedup.
+            //  (b) view-key - board + STM + phase. Positions differing only in
             //      actions_remaining / money / round counters look identical
             //      in the inspector, so they're worthless as separate corpus
             //      rows.

@@ -1,4 +1,4 @@
-// Tauri filesystem backend for telemetry — desktop build only.
+// Tauri filesystem backend for telemetry - desktop build only.
 //
 // Status (S33): placeholder. The Tauri FS plugin isn't yet wired in the
 // tauri_wrapper crate, and L5a's scope is the web path. When the desktop
@@ -24,7 +24,7 @@ import type {
 
 export class TauriTelemetryStore implements TelemetryStore {
   async startMatch(): Promise<string> {
-    throw new Error("TauriTelemetryStore not implemented — use IdbTelemetryStore");
+    throw new Error("TauriTelemetryStore not implemented - use IdbTelemetryStore");
   }
   async appendPly(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");

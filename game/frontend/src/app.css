@@ -77,7 +77,7 @@ h1, h2, h3 {
   transform: translateY(-1px);
 }
 
-/* Help button — sits immediately left of the gear, same pill style. */
+/* Help button - sits immediately left of the gear, same pill style. */
 .help-btn {
   position: fixed;
   top: 10px;

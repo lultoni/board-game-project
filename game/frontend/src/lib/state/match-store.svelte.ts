@@ -14,19 +14,19 @@ const telemetry = createTelemetrySession();
 
 export type SeatKind = "human" | "ai";
 /** Re-exported from `storage/types` so route code can keep importing it from
- *  this module. The canonical home is `storage/types.ts` — the engine and
+ *  this module. The canonical home is `storage/types.ts` - the engine and
  *  storage layers must not import from state. */
 export type { MatchMode } from "../storage";
-/** L8 — which draft flow the user picked at /setup/. `custom` runs the
+/** L8 - which draft flow the user picked at /setup/. `custom` runs the
  *  full /draft/ route (12 alternating picks). `preMade` skips the draft and
  *  /match/ opens with both sides preloaded from a curated `SideLoadout`. */
 export type DraftMode = "custom" | "preMade";
-/** L8 — identifier for the chosen pre-made loadout. The catalogue lives in
+/** L8 - identifier for the chosen pre-made loadout. The catalogue lives in
  *  `state/draft.ts` (`PRE_MADE_LOADOUTS`). Designer picks one of these on
  *  the setup screen; both sides play the same loadout (mirror match). */
 export type PreMadeLoadoutId = "firstGame" | "secondGame" | "thirdGame";
 
-/** L8/Task 8 — a resolved reference to whichever loadout a side is playing
+/** L8/Task 8 - a resolved reference to whichever loadout a side is playing
  *  in a `preMade`-flow local match. Either a hard-coded pre-made id, or a
  *  ULID pointing at a saved row in IDB's `loadouts` store. `/match/`
  *  resolves this to a concrete `SideLoadout` at engine-boot time via
@@ -39,9 +39,9 @@ export type LoadoutRef =
 export interface MatchState {
   mode: MatchMode;
   side: { p1: SeatKind; p2: SeatKind };
-  /** L8 — which draft flow to enter on `/draft/`. Set by `/setup/`. */
+  /** L8 - which draft flow to enter on `/draft/`. Set by `/setup/`. */
   draftMode: DraftMode;
-  /** Task 8 — per-side loadout picks for `draftMode === "preMade"` local
+  /** Task 8 - per-side loadout picks for `draftMode === "preMade"` local
    *  matches. `/match/` reads this to call `createEngineWithLoadouts`
    *  after resolving each side (pre-made table lookup or IDB row fetch),
    *  then clears it. `null` means no pre-made flow was selected.
@@ -51,7 +51,7 @@ export interface MatchState {
    *  `preMadeId` and the joiner mirrors it onto both slots.
    *
    *  This replaces the singular `preMadeLoadoutId` that existed before
-   *  Task 8. Left un-versioned because match state is session-scoped —
+   *  Task 8. Left un-versioned because match state is session-scoped -
    *  nothing persists it across restarts. */
   sideLoadouts: { p1: LoadoutRef; p2: LoadoutRef } | null;
   position: PositionView | null;
@@ -79,12 +79,12 @@ export interface MatchState {
    *  `"multiplayer"` from the seat pair (both seats are `"human"` in MP too).
    *  Null when not in / not returning from sandbox. */
   preSandboxMode: MatchMode | null;
-  /** Active telemetry session ID (ULID) — null when not logging (sandbox,
+  /** Active telemetry session ID (ULID) - null when not logging (sandbox,
    *  inspector, or before startTelemetrySession is called). */
   telemetryMatchId: string | null;
   /** Which board seat (P1=0, P2=1) this peer occupies for the LIFETIME of the
    *  current multiplayer match. Set once on session origin (host start → 0,
-   *  joiner connect → 1) and **never changes on takeover** — the new-host who
+   *  joiner connect → 1) and **never changes on takeover** - the new-host who
    *  was originally joiner stays at seat 1; the displaced-host who rejoins
    *  as joiner stays at seat 0. Drives the "am I P1?" UI mapping so identity
    *  survives leader handoff. Null outside multiplayer. */
@@ -117,7 +117,7 @@ export const match = $state<MatchState>({
 /** Single-source-of-truth reactive accessors for multiplayer role + code.
  *  Both originate in `mpState` (the transport's view) and are read elsewhere
  *  through these functions. Svelte 5 forbids exporting `$derived` from
- *  modules, so these are getter functions — call them at the read site
+ *  modules, so these are getter functions - call them at the read site
  *  (`multiplayerRole()`). The read still tracks `mpState` reactively because
  *  the access happens inside the caller's reactive scope. Assignment is
  *  impossible (no setter exported), which is the structural guarantee
@@ -131,7 +131,7 @@ export function multiplayerCode(): string | null {
 
 export function resetMatchState(): void {
   match.mode = "idle";
-  // Preserve `side` across resets — set by setup, consumed by draft & match.
+  // Preserve `side` across resets - set by setup, consumed by draft & match.
   // `draftMode` and `sideLoadouts` reset to their defaults so that direct
   // navigation to /match/ without going through /setup/ doesn't inherit stale
   // mode picks from a previous match. `/setup/` re-writes both on commit.
@@ -149,7 +149,7 @@ export function resetMatchState(): void {
   match.telemetryFinalised = false;
   // MP role/code now live in `mpState` (single source) and are exposed here
   // as the module-level `$derived` constants `multiplayerRole` /
-  // `multiplayerCode`. We don't touch them here — the lobby owns MP
+  // `multiplayerCode`. We don't touch them here - the lobby owns MP
   // teardown via `mpDisconnect()`.
 }
 
@@ -167,7 +167,7 @@ function seatTag(s: SeatKind): SeatTag {
 /** State-aware wrapper around the pure `engine/config.ts` builder. Pulls AI
  *  budgets and AIvAI delay from `settings` so callers don't have to thread
  *  six fields through every site. The pure builder is the one that goes to
- *  the engine — this is just the adapter that reads runes. */
+ *  the engine - this is just the adapter that reads runes. */
 export function buildEngineConfigJson(side: { p1: SeatKind; p2: SeatKind }): string {
   return buildEngineConfigJsonPure({
     p1: seatTag(side.p1),
@@ -243,7 +243,7 @@ export function networkLostTelemetrySessionSync(): void {
 }
 
 /** Pure decision: which side wins on an opponent forfeit. Keyed off
- *  `localSeat` (stable across leader handoff) — a joiner-promoted new-host
+ *  `localSeat` (stable across leader handoff) - a joiner-promoted new-host
  *  still occupies seat 1, so their claim still means "P2 wins" (resultByte 1).
  *  Falls back to mapping role→seat only when localSeat is null (pre-MP-boot). */
 export function computeClaimResultByte(
@@ -259,7 +259,7 @@ export function computeClaimResultByte(
 
 /** Persistence-only half of the opponent-forfeit flow: write the telemetry
  *  row and latch the idempotency flag. Does NOT call `eng.finaliseLog` or
- *  refresh `match.position` — the caller (route or thin orchestrator) owns
+ *  refresh `match.position` - the caller (route or thin orchestrator) owns
  *  those two side effects. Re-entry safe via the `telemetryFinalised` early
  *  return. */
 export async function finaliseOpponentForfeit(
@@ -286,7 +286,7 @@ export async function claimWinByOpponentForfeit(eng: EngineClient): Promise<void
     await eng.finaliseLog(resultByte);
   } catch {
     // If the engine refuses (already finalised) we still want to persist the
-    // telemetry verdict — fall through.
+    // telemetry verdict - fall through.
   }
   await finaliseOpponentForfeit(eng, resultByte);
   // Refresh the live position so the game-end UI fires.

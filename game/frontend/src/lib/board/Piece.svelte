@@ -8,7 +8,7 @@
     piece: BoardPiece;
     /** Square pixel size (e.g. 80 for an 800px board). */
     size: number;
-    /** Piece has used its Move action this Move Phase — render dim/grey. */
+    /** Piece has used its Move action this Move Phase - render dim/grey. */
     used?: boolean;
     /** When set, render the piece at this SVG (x,y) instead of its square,
      * skipping the slide-tween. Used during pointer-drag. */
@@ -21,7 +21,7 @@
     shake?: boolean;
     /** Pause idle breathing while effects are mid-play (keeps eyes on action). */
     effectsActive?: boolean;
-    /** When true, this piece belongs to the side whose turn is NOT current —
+    /** When true, this piece belongs to the side whose turn is NOT current -
      *  suppress idle breathing so the active side reads as "alive". */
     dormant?: boolean;
     /** Multi-hop walk descriptor. When present, replaces the CSS transition
@@ -55,7 +55,7 @@
   const y = $derived(overrideXY ? overrideXY.y : baseY);
   const slideDur = $derived(SLIDE_DURATION_MS[settings.animationSpeed]);
   // When a motion descriptor is driving a WAAPI walk, suppress the CSS
-  // transition — the WAAPI animation owns transform until it finishes, and
+  // transition - the WAAPI animation owns transform until it finishes, and
   // a stale transition would fight it at the endpoint.
   const transition = $derived(
     overrideXY || !animate || slideDur === 0 || motion
@@ -77,7 +77,7 @@
   }
 
   function buildKeyframes(m: PieceMotion): Keyframe[] {
-    // Bounce amplitude — tuned to feel like a footfall, not a jump.
+    // Bounce amplitude - tuned to feel like a footfall, not a jump.
     const bounce = size * 0.045;
     const frames: Keyframe[] = [];
     const hasLunge = m.killLungeTo !== null || m.lungeReturnTo !== null;
@@ -95,7 +95,7 @@
         offset: i / totalHops,
       });
       // Mid-hop bounce (skip after the last waypoint of the WALK phase if
-      // a kill lunge follows — the lunge gets its own bounce).
+      // a kill lunge follows - the lunge gets its own bounce).
       if (i < m.waypoints.length - 1) {
         const nxt = sqToXY(m.waypoints[i + 1]);
         const mx = (wx + nxt.x) / 2;
@@ -106,7 +106,7 @@
         });
       }
     }
-    // Lunge segment — kill or non-kill:
+    // Lunge segment - kill or non-kill:
     //   kill (killLungeTo): from last waypoint (approach) into the target,
     //     landing there and staying. "punch → they fall → step in".
     //   non-kill (lungeReturnTo): lean ~55% toward the target then RETURN to
@@ -124,7 +124,7 @@
       const anticipX = from.x - dx * 0.08;
       const anticipY = from.y - dy * 0.08;
       // Partial-overlap peak at ~55% of the way to target with a small scale
-      // bump. This is the "hit" frame — damage fires around this time.
+      // bump. This is the "hit" frame - damage fires around this time.
       const peakX = from.x + dx * 0.55;
       const peakY = from.y + dy * 0.55;
       const anticipOffset = (m.hops + 0.10) / totalHops;
@@ -173,7 +173,7 @@
       duration: totalMs,
       easing: "linear",
       // Fill backwards so t=0 paints at waypoints[0] (src) before the
-      // animation actually starts — otherwise the piece would flash at its
+      // animation actually starts - otherwise the piece would flash at its
       // final square for one frame before the walk begins.
       fill: "backwards",
     });
@@ -188,7 +188,7 @@
         }
       })
       .catch(() => {
-        // .cancel() rejects .finished — swallow.
+        // .cancel() rejects .finished - swallow.
       });
   });
 
@@ -244,7 +244,7 @@
     hpCenterX + hpGap / 2,
   ]);
 
-  // Armor squares — sized to match HP dot diameter so the two groups read
+  // Armor squares - sized to match HP dot diameter so the two groups read
   // as one row.
   const armSide = $derived(size * 0.085);
   const armGap = $derived(armSide + size * 0.04);

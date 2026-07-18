@@ -1,4 +1,4 @@
-//! Quiescence Search — catalogue §3, minus SEE.
+//! Quiescence Search - catalogue §3, minus SEE.
 //!
 //! Hooked at `depth <= 0` in `alpha_beta::search`. Resolves the horizon
 //! effect: at the depth-0 boundary the static eval is blind to a hanging
@@ -9,7 +9,7 @@
 //!
 //! # Frame
 //!
-//! **Absolute P1-POV**, matching the rest of the engine — not negamax.
+//! **Absolute P1-POV**, matching the rest of the engine - not negamax.
 //! P1 maximises, P2 minimises. Stand-pat logic is asymmetric.
 //!
 //! # First-cut scope (v1, this module)
@@ -21,7 +21,7 @@
 //! - When in check, search ALL legal moves (check-evasion).
 //! - Hard ply cap at MAX_QS_PLY to prevent infinite recursion in
 //!   pathological positions.
-//! - **No TT, no killers/history bumps** — keeps the diff small and
+//! - **No TT, no killers/history bumps** - keeps the diff small and
 //!   avoids polluting the main-search ordering tables.
 //!
 //! Deferred to v2 (each tracked in the catalogue):
@@ -51,7 +51,7 @@ use crate::state::position::{GameResult, Phase, Player};
 /// 8 plies is far past any realistic tactical line in Stack M.
 const MAX_QS_PLY: i32 = 8;
 
-/// Mirror `alpha_beta::MAX_PLY` — the absolute ply cap that bounds killer/
+/// Mirror `alpha_beta::MAX_PLY` - the absolute ply cap that bounds killer/
 /// history arrays. Quiescence must not exceed this in the cumulative `ply`
 /// counter or it would index out-of-range tables if/when we add QS hooks
 /// into history later.
@@ -70,9 +70,9 @@ const MAX_PLY: i32 = 128;
 /// - Shield/Heal/Plate/Focus/Charge skills (no HP swing to opponent).
 /// - Dash/Retreat/Shove/Swap (positional Move-category, no damage).
 /// - EndPhase / EndTurn.
-/// - DraftTurn (no QS in draft phase — there's no HP).
+/// - DraftTurn (no QS in draft phase - there's no HP).
 ///
-/// `pos` is unused in v1 — reserved for the King-threat-changing-Move
+/// `pos` is unused in v1 - reserved for the King-threat-changing-Move
 /// extension (catalogue §3, "loud actions to search in QS").
 #[inline]
 pub(super) fn is_loud(a: Action, _pos: &Position) -> bool {
@@ -92,11 +92,11 @@ pub(super) fn is_loud(a: Action, _pos: &Position) -> bool {
 /// actions at the next ply (Strike/Blast skills landing on the King square,
 /// or a Move-Attack capturing the King).
 ///
-/// Fast bitboard scan — does NOT call `generator::generate`. Iterates opponent
+/// Fast bitboard scan - does NOT call `generator::generate`. Iterates opponent
 /// piece squares and tests reachability against the King via Chebyshev
 /// distance (Move-Attacks use piece speed; Strike/Blast skills use the
 /// skill's default range). Over-approximates by ignoring secondary
-/// constraints (Hook landing space, Focus +1 buff, blocking pieces) — being
+/// constraints (Hook landing space, Focus +1 buff, blocking pieces) - being
 /// "too cautious about check" only forces QS to search all moves instead of
 /// pruning, which is still correct.
 ///
@@ -151,8 +151,8 @@ pub(super) fn is_king_threatened(pos: &mut Position, side: Player) -> bool {
 
 /// Quiescence search at depth-0 boundary of the main alpha-beta search.
 ///
-/// `ply`    — cumulative ply (used for mate-distance encoding, shared with main search).
-/// `qs_ply` — plies *within* QS (used for the MAX_QS_PLY cap). Caller passes 0.
+/// `ply`    - cumulative ply (used for mate-distance encoding, shared with main search).
+/// `qs_ply` - plies *within* QS (used for the MAX_QS_PLY cap). Caller passes 0.
 pub(super) fn quiesce(
     pos: &mut Position,
     mut alpha: i32,
@@ -197,7 +197,7 @@ pub(super) fn quiesce(
     let static_eval = adjust_for_ply(node_eval!(), ply);
     let maximising = pos.to_move == Player::P1;
 
-    // Stand-pat — skip when in check (otherwise side-to-move can "stand still"
+    // Stand-pat - skip when in check (otherwise side-to-move can "stand still"
     // while the King is captured next ply).
     if !in_check {
         if maximising {
@@ -212,7 +212,7 @@ pub(super) fn quiesce(
     let moves = generator::generate(pos);
     if moves.is_empty() {
         // Non-terminal position with no legal actions shouldn't happen
-        // (generator always emits EndPhase as a fallback) — but if it does,
+        // (generator always emits EndPhase as a fallback) - but if it does,
         // returning static_eval is the safe choice.
         return static_eval;
     }
@@ -229,7 +229,7 @@ pub(super) fn quiesce(
     // When in check we search everything; quiet moves get a below-zero key
     // so they sort after all tactical moves.
     //
-    // The AttackersTable is built lazily on first need — a QS node whose
+    // The AttackersTable is built lazily on first need - a QS node whose
     // loud-move set is empty (rare: no Move-Attacks and no Strike range)
     // pays nothing.
     let mut ordered: [(i32, Action); 128] = [(0, Action(0)); 128];
@@ -262,7 +262,7 @@ pub(super) fn quiesce(
             }
         } else if is_l && a.kind() == ActionKind::Skill {
             // Strike/Blast skill: caster deals 1 damage to target but doesn't
-            // move onto the square. No exchange follow-up — score by the
+            // move onto the square. No exchange follow-up - score by the
             // single-hit damage value (MVV-style: prefer skills that kill or
             // hit low-HP/no-armor targets).
             let target = a.target();
@@ -278,7 +278,7 @@ pub(super) fn quiesce(
             // and losing captures.
             0
         } else {
-            // Quiet move but in_check — search it, but after all loud moves.
+            // Quiet move but in_check - search it, but after all loud moves.
             -1
         };
 
@@ -286,7 +286,7 @@ pub(super) fn quiesce(
         n_ordered += 1;
     }
 
-    // Descending sort — simple insertion sort (small n, mostly presorted).
+    // Descending sort - simple insertion sort (small n, mostly presorted).
     for i in 1..n_ordered {
         let cur = ordered[i];
         let mut j = i;
@@ -485,7 +485,7 @@ mod tests {
         assert!(r.score > 0, "P1 mate must be positive, got {}", r.score);
     }
 
-    /// Mate-distance must be stable across max_depth — QS must not inflate
+    /// Mate-distance must be stable across max_depth - QS must not inflate
     /// the mate-distance count by treating capture moves as non-terminal.
     #[test]
     fn mate_score_distance_invariant_with_qs() {

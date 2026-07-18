@@ -60,7 +60,7 @@ export type MpStatus =
   | "disconnected"
   | "error";
 
-/** Display state of the connectivity pill — derived purely from `status`
+/** Display state of the connectivity pill - derived purely from `status`
  *  and how recently we last heard back from the peer. The pill is the user
  *  signal, kept separate from the underlying transport state so the UI can
  *  show "🟡 unstable" before the peer is formally disconnected.
@@ -98,12 +98,12 @@ export function derivePillState(
   now: number,
 ): PillState {
   if (status !== "connected" && status !== "disconnected") {
-    // hosting/joining/connecting/idle/error — no peer yet, so nothing to
+    // hosting/joining/connecting/idle/error - no peer yet, so nothing to
     // display in the HUD. Callers should hide the pill in these states.
     return "disconnected";
   }
   if (lastPongAt === null) {
-    // Connected but never heard a pong — show as disconnected until the
+    // Connected but never heard a pong - show as disconnected until the
     // first heartbeat lands.
     return status === "connected" ? "unstable" : "disconnected";
   }

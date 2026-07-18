@@ -1,14 +1,14 @@
 //! Self-play game driver.
 //!
 //! One game = one call to `play_game`. Two raters play to completion from a
-//! fully-equipped Stack M starting position (no draft phase — loadouts are
+//! fully-equipped Stack M starting position (no draft phase - loadouts are
 //! supplied directly). Each visited `Position` is logged. The terminal
 //! outcome labels every logged position.
 //!
 //! ## Why we drive directly instead of via `core_engine::session::Match`
 //!
 //! `Match` carries telemetry, snapshot serialisation, draft preset
-//! short-circuits, and a SeatKind-based turn dispatcher — all useful for the
+//! short-circuits, and a SeatKind-based turn dispatcher - all useful for the
 //! frontend, all overhead in a self-play corpus generator that wants to run
 //! tens of thousands of games. The direct driver here uses
 //! `find_best_with_evaluator` + `make_unmake::make` and nothing else.
@@ -48,7 +48,7 @@ pub struct LabelledPosition {
 pub struct GameRecord {
     pub outcome: GameResult,
     /// Non-terminal positions visited, in ply order. Length = ply count.
-    /// Terminal positions are NOT included — they bypass the NN by design
+    /// Terminal positions are NOT included - they bypass the NN by design
     /// (per `nn-rater-plan.md` §1).
     pub positions: Vec<Position>,
     /// Number of plies played (== positions.len()).
@@ -83,7 +83,7 @@ const MAX_PLIES: usize = 250;
 ///
 /// `max_depth` is the per-move search budget. Time-limited search is
 /// available via `find_best_with_evaluator` but reproducibility wins for
-/// data generation — fixed depth means the same seed always produces the
+/// data generation - fixed depth means the same seed always produces the
 /// same game.
 ///
 /// Returns `None` if the game hit `MAX_PLIES` without terminating; the
@@ -98,7 +98,7 @@ pub fn play_game(
     let mut pos = Position::setup_stack_m_with_loadouts(loadout_p1, loadout_p2);
     let mut positions: Vec<Position> = Vec::new();
 
-    // Each side keeps its own TT — they're not shared because the raters
+    // Each side keeps its own TT - they're not shared because the raters
     // may have wildly different scoring conventions, and a poisoned entry
     // from one side's search would mislead the other's.
     let mut tt_p1 = TranspositionTable::with_capacity_pow2(16);

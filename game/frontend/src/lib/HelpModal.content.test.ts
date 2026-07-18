@@ -8,7 +8,7 @@ import de from "$lib/i18n/de.json";
 // dotted key on a miss (English fallback then key), so a typo in a
 // `skills.<key>.name` or `help.*` path would silently render the key string
 // instead of throwing. These assertions catch that. No DOM / component render
-// is involved — the project has no component-render test harness.
+// is involved - the project has no component-render test harness.
 
 // Mirror the key lists HelpModal iterates.
 const RULE_KEYS = [

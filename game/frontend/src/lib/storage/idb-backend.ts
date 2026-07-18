@@ -24,13 +24,13 @@ import { newMatchId } from "./types";
 import type { MatchMode } from "../state/match-store.svelte";
 
 // Database name bumped from `boardgame-matches` (v1) to `boardgame-matches-v2`
-// for the L7c authoritative-host redesign. Old data is orphaned — pre-release
+// for the L7c authoritative-host redesign. Old data is orphaned - pre-release
 // project, no migration needed. See `.claude/plans/twinkling-questing-quiche.md`.
 //
 // DB_VERSION bumped 1 → 2 to re-run `onupgradeneeded` on browsers that opened
 // `boardgame-matches-v2` from a build that predated the joined_codes store.
 // The handler's `if (!objectStoreNames.contains(...))` guards make the upgrade
-// idempotent — existing matches/plies are untouched; the missing joined_codes
+// idempotent - existing matches/plies are untouched; the missing joined_codes
 // store gets created. Fresh DBs at v2 get all three stores in one pass.
 //
 // DB_VERSION bumped 2 → 3 for Task 8 (custom loadouts). Adds the `loadouts`
@@ -103,7 +103,7 @@ function awaitReq<T>(req: IDBRequest<T>): Promise<T> {
 
 /** Project a stored row into the `MatchMeta` projection used by listMatches
  *  and getMatchMeta. End-of-match fields are populated when present on the
- *  row — `finalizeMatch` always sets them; `markAbandoned`/`markNetworkLost`
+ *  row - `finalizeMatch` always sets them; `markAbandoned`/`markNetworkLost`
  *  set them too when a partial MatchLog is supplied. */
 function rowToMeta(r: MatchRow): MatchMeta {
   const m: MatchMeta = {
@@ -146,7 +146,7 @@ export class IdbTelemetryStore implements TelemetryStore {
   }
 
   /** Closes the underlying IDB connection. Tests call this between cases
-   *  so `deleteDatabase` can complete. Production code rarely needs it —
+   *  so `deleteDatabase` can complete. Production code rarely needs it -
    *  the connection lives for the app's lifetime. */
   async close(): Promise<void> {
     const db = await this.#dbPromise;
@@ -200,7 +200,7 @@ export class IdbTelemetryStore implements TelemetryStore {
     const store = tx.objectStore(STORE_MATCHES);
     const existing = await awaitReq<MatchRow | undefined>(store.get(matchId));
     if (!existing) {
-      // Caller bug — finalising a match we never started. Refuse rather
+      // Caller bug - finalising a match we never started. Refuse rather
       // than silently inventing metadata.
       throw new Error(`finalizeMatch: no match with id ${matchId}`);
     }
@@ -232,11 +232,11 @@ export class IdbTelemetryStore implements TelemetryStore {
     const store = tx.objectStore(STORE_MATCHES);
     const existing = await awaitReq<MatchRow | undefined>(store.get(matchId));
     if (!existing) return;
-    // `ended` is terminal — `finalizeMatch` owns that row from then on. Refuse
+    // `ended` is terminal - `finalizeMatch` owns that row from then on. Refuse
     // writes; we should never be called post-finalise but defend against it.
     if (existing.status === "ended") return;
     const updated: MatchRow = { ...existing, matchLogJson };
-    // Parse defensively to keep the indexed totals fresh — the library view
+    // Parse defensively to keep the indexed totals fresh - the library view
     // reads these without loading the full log.
     try {
       const parsed = JSON.parse(matchLogJson) as {
@@ -286,7 +286,7 @@ export class IdbTelemetryStore implements TelemetryStore {
     const store = tx.objectStore(STORE_MATCHES);
     const existing = await awaitReq<MatchRow | undefined>(store.get(matchId));
     if (!existing) return;
-    // Don't overwrite a terminal status — finalize wins over abandonment.
+    // Don't overwrite a terminal status - finalize wins over abandonment.
     if (existing.status !== "in-progress") return;
     const updated: MatchRow = { ...existing, status };
     // If the caller hands us a partial MatchLog (engine's current view), keep

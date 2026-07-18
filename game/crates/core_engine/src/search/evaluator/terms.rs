@@ -67,7 +67,7 @@ pub(crate) fn champion_threat_score(
             TargetOwner::Enemy | TargetOwner::Either => {
                 // Only trace the ray for owners whose branch reads it. Empty /
                 // SelfOnly skills (Dash, Retreat, Shield, Focus, Charge) score
-                // nothing here, so tracing their ray was pure waste — the common
+                // nothing here, so tracing their ray was pure waste - the common
                 // case for many equipped champions. Byte-identical: the ray was
                 // unused in those branches.
                 let ray = magic::skill_attacks(sq, all_occ, range).0;
@@ -226,7 +226,7 @@ impl EvalTerm for Coverage {
         let empty_ring = defender_neighbours & !ctx.all_occ;
 
         // Threat gate (ns-43+): an empty ring square is only worth shielding if
-        // an enemy could actually attack *through* it — otherwise "coverage" is
+        // an enemy could actually attack *through* it - otherwise "coverage" is
         // free reward for a wall of guards with nothing to guard against (the
         // starting-rank line-placement exploit). Mark the enemies within r3 of
         // the defender, then count a ring square only when an r3-enemy lies in
@@ -299,7 +299,7 @@ impl EvalTerm for OffensiveRange {
     }
 }
 
-/// E10 (ns-43) — wasted Focus/Charge penalty.
+/// E10 (ns-43) - wasted Focus/Charge penalty.
 ///
 /// Symptom it fixes: the AI casts Focus/Charge and then ends its Skill phase
 /// without ever consuming the buff, burning 2–5 money/round. The `skills` term
@@ -310,7 +310,7 @@ impl EvalTerm for OffensiveRange {
 /// the side to move, and only in `Phase::Skill` (buffs are cast + consumed in
 /// the Skill phase). A buff is "wasted" iff there is no *castable consumer* left
 /// this phase:
-///   - Focus (+1 range) is consumed by any castable offensive skill — a Strike
+///   - Focus (+1 range) is consumed by any castable offensive skill - a Strike
 ///     or a Shove.
 ///   - Charge (+1 dmg) is consumed by a castable Strike only.
 /// "Castable" = `actions_remaining >= 1` AND the side owns a piece equipping such
@@ -340,7 +340,7 @@ impl EvalTerm for WastedModifier {
         if !focus_live && !charge_live { return (0, 0); }
 
         // The buffs belong to the side to move. If it can't act, nothing is
-        // castable — every live buff is wasted this phase.
+        // castable - every live buff is wasted this phase.
         let can_act = ctx.pos.actions_remaining >= 1;
         let (side_bb, money) = match ctx.pos.to_move {
             Player::P1 => (ctx.p1_bb, ctx.pos.p1_money),
@@ -387,15 +387,15 @@ impl EvalTerm for WastedModifier {
     }
 }
 
-/// E11 (ns-43) — guard isolation penalty.
+/// E11 (ns-43) - guard isolation penalty.
 ///
-/// Symptom it fixes: the AI shoves a guard forward and strands it — not in open
+/// Symptom it fixes: the AI shoves a guard forward and strands it - not in open
 /// space, but **crammed among enemy pieces, unsupported**. `exposure` only fires
 /// on *direct attackers* of the guard's square, so a guard sitting one tile from
 /// a cluster of enemies (about to be attacked, or blocking nothing) is invisible
 /// until the trade is already on. This term reads the local balance of force:
 /// a guard with more enemies than friendlies within `guard_iso_radius` tiles is
-/// a hanging piece. Location-agnostic — a guard alone among enemies is bad
+/// a hanging piece. Location-agnostic - a guard alone among enemies is bad
 /// anywhere (per designer: the bad guard was deep + surrounded, not in space).
 ///
 /// Penalty (positive magnitude; `signed_total` negates it, like `exposure`):
@@ -441,7 +441,7 @@ impl EvalTerm for GuardIsolation {
     }
 }
 
-/// E12 (ns-43 Term 3b) — champion threat.
+/// E12 (ns-43 Term 3b) - champion threat.
 ///
 /// Replaces the crude enemy-in-range coverage the `mobility` term used to carry
 /// (capped flat 60, offensive-only). Two symmetric sub-scores per champion,
@@ -449,7 +449,7 @@ impl EvalTerm for GuardIsolation {
 /// (designer requirement):
 ///   - OFFENSIVE: enemy pieces the champion's Strike/Shove/Blast skills can hit,
 ///     weighted by target value (king ≫ champion > guard). Post-Stack-N a Strike
-///     moves the caster 1 tile toward the target — so a strike whose landing
+///     moves the caster 1 tile toward the target - so a strike whose landing
 ///     square is unsafe (more enemy than friendly attackers on it) keeps only
 ///     `threat_safety_penalty_pct` of its value. "Right targets you can execute
 ///     safely", per designer.
@@ -465,7 +465,7 @@ impl EvalTerm for ChampionThreat {
     /// Behavior-preserving skip: the term scores only champions, so if there are
     /// no champions on the board it is uniformly 0. Skipping avoids the per-
     /// champion skill-ray tracing entirely in stripped positions (the term's
-    /// dominant cost). Golden byte-identical — skipped ⇔ would-be-0.
+    /// dominant cost). Golden byte-identical - skipped ⇔ would-be-0.
     fn is_active(&self, ctx: &EvalContext) -> bool { ctx.pos.champions.0 != 0 }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         if !pc.is_champion { return 0; }
@@ -532,11 +532,11 @@ pub(crate) fn endgame_closing_score(
     }
 }
 
-/// E13 (ns-43 Term 4) — asymmetric endgame closing.
+/// E13 (ns-43 Term 4) - asymmetric endgame closing.
 ///
 /// Active only when `ctx.stage == End` (via `is_active`). The side that is
 /// AHEAD (`advantage` beyond `close_lead_min`) is rewarded for *closing the
-/// game out*; the side BEHIND is rewarded for *stretching it out* — the
+/// game out*; the side BEHIND is rewarded for *stretching it out* - the
 /// asymmetry the designer asked for. Side-level; folds into `total` via the
 /// default `p1 - p2`, so a leader closing well pushes toward the leader and a
 /// trailer defending well pushes back toward the trailer. Delegates to the

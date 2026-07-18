@@ -1,4 +1,4 @@
-//! Layer 4 — Session & Match Manager.
+//! Layer 4 - Session & Match Manager.
 //!
 //! `Match` holds the live `Position`, action history, configuration (which
 //! seats are Human vs AI, AI search budgets), and a per-match transposition
@@ -9,15 +9,15 @@
 //! All four modes from ADR-005 share the same `Match` API; they differ only
 //! in `Config`:
 //!
-//! - **Local HvH**       — both seats Human, `allow_undo: true`. UI passes
+//! - **Local HvH**       - both seats Human, `allow_undo: true`. UI passes
 //!                          actions for whichever side is to move.
-//! - **Local HvAI**      — one Human + one Ai. UI calls `try_apply` for the
+//! - **Local HvAI**      - one Human + one Ai. UI calls `try_apply` for the
 //!                          human's turn; for the AI's turn it calls
 //!                          `step_ai` (or `request_ai_move` then `try_apply`
 //!                          to show the move first).
-//! - **Local AIvAI**     — both Ai. Caller loops `step_ai` and sleeps for
+//! - **Local AIvAI**     - both Ai. Caller loops `step_ai` and sleeps for
 //!                          `config.aivai_step_delay` between moves.
-//! - **Networked HvH**   — both Human, `allow_undo: false`. Each peer runs
+//! - **Networked HvH**   - both Human, `allow_undo: false`. Each peer runs
 //!                          its own `Match`; after every local `try_apply`,
 //!                          the caller sends an `ApplyEvent` over the
 //!                          configured `NetworkTransport`. Each peer also
@@ -44,7 +44,7 @@
 //! }
 //! ```
 //!
-//! This keeps the transport orthogonal to `Match` — trivially mockable in
+//! This keeps the transport orthogonal to `Match` - trivially mockable in
 //! tests, and L7's real PeerJS implementation drops in without changing L4.
 
 use std::time::Duration;
@@ -69,7 +69,7 @@ use crate::telemetry::{
 pub enum SeatKind { Human, Ai }
 
 /// Per-seat AI budget. `time_limit_ms == 0` disables the time check (max_depth
-/// is the sole bound — useful in tests).
+/// is the sole bound - useful in tests).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AiBudget {
     pub time_limit_ms: u64,
@@ -86,7 +86,7 @@ pub struct Config {
     pub p2:      SeatKind,
     pub p1_ai:   AiBudget,
     pub p2_ai:   AiBudget,
-    /// Hint to AIvAI loop drivers — `Match` itself never sleeps.
+    /// Hint to AIvAI loop drivers - `Match` itself never sleeps.
     pub aivai_step_delay: Duration,
     /// Local-HvH allows take-backs; networked HvH does not (history would
     /// drift between peers).
@@ -165,7 +165,7 @@ pub struct ApplyEvent {
     pub zobrist_after: u64,
 }
 
-/// L4 ↔ L7 contract. `Match` never calls these — the run-loop glues them.
+/// L4 ↔ L7 contract. `Match` never calls these - the run-loop glues them.
 pub trait NetworkTransport {
     fn send(&mut self, event: ApplyEvent);
     fn poll(&mut self) -> Option<ApplyEvent>;
@@ -196,8 +196,8 @@ pub struct Snapshot {
 
 /// One running game. Owns its position, action history, configuration, a
 /// per-match transposition table that persists across AI calls (giving each
-/// `find_best` warm move-ordering hints from the previous search), and —
-/// when `config.auto_log` is set — a `MatchLog` accumulating per-ply data.
+/// `find_best` warm move-ordering hints from the previous search), and -
+/// when `config.auto_log` is set - a `MatchLog` accumulating per-ply data.
 pub struct Match {
     position: Position,
     history:  Vec<(Action, Undo)>,
@@ -213,7 +213,7 @@ pub struct Match {
     /// Position evaluator used by `request_ai_move*`. Defaults to
     /// `HeuristicEvaluator`; callers (e.g. the Tauri layer wiring an
     /// `NnEvaluator`) install a replacement via `set_evaluator`. Not
-    /// serialised in `Snapshot` — restoring from snapshot reverts to the
+    /// serialised in `Snapshot` - restoring from snapshot reverts to the
     /// default heuristic.
     evaluator: Box<dyn Evaluator + Send>,
 }
@@ -299,14 +299,14 @@ impl Match {
 
     /// Reconstruct a match by replaying its action history through the
     /// generator. Rejects any action that doesn't appear in the legal list
-    /// at its replay-time position — i.e. a tampered snapshot is rejected
+    /// at its replay-time position - i.e. a tampered snapshot is rejected
     /// without trusting the actions.
     ///
     /// When `s.config.auto_log` is set, the replay also rebuilds a
     /// `MatchLog`: each replayed action becomes a synthesized `PlyRecord`
     /// with zeroed timing/AI metadata (we no longer have the originals).
     /// This keeps the Inspector/Library consistent with what the match
-    /// produced during live play — without it, a reload via snapshot would
+    /// produced during live play - without it, a reload via snapshot would
     /// surface a stripped log anchored at the pre-history FEN.
     pub fn from_snapshot(s: Snapshot) -> Result<Self, SnapshotError> {
         Self::from_snapshot_with_clock(s, 0)
@@ -329,7 +329,7 @@ impl Match {
                 return Err(SnapshotError::IllegalActionInHistory { index: i, action: raw });
             }
 
-            // Capture pre-action telemetry BEFORE make() — same shape as
+            // Capture pre-action telemetry BEFORE make() - same shape as
             // `try_apply_timed`. Skipped when not logging to save the eval cost.
             let pre = if log.is_some() {
                 let seat_player = position.to_move;
@@ -357,7 +357,7 @@ impl Match {
                 let ply_no = (l.plies.len() as u32).saturating_add(1);
                 l.record(PlyRecord {
                     ply_no, seat_player, seat_kind,
-                    // Original timing/AI metadata isn't in the snapshot — zero it.
+                    // Original timing/AI metadata isn't in the snapshot - zero it.
                     thought_ms: 0,
                     applied_at_unix_ms: now_unix_ms,
                     action: ActionDecoded::from_action(action),
@@ -434,7 +434,7 @@ impl Match {
         let legal = generator::generate(&self.position);
         if !legal.contains(&action) { return Err(ApplyError::IllegalAction); }
 
-        // Capture pre-action telemetry BEFORE make() (only when logging — saves
+        // Capture pre-action telemetry BEFORE make() (only when logging - saves
         // ~6 µs/ply when auto_log is off, which is the default path).
         let pre = if self.log.is_some() {
             let seat_player = self.position.to_move;
@@ -490,7 +490,7 @@ impl Match {
     pub fn request_ai_move_with_cb(&mut self, on_depth: Option<&dyn Fn(u8, i32)>) -> Result<SearchResult, AiError> {
         if self.position.game_result.is_some() { return Err(AiError::GameOver); }
         if self.to_move_kind() != SeatKind::Ai { return Err(AiError::NotAiTurn); }
-        // Draft phase short-circuits search — see `oq-83` for the real-AI-
+        // Draft phase short-circuits search - see `oq-83` for the real-AI-
         // draft follow-up. The preset emits a deterministic `DraftTurn` and
         // we wrap it in a `SearchResult` so callers don't have to special-
         // case the draft path.
@@ -508,7 +508,7 @@ impl Match {
     /// Wrap the preset-driven draft turn (if any) in a `SearchResult`. Score
     /// is 0 (the position evaluator isn't meaningful mid-draft) and depth is
     /// 0 (no search ran). Returns an empty `SearchResult` if the preset has
-    /// nothing more to do — caller will surface that as a no-op step, which
+    /// nothing more to do - caller will surface that as a no-op step, which
     /// in practice can only happen when the draft is already complete or
     /// the position is malformed (engine bug).
     fn draft_preset_search_result(&self) -> SearchResult {
@@ -574,7 +574,7 @@ impl Match {
         if let Some(a) = r.best {
             let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
             // try_apply could in principle reject if the AI returned an
-            // action our generator no longer considers legal — that'd be a
+            // action our generator no longer considers legal - that'd be a
             // bug in alpha-beta, not in this call site. Propagate as a panic
             // via expect so the failure surfaces immediately.
             self.try_apply_timed(a, thought_ms, 0, Some(meta))
@@ -586,14 +586,14 @@ impl Match {
     /// Pop the last applied action and reverse it. Gated by `config.allow_undo`.
     pub fn undo_last(&mut self) -> Result<(), UndoError> {
         if !self.config.allow_undo            { return Err(UndoError::NotAllowed); }
-        // GameOver intentionally NOT a hard stop here — undoing the terminal
+        // GameOver intentionally NOT a hard stop here - undoing the terminal
         // move (a King capture) is a legitimate take-back. `make_unmake::unmake`
         // restores `game_result` to its pre-move value.
         let (_, undo) = self.history.pop().ok_or(UndoError::NoHistory)?;
         make_unmake::unmake(&mut self.position, &undo);
         // Mirror the undo in the telemetry log so future replays don't carry
         // ghost plies. We don't try to "un-undo" by re-recording when the user
-        // re-applies — that's a new ply by construction.
+        // re-applies - that's a new ply by construction.
         if let Some(log) = self.log.as_mut() {
             if let Some(removed) = log.plies.pop() {
                 log.total_plies = log.total_plies.saturating_sub(1);
@@ -671,7 +671,7 @@ mod tests {
     fn try_apply_illegal_rejected_state_unchanged() {
         let mut m = Match::new(Config::local_hvh());
         let zob_before = m.position().zobrist;
-        // Action(0) is `Action::default()` — the "no action" sentinel; the
+        // Action(0) is `Action::default()` - the "no action" sentinel; the
         // generator never emits it, so it's a reliable illegal-action probe.
         let bogus = Action::default();
         let res = m.try_apply(bogus);
@@ -686,7 +686,7 @@ mod tests {
         let mut m = Match::new(Config::local_hvai());
         assert_eq!(m.to_move_kind(), SeatKind::Human);
         // Walk forward until to_move flips. Repeatedly apply the first legal
-        // action — a bounded loop because Move-Phase actions_remaining=2 and
+        // action - a bounded loop because Move-Phase actions_remaining=2 and
         // EndPhase / EndTurn are always emitted by the generator when needed.
         for _ in 0..32 {
             let a = first_legal(&m);
@@ -727,7 +727,7 @@ mod tests {
         let a = first_legal(&m);
         m.try_apply(a).unwrap();
         assert_eq!(m.undo_last(), Err(UndoError::NotAllowed));
-        // History intact — caller must accept the action as final.
+        // History intact - caller must accept the action as final.
         assert_eq!(m.history().len(), 1);
     }
 
@@ -795,7 +795,7 @@ mod tests {
     fn snapshot_rejects_illegal_history() {
         let m = Match::new(Config::local_hvh());
         let mut snap = m.to_snapshot();
-        // Splice in Action::default() — never emitted by generate(), so
+        // Splice in Action::default() - never emitted by generate(), so
         // replay rejects at index 0.
         snap.actions.push(Action::default().0);
         match Match::from_snapshot(snap) {
@@ -842,7 +842,7 @@ mod tests {
     fn game_over_blocks_further_applies() {
         let mut m = Match::new(Config::local_hvh());
         // Directly mark the game as over (skipping a full mate sequence
-        // here — terminal-handling is what's under test, not mate search).
+        // here - terminal-handling is what's under test, not mate search).
         m.position.game_result = Some(GameResult::P1Wins);
         let a = Action::default(); // any action; should be rejected before legality check
         assert_eq!(m.try_apply(a), Err(ApplyError::GameOver));
@@ -883,7 +883,7 @@ mod tests {
         assert!(move_count > 0, "Stack M start should emit Move actions");
     }
 
-    // === L8 Phase C — AI driven by preset during Phase::Draft ===============
+    // === L8 Phase C - AI driven by preset during Phase::Draft ===============
 
     #[test]
     fn new_with_draft_starts_in_draft_phase() {
@@ -942,7 +942,7 @@ mod tests {
 
     #[test]
     fn request_ai_move_forced_handles_draft_for_hvh() {
-        // HvH (no AI seats) — inspector must still produce a draft pick when
+        // HvH (no AI seats) - inspector must still produce a draft pick when
         // Phase::Draft via request_ai_move_forced.
         let mut m = Match::new_with_draft(Config::local_hvh(), 0);
         let r = m.request_ai_move_forced().expect("forced must work in draft");

@@ -180,7 +180,7 @@
   <div class="divider"></div>
 
   <section>
-    <h3>AI — Player 1</h3>
+    <h3>AI - Player 1</h3>
     <label class="row">
       <span>Think time (ms)</span>
       <input
@@ -213,7 +213,7 @@
   </section>
 
   <section>
-    <h3>AI — Player 2</h3>
+    <h3>AI - Player 2</h3>
     <label class="row">
       <span>Think time (ms)</span>
       <input

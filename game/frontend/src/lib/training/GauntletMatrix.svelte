@@ -1,7 +1,7 @@
 <script lang="ts">
-  // Panel 5 — Gauntlet Matrix.
+  // Panel 5 - Gauntlet Matrix.
   //
-  // Polls `read_gauntlet_matrix` at 1 Hz (low cadence — entries change
+  // Polls `read_gauntlet_matrix` at 1 Hz (low cadence - entries change
   // only when a series finishes, which is rare relative to per-ply
   // updates). Cells are tinted by win-rate (challenger row vs. defender
   // col, in the dropdown-selected bracket). The diagonal is blank.
@@ -150,7 +150,7 @@
                   title={row === col ? "self" : wr === null ? "no data" : `${(wr * 100).toFixed(1)}% over ${games} games`}
                 >
                   {#if row === col}
-                    <span class="dash">—</span>
+                    <span class="dash">-</span>
                   {:else if wr === null}
                     <span class="dot">·</span>
                   {:else}

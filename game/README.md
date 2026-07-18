@@ -1,6 +1,6 @@
 # game/
 
-The digital implementation of (GAME NAME). Architecture per **ADR-005** (`SELECT body FROM adrs WHERE id='adr-005';`).
+The digital implementation. Rust workspace (4 crates) + SvelteKit frontend + multiplayer relay.
 
 ## Structure
 
@@ -8,94 +8,100 @@ The digital implementation of (GAME NAME). Architecture per **ADR-005** (`SELECT
 game/
 ├── Cargo.toml                  ← Rust workspace
 ├── crates/
-│   ├── core_engine/            ← Layers 1–5: pure Rust game engine
+│   ├── core_engine/            ← pure Rust game engine
 │   │   └── src/
-│   │       ├── state/          ← Layer 1: bitboards, mailbox, position, zobrist
-│   │       ├── game_logic/     ← Layer 2: action, magic, generator, make/unmake, turns
-│   │       ├── search/         ← Layer 3: alpha-beta, transposition, evaluator
-│   │       ├── session.rs      ← Layer 4: match manager + action history
-│   │       └── telemetry.rs    ← Layer 5: match logs + export
-│   └── tauri_wrapper/          ← Tauri 2 desktop wrapper (native engine)
-└── frontend/                   ← Layer 6: Svelte 5 + TypeScript
-    └── src/
-        ├── App.svelte
-        ├── lib/
-        │   ├── Board.svelte    ← 8×8 CSS Grid, PointerEvents
-        │   ├── engine.ts       ← engine bridge (Tauri IPC)
-        │   └── multiplayer.ts  ← Layer 7: PeerJS + WebRTC + commit-reveal
-        └── main.ts
+│   │       ├── state/          ← bitboards, mailbox, position, zobrist
+│   │       ├── game_logic/     ← action, move generator, make/unmake, turns
+│   │       ├── search/         ← alpha-beta, transposition table, evaluator
+│   │       ├── session.rs      ← match manager + action history
+│   │       └── telemetry.rs    ← match logs + export
+│   ├── tauri_wrapper/          ← Tauri 2 desktop wrapper
+│   ├── nn_trainer/             ← neural net self-play training loop
+│   └── search_bench/           ← search benchmarking harness
+├── frontend/                   ← SvelteKit + TypeScript UI
+│   └── src/
+│       ├── lib/
+│       │   ├── engine/         ← engine bridge (Tauri IPC + web fallback)
+│       │   ├── match/          ← match state, board rendering
+│       │   ├── multiplayer*    ← WS relay protocol + session management
+│       │   └── training/       ← training observatory UI
+│       └── routes/             ← pages: draft, match, multiplayer, replay, loadouts, training...
+├── relay/                      ← WebSocket relay server (Node, deployed on Fly.io)
+├── bench/                      ← search benchmark baselines, corpus, run scripts
+├── plans/                      ← active engineering plan docs
+├── runs/                       ← training run outputs (active/ gitignored)
+└── tools/                      ← helper scripts (playtest log analysis etc.)
 ```
 
-## Status
-
-**Scaffolded (Session 28, 2026-06-22).** Module skeletons + types + bit-pack helpers + transposition-table shell are in place. Nothing is wired end-to-end yet — every `TODO` marks an implementation step.
-
-## Build (dev)
+## Build
 
 ```bash
-# Rust core check (no implementation yet — just the scaffold compiles)
+# Check everything compiles
 cd game && cargo check
 
-# Frontend dev server
+# Desktop app - dev mode (hot reload)
+cd game/crates/tauri_wrapper && cargo tauri dev
+
+# Frontend dev server only (browser, no Rust)
 cd game/frontend && npm install && npm run dev
 
-# Web build (static, deployable to GitHub Pages)
-cd game/frontend && npm run build
+# Production desktop build
+cd game/crates/tauri_wrapper && cargo tauri build
 
-# Desktop dev (Tauri 2 — requires Rust + platform deps)
-cd game/crates/tauri_wrapper && cargo tauri dev    # once @tauri-apps/cli is installed
+# Static web build
+cd game/frontend && npm run build
 ```
 
-### Backend (CPU vs GPU)
+### NN trainer backend options
 
-The NN-trainer compiles in one or more burn backends, selected at
-runtime from the `/training` UI:
+| Cargo feature | Backend | Platforms |
+|---|---|---|
+| `backend-ndarray` | CPU (always available) | All |
+| `backend-wgpu` | GPU via wgpu | Metal (Mac), Vulkan, DX12 |
+| `backend-cuda` | NVIDIA CUDA | Linux x86_64, CUDA 12.x |
 
-| Cargo feature      | Backend           | Platforms                       |
-|--------------------|-------------------|---------------------------------|
-| `backend-ndarray`  | CPU (always)      | All                             |
-| `backend-wgpu`     | GPU via wgpu      | Metal (Mac), Vulkan, DX12       |
-| `backend-cuda`     | NVIDIA CUDA       | Linux x86_64 (needs CUDA 12.x)  |
-
-Defaults are `backend-ndarray + backend-wgpu`. To build with CUDA
-support (Linux + NVIDIA only):
+Default: `backend-ndarray + backend-wgpu`. CUDA build (Linux + NVIDIA only):
 
 ```bash
-cd game
-cargo check --features backend-cuda                         # workspace check
-cd crates/tauri_wrapper
+cd game/crates/tauri_wrapper
 cargo tauri build --features backend-ndarray,backend-cuda \
                   --config ../tauri.cuda.conf.json
 ```
 
-Search-time inference (the in-game AI evaluator) always runs on CPU
-ndarray regardless of the training backend — GPU dispatch overhead
-dominates at batch-1.
+Search-time inference (in-game AI) always uses CPU ndarray - GPU dispatch overhead dominates at batch size 1.
 
-## Rules source of truth
+## Rules
 
-The rules are in the database, not in this folder:
-
-```bash
-sqlite3 design/design.db "SELECT body FROM stacks WHERE id='stack-m';"
-```
-
-`core_engine` implements that ruleset. When Stack M changes (or 6×8 follow-on lands), the engine changes with it.
+The engine implements the ruleset in [`design/RULES.md`](../design/RULES.md). That file is authoritative. When the ruleset changes, the engine changes with it.
 
 ## Training Observatory
 
-The NN-rater training loop (Step 7 of the NN-rater plan) is wired
-through a dedicated UI at **`/training`** in the desktop app. Open
-`cargo tauri dev` from `crates/tauri_wrapper`, then navigate to
-`/training` — the route renders:
+Open the desktop app and navigate to `/training`:
 
-- **Live Match View** — board + three centipawn eval bars updated per ply
-- **Tournament Standings** — table of every population member, W-L-D, win rate
-- **Lineage Tree** — every accepted rater (click one to populate the Inspector)
-- **Network Inspector** — forward output + per-layer weight stats for the selected rater
-- **Gauntlet Matrix** — N×N win-rate heat-map per bracket
+- **Live Match View** - board + eval bars updated per ply
+- **Tournament Standings** - W/L/D per population member
+- **Lineage Tree** - every accepted rater (click to inspect)
+- **Network Inspector** - forward output + per-layer weight stats
+- **Gauntlet Matrix** - N×N win-rate heatmap per bracket
 
-Status / live-position / index / matrix snapshots are persisted under
-**`game/runs/active/`** (gitignored — large, churny). Promote an
-interesting run by copying it to `game/runs/archive/<run-id>/`.
+Training run outputs are persisted under `game/runs/active/` (gitignored). Copy a run to `game/runs/archive/<run-id>/` to keep it.
 
+## Benchmarking
+
+```bash
+cd game && cargo build --release -p search_bench
+./target/release/search_bench --help
+
+# Compare a result against a baseline
+python3 bench/compare.py bench/baseline.json bench/results/my-run.json
+```
+
+## Release
+
+Releases are triggered by pushing a `v*` tag - GitHub Actions builds binaries for macOS and Linux and attaches them to the release. See `../.github/workflows/release.yml`.
+
+```bash
+git push origin main
+git tag v0.1.1
+git push origin v0.1.1
+```

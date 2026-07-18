@@ -14,7 +14,7 @@
   // Slot empty (skill1 / skill2 == 0): that sector renders as a faded
   // placeholder. The End-Phase sector is always present.
   //
-  // Focus / Charge are SKILLS the piece may have equipped — they are NOT
+  // Focus / Charge are SKILLS the piece may have equipped - they are NOT
   // dedicated slices. When either is currently staged on the position
   // (`focusActive` / `chargeActive`), a small badge appears *inside* the
   // wheel near the piece, hoverable for an info card.
@@ -46,7 +46,7 @@
     skill1Legal: boolean;
     skill2Legal: boolean;
     endPhaseLegal: boolean;
-    /** Click handler — single sink for every interactive region. */
+    /** Click handler - single sink for every interactive region. */
     onSliceClick: (slice: SliceKind) => void;
     /** Hover handler. Called with `null` on mouse-leave of all regions. */
     onSliceHover: (slice: SliceKind | null) => void;
@@ -69,9 +69,9 @@
   // Geometry. Centre of the wheel = piece centre = (size/2, size/2).
   const cx = $derived(size / 2);
   const cy = $derived(size / 2);
-  /** Inner radius — leaves the piece visible at the ring's centre. */
+  /** Inner radius - leaves the piece visible at the ring's centre. */
   const rInner = $derived(size * 0.62);
-  /** Outer radius — the slice's outer edge. */
+  /** Outer radius - the slice's outer edge. */
   const rOuter = $derived(size * 1.05);
   /** Mid-radius where glyphs / labels sit. */
   const rMid = $derived((size * 0.62 + size * 1.05) / 2);
@@ -142,7 +142,7 @@
   const skill2Glyph = $derived(midPoint((skill2Start + skill2End) / 2));
   const endGlyph = $derived(midPoint((endStart + endEnd) / 2));
 
-  // Glyph icon size — fits comfortably inside the sector's mid-arc band.
+  // Glyph icon size - fits comfortably inside the sector's mid-arc band.
   const glyphSize = $derived((rOuter - rInner) * 0.55);
 
   // Modifier badges sit just inside the inner ring, on the left (focus) and
@@ -204,7 +204,7 @@
       />
     </g>
   {:else}
-    <!-- Empty slot 1 — render placeholder so the wheel reads as full. -->
+    <!-- Empty slot 1 - render placeholder so the wheel reads as full. -->
     <path
       d={skill1Path}
       fill="#f3ecd9"

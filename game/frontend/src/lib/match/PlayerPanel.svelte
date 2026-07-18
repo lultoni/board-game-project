@@ -20,7 +20,7 @@
   }: Props = $props();
 
   // Per-seat thinking flag: reads the seat's own slot in the store, no need
-  // to gate on position?.toMove — the store already splits by side, and a
+  // to gate on position?.toMove - the store already splits by side, and a
   // seat's `thinking` flag is only true while that seat's search is running.
   const seatSide = $derived(player);
   const seatState = $derived(aiSearch[seatSide]);
@@ -142,14 +142,14 @@
 
   <div class="stats">
     <div class="captures">
-      <!-- King pip (circle) — 1 slot -->
+      <!-- King pip (circle) - 1 slot -->
       <span
         class="cap-pip king"
         class:taken={capturedKings > 0}
         style:--pip-color={color}
         title="King"
       ></span>
-      <!-- Champion pips (diamonds) — 5 slots for Stack M default -->
+      <!-- Champion pips (diamonds) - 5 slots for Stack M default -->
       {#each { length: 5 } as _, i}
         <span
           class="cap-pip champ"
@@ -158,7 +158,7 @@
           title="Champion"
         ></span>
       {/each}
-      <!-- Guard pips (squares) — only shown when guards present in army -->
+      <!-- Guard pips (squares) - only shown when guards present in army -->
       {#each { length: maxGuardsSeen } as _, i}
         <span
           class="cap-pip guard"
@@ -233,7 +233,7 @@
   }
   .think-progress__fill {
     height: 100%;
-    background: #c99a4a; /* warm accent — matches paper aesthetic */
+    background: #c99a4a; /* warm accent - matches paper aesthetic */
     transition: width 60ms linear;
   }
   .think-progress.over-budget .think-progress__fill {

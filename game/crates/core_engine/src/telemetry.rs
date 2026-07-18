@@ -1,4 +1,4 @@
-//! Layer 5 — Telemetry & Analytics.
+//! Layer 5 - Telemetry & Analytics.
 //!
 //! Per ADR-005: every match is auto-logged with action history + per-move
 //! timing + the full per-ply position trace. The "send to designer" upload
@@ -86,7 +86,7 @@ pub struct DraftPick {
     pub sq:       u8,
     pub slot:     u8,
     /// Resolved skill name for downstream display. `None` if id was somehow
-    /// unrecognised (which shouldn't happen — ids are 1..=15 by contract).
+    /// unrecognised (which shouldn't happen - ids are 1..=15 by contract).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skill_name: Option<String>,
 }
@@ -366,7 +366,7 @@ pub fn from_json<T: for<'a> Deserialize<'a>>(s: &str) -> serde_json::Result<T> {
 
 // === Config hash ============================================================
 
-/// Deterministic 64-bit fingerprint of a Config — stable across processes
+/// Deterministic 64-bit fingerprint of a Config - stable across processes
 /// (DefaultHasher is randomly-seeded; we hand-roll an FxHash-style mixer so
 /// the designer can group matches by config without leaking the full struct).
 pub fn config_hash(c: &Config) -> u64 {
@@ -549,7 +549,7 @@ mod tests {
           },
           "start_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1"
         }"#;
-        // start_fen above is a chess FEN placeholder — we only test serde
+        // start_fen above is a chess FEN placeholder - we only test serde
         // deserialisation; we don't run the engine against it.
         let log: Result<MatchLog, _> = serde_json::from_str(minimal);
         assert!(log.is_ok(), "legacy minimal MatchLog should deserialise: {:?}", log.err());

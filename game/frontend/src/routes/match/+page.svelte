@@ -85,7 +85,7 @@
   let bootError = $state<string | null>(null);
   let ready = $state(false);
   let busy = $state(false);
-  /** Monotonic ply counter — incremented after every successful apply. Used
+  /** Monotonic ply counter - incremented after every successful apply. Used
    *  to time the AI thinking indicator's post-search linger: the indicator
    *  stays visible for one opponent turn after the search finished. */
   let plyCount = $state(0);
@@ -134,7 +134,7 @@
   });
 
   /** True iff (in multiplayer) the side currently to move is ours. Outside
-   *  multiplayer this is always true — both seats are local. */
+   *  multiplayer this is always true - both seats are local. */
   let __loggedSeatFallback150 = false;
   let __loggedSeatFallback526 = false;
   const currentSeatIsLocal = $derived.by(() => {
@@ -158,9 +158,9 @@
   // attacker's final square (target for plain Move, approach_sq for
   // Move-Attack). Cleared whenever phase or to-move flips.
   let usedThisPhase = $state<Set<number>>(new Set());
-  let lastPhaseKey = $state<string>(""); // `${toMove}:${phase}` — phase boundary detector
+  let lastPhaseKey = $state<string>(""); // `${toMove}:${phase}` - phase boundary detector
 
-  // Live drag state for the parent — Board owns the pointer mechanics and
+  // Live drag state for the parent - Board owns the pointer mechanics and
   // pushes updates here so we can render path trail + hover ring.
   let dragSrc = $state<number | null>(null);
   let dragTrail = $state<number[]>([]);
@@ -177,7 +177,7 @@
   // with multiple approach paths, we surface a chooser.
   let pendingApproach = $state<{ target: number; approaches: number[] } | null>(null);
 
-  // Bodyguard chooser state. The engine owns this — `Position.pending_bodyguard`
+  // Bodyguard chooser state. The engine owns this - `Position.pending_bodyguard`
   // is set on the attacker's tentative Move-Attack and cleared on the
   // defender's `BodyguardChoice`. All four play modes converge here because
   // the engine flips STM to the defender as part of the tentative apply.
@@ -207,12 +207,12 @@
    *  Self / Ally picker that mirrors the focus-mode (Range/Effect) toggle. */
   let focusRetargetPref = $state<"self" | "ally">("self");
   /** Two-stage Focus-retarget picker: in "ally" mode for movement skills
-   *  (Dash/Retreat — where the ally's destination differs from the ally
+   *  (Dash/Retreat - where the ally's destination differs from the ally
    *  itself), the player first clicks WHICH adjacent ally moves, then clicks
    *  the destination. Null = no ally picked yet (squares show the ally
    *  candidates); set = ally chosen (squares show that ally's destinations).
    *  Reset on arm change, mode switch back to self, or fire. Not used for
-   *  Shield retarget — there, target == aux_sq, so a single click suffices. */
+   *  Shield retarget - there, target == aux_sq, so a single click suffices. */
   let focusAllyChosen = $state<number | null>(null);
   /** Focus / Charge are derived from the engine's pendingModifiers bitfield.
    *  Casting Focus / Charge (skills 14 / 15) stages the modifier; the wheel
@@ -267,7 +267,7 @@
     // (the obvious "direct attack" default), else first candidate.
     const offLen2 = offX * offX + offY * offY;
     if (offLen2 < 4) {
-      if (candidates.has(target)) return target; // shouldn't happen — approach != target
+      if (candidates.has(target)) return target; // shouldn't happen - approach != target
       // Default to direct (approach == src) if present.
       // src isn't known here, but the caller can supply it via the map key.
       // We just pick the first one as a fallback.
@@ -305,7 +305,7 @@
   });
 
   // Click-mode landing preview: when a piece is selected (no drag) and the
-  // cursor is over a legal target, show where the attacker would land — same
+  // cursor is over a legal target, show where the attacker would land - same
   // visual as drag-and-drop hover, but driven by mouse-over without press.
   const clickLanding = $derived.by(() => {
     if (dragSrc !== null) return null; // drag is active, dragLanding takes over
@@ -368,7 +368,7 @@
   const endPhaseAction = $derived(findActionByKind(match.legal, ActionKind.EndPhase));
   const inMovePhase = $derived(match.position?.currentPhase === 0);
   // Standard interactivity: it's the local seat's turn and we're not busy.
-  // Bodyguard no longer needs a special-case override — when the engine sets
+  // Bodyguard no longer needs a special-case override - when the engine sets
   // `pending_bodyguard` it also flips STM to the defender, so the defender's
   // seat naturally becomes `currentSeatIsLocal`.
   // In sandbox mode: always interactive regardless of whose turn it is,
@@ -381,7 +381,7 @@
   );
 
   // Wheel state. Open whenever a piece is selected in the Skill Phase
-  // (and the player isn't mid-drag — we don't want the wheel popping up
+  // (and the player isn't mid-drag - we don't want the wheel popping up
   // just from press-down). In the Move Phase, selecting a piece highlights
   // move targets only; the wheel is strictly a Skill-Phase affordance.
   const wheelOpen = $derived.by(() => {
@@ -392,7 +392,7 @@
     if (pendingApproach !== null) return null;
     if (pendingBodyguard !== null) return null;
     if (pendingDirection !== null) return null;
-    // Hide the wheel once a skill is armed — the player is now choosing a
+    // Hide the wheel once a skill is armed - the player is now choosing a
     // target, so the wheel chrome would just obscure the board.
     if (armedSkill !== null) return null;
     const pos = match.position;
@@ -409,7 +409,7 @@
   // Per-sector legality on the wheel. A skill sector is enabled iff at least
   // one Skill action with that (caster, skill_id) is in `legal`. End-Phase
   // is enabled iff `endPhaseAction !== null`. Focus / Charge are themselves
-  // skills (ids 14/15) — if the piece has one equipped they show up as the
+  // skills (ids 14/15) - if the piece has one equipped they show up as the
   // corresponding skill sector; they have NO dedicated sector of their own.
   const wheelLegality = $derived.by(() => {
     if (!wheelOpen) {
@@ -449,7 +449,7 @@
 
   // True when we're in Ally-retarget mode for a movement skill (Dash/Retreat)
   // and need the player to pick WHICH ally moves before showing destinations.
-  // Shield retarget has target == ally, so a single click suffices — this is
+  // Shield retarget has target == ally, so a single click suffices - this is
   // false there.
   const armedNeedsAllyPick = $derived.by(() => {
     if (!armedSkill) return false;
@@ -514,7 +514,7 @@
     const result = match.position?.gameResult ?? 0;
     if (result !== 0 && lastGameResult === 0 && ready) {
       // Determine win/lose from the local player's perspective. In sandbox/aivai
-      // there's no "local" side — use gameEnd for draws, victory for any win.
+      // there's no "local" side - use gameEnd for draws, victory for any win.
       if (result === 3) {
         sfx.play("gameEnd");
       } else if (match.mode === "aivai" || match.mode === "sandbox") {
@@ -523,7 +523,7 @@
         const localSeat = match.localSeat ?? (match.side.p1 === "human" ? 0 : 1);
         if (match.localSeat === null && !__loggedSeatFallback526) {
           __loggedSeatFallback526 = true;
-          // WARNING: this fallback uses match.side.p1 === "human" instead of role — likely wrong in HvH-MP.
+          // WARNING: this fallback uses match.side.p1 === "human" instead of role - likely wrong in HvH-MP.
           console.warn(`[mp] seat fallback used at match:526 [suspect] (localSeat=null, side.p1=${match.side.p1}, role=${multiplayerRole()}) → seat=${localSeat}`);
         }
         const localWon = (result === 1 && localSeat === 0) || (result === 2 && localSeat === 1);
@@ -542,7 +542,7 @@
    *
    *  Owns a single timer handle (`aiTimer`) rather than a boolean latch. The
    *  handle is set synchronously when the timer is scheduled and only cleared
-   *  inside the timer callback or by teardown — no microtask window where a
+   *  inside the timer callback or by teardown - no microtask window where a
    *  re-entrant $effect run could schedule a duplicate. */
   $effect(() => {
     if (!ready) return;
@@ -553,7 +553,7 @@
     if (busy) return;
     // Visible cooldown (so a spectator can watch AIvAI step-by-step, or HvAI
     // has a beat to repaint the board). `runAiStep` runs the search in
-    // parallel with this delay — the cooldown is a floor, not a sequential
+    // parallel with this delay - the cooldown is a floor, not a sequential
     // wait. For AIvAI we honour the user-configured step delay; HvAI is a
     // small fixed beat.
     const delay = match.mode === "aivai"
@@ -583,13 +583,13 @@
       // Snapshot side before reset so it survives the reset (which clears
       // mode/position/legal but preserves side by design).
       const sideAtBoot = { p1: match.side.p1, p2: match.side.p2 };
-      // Preserve multiplayer mode through the reset — the lobby set this
+      // Preserve multiplayer mode through the reset - the lobby set this
       // before navigating here and the reset would otherwise drop mode back
       // to "idle". MP role/code now live in mpState (read via the
       // `multiplayerRole` / `multiplayerCode` $derived constants) so they
       // automatically survive the reset.
       const wasMultiplayer = match.mode === "multiplayer";
-      // Task 8 — per-side loadout path (either both pre-made / mirror match,
+      // Task 8 - per-side loadout path (either both pre-made / mirror match,
       // or per-side custom+preMade mixes for local play). Snapshot BEFORE
       // resetMatchState() because the reset clears `sideLoadouts` (so stale
       // ids from a prior match can't leak in via direct navigation).
@@ -622,7 +622,7 @@
           console.warn("resolveLoadout returned null; falling back to fresh engine");
           await eng.createEngine();
         }
-        // Consume — re-entering /match/ later (e.g. a snapshot restore from
+        // Consume - re-entering /match/ later (e.g. a snapshot restore from
         // the inspector) should NOT re-create from loadouts.
         match.sideLoadouts = null;
       } else if (pending) {
@@ -655,7 +655,7 @@
       // Start the telemetry session for non-analysis modes. No-op for
       // sandbox; sandbox enters via /match/ but flips mode immediately,
       // so we'd never reach this with mode === "sandbox" on boot.
-      // Skip if a session is already active — the carrier survives the
+      // Skip if a session is already active - the carrier survives the
       // /draft/ → /match/ goto, so the draft route's row continues into
       // play. Without this guard, the handoff produces two IDB rows for
       // one game and resume cards show duplicates.
@@ -698,11 +698,11 @@
           onApplied: async (raw, _phase, meta) => {
             if (!renderer) return;
             // Drain any deferred Skill refresh from a prior remote-applied
-            // skill — its setTimeout would otherwise fire after we render
+            // skill - its setTimeout would otherwise fire after we render
             // this new action and clobber the post-state.
             renderer.drainPendingSkillRefresh();
             // The wrapper captured `prePositionView` before tryApply, so we
-            // diff against an explicit pre-state value — no reliance on the
+            // diff against an explicit pre-state value - no reliance on the
             // reactive mirror's update ordering.
             const pre = renderer.snapshotPreState(raw, meta.prePositionView);
             await renderer.renderApplied(raw, pre);
@@ -729,7 +729,7 @@
             bootError = "anti-cheat: opponent's engine disagreed";
           },
           onResyncFailed: ({ reason, attempts }) => {
-            mpState.lastError = `lost sync with host (${reason}, ${attempts} attempts) — try Rejoin`;
+            mpState.lastError = `lost sync with host (${reason}, ${attempts} attempts) - try Rejoin`;
           },
           onPausedChange: (p) => {
             mpPaused = p;
@@ -738,7 +738,7 @@
         },
       );
       // Re-announce session on every transport-open while we're mounted.
-      // Direct callbacks — no $effect. Protocol sequencing shouldn't be
+      // Direct callbacks - no $effect. Protocol sequencing shouldn't be
       // scheduled through Svelte's reactive graph; effects fire on the
       // next microtask, and network state machines don't tolerate that
       // window. See PROTOCOL_TRACE.md Part 2 §6.
@@ -746,7 +746,7 @@
       const unsubClose = mpOnDisconnected(() => mpEngine?.notifyConnectionLost());
       mpConnectedUnsub = () => { unsubOpen(); unsubClose(); };
       // If the transport is already open by the time /match/ mounts (the
-      // usual case — pairing happened in the lobby), the onConnected event
+      // usual case - pairing happened in the lobby), the onConnected event
       // has already fired and we missed it. Fire once synchronously so the
       // engine emits its `session-hello`.
       if (mpState.status === "connected") mpEngine.notifyConnectionOpen();
@@ -788,12 +788,12 @@
   // and sees nothing.
   //
   // Unlike the unload paths, this writes the row directly via the store so
-  // `match.telemetryMatchId` stays set — the match might recover, in which
+  // `match.telemetryMatchId` stays set - the match might recover, in which
   // case `recordPly`/`finalizeMatch` continue working. `markNetworkLost`
   // itself only flips the row if status is "in-progress", so the natural
   // finalize path will still overwrite it to "ended" if the match completes.
   //
-  // Idempotent via `hasMarkedNetworkLost` — repeat disconnections during the
+  // Idempotent via `hasMarkedNetworkLost` - repeat disconnections during the
   // same mount don't double-write. Cleared on successful reconnect so a
   // flaky-then-recovered peer can re-trigger a new row if it drops again.
   let hasMarkedNetworkLost = false;
@@ -818,7 +818,7 @@
         const store = getTelemetryStore();
         await store.markNetworkLost(id, partial);
       } catch {
-        // Swallow — telemetry must never block gameplay.
+        // Swallow - telemetry must never block gameplay.
       }
     })();
   });
@@ -845,7 +845,7 @@
     if (!eng || !renderer || busy) return;
     busy = true;
     try {
-      // Sandbox bypasses the wrapper — the user is exploring locally and
+      // Sandbox bypasses the wrapper - the user is exploring locally and
       // sandbox moves must NOT echo to a peer or get logged as match plies.
       if (match.mode === "sandbox") {
         const snap = await eng!.snapshotJson();
@@ -867,7 +867,7 @@
       // Funnel through the wrapper. For solo/host, submitAction synchronously
       // calls onApplied(isLocalEcho=true) before returning, which handles the
       // pre-state snapshot, render, recordPly, and lastApplied. For joiner,
-      // submitAction sends `intent` and waits for the host's `committed` —
+      // submitAction sends `intent` and waits for the host's `committed` -
       // the matching commit handler fires onApplied with isLocalEcho=true.
       // Either way, render + telemetry happens inside onApplied; applyRaw
       // only owns the post-success UI cleanup (selection, focus mode).
@@ -904,7 +904,7 @@
     // A successful apply means whatever transient error the user was looking
     // at (move-refused, illegal-target, etc.) is no longer relevant.
     // Anti-cheat / engine-boot errors set bootError too, but those branches
-    // never reach here — afterApplied only fires after a committed action.
+    // never reach here - afterApplied only fires after a committed action.
     if (bootError !== null) bootError = null;
     const k = phaseKey();
     if (k !== lastPhaseKey) {
@@ -956,7 +956,7 @@
     if (match.mode === "multiplayer") return;
     if (!match.position) return;
     if (match.position.gameResult !== 0) return;
-    // Capture side up-front — match.position advances during renderApplied(),
+    // Capture side up-front - match.position advances during renderApplied(),
     // so endSearch() at the end of this call needs the side that was to move
     // when the search STARTED, not the (now next) side.
     const side: "p1" | "p2" = match.position.toMove === 0 ? "p1" : "p2";
@@ -965,11 +965,11 @@
     // values stay visible until the streaming depth callback overwrites them
     // (typically within a few frames) or the search completes. The `thinking`
     // spinner already visually takes over from the linger badge, so there's no
-    // risk of confusion — and this avoids the "d0 +0" flash the user reported
+    // risk of confusion - and this avoids the "d0 +0" flash the user reported
     // when quick shallow depths report before the deeper ones catch up.
     beginSearch(side);
     try {
-      // Drain any deferred Skill refresh before snapshotting pre-state — see
+      // Drain any deferred Skill refresh before snapshotting pre-state - see
       // applyRaw for rationale.
       renderer.drainPendingSkillRefresh();
       const delayP = minDelayMs > 0
@@ -985,20 +985,20 @@
         //   - match.position.gameResult !== 0 → terminal (mate/stalemate),
         //     legitimate no-op; just refresh.
         //   - gameResult === 0 → engine returned no action on a live position.
-        //     That's a wedge — the AivAI scheduler would re-fire forever.
+        //     That's a wedge - the AivAI scheduler would re-fire forever.
         //     Disable auto-play and surface a toast so the user sees the
         //     stall instead of an apparent freeze. Don't try to recover here.
         await refresh();
         if (match.position && match.position.gameResult === 0) {
           aiAutoPlay = false;
-          showToast("AI returned no move — pausing");
+          showToast("AI returned no move - pausing");
         }
         return;
       }
       // Persist AI ply telemetry. Sandbox is gated above (early return).
       await recordPly(eng);
       // The engine has advanced, but `match.position` (the renderer's
-      // positionSink) is still the PRE-step snapshot — refresh() hasn't run
+      // positionSink) is still the PRE-step snapshot - refresh() hasn't run
       // yet. snapshotPreState reads from there, so this is safe.
       const pre = renderer.snapshotPreState(raw);
       await renderer.renderApplied(raw, pre);
@@ -1038,7 +1038,7 @@
   /** After the attacker has decided (target, approach), apply the tentative
    *  Move-Attack. If the engine has eligible Bodyguard Guards it will set
    *  `pending_bodyguard` + flip STM to the defender, who then resolves via a
-   *  `BodyguardChoice` ply — handled in `handleSquareClick`. All four play
+   *  `BodyguardChoice` ply - handled in `handleSquareClick`. All four play
    *  modes (local HvH, HvAI, AivAI, online HvH) flow through this same path
    *  because the engine owns the STM transition. */
   function commitMoveTargetApproach(target: number, approach: number) {
@@ -1075,7 +1075,7 @@
     // Bodyguard chooser is active (engine has pending_bodyguard set): clicks
     // select defender (decline, idx=0) or an eligible Guard (idx=k+1). The
     // legal-action set is restricted to BodyguardChoice variants at this
-    // point — submitting any other raw would fail anti-cheat in MP.
+    // point - submitting any other raw would fail anti-cheat in MP.
     if (pendingBodyguard) {
       if (sq === pendingBodyguard.targetSq) {
         sfx.play("click");
@@ -1180,7 +1180,7 @@
     const dropSq = path[path.length - 1];
     const candidates = targets.byTarget.get(dropSq);
     if (!candidates || candidates.size === 0) {
-      // Dropped on illegal tile (or back on src) — soft drop thud.
+      // Dropped on illegal tile (or back on src) - soft drop thud.
       sfx.play("drop");
       return;
     }
@@ -1228,7 +1228,7 @@
     const src = wheelOpen.square;
 
     if (slice.kind === "skill") {
-      // Self-cast skills normally fire immediately — BUT when Focus is staged
+      // Self-cast skills normally fire immediately - BUT when Focus is staged
       // and the engine emitted retarget variants (Shield → adjacent ally,
       // Dash/Retreat → adjacent ally), we arm instead so the player can pick
       // a recipient (or click self to take the self-cast).
@@ -1242,7 +1242,7 @@
           }
           return;
         }
-        // Fall through to arm — the target picker will surface src + ally
+        // Fall through to arm - the target picker will surface src + ally
         // recipients as legal targets.
       }
       // Otherwise arm it (or disarm if already armed with the same skill).
@@ -1257,7 +1257,7 @@
       return;
     }
 
-    // `modifierBadge` is hover-only — clicking it is a no-op. Focus / Charge
+    // `modifierBadge` is hover-only - clicking it is a no-op. Focus / Charge
     // are cast as regular skills via the piece's skill slot, not from the
     // wheel directly.
     if (slice.kind === "modifierBadge") {
@@ -1282,8 +1282,8 @@
   // one variant per legal (caster, skill, target, choice_idx, focus_mode);
   // for skills with a Focus-mode choice we filter to the player's preference,
   // otherwise we just return the first matching variant. Direction skills
-  // (Shove) shouldn't go through this path — they hit the DirectionPicker
-  // first — but we fall through to "any matching" for safety.
+  // (Shove) shouldn't go through this path - they hit the DirectionPicker
+  // first - but we fall through to "any matching" for safety.
   function rawForArmedTarget(src: number, skillId: number, target: number): number | null {
     // Two-stage ally pick: caller has already set focusAllyChosen, target is
     // the destination for that ally.
@@ -1425,7 +1425,7 @@
   /** Reset local picker / armed-skill state. Used on sandbox toggle so a
    *  half-armed action doesn't bleed across the mode boundary. Bodyguard
    *  chooser state is engine-owned now (Position.pending_bodyguard) so it
-   *  isn't reset here — snapshot restore / engine swap handles it. */
+   *  isn't reset here - snapshot restore / engine swap handles it. */
   function clearAllPickers(): void {
     match.selection = null;
     pendingApproach = null;
@@ -1449,12 +1449,12 @@
     busy = true;
     sfx.play("sandboxEnter");
     try {
-      // Capture pre-sandbox snapshot BEFORE flipping mode — otherwise an
+      // Capture pre-sandbox snapshot BEFORE flipping mode - otherwise an
       // in-flight AI scheduler tick could mutate state between capture and
       // mode-flip.
       const snap = await eng.snapshotJson();
       clearAllPickers();
-      // Sandbox is a purely local fork — the underlying match (including MP
+      // Sandbox is a purely local fork - the underlying match (including MP
       // transport and telemetry) continues to exist. We do NOT abandon the
       // telemetry session on entry: the exploratory plies never touch the
       // engine's true state (they roll back on exit), so nothing spurious is
@@ -1488,10 +1488,10 @@
 
   /** Restore the engine to the true authoritative line captured at sandbox
    *  entry and clear all sandbox carrier state. This is the shared core of
-   *  leaving sandbox — it does NOT own `busy`, the confirm-discard dialog, or
+   *  leaving sandbox - it does NOT own `busy`, the confirm-discard dialog, or
    *  sfx; each caller layers those on:
    *    - `exitSandbox` (user-initiated): confirm dialog + busy + sfx, then this.
-   *    - `ensureLiveEngine` (auto, ns-37): no dialog — an incoming opponent
+   *    - `ensureLiveEngine` (auto, ns-37): no dialog - an incoming opponent
    *      move can't wait on a modal and the exploration is discarded by design.
    *  No-op when not in sandbox (idempotent: flips `match.mode` out of sandbox),
    *  so a double-call (e.g. two wire messages back-to-back) is safe. */
@@ -1538,7 +1538,7 @@
 
   /** Wire-path hook (ns-37): before the mp wrapper validates/applies an
    *  incoming opponent action on the shared engine, guarantee we're on the
-   *  true authoritative line. If this peer is mid-sandbox, auto-exit it now —
+   *  true authoritative line. If this peer is mid-sandbox, auto-exit it now -
    *  otherwise the wrapper would tryApply the opponent's real move against our
    *  sandbox-forked state and falsely cry "engine disagreed". Skips the
    *  confirm-discard dialog on purpose. Runs outside applyRaw's `busy` window
@@ -1622,7 +1622,7 @@
           }
           await getTelemetryStore().markAbandoned(id, partial);
         } catch {
-          // Swallow — telemetry must never block navigation.
+          // Swallow - telemetry must never block navigation.
         }
       })();
     }
@@ -1636,7 +1636,7 @@
     }
     // Leaving /match/ before a natural end means we're going back to the
     // lobby (or home). Soft-tear the transport so the peer sees the drop but
-    // our carrier state (code, peerEverPaired, disconnectedSince) survives —
+    // our carrier state (code, peerEverPaired, disconnectedSince) survives -
     // GraceBanner then stays visible when the user clicks Rejoin from the
     // lobby. On a natural end, hard disconnect together.
     // Gate off role rather than `match.mode` so leaving from inside sandbox
@@ -1649,7 +1649,7 @@
       });
     }
     // Renderer teardown last: cancels shake/deferred-skill timers and empties
-    // effectQueue. inspector already does this — matching the pattern here so
+    // effectQueue. inspector already does this - matching the pattern here so
     // long AIvAI sessions don't leak PlyRenderer instances across route churn.
     renderer?.dispose();
     renderer = null;
@@ -1847,7 +1847,7 @@
 
         <!-- Contextual hints + skill toggles -->
         {#if pendingApproach}
-          <p class="hint">Choose the path the attacker takes — click a highlighted square, or press Esc to cancel</p>
+          <p class="hint">Choose the path the attacker takes - click a highlighted square, or press Esc to cancel</p>
         {/if}
         {#if pendingBodyguard}
           <p class="hint">Bodyguard: click the red defender to take the hit, or a blue guard to intercept</p>
@@ -1856,10 +1856,10 @@
           <p class="hint">Pick an adjacent ally to channel onto, then choose where they move</p>
         {/if}
         {#if armedNeedsAllyPick && focusAllyChosen !== null}
-          <p class="hint">Choose the destination for the chosen ally — click another ally to switch</p>
+          <p class="hint">Choose the destination for the chosen ally - click another ally to switch</p>
         {/if}
         {#if pendingDirection}
-          <p class="hint">Choose a push direction — click an arrow, or press Esc to cancel</p>
+          <p class="hint">Choose a push direction - click an arrow, or press Esc to cancel</p>
         {/if}
         {#if armedHasFocusModeChoice && !pendingDirection}
           <div class="focus-mode">

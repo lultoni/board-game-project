@@ -10,7 +10,7 @@ import type { EngineClient, EvalBreakdown, PositionView, StepResult } from "./en
 //
 // Deterministic engine stub. `tryApply` accepts any `raw` UNLESS it appears
 // in `illegalRaws`. After every successful apply, the engine's "state" is the
-// concatenation of applied raws as a hex string — used to produce a
+// concatenation of applied raws as a hex string - used to produce a
 // stable Zobrist that the test can match against.
 
 class FakeEngine implements EngineClient {
@@ -357,7 +357,7 @@ describe("host", () => {
       (m) => (m as { reason: string }).reason === "rate-limit",
     );
     expect(rateLimited.length).toBeGreaterThanOrEqual(1);
-    // And at least one earlier intent was committed normally — the cap isn't
+    // And at least one earlier intent was committed normally - the cap isn't
     // refusing the whole flood, just the overflow.
     const committed = bus.sent.filter((m) => m.kind === "committed");
     expect(committed.length).toBeGreaterThan(0);
@@ -374,7 +374,7 @@ describe("host", () => {
 
   it("auto-broadcasts phase-change when host's own commit completes draft", async () => {
     const { bus, handle, eng, listeners } = build("host", "draft");
-    // First draft action — engine still in Draft phase.
+    // First draft action - engine still in Draft phase.
     eng.currentPhase = 2;
     await handle.submitAction(1);
     expect(bus.sent.find((m) => m.kind === "phase-change")).toBeUndefined();
@@ -396,7 +396,7 @@ describe("host", () => {
     // applied. After apply, the engine reports the play phase.
     eng.currentPhase = 0;
     bus.push({ kind: "intent", phase: "draft", nonce: "i-rem", raw: 42 });
-    // Drain the microtask queue — handleWire awaits tryApply, positionView,
+    // Drain the microtask queue - handleWire awaits tryApply, positionView,
     // onApplied, onHostCommitted, then maybeEmitPhaseChange (positionView +
     // snapshotJson + onPhaseChange). 8 ticks is comfortably enough.
     for (let i = 0; i < 8; i++) await Promise.resolve();
@@ -472,11 +472,11 @@ describe("joiner", () => {
       // First request-snapshot fired immediately.
       expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toHaveLength(1);
       expect(listeners.resyncFailures).toEqual([]);
-      // Host doesn't respond — first timer expires, second request fires.
+      // Host doesn't respond - first timer expires, second request fires.
       vi.advanceTimersByTime(10_000);
       expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toHaveLength(2);
       expect(listeners.resyncFailures).toEqual([]);
-      // Host still doesn't respond — second timer expires, budget exhausted.
+      // Host still doesn't respond - second timer expires, budget exhausted.
       vi.advanceTimersByTime(10_000);
       expect(bus.sent.filter((m) => m.kind === "request-snapshot")).toHaveLength(2);
       expect(listeners.resyncFailures).toHaveLength(1);
@@ -564,7 +564,7 @@ describe("joiner", () => {
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     const req = bus.sent.find((m) => m.kind === "request-snapshot");
     expect(req).toMatchObject({ reason: "audit-mismatch" });
-    // The intent is NOT resolved yet — wrapper waits for snapshot to land.
+    // The intent is NOT resolved yet - wrapper waits for snapshot to land.
     // Verify by checking pending is still there: send the snapshot and the
     // promise should remain unresolved (we never re-resolve intents after
     // audit-mismatch, but the timeout still applies).
@@ -604,7 +604,7 @@ describe("joiner", () => {
 
   it("out-of-order committed (gap) triggers request-snapshot{stale}", async () => {
     const { bus } = build("joiner");
-    // We've seen seq=0; host claims committed{seq:5} — gap of 4.
+    // We've seen seq=0; host claims committed{seq:5} - gap of 4.
     bus.push({
       kind: "committed",
       seq: 5,
@@ -806,7 +806,7 @@ describe("promoteToHost", () => {
 });
 
 // =========================================================================
-// SANDBOX / ns-37 — auto-exit to the true line before touching the engine
+// SANDBOX / ns-37 - auto-exit to the true line before touching the engine
 // with incoming REAL traffic, so a local sandbox fork never mis-validates
 // the opponent's move (the false "engine disagreed" bug).
 // =========================================================================
@@ -960,7 +960,7 @@ describe("sandbox auto-exit (ns-37)", () => {
     bus.push({ kind: "snapshot", snapshotJson, seq: 3, phase: "play", matchId: "m1" });
     for (let i = 0; i < 6; i++) await Promise.resolve();
     // Ordering: ensure must precede restore. (If validateSnapshot rejects the
-    // stub, neither runs — guard against that by asserting both present.)
+    // stub, neither runs - guard against that by asserting both present.)
     expect(order).toContain("ensure");
     expect(order).toContain("restore");
     expect(order.indexOf("ensure")).toBeLessThan(order.indexOf("restore"));

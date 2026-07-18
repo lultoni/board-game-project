@@ -19,7 +19,7 @@ export interface PillStateInput {
 
 export interface PillStateOutput {
   pill: PillState;
-  /** New value for `disconnectedSince` — `null` means "leave the existing
+  /** New value for `disconnectedSince` - `null` means "leave the existing
    *  value as-is". When non-null, the caller writes it back to mpState.
    *  We only emit a non-null anchor when we'd actually be transitioning an
    *  unanchored disconnect into the visible UI, AND a peer was paired at
@@ -29,7 +29,7 @@ export interface PillStateOutput {
 
 /** Derive the pill state and, when the pill enters a disconnected branch
  *  without a prior anchor, propose the anchor timestamp the wrapper should
- *  write. Pure — no I/O, no mutation of inputs. */
+ *  write. Pure - no I/O, no mutation of inputs. */
 export function derivePillStateWithAnchor(input: PillStateInput): PillStateOutput {
   const pill = derivePillState(input.status, input.lastPongAt, input.now);
   const wantsAnchor =

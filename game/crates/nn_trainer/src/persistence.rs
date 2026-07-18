@@ -2,8 +2,8 @@
 //!
 //! A rater on disk = two files sharing a stem:
 //!
-//! - `<stem>.mpk`  — weight blob via burn's `NamedMpkFileRecorder` (msgpack).
-//! - `<stem>.json` — `RaterMetadata` sidecar: topology, lineage provenance,
+//! - `<stem>.mpk`  - weight blob via burn's `NamedMpkFileRecorder` (msgpack).
+//! - `<stem>.json` - `RaterMetadata` sidecar: topology, lineage provenance,
 //!   training stats, hyperparameters, git SHA, ISO-8601 date.
 //!
 //! Why split? The weights blob is opaque binary; the metadata is human-
@@ -11,7 +11,7 @@
 //! the right-shaped skeleton before calling `load_record` (burn needs the
 //! topology in hand to deserialise).
 //!
-//! Plan §9 calls for `raters/v0042.bin` + JSON sidecar — same idea. The
+//! Plan §9 calls for `raters/v0042.bin` + JSON sidecar - same idea. The
 //! registry that picks which version is "best-fast / best-slow / best-overall"
 //! is sub-slice 6b; this module is only concerned with one rater's pair of
 //! files.
@@ -20,7 +20,7 @@
 //!
 //! `save_rater(model)` followed by `load_rater(...)` reconstitutes a model
 //! whose `forward()` produces bit-identical outputs to the original for any
-//! given input (modulo backend determinism — `NdArray<f32>` is deterministic
+//! given input (modulo backend determinism - `NdArray<f32>` is deterministic
 //! on a given machine). This is the property the gauntlet needs to compare a
 //! reloaded champion against a fresh candidate.
 
@@ -38,7 +38,7 @@ use std::path::{Path, PathBuf};
 pub const RATER_FORMAT_VERSION: u32 = 1;
 
 /// Win-rate against the immediate predecessor in a given think-time bracket.
-/// Optional — only present once the gauntlet has produced a verdict.
+/// Optional - only present once the gauntlet has produced a verdict.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BracketWinRate {
     pub games_played: u32,
@@ -47,7 +47,7 @@ pub struct BracketWinRate {
     pub indecisive: u32,
 }
 
-/// One entry in a rater's perturbation history — recorded each time the
+/// One entry in a rater's perturbation history - recorded each time the
 /// "perturb and keep best" loop accepted a noisy candidate.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PerturbationEvent {
@@ -108,7 +108,7 @@ pub struct RaterMetadata {
     pub created_at: String,
 
     /// Centipawn-scale conversion factor fitted by the calibration pass
-    /// against the heuristic. `0.0` means "not yet calibrated" — callers
+    /// against the heuristic. `0.0` means "not yet calibrated" - callers
     /// fall back to `DEFAULT_EVAL_SCALE`. `#[serde(default)]` so older
     /// sidecars without the field deserialise cleanly.
     #[serde(default)]
@@ -117,7 +117,7 @@ pub struct RaterMetadata {
 
 /// Serialisable mirror of `train::TrainingConfig`. We keep the field set
 /// fixed here so adding a `TrainingConfig` field doesn't silently break old
-/// sidecars — the mirror is the schema, the live struct is the runtime.
+/// sidecars - the mirror is the schema, the live struct is the runtime.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrainingConfigSnapshot {
     pub learning_rate: f64,
@@ -204,7 +204,7 @@ pub fn save_rater<B: Backend>(
 }
 
 /// Read only the sidecar metadata (`<stem>.json`) without loading the weight
-/// blob. Cheap topology/provenance peek — used by the in-game AI load path to
+/// blob. Cheap topology/provenance peek - used by the in-game AI load path to
 /// decide whether a rater is dense (`NnEvaluator`) or sparse/NNUE
 /// (`NnueEvaluator`) via `model_config.input_dim`.
 pub fn load_metadata(stem: &Path) -> Result<RaterMetadata, PersistenceError> {
@@ -348,7 +348,7 @@ mod tests {
     }
 
     /// Inline temp-dir helper. We don't pull in the `tempfile` crate for one
-    /// test — just create a unique subdir under the OS temp root and let the
+    /// test - just create a unique subdir under the OS temp root and let the
     /// test runner clean up. Returns the directory; each test gets a fresh
     /// nonce so parallel tests don't collide.
     fn tempdir() -> PathBuf {

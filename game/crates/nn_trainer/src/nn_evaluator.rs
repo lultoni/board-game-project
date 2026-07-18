@@ -24,7 +24,7 @@
 //!
 //! ## What this does NOT provide
 //!
-//! `evaluate_breakdown` returns a single-bucket EvalBreakdown — the NN
+//! `evaluate_breakdown` returns a single-bucket EvalBreakdown - the NN
 //! doesn't decompose its score into material/HP/skills/etc. Callers that
 //! want a real breakdown should fall back to `HeuristicEvaluator`.
 
@@ -36,7 +36,7 @@ use core_engine::search::evaluator::{EvalBreakdown, Evaluator, MATE_SCORE};
 use core_engine::state::Position;
 use core_engine::state::position::GameResult;
 
-/// Inference backend. No autograd — eval is read-only and burn's autograd
+/// Inference backend. No autograd - eval is read-only and burn's autograd
 /// wrapper carries a non-trivial cost per forward call. The concrete type is
 /// selected at build time via the `backend-*` Cargo feature (see
 /// `crate::backend`).
@@ -77,7 +77,7 @@ impl NnEvaluator {
     /// Wrap an inference-mode `Mlp` with an explicit centipawn-scale factor.
     /// A `scale` of `0.0` (the sentinel meaning "not yet calibrated" in the
     /// sidecar) falls back to `DEFAULT_EVAL_SCALE`. Non-finite values fall
-    /// back too — a poisoned scale shouldn't take the evaluator down with it.
+    /// back too - a poisoned scale shouldn't take the evaluator down with it.
     pub fn with_scale(model: Mlp<InferenceBackend>, scale: f32) -> Self {
         let device = Default::default();
         let scale = if scale.is_finite() && scale != 0.0 {
@@ -104,7 +104,7 @@ impl NnEvaluator {
         Ok(Self::with_scale(model, meta.eval_scale))
     }
 
-    /// Single forward pass. Returns the raw scalar from the model — bench /
+    /// Single forward pass. Returns the raw scalar from the model - bench /
     /// debug only. Production callers go through `Evaluator::evaluate`.
     pub fn forward_raw(&self, pos: &Position) -> f32 {
         let features = encode_position(pos);
@@ -169,7 +169,7 @@ impl NnEvaluator {
 ///
 /// Clamped to `[-MAX_NN_SCORE, +MAX_NN_SCORE]` so the NN can never report a
 /// false mate. Non-finite outputs (NaN / ±∞ from a poisoned rater) collapse
-/// to 0 — a "no information" signal that lets the search fall back on move
+/// to 0 - a "no information" signal that lets the search fall back on move
 /// ordering rather than propagating garbage scores.
 #[inline]
 fn nn_output_to_centipawns(raw: f32, scale: f32) -> i32 {
@@ -263,7 +263,7 @@ mod tests {
     fn with_scale_falls_back_on_zero_or_nonfinite() {
         let device = Default::default();
         let model: Mlp<InferenceBackend> = MlpConfig::new().init(&device);
-        // Cloning would require Mlp: Clone — instead just rebuild the model.
+        // Cloning would require Mlp: Clone - instead just rebuild the model.
         let mk = || -> Mlp<InferenceBackend> { MlpConfig::new().init(&device) };
 
         let zero = NnEvaluator::with_scale(mk(), 0.0);
@@ -278,7 +278,7 @@ mod tests {
         let custom = NnEvaluator::with_scale(mk(), 1234.5);
         assert!((custom.scale() - 1234.5).abs() < 1e-6);
 
-        let _ = model;  // silence "unused" — we built mk() instead
+        let _ = model;  // silence "unused" - we built mk() instead
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn evaluator_works_through_dyn_trait() {
-        // Confirm dyn-dispatch compatibility — search code calls through
+        // Confirm dyn-dispatch compatibility - search code calls through
         // `&dyn Evaluator`, so a runtime trait object must work.
         let eval = fresh_evaluator();
         let dyn_eval: &dyn Evaluator = &eval;

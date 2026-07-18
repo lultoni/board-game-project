@@ -2,7 +2,7 @@
 //! legal Actions for the current player and phase.
 //!
 //! Per the audit decision: path-implicit destinations (Retreat) are
-//! pre-resolved here — the generator emits one Action per legal landing
+//! pre-resolved here - the generator emits one Action per legal landing
 //! square. Direction-only skills (Shove) emit one Action per legal
 //! direction using `Action::choice_idx`. AOE skills emit a single Action;
 //! the AOE expansion happens inside `make()`.
@@ -14,8 +14,8 @@
 //!
 //! - **Plain moves**: every empty square reachable within the piece's speed
 //!   (Guard=2, Champion=1, King=1) by *any* path of single-tile steps.
-//!   Movement is free in all 8 directions per Stack M — speed is Chebyshev
-//!   distance (a diagonal step costs 1). Zigzag is legal — the destination
+//!   Movement is free in all 8 directions per Stack M - speed is Chebyshev
+//!   distance (a diagonal step costs 1). Zigzag is legal - the destination
 //!   need not be reached along a straight line, only via a path of empty
 //!   intermediate squares.
 //!
@@ -51,7 +51,7 @@ use crate::state::{magic, path};
 use crate::state::position::{Phase, Player};
 use crate::state::{Bitboard, Position};
 
-// Mirrors the constants in make_unmake.rs. Kept private to the generator —
+// Mirrors the constants in make_unmake.rs. Kept private to the generator -
 // these are stack-M tuning values; promoting them to a shared module is a
 // later refactor when more sites need them.
 const ARMOR_CAP: u8 = 2;
@@ -82,7 +82,7 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
     // (the defender) are BodyguardChoice replies. Decline (idx=0) is always
     // legal; idx 1..=eligible_len redirects to that eligible Guard.
     // BodyguardChoice does not consume an EndPhase slot, so we do not emit
-    // EndPhase here — the choice is mandatory.
+    // EndPhase here - the choice is mandatory.
     if let Some(pbg) = pos.pending_bodyguard {
         out.push(Action::encode_bodyguard_choice(0));
         for k in 0..pbg.eligible_len {
@@ -103,7 +103,7 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
 
     // Stack N (staged S45): at most one Move-Attack per turn. Once one has been
     // used this turn (flag set by apply_move_attack), suppress all further
-    // Move-Attacks — plain moves and EndPhase remain legal.
+    // Move-Attacks - plain moves and EndPhase remain legal.
     let move_attack_used = pos.pending_modifiers
         & crate::state::position::modifier_bits::MOVE_ATTACK_USED != 0;
 
@@ -189,8 +189,8 @@ fn generate_draft_phase(pos: &Position) -> Vec<Action> {
 /// branches. The caster paying the Focus tax does NOT consume Focus by
 /// casting a Mystic skill (that's the new rule: Focus = "next non-Mystic").
 /// Focus / Charge stacking constraints:
-///   - Focus while Focus already pending: filtered out (illegal — max 1 stack).
-///   - Charge while Charge already pending: filtered out (illegal — max 1 stack).
+///   - Focus while Focus already pending: filtered out (illegal - max 1 stack).
+///   - Charge while Charge already pending: filtered out (illegal - max 1 stack).
 fn generate_skill_phase(pos: &Position) -> Vec<Action> {
     let mut out = Vec::with_capacity(64);
 
@@ -255,7 +255,7 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                             // Dash/Retreat are TargetOwner::Empty in our
                             // model, so retarget for those is emitted in the
                             // Empty arm below. (Their default-targets are
-                            // EmptySq, not SelfOnly — only Shield is SelfOnly
+                            // EmptySq, not SelfOnly - only Shield is SelfOnly
                             // among the retargetable-by-Focus skills.)
                             _ => {}
                         }
@@ -343,7 +343,7 @@ fn generate_skill_phase(pos: &Position) -> Vec<Action> {
                     }
                     // Focus-effect mode for Blast: push 2 instead of 1. We
                     // can only land where intermediate + final squares allow
-                    // it — the resolver gracefully truncates to 1-tile, so a
+                    // it - the resolver gracefully truncates to 1-tile, so a
                     // separate enumeration here is needed only to give the
                     // search the *option*. Emit the focus-effect variant at
                     // the *unbuffed* activation range (Focus picks one or
@@ -431,7 +431,7 @@ fn emit_focus_dash_retargets(
 
 /// Emit Retreat-retarget actions when Focus is pending. An *adjacent ally*
 /// retreats onto an empty square adjacent to a friendly Guard. Range from the
-/// ally is the unbuffed default (3) — Focus picked the retarget interpretation,
+/// ally is the unbuffed default (3) - Focus picked the retarget interpretation,
 /// not the activation buff.
 fn emit_focus_retreat_retargets(
     pos: &Position, src: u8, skill: Skill, stm_bb: Bitboard,
@@ -504,12 +504,12 @@ fn reachable(src: u8, speed: u8, occ: Bitboard, opp_bb: Bitboard)
         }
     };
 
-    // `approach_mask` — squares from which the final step onto an enemy counts
+    // `approach_mask` - squares from which the final step onto an enemy counts
     // as a Move-Attack. For speed 1 that's just `src`; for speed 2 it's `src`
     // plus its empty neighbours (dist ≤ 1). We hand this to
     // `movement_attack_targets_speed2` as `reach_empty` (it unions in `src` on
     // its own), which returns the set of enemies attackable from any square
-    // in that set — exactly the semantics we want for both speeds.
+    // in that set - exactly the semantics we want for both speeds.
     let reach_attack = magic::movement_attack_targets_speed2(
         src, occ.0, approach_mask & !(1u64 << src), opp_bb.0,
     );
@@ -546,11 +546,11 @@ fn reachable(src: u8, speed: u8, occ: Bitboard, opp_bb: Bitboard)
 /// ascending-square-index order.
 ///
 /// Stack M canonical rule: "the defender may choose to have a Guard intercept
-/// — if a friendly Guard is on a tile adjacent to BOTH the tile immediately
+/// - if a friendly Guard is on a tile adjacent to BOTH the tile immediately
 /// before the target (along the attack path) AND the defending piece."
 ///
 /// Both adjacencies are Chebyshev (8-neighbour). A Guard adjacent to the
-/// defender but NOT to `approach_sq` is *not* eligible — this is the
+/// defender but NOT to `approach_sq` is *not* eligible - this is the
 /// "zig-zag bypass" mechanic: a speed-2 Guard attacker can pick an approach
 /// square that sidesteps Bodyguard entirely.
 ///
@@ -686,7 +686,7 @@ mod tests {
     #[test]
     fn guard_blocked_intermediate() {
         // P1 Guard at a1 (sq 0). All three Chebyshev-1 neighbours (b1, a2, b2)
-        // occupied by allies — Guard cannot reach ANY Chebyshev-2 square
+        // occupied by allies - Guard cannot reach ANY Chebyshev-2 square
         // because every BFS-step-1 launch pad is blocked.
         let mut p = Position::empty();
         let g = 0u8;     // a1
@@ -708,7 +708,7 @@ mod tests {
         assert!(!empty.contains(n_b1));
         assert!(!empty.contains(n_a2));
         assert!(!empty.contains(n_b2));
-        // And therefore no Chebyshev-2 square reachable either — frontier dies.
+        // And therefore no Chebyshev-2 square reachable either - frontier dies.
         assert!(!empty.contains(16), "a3 unreachable");
         assert!(!empty.contains(17), "b3 unreachable");
         assert!(!empty.contains(18), "c3 unreachable");
@@ -757,9 +757,9 @@ mod tests {
 
     #[test]
     fn move_attack_blocked_by_ally_intermediate() {
-        // P1 Guard at a1 (speed 2). Allies fully ring a1 at b1, a2, b2 — every
+        // P1 Guard at a1 (speed 2). Allies fully ring a1 at b1, a2, b2 - every
         // Chebyshev-1 launch pad is occupied by allies. P2 Champion at b2's
-        // far side e.g. c3 — unreachable, so no move-attack target exists.
+        // far side e.g. c3 - unreachable, so no move-attack target exists.
         // This documents: an ally on the only viable launch square prevents
         // Move-Attack against an enemy beyond it.
         let mut p = Position::empty();
@@ -783,7 +783,7 @@ mod tests {
     #[test]
     fn move_attack_reachable_via_open_diagonal_launchpad() {
         // P1 Guard at a1 (speed 2). Ally at b1 only. P2 Champion at b3 (sq 17).
-        // b3 has Chebyshev distance 2 from a1; one launch pad — b2 (sq 9) —
+        // b3 has Chebyshev distance 2 from a1; one launch pad - b2 (sq 9) -
         // is empty and at dist 1, adjacent to b3. So b3 IS attackable.
         let mut p = Position::empty();
         let g = 0u8;
@@ -803,7 +803,7 @@ mod tests {
     fn move_attack_completely_blocked() {
         // P1 Guard at a1 (sq 0). Allies surround it on b1 (1), a2 (8), b2 (9).
         // P2 Champion at c3 (sq 18). c3 is at Chebyshev distance 2, but every
-        // intermediate-1 square (b1, a2, b2) is occupied by ally — Guard
+        // intermediate-1 square (b1, a2, b2) is occupied by ally - Guard
         // cannot reach any square neighbour to c3.
         let mut p = Position::empty();
         let g = 0u8;
@@ -829,14 +829,14 @@ mod tests {
         // d7's neighbours are c6, d6, e6, c7, e7, c8, d8, e8. So Guards
         // adjacent to BOTH defender AND approach: e7 (52) and d8 (59) only.
         // f7 (53) is adjacent to the King but NOT to d7 → excluded.
-        // Wrong-side P1 Guard at c8 (58) — adjacent to both King's neighbour
+        // Wrong-side P1 Guard at c8 (58) - adjacent to both King's neighbour
         // d8 and to d7, but not to King itself; doubly excluded (wrong side
         // AND not adjacent to defender).
         let mut p = Position::empty();
         let king = 60u8;
         let g_d8 = 59u8; let g_e7 = 52u8; let g_f7 = 53u8;
-        let champ_neighbour = 61u8; // f8 — non-Guard, not picked
-        let approach = 51u8;        // d7 — empty
+        let champ_neighbour = 61u8; // f8 - non-Guard, not picked
+        let approach = 51u8;        // d7 - empty
         p.p2_pieces = Bitboard::from_square(king)
             | Bitboard::from_square(g_d8) | Bitboard::from_square(g_e7) | Bitboard::from_square(g_f7)
             | Bitboard::from_square(champ_neighbour);
@@ -853,27 +853,27 @@ mod tests {
 
     #[test]
     fn bodyguard_zigzag_bypass_yields_empty_set() {
-        // P2 King at e5 (sq 36). Single P2 Guard at e4 (sq 28) — adjacent to
+        // P2 King at e5 (sq 36). Single P2 Guard at e4 (sq 28) - adjacent to
         // King. Approach from d6 (sq 43): d6's neighbours are c5,d5,e5,c6,e6,
-        // c7,d7,e7 — none of which is e4. So the Guard is adjacent to the
+        // c7,d7,e7 - none of which is e4. So the Guard is adjacent to the
         // defender but NOT to the approach → Bodyguard CANNOT intercept.
         // This is the "zig-zag bypass" the canonical rule explicitly enables.
         let mut p = Position::empty();
         let king = 36u8;
-        let g = 28u8;       // e4 — Guard adjacent to King
-        let approach = 43u8; // d6 — approach square
+        let g = 28u8;       // e4 - Guard adjacent to King
+        let approach = 43u8; // d6 - approach square
         p.p2_pieces = Bitboard::from_square(king) | Bitboard::from_square(g);
         p.kings = Bitboard::from_square(king);
         p.guards = Bitboard::from_square(g);
 
         let guards = bodyguard_guards_for(&p, king, approach);
         assert!(guards.is_empty(),
-            "approach d6 sidesteps Bodyguard at e4 — zig-zag bypass");
+            "approach d6 sidesteps Bodyguard at e4 - zig-zag bypass");
     }
 
     #[test]
     fn bodyguard_returns_empty_for_guard_target() {
-        // Guards do not have Bodyguard protection — they ARE the Bodyguards.
+        // Guards do not have Bodyguard protection - they ARE the Bodyguards.
         // Approach square is irrelevant when the defender is a Guard.
         let mut p = Position::empty();
         let g = 27u8;
@@ -888,7 +888,7 @@ mod tests {
 
     #[test]
     fn bodyguard_excludes_wrong_side_guards() {
-        // P2 King at e8 (sq 60). P1 Guard at d8 (59) — adjacent to King AND
+        // P2 King at e8 (sq 60). P1 Guard at d8 (59) - adjacent to King AND
         // would be adjacent to any approach from d7. Must NOT be returned:
         // Bodyguards belong to the defender's side.
         let mut p = Position::empty();
@@ -909,17 +909,17 @@ mod tests {
     #[test]
     fn stack_m_setup_p1_legal_action_count() {
         // From the canonical Stack M start, P1 to move, Move phase, 2 actions.
-        // P1 has: 1 King (d1, sq 3), 5 Champions (b1, c1, e1, f1, g1 — squares
-        // 1, 2, 4, 5, 6), 6 Guards (b2..g2 — squares 9..=14).
+        // P1 has: 1 King (d1, sq 3), 5 Champions (b1, c1, e1, f1, g1 - squares
+        // 1, 2, 4, 5, 6), 6 Guards (b2..g2 - squares 9..=14).
         //
         // The back row pieces (King + 5 Champions) cannot move at all: their
         // rank-2 neighbours are all friendly Guards (blocked). Their other
-        // potential neighbours (rank-0 same/adjacent files) are mostly empty —
+        // potential neighbours (rank-0 same/adjacent files) are mostly empty -
         // wait, the back row IS rank 0 here. The "in front" tiles are rank 1,
         // which is the Guard row.
         //
         // Let's enumerate. Champion at b1 (sq 1): 5 neighbours on-board:
-        // a1, c1 (both empty, sq 0 and 2 — wait, c1 is another P1 Champion).
+        // a1, c1 (both empty, sq 0 and 2 - wait, c1 is another P1 Champion).
         // Let me re-check: P1 layout is .CCKCCC. on rank 0 → files b,c,d,e,f,g
         // with King on file d. So sq 1 (b1) = Champion, sq 2 (c1) = Champion,
         // sq 3 (d1) = King, sq 4 (e1) = Champion, sq 5 (f1) = Champion,
@@ -938,8 +938,8 @@ mod tests {
         // Wait, all neighbours on rank 0 are ally or Lance-row-empty:
         // a1(empty), b1(ally), d1(ally). On rank 1: b2(ally guard), c2(ally
         // guard), d2(ally guard). So only a1 is a legal destination? a1 is sq 0.
-        // BUT wait — c1's rank-0 neighbours are files b,c,d. b1=ally, d1=ally.
-        // No "a1" — c1's neighbours on rank 0 are b1 (file 1) and d1 (file 3).
+        // BUT wait - c1's rank-0 neighbours are files b,c,d. b1=ally, d1=ally.
+        // No "a1" - c1's neighbours on rank 0 are b1 (file 1) and d1 (file 3).
         // The interior champion has NO legal move (all rank-0 neighbours
         // blocked by allies, all rank-1 neighbours blocked by Guards).
         //
@@ -991,7 +991,7 @@ mod tests {
         let king_moves = dests_from(&actions, 3);
         assert!(king_moves.is_empty(), "King d1 is fully blocked");
 
-        // No Move-Attack targets exist at setup — armies are 4 ranks apart.
+        // No Move-Attack targets exist at setup - armies are 4 ranks apart.
         let any_attack = actions.iter().any(|a| {
             a.kind() == ActionKind::Move && p.p2_pieces.contains(a.target())
         });
@@ -1080,7 +1080,7 @@ mod tests {
     #[test]
     fn guard_speed_2_zigzag_diagonal_legal() {
         // Single P1 Guard at d4 (sq 27). Empty board.
-        // The far diagonal corner b6 (sq 41 — rank 5 file 1) is at Chebyshev
+        // The far diagonal corner b6 (sq 41 - rank 5 file 1) is at Chebyshev
         // distance 2 (|5-3|=2, |1-3|=2 → max=2). Should be reachable.
         let mut p = Position::empty();
         let g = 27u8;
@@ -1150,7 +1150,7 @@ mod tests {
     #[test]
     fn generate_skill_phase_lance_targets_enemy_in_range() {
         // P1 Champion at e4 (sq 28) with Lance (range 1 = adjacent only).
-        // P2 Champion at e5 (sq 36) — adjacent N. Lance can hit it.
+        // P2 Champion at e5 (sq 36) - adjacent N. Lance can hit it.
         let mut p = skill_phase_pos(2);
         place_champ(&mut p, 28, Player::P1);
         equip(&mut p, 28, super::skills::Skill::Lance as u8);
@@ -1198,7 +1198,7 @@ mod tests {
     #[test]
     fn generate_skill_phase_heal_targets_only_allies() {
         // P1 Champion at e4 (sq 28) with Heal (range 1, Ally). P1 INJURED ally
-        // at e5 (36) — Slice 5 added a non-Injured filter, so the target must
+        // at e5 (36) - Slice 5 added a non-Injured filter, so the target must
         // be at HP=1 to be a legal Heal target. P2 enemy at e3 (20). Heal must
         // emit ally target, NOT enemy.
         let mut p = skill_phase_pos(2);
@@ -1225,7 +1225,7 @@ mod tests {
     fn generate_skill_phase_shove_enemy_only() {
         // P1 Champion at e4 (sq 28) with Shove (range 3, Enemy). P1 ally at
         // e5 (36), P2 enemy at e3 (20). Only the enemy is a valid Shove
-        // target — Stack-M says Shove pushes enemy pieces only.
+        // target - Stack-M says Shove pushes enemy pieces only.
         let mut p = skill_phase_pos(2);
         place_champ(&mut p, 28, Player::P1);
         place_champ(&mut p, 36, Player::P1);

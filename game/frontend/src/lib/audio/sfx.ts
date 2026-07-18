@@ -1,4 +1,4 @@
-// Placeholder SFX. WebAudio synthesis only — no asset files. Each event is
+// Placeholder SFX. WebAudio synthesis only - no asset files. Each event is
 // a short procedural tone shaped to roughly fit its on-screen meaning. The
 // API is Howler-shaped (`play("name")`) so swapping in real foley later is
 // a one-file change.
@@ -119,7 +119,7 @@ function playToneAt(spec: ToneSpec, delaySeconds: number): void {
   // before scheduling. resume() is idempotent on a running context. The
   // first tone after resume may drop ~30 ms while the context spins up.
   if (c.state === "suspended") {
-    void c.resume().catch(() => { /* fall through — schedule anyway */ });
+    void c.resume().catch(() => { /* fall through - schedule anyway */ });
   }
   const t0 = c.currentTime + delaySeconds;
   const dur = spec.attack + spec.release;
@@ -260,18 +260,18 @@ const VOICES: Record<SfxEvent, (opts?: PlayOpts) => void> = {
     freq: 580, glideTo: 420, type: "square",
     attack: 0.002, release: 0.055, gain: 0.1, noise: 0.35,
   }),
-  // Tick: very short lighter tap for sliders/selects — quieter than click so
+  // Tick: very short lighter tap for sliders/selects - quieter than click so
   // rapid drag doesn't feel like machine-gun fire.
   tick: () => playTone({
     freq: 480, glideTo: 380, type: "triangle",
     attack: 0.001, release: 0.03, gain: 0.06, noise: 0.2,
   }),
-  // Pickup: soft paper-lift — short low triangle with a tiny rise.
+  // Pickup: soft paper-lift - short low triangle with a tiny rise.
   pickup: () => playTone({
     freq: 320, glideTo: 420, type: "triangle",
     attack: 0.004, release: 0.08, gain: 0.12, noise: 0.18,
   }),
-  // Drop: short low thud — release of a held piece without moving.
+  // Drop: short low thud - release of a held piece without moving.
   drop: () => playTone({
     freq: 220, glideTo: 140, type: "triangle",
     attack: 0.003, release: 0.1, gain: 0.14, noise: 0.22,
@@ -282,7 +282,7 @@ const VOICES: Record<SfxEvent, (opts?: PlayOpts) => void> = {
     attack: 0.012, release: 0.22, gain: 0.14, noise: 0.08,
     voice2: { ratio: 1.5, gain: 0.5 },
   }),
-  // Phase end: soft page-turn — gentle paper rustle, no harsh edge.
+  // Phase end: soft page-turn - gentle paper rustle, no harsh edge.
   // Low triangle with a brief breath of high-pass noise, no second voice.
   phaseEnd: () => playTone({
     freq: 200, glideTo: 140, type: "sine",
@@ -311,7 +311,7 @@ const VOICES: Record<SfxEvent, (opts?: PlayOpts) => void> = {
     });
   },
 
-  // Defeat: two descending minor notes — a falling minor third.
+  // Defeat: two descending minor notes - a falling minor third.
   // Hollow triangle, slow release for a mournful tone.
   defeat: () => {
     playToneAt({
@@ -333,7 +333,7 @@ const VOICES: Record<SfxEvent, (opts?: PlayOpts) => void> = {
     voice2: { ratio: 1.333, gain: 0.4 },
   }),
 
-  // Sandbox / analysis mode enter: a soft "mode-shift" — rising shimmer
+  // Sandbox / analysis mode enter: a soft "mode-shift" - rising shimmer
   // suggesting stepping outside normal play. Airy sine with a high overtone.
   sandboxEnter: () => {
     playTone({

@@ -7,7 +7,7 @@ import { derivePillStateWithAnchor } from "./pill-state";
 
 const T_NOW = 1_000_000;
 
-describe("derivePillStateWithAnchor — pill branch coverage", () => {
+describe("derivePillStateWithAnchor - pill branch coverage", () => {
   it("status='connected' with fresh pong → live, no anchor proposed", () => {
     const out = derivePillStateWithAnchor({
       status: "connected",
@@ -68,7 +68,7 @@ describe("derivePillStateWithAnchor — pill branch coverage", () => {
   });
 });
 
-describe("derivePillStateWithAnchor — anchor invariants", () => {
+describe("derivePillStateWithAnchor - anchor invariants", () => {
   it("anchors when pill goes disconnected AND peerEverPaired AND no prior anchor", () => {
     const out = derivePillStateWithAnchor({
       status: "disconnected",

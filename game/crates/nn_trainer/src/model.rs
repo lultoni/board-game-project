@@ -12,7 +12,7 @@
 //!
 //! ## Forward pass
 //!
-//! `forward(x: Tensor<B, 2>) -> Tensor<B, 2>` — batched. Shape
+//! `forward(x: Tensor<B, 2>) -> Tensor<B, 2>` - batched. Shape
 //! `(batch, INPUT_DIM)` → `(batch, 1)`. Inference path uses batch=1.
 
 use burn::{
@@ -36,7 +36,7 @@ pub struct MlpConfig {
     /// Hidden-layer widths, in order. ns-50 tail-cost rework dropped the v1
     /// `[256, 64, 32]` to `[128, 32, 32]`: L1 (`hidden_sizes[0] → [1]`) ran
     /// fully every search node and dominated NNUE eval cost. `hidden_sizes[0]`
-    /// MUST equal `sparse::ACCUM_WIDTH` — `QuantizedNet::from_mlp` asserts it.
+    /// MUST equal `sparse::ACCUM_WIDTH` - `QuantizedNet::from_mlp` asserts it.
     #[config(default = "vec![128, 32, 32]")]
     pub hidden_sizes: Vec<usize>,
 }
@@ -109,7 +109,7 @@ impl<B: Backend> Mlp<B> {
     }
 
     /// Per-layer summary statistics. One `LayerStats` per `Linear`, in
-    /// forward order — last entry is the scalar output projection. Used by
+    /// forward order - last entry is the scalar output projection. Used by
     /// the Training Observatory's Network Inspector to surface mean/std/
     /// min/max/NaN-count per layer without leaking raw weights through the
     /// Tauri boundary.

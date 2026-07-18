@@ -98,11 +98,11 @@ export type SkillEffect = {
 /** A brief, subtle attention ring drawn on the CASTER square each time any
  *  skill fires. Purpose: draw the eye to the caster so Focus / Charge /
  *  Shield reads even when the user is looking elsewhere on the board. Kept
- *  quiet — a thin ink ring, not a bloom. */
+ *  quiet - a thin ink ring, not a bloom. */
 export type SpotlightEffect = {
   kind: "spotlight";
   at: number;
-  /** Category tint — same colour system as the skill's own choreography. */
+  /** Category tint - same colour system as the skill's own choreography. */
   color: string;
   startedAt: number;
   ttl?: number;

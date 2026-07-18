@@ -3,7 +3,7 @@
 //! (`apply`/`revert`) driven by the `Undo` record `make()` returns.
 //!
 //! See `design/inbox/nnue-rework-plan.md` §3.3. The accumulator is
-//! **standalone / search-stack-owned** — it lives here, NOT in `Position`, and
+//! **standalone / search-stack-owned** - it lives here, NOT in `Position`, and
 //! `make_unmake.rs` is untouched. Deltas are derived from the `Undo` record
 //! plus the post-`make` `Position`; the accumulator reads `Position` but never
 //! mutates it.
@@ -46,7 +46,7 @@ impl FeatureTransform {
     }
 
     /// Deterministic pseudo-random small-integer transform for the golden test.
-    /// The exact values don't matter — only that `apply` and `refresh` sum the
+    /// The exact values don't matter - only that `apply` and `refresh` sum the
     /// same columns. Uses a fixed LCG so runs are reproducible.
     #[cfg(test)]
     pub fn deterministic(seed: u64) -> Self {
@@ -81,11 +81,11 @@ impl FeatureTransform {
 }
 
 /// `acc += col` (widening i16 → i32). Shared by `refresh` and the incremental
-/// `apply`/`revert` paths — the single hot inner loop of the feature transform.
+/// `apply`/`revert` paths - the single hot inner loop of the feature transform.
 ///
 /// Left as a plain scalar loop **on purpose**: the compiler autovectorizes this
 /// widening add well (measured faster than a hand-rolled `wide` version, whose
-/// per-lane i32 gather/scatter defeated vectorization — ns-50). `ACCUM_WIDTH` is
+/// per-lane i32 gather/scatter defeated vectorization - ns-50). `ACCUM_WIDTH` is
 /// a multiple of 8 so there's no awkward tail.
 #[inline]
 fn add_col_i16(acc: &mut [i32; ACCUM_WIDTH], col: &[i16; ACCUM_WIDTH]) {
@@ -106,7 +106,7 @@ fn sub_col_i16(acc: &mut [i32; ACCUM_WIDTH], col: &[i16; ACCUM_WIDTH]) {
 ///
 /// Carries a small cache of the currently-active **global** feature indices so
 /// the global delta (which changes almost every ply) is computed by re-encoding
-/// the 6 cheap global features and diffing — no dependence on `Undo`'s private
+/// the 6 cheap global features and diffing - no dependence on `Undo`'s private
 /// byte encoding for globals.
 #[derive(Clone)]
 pub struct Accumulator {
@@ -123,7 +123,7 @@ impl Accumulator {
         &self.acc
     }
 
-    /// Full recompute — the ORACLE. Independent of any prior state.
+    /// Full recompute - the ORACLE. Independent of any prior state.
     pub fn refresh(pos: &Position, ft: &FeatureTransform) -> Accumulator {
         let mut acc = ft.bias;
         let mut globals = Vec::with_capacity(6);
@@ -157,7 +157,7 @@ impl Accumulator {
     }
 
     /// Incremental reverse update. Call **before** `unmake(pos, undo)`, while
-    /// `pos` still reflects the post-make state — it reconstructs the pre-make
+    /// `pos` still reflects the post-make state - it reconstructs the pre-make
     /// state from `undo` and moves the accumulator back to it. After this
     /// returns, the accumulator matches the pre-make position (which `unmake`
     /// then restores into `pos`).
@@ -167,7 +167,7 @@ impl Accumulator {
     /// avoids reconstructing pre-make scalars. `revert` is provided + tested for
     /// callers that prefer to avoid the clone.
     pub fn revert(&mut self, undo: &Undo, pos: &Position, ft: &FeatureTransform) {
-        // Per-square: same touched set, NEW/OLD roles reversed — move from the
+        // Per-square: same touched set, NEW/OLD roles reversed - move from the
         // current (post-make) state back to the pre-make state.
         self.update_squares_reversed(undo, pos, ft);
         // Globals: reconstruct the pre-make global set from `undo` + `pos`.
@@ -383,7 +383,7 @@ mod tests {
     use core_engine::state::fen::from_fen;
     use core_engine::state::Position;
 
-    /// Refresh is a pure function of `pos` — two refreshes agree, and it does
+    /// Refresh is a pure function of `pos` - two refreshes agree, and it does
     /// not depend on any prior accumulator state.
     #[test]
     fn refresh_is_pure() {
@@ -397,14 +397,14 @@ mod tests {
     /// THE keystone test: over random playouts (start position + seeded games +
     /// corpus FENs), the incrementally-updated accumulator must equal
     /// `refresh(pos)` on EVERY node, including after every unmake. Uses the
-    /// save/restore strategy (clone before apply, restore on unmake) — the
+    /// save/restore strategy (clone before apply, restore on unmake) - the
     /// simplest provably-correct incremental path.
     #[test]
     fn incremental_accumulator_matches_refresh_over_playout() {
         let ft = FeatureTransform::deterministic(0x1234_5678);
 
         let mut roots = vec![Position::setup_stack_m()];
-        // A few corpus FENs (mid-game / endgame shapes). Missing file is fine —
+        // A few corpus FENs (mid-game / endgame shapes). Missing file is fine -
         // the start position alone still exercises make/unmake heavily.
         if let Ok(text) = std::fs::read_to_string(corpus_path()) {
             for line in text.lines().take(30) {
@@ -442,7 +442,7 @@ mod tests {
             if go_down {
                 let actions = generator::generate(&pos);
                 if actions.is_empty() {
-                    // terminal / no moves — unwind one if possible.
+                    // terminal / no moves - unwind one if possible.
                     if let Some((undo, saved)) = stack.pop() {
                         make_unmake::unmake(&mut pos, &undo);
                         acc = saved;

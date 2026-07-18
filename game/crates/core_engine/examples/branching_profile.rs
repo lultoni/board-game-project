@@ -1,4 +1,4 @@
-//! Branching-factor profiler for Stack M — Layer-1 data for `oq-81`.
+//! Branching-factor profiler for Stack M - Layer-1 data for `oq-81`.
 //!
 //! Plays N uniform-random games from `Position::setup_stack_m()`, records the
 //! legal-action count at every ply, and prints three markdown tables:
@@ -21,7 +21,7 @@ use std::io::{BufWriter, Write};
 
 const MAX_PLIES: usize = 5_000;
 const DEFAULT_GAMES: usize = 500;
-const DEFAULT_SEED:  u64   = 0x426F_6172_6447_616D; // "BoardGam" — Zobrist seed
+const DEFAULT_SEED:  u64   = 0x426F_6172_6447_616D; // "BoardGam" - Zobrist seed
 
 #[derive(Clone, Copy)]
 struct Sample {
@@ -221,11 +221,11 @@ fn main() {
     }
     let elapsed = t0.elapsed();
 
-    println!("## Stack M branching factor — N={} games, seed=0x{:016X}", n_games, seed);
+    println!("## Stack M branching factor - N={} games, seed=0x{:016X}", n_games, seed);
     println!("games: {}  terminal: {}  cap-hits: {}  samples: {}  total-plies: {}  wall: {:.2}s",
              n_games, terminated, cap_hits, samples.len(), total_plies, elapsed.as_secs_f64());
     if cap_hits as f64 / n_games as f64 > 0.01 {
-        eprintln!("WARN: cap-hit rate {:.2}% > 1% — investigate generator/economy",
+        eprintln!("WARN: cap-hit rate {:.2}% > 1% - investigate generator/economy",
                   100.0 * cap_hits as f64 / n_games as f64);
     }
     println!();

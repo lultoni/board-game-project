@@ -2,11 +2,11 @@
 
 Bun WebSocket relay server for board game multiplayer. Connects two browser
 peers in a named session and forwards game messages verbatim between them.
-No game logic runs here — it's a pure pipe.
+No game logic runs here - it's a pure pipe.
 
 ## Local dev
 
-Requires [Bun](https://bun.sh) — install with `curl -fsSL https://bun.sh/install | bash`.
+Requires [Bun](https://bun.sh) - install with `curl -fsSL https://bun.sh/install | bash`.
 
 ```sh
 cd game/relay
@@ -47,7 +47,7 @@ fly deploy
 
 ## Endpoints
 
-- `GET /probe/:code` — liveness probe. Returns `{"live":true,"paired":bool}` (200)
+- `GET /probe/:code` - liveness probe. Returns `{"live":true,"paired":bool}` (200)
   or `{"live":false}` (404). Used by the lobby's session status dots.
-- `WS /ws` — all session traffic. Peers send relay envelopes (`{"type":"create"}` etc.)
+- `WS /ws` - all session traffic. Peers send relay envelopes (`{"type":"create"}` etc.)
   then game messages which are forwarded verbatim.

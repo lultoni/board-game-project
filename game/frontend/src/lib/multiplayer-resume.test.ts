@@ -38,7 +38,7 @@ describe("snapshotJsonFromMatchLog", () => {
 });
 
 describe("logIsMidDraftCheap", () => {
-  // Minimal FEN stubs — only the phase field (3rd token) matters here.
+  // Minimal FEN stubs - only the phase field (3rd token) matters here.
   const draftFen = "8/8 w D 0 0 1 0x0";
   const moveFen  = "8/8 w M 0 0 1 0x0";
 
@@ -56,7 +56,7 @@ describe("logIsMidDraftCheap", () => {
     expect(logIsMidDraftCheap(log)).toBe(true);
   });
 
-  it("returns false for preMade with an empty ply list — start_fen phase is M, not D", () => {
+  it("returns false for preMade with an empty ply list - start_fen phase is M, not D", () => {
     // Regression: kind-only inspection returned true for empty plies, so a
     // preMade match right after setup (no game plies yet) got routed to
     // /draft/. start_fen's phase field distinguishes: preMade opens in phase

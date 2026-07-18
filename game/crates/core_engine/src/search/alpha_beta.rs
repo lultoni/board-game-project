@@ -1,8 +1,8 @@
-//! Slice 10 — Straight alpha-beta + iterative deepening + TT integration.
+//! Slice 10 - Straight alpha-beta + iterative deepening + TT integration.
 //!
 //! Score convention: **absolute, P1's POV** (positive = P1 advantage). Side
 //! to move branches on `pos.to_move`: P1 maximises, P2 minimises. This is
-//! straight alpha-beta, not negamax — the evaluator already returns absolute
+//! straight alpha-beta, not negamax - the evaluator already returns absolute
 //! scores with terminals at ±MATE_SCORE, so flipping signs at every leaf
 //! and inverting mate-score-with-ply math at every frame buys nothing.
 //! Keeping the score frame-invariant makes the mate-distance math (the
@@ -18,7 +18,7 @@
 //!
 //! # Time check
 //!
-//! Mask-bit every 1024 nodes — one `time::now_ms()` call per ~1024 visits.
+//! Mask-bit every 1024 nodes - one `time::now_ms()` call per ~1024 visits.
 //! On expiry: `aborted = true`, return 0. Every caller checks the flag
 //! after the recursive call and propagates without storing TT garbage.
 //! `time_limit_ms == 0` ⇒ no deadline, max_depth is the sole bound.
@@ -43,14 +43,14 @@ pub static DISABLE_QS: AtomicBool = AtomicBool::new(false);
 ///
 /// Null move = `Action::EndPhase` applied during `Phase::Skill`, which flips
 /// the side to move (via `turn_manager::end_turn`). Only fires during Skill
-/// phase — EndPhase during Move phase just transitions to the same player's
+/// phase - EndPhase during Move phase just transitions to the same player's
 /// Skill phase, so it isn't a real null.
 pub static ENABLE_NMP: AtomicBool = AtomicBool::new(true);
 
 /// Runtime toggle for Principal Variation Search (Phase 2, Session 48). Default
 /// `true`. First move at a node is searched with the full `[alpha, beta]`
 /// window; siblings are probed with a null window and re-searched full only on
-/// a raise. Paired with LMR (below) — the null-window probe is the structure
+/// a raise. Paired with LMR (below) - the null-window probe is the structure
 /// LMR's reduced-depth re-search rides on (catalogue §5). Session 36 rejected
 /// PVS standalone (nothing to save atop strong ordering); it earns its keep once
 /// LMR is reducing the re-search depth.
@@ -67,7 +67,7 @@ pub static ENABLE_LMR: AtomicBool = AtomicBool::new(true);
 /// Runtime toggle for Late Move Pruning / move-count pruning (Phase 3, Session
 /// 48). Default `true`. At shallow depth and away from the PV, skip quiet moves
 /// whose ordering index exceeds `lmp_threshold(depth)` ENTIRELY (no reduced
-/// search — more aggressive than LMR). Directly attacks the EBF-12 skill-phase
+/// search - more aggressive than LMR). Directly attacks the EBF-12 skill-phase
 /// tails that LMR's re-searches couldn't contain (opening-with-skills-03,
 /// midgame-move-03). Session 36 accepted a `{depth1→16}` config standalone; this
 /// re-grades atop fast-eval + LMR/PVS. Never prunes: first moves, loud/
@@ -86,7 +86,7 @@ const NMP_MIN_PIECES: u32 = 6;
 /// early killers/history-ordered moves are the likely PV / cut moves).
 const LMR_MIN_IDX: usize = 3;
 /// LMR: only reduce at `depth >= LMR_MIN_DEPTH` (reducing shallow nodes buys
-/// nothing — the child is already near a leaf).
+/// nothing - the child is already near a leaf).
 const LMR_MIN_DEPTH: i32 = 3;
 
 /// Late-move reduction amount: `R = base + ln(depth)·ln(idx)/divisor`, floored
@@ -103,7 +103,7 @@ fn lmr_reduction(depth: i32, idx: usize) -> i32 {
 /// LMP: move-count threshold by depth. At `depth <= LMP_MAX_DEPTH`, quiet moves
 /// with ordering index `>= lmp_threshold(depth)` are pruned outright. Grows with
 /// depth (deeper nodes keep more moves). `None` = no pruning at this depth.
-/// Schedule `{1→6, 2→9, 3→13, 4→18, 5→24}` — extends through depth 5 because the
+/// Schedule `{1→6, 2→9, 3→13, 4→18, 5→24}` - extends through depth 5 because the
 /// EBF-12 offenders (opening-with-skills-03, midgame-move-03) spend most of
 /// their nodes in the depth-4/5 interior, which a depth≤3 schedule never
 /// touches. More aggressive than Session 36's `{1→16}`, but it now sits atop
@@ -138,13 +138,13 @@ pub(super) const TIME_CHECK_MASK: u64 = 0x3FF;
 // --- Move-ordering tables (killers + history) ---
 //
 // **Killers.** Two slots per (ply, phase). Phase is part of the index because
-// the Move-phase and Skill-phase action sets are disjoint — a Skill-phase
+// the Move-phase and Skill-phase action sets are disjoint - a Skill-phase
 // killer is meaningless during the Move phase that follows. Indexed
 // `[ply][phase_idx][slot]`. `Action(0)` is the empty sentinel.
 //
 // **History.** Indexed `[side][action_kind][from][to]`, incremented by
 // `depth*depth` on every beta-cutoff. `EndPhase` and `EndTurn` accrue history
-// at `(from, to) = (0, 0)` — the catalogue explicitly allows EndPhase to
+// at `(from, to) = (0, 0)` - the catalogue explicitly allows EndPhase to
 // participate in ordering, and our move generator emits at most one
 // EndPhase/EndTurn per phase so the slot collision is fine.
 //
@@ -163,7 +163,7 @@ pub(super) struct OrderingTables {
 
 impl OrderingTables {
     fn new() -> Box<Self> {
-        // Box-allocate — ~128 KB total, too big for the stack frame.
+        // Box-allocate - ~128 KB total, too big for the stack frame.
         Box::new(OrderingTables {
             killers: [[[Action::default(); KILLERS_PER_PLY]; PHASES]; MAX_PLY as usize],
             history: [[[[0_i32; 64]; 64]; KIND_COUNT]; SIDES],
@@ -194,7 +194,7 @@ impl OrderingTables {
     fn score(&self, a: Action, side: Player, ply: i32, phase: Phase) -> i32 {
         // DraftTurn / BodyguardChoice fall through to the regular path here.
         // Their src/target/kind accessors return garbage but the resulting
-        // index is still well-defined (in-range u8 → u8) — we just never
+        // index is still well-defined (in-range u8 → u8) - we just never
         // record cutoffs for them so their history score stays 0, and they
         // never end up in killer slots either.
         let k1 = self.killers[ply as usize][Self::phase_idx(phase)][0];
@@ -211,14 +211,14 @@ impl OrderingTables {
     /// killer slot if it wasn't already killer1.
     #[inline]
     fn record_cutoff(&mut self, a: Action, side: Player, depth: i32, ply: i32, phase: Phase) {
-        // Skip DraftTurn / BodyguardChoice — those tags collide with regular
+        // Skip DraftTurn / BodyguardChoice - those tags collide with regular
         // bit layouts and recording them would corrupt history slots.
         if a.is_draft_turn() || a.is_bodyguard_choice() { return; }
         let kind = a.kind();
         let from = a.src() as usize;
         let to   = a.target() as usize;
         let bonus = depth * depth;
-        // Saturating add — histories are i32 and a long search could
+        // Saturating add - histories are i32 and a long search could
         // theoretically overflow; saturating keeps ordering stable past that.
         let cell = &mut self.history[Self::side_idx(side)][Self::kind_idx(kind)][from][to];
         *cell = cell.saturating_add(bonus);
@@ -247,7 +247,7 @@ fn is_mate(s: i32) -> bool { s.abs() > MATE_THRESHOLD }
 /// magnitude is ≥ SIGNIFICANT_SCORE, we shrink it by 1 per ply so the search
 /// prefers reaching the same winning-or-losing eval sooner (and stalling on
 /// bad ones later). Mirrors the mate-scoring convention but at a lower
-/// threshold — orthogonal to `is_mate`.
+/// threshold - orthogonal to `is_mate`.
 ///
 /// The leaf-side adjustment is CLAMPED so no ply-adjusted score can cross
 /// under SIGNIFICANT_SCORE. That keeps the TT round-trip clean: the "in the
@@ -299,7 +299,7 @@ pub(super) struct SearchCtx<'a> {
     pub(super) nodes:    u64,
     pub(super) aborted:  bool,
     /// Incremental-eval accumulator stack, top = current node's state. Empty
-    /// (never touched) iff `!evaluator.uses_accumulator()` — so the default
+    /// (never touched) iff `!evaluator.uses_accumulator()` - so the default
     /// `HeuristicEvaluator` pays nothing. Invariant: while `search`/`quiesce`
     /// are between a `make` and its matching `unmake`, `acc_stack.last()`
     /// reflects the CURRENT (post-make) `pos`; save/restore keeps it balanced.
@@ -363,14 +363,14 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
     // Null-move pruning. Assume the side to move passes (Action::EndPhase in
     // Skill phase, which flips STM). If even a "free" pass by the opponent
     // still keeps our position at/above beta (or at/below alpha for P2), the
-    // real best move is at least as good — cutoff without generating.
+    // real best move is at least as good - cutoff without generating.
     //
     // Guards:
     //   - Skill phase only (Move-phase EndPhase doesn't flip STM).
     //   - actions_remaining >= 1 (EndPhase is only legal with actions left).
     //   - No pending bodyguard (else make() will refuse EndPhase).
     //   - depth >= 3 so the reduced null search still runs at depth >= 1.
-    //   - ply > 0 (never null at root — we need a real best move).
+    //   - ply > 0 (never null at root - we need a real best move).
     //   - can_null: never do two nulls in a row (avoid infinite reduction).
     //   - Piece count >= NMP_MIN_PIECES to sidestep zugzwang in sparse endgames.
     if ENABLE_NMP.load(AtomicOrdering::Relaxed)
@@ -403,7 +403,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
             search(pos, reduced, ply + 1, alpha, alpha + 1, false, ctx)
         };
         make_unmake::unmake(pos, &undo);
-        // Restore BEFORE the abort check — the parent must never read a stale
+        // Restore BEFORE the abort check - the parent must never read a stale
         // (post-null) accumulator.
         if inc { *ctx.acc_stack.last_mut().unwrap() = saved.unwrap(); }
         if ctx.aborted { return 0; }
@@ -440,10 +440,10 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
             // v2) confirmed sort-at-d≥1 loses 10% NPS and 0.3 plies at 1s;
             // sort-at-d≥2 is essentially flat but never improves depth. The
             // TT-move swap above is the only ordering work that pays for
-            // itself at low depth — first-move cutoffs dominate cutoff rate.
+            // itself at low depth - first-move cutoffs dominate cutoff rate.
             //
             // Skipping the full sort in favour of TT-move + killer-promote
-            // only (B4) blew up skill-phase-full nodes by +55% — the
+            // only (B4) blew up skill-phase-full nodes by +55% - the
             // history-based tail ordering is load-bearing.
             moves[start..].sort_by_key(|a| -ctx.ord.score(*a, side, ply, phase));
         }
@@ -457,7 +457,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
     let pvs_on = ENABLE_PVS.load(AtomicOrdering::Relaxed);
     let lmr_on = ENABLE_LMR.load(AtomicOrdering::Relaxed);
     let lmp_on = ENABLE_LMP.load(AtomicOrdering::Relaxed);
-    // In-check gate for LMR (never reduce when our own King is threatened —
+    // In-check gate for LMR (never reduce when our own King is threatened -
     // those lines are tactically forced). Reuses the QS bitboard fast path.
     // `side` is the side to move at this node (captured above before the loop).
     let node_in_check = super::quiescence::is_king_threatened(pos, side);
@@ -498,7 +498,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         let r = if reduce { lmr_reduction(depth, idx).min(depth - 1) } else { 0 };
 
         let undo = make_unmake::make(pos, a);
-        // Save the pre-make accumulator, then advance once — all PVS/LMR
+        // Save the pre-make accumulator, then advance once - all PVS/LMR
         // re-searches below run with `pos` fixed post-make, so a single
         // push_acc covers them; restore on unmake.
         let saved = if inc { Some(ctx.evaluator.clone_acc(ctx.acc_stack.last().unwrap())) } else { None };
@@ -544,7 +544,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         }
         if alpha >= beta {
             // Record killer / history bump on the cutoff move. Skip if ply
-            // is out of range (defensive — we already bound at MAX_PLY in
+            // is out of range (defensive - we already bound at MAX_PLY in
             // the ordering read above).
             if ply < MAX_PLY {
                 ctx.ord.record_cutoff(a, side, depth, ply, phase);
@@ -607,7 +607,7 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
 
     // Forced-move short-circuit. When the position has exactly one legal
     // action (common: EndPhase-only when actions_remaining==0 and no skills
-    // are castable), skip the whole tree — the caller will just apply it.
+    // are castable), skip the whole tree - the caller will just apply it.
     // Score is the static eval so telemetry / UI show something meaningful.
     // nodes=1: we did examine one node (the root) to determine it was forced.
     //
@@ -692,7 +692,7 @@ mod tests {
     use crate::state::{Bitboard, MailboxEntry, Position};
     use crate::state::position::{GameResult, Phase, Player};
 
-    /// Local copy of the place helper used in `evaluator.rs::tests` —
+    /// Local copy of the place helper used in `evaluator.rs::tests` -
     /// `make_unmake::tests::place` is `pub(super)`-scoped and not reachable.
     fn place(p: &mut Position, sq: u8, player: Player, kind: u8, entry: MailboxEntry) {
         let bit = Bitboard::from_square(sq);
@@ -709,7 +709,7 @@ mod tests {
     }
 
     fn fresh_tt() -> TranspositionTable {
-        TranspositionTable::with_capacity_pow2(12) // 4096 slots — ample for tests
+        TranspositionTable::with_capacity_pow2(12) // 4096 slots - ample for tests
     }
 
     #[test]
@@ -722,7 +722,7 @@ mod tests {
             }
         }
         // Significant band (±500 upward). Values ≥ SIGNIFICANT_SCORE are stored
-        // ply-invariant and re-adjusted on retrieval — same shape as mate.
+        // ply-invariant and re-adjusted on retrieval - same shape as mate.
         for &s in &[SIGNIFICANT_SCORE, SIGNIFICANT_SCORE + 3, 1000, -SIGNIFICANT_SCORE, -SIGNIFICANT_SCORE - 3, -1000] {
             for &p in &[0_i32, 5, 17] {
                 assert_eq!(score_from_tt(score_to_tt(s, p), p), s,
@@ -738,7 +738,7 @@ mod tests {
 
     #[test]
     fn adjust_for_ply_clamps_at_band_boundary() {
-        // Positive band: 505 at ply 10 would go to 495 (below band) — clamped to 500.
+        // Positive band: 505 at ply 10 would go to 495 (below band) - clamped to 500.
         assert_eq!(adjust_for_ply(505, 10), SIGNIFICANT_SCORE);
         // 600 at ply 10 stays inside the band → 590.
         assert_eq!(adjust_for_ply(600, 10), 590);
@@ -789,7 +789,7 @@ mod tests {
         assert!(r.score > 0, "expected P1-positive score, got {}", r.score);
     }
 
-    /// P1 Champion adjacent to lone P2 King (HP=1 — one Move-Attack kills it).
+    /// P1 Champion adjacent to lone P2 King (HP=1 - one Move-Attack kills it).
     /// No P2 Guards anywhere means no Bodyguard redirect is possible.
     fn p1_mate_in_1_position() -> Position {
         let mut pos = Position::empty();
@@ -858,7 +858,7 @@ mod tests {
 
     #[test]
     fn iterative_deepening_reaches_max_depth() {
-        // Quiet symmetric position — no forced mate, ID runs to max_depth.
+        // Quiet symmetric position - no forced mate, ID runs to max_depth.
         let mut pos = Position::empty();
         place(&mut pos, 0,  Player::P1, 0, MailboxEntry::default().with_hp(2));
         place(&mut pos, 63, Player::P2, 0, MailboxEntry::default().with_hp(2));
@@ -938,7 +938,7 @@ mod tests {
     #[test]
     fn tt_records_hits_on_second_search() {
         // `find_best` calls `new_search()` which resets stats but leaves
-        // entries — so the second search probes a populated table.
+        // entries - so the second search probes a populated table.
         let mut pos = Position::setup_stack_m();
         let mut tt = fresh_tt();
         let _ = find_best(&mut pos, &mut tt, 0, 2);
@@ -1018,7 +1018,7 @@ mod tests {
     /// AI returned NO move despite legal moves existing. Root cause: an
     /// expensive depth-1 got aborted by the clock before completing, so
     /// `find_best` returned `SearchResult::default()` (best=None) and the UI
-    /// reported "AI returned no move — pausing". `find_best` must ALWAYS return
+    /// reported "AI returned no move - pausing". `find_best` must ALWAYS return
     /// a legal move on a non-terminal position, even if aborted before iteration
     /// 1 completes. FEN reported by Elias.
     #[test]
@@ -1034,7 +1034,7 @@ mod tests {
         assert!(find_best(&mut pos, &mut tt, 0, 6).best.is_some());
 
         // Tight time limits force an abort during (or before) depth 1 on this
-        // expensive position — the search must still return a legal move.
+        // expensive position - the search must still return a legal move.
         for tl in [1u64, 2, 5, 10] {
             let mut tt2 = TranspositionTable::with_capacity_mb(16);
             let mut p2 = crate::state::fen::from_fen(fen).unwrap();

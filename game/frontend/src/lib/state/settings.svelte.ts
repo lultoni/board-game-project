@@ -55,13 +55,13 @@ export interface Settings {
   showAiDepth: boolean;
   /** Show the per-seat AI think-progress bar (rAF-driven fill under each
    *  PlayerPanel). Turn off to skip the rAF loop entirely when the bar is
-   *  hidden — noticeable on lower-end machines with many panels visible. */
+   *  hidden - noticeable on lower-end machines with many panels visible. */
   showThinkProgressBar: boolean;
   /** Show heuristic eval bar + score in the match UI. */
   showHeuristicEval: boolean;
   /** Show the full heuristic eval breakdown side panel (per-component,
    *  per-side, colour-coded). Intended for analysis / tuning. Independent
-   *  of `showHeuristicEval` — both may be on. */
+   *  of `showHeuristicEval` - both may be on. */
   showEvalPanel: boolean;
 }
 
@@ -106,7 +106,7 @@ const LOCALES: ReadonlyArray<Settings["locale"]> = ["en", "de"];
 // Per-field validation. localStorage is user-writable, so a tampered or
 // stale blob can carry NaN, negative budgets, or unknown locale strings
 // that the engine then has to defend against downstream. Each picker
-// silently falls back to DEFAULTS on a bad value — no error surfacing,
+// silently falls back to DEFAULTS on a bad value - no error surfacing,
 // since the user didn't ask for this read to fail.
 function pickBool(v: unknown, fallback: boolean): boolean {
   return typeof v === "boolean" ? v : fallback;
@@ -200,7 +200,7 @@ export const _validateSettings = validate;
 export const settings = $state<Settings>(load());
 
 // Apply the persisted locale to the i18n layer at module load, before any
-// component renders — otherwise the first paint would be English regardless
+// component renders - otherwise the first paint would be English regardless
 // of the saved preference. initSettingsPersistence() keeps it in sync after.
 setLocale(settings.locale);
 
@@ -209,7 +209,7 @@ function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch {
-    /* quota / private mode — ignore */
+    /* quota / private mode - ignore */
   }
 }
 

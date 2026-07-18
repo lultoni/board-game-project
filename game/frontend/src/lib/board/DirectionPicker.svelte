@@ -1,7 +1,7 @@
 <script lang="ts">
   // Direction picker for Shove (skill 11). After the player has armed Shove
   // and clicked a target tile, this component renders 8 arrows around the
-  // target — one per cardinal/diagonal direction — and the player picks the
+  // target - one per cardinal/diagonal direction - and the player picks the
   // push direction. Only directions backed by a legal action variant render
   // as enabled (the rest are dimmed but still visible so the user can see
   // which pushes the rules forbid).
@@ -19,9 +19,9 @@
     /** All legal variants for the armed (src, skill) at this target. Direction
      * comes from `choiceIdx` (0..=7 = N, NE, E, SE, S, SW, W, NW). */
     variants: SkillVariant[];
-    /** Click handler — passes the chosen raw u32 action. */
+    /** Click handler - passes the chosen raw u32 action. */
     onPick?: (raw: number) => void;
-    /** Cancel handler — clicking the centre tile or any non-arrow region. */
+    /** Cancel handler - clicking the centre tile or any non-arrow region. */
     onCancel?: () => void;
   }
 

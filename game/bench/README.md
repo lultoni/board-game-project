@@ -1,13 +1,12 @@
-# search_bench — Search-Speed Benchmark
+# search_bench - Search-Speed Benchmark
 
 Manual-run-only tool that grades alpha-beta optimisations on a fixed FEN
-corpus. See `design/inbox/digital/search-speed-benchmark-plan.md` for the
-design and `design/inbox/digital/alpha-beta-optimisation-catalogue.md` for
-the optimisation queue.
+corpus. See `game/plans/search-speed-benchmark-plan.md` for the design and
+`game/plans/alpha-beta-optimisation-catalogue.md` for the optimisation queue.
 
 ## How to run
 
-The canonical sweep runner is `game/bench/run_sweep.sh` — one command runs
+The canonical sweep runner is `game/bench/run_sweep.sh` - one command runs
 the full 5-budget grid (`depth6` + `time100/500/1000/3000ms`) plus the
 determinism smoke check:
 
@@ -52,7 +51,7 @@ Each entry reports nodes, depth-reached, time, nodes-per-sec, TT hit rate,
 EBF (effective branching factor = `nodes^(1/depth)`), best move, and score.
 
 The aggregate block reports the geometric mean of nodes-per-sec across the
-corpus — that single number is the headline "search throughput" metric, but
+corpus - that single number is the headline "search throughput" metric, but
 **at fixed-time budgets, depth-reached is the more meaningful AI-strength
 signal**. NPS can fall as the search does more bookkeeping per node, yet
 total time-to-depth still improve if the bookkeeping prunes enough nodes.
@@ -69,11 +68,11 @@ When an optimisation lands and we accept it:
    all five committed baselines in one shot.
 4. The new baselines become the bar for the next optimisation.
 
-## Test protocol — multi-budget sweep
+## Test protocol - multi-budget sweep
 
 Each candidate optimisation is graded against **every** budget, not just
 one. Killers/history (Session 36) revealed that an optimisation can be
-neutral or hurt at 1000ms while winning at 3000ms — testing one budget in
+neutral or hurt at 1000ms while winning at 3000ms - testing one budget in
 isolation would have rejected a real win. Session 41 (delta pruning) added
 the further lesson that fixed-depth-6 alone hides score drifts that only
 surface when you compare per-position and per-category, not aggregates.
@@ -107,7 +106,7 @@ cargo run --release --manifest-path game/Cargo.toml \
 
 ## Storage layout
 
-- `corpus/` — committed corpus and raw samples.
-- `baseline-<budget>.json` — committed baselines (5 files).
-- `results/` — gitignored scratch directory for A/B runs.
-- `run_sweep.sh` — canonical sweep runner.
+- `corpus/` - committed corpus and raw samples.
+- `baseline-<budget>.json` - committed baselines (5 files).
+- `results/` - gitignored scratch directory for A/B runs.
+- `run_sweep.sh` - canonical sweep runner.

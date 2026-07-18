@@ -16,7 +16,7 @@ export interface PositionView {
   zobrist: bigint;
   /** Engine-owned Bodyguard state. `null` in the common case; populated
    *  between the attacker's tentative Move-Attack and the defender's
-   *  `BodyguardChoice` ply. Renderer-only — legality flows through the
+   *  `BodyguardChoice` ply. Renderer-only - legality flows through the
    *  legal-actions buffer, which is restricted to BodyguardChoice variants
    *  while this is non-null. */
   pendingBodyguard: PendingBodyguardView | null;
@@ -44,7 +44,7 @@ export interface StepResult {
   gameResult: number;
 }
 
-/** L8 — snapshot of the in-progress draft. Returned by `draftState()` and
+/** L8 - snapshot of the in-progress draft. Returned by `draftState()` and
  *  used by the /draft/ route to drive picker UI legality hints. */
 export interface DraftStateView {
   /** Number of `DraftTurn` plies committed so far (0..12). Reads 12 once
@@ -52,13 +52,13 @@ export interface DraftStateView {
   turnNo: number;
   /** 0 = P1, 1 = P2. Undefined once `turnNo === 12`. */
   sideToMove: number;
-  /** `usedSlots[piece][slot]` — true iff that mailbox slot is filled.
+  /** `usedSlots[piece][slot]` - true iff that mailbox slot is filled.
    *  Layout: pieces 0..6 = P1 (King at 0, Champions 1..5 by ascending sq),
    *  pieces 6..12 = P2 (same internal order), slot ∈ {0,1}. */
   usedSlots: boolean[][];
 }
 
-/** L8 — a single side's loadout: 6 [skill1, skill2] pairs.
+/** L8 - a single side's loadout: 6 [skill1, skill2] pairs.
  *  Piece order: King at index 0, Champions 1..5 by ascending starting square.
  *  Slot value 0 = empty (only valid during Phase::Draft). */
 export type SideLoadout = readonly [
@@ -93,14 +93,14 @@ export interface EvalBreakdown {
   threat_p2:    number;
   skill_act_p1: number;
   skill_act_p2: number;
-  /** E9 — max castable offensive range flag (raw, e.g. 2..=4). Weighted
+  /** E9 - max castable offensive range flag (raw, e.g. 2..=4). Weighted
    *  into `total` by OFFENSIVE_RANGE_WEIGHT (500) on the Rust side. */
   offensive_range_p1: number;
   offensive_range_p2: number;
   total:        number;
 }
 
-/** Per-square eval breakdown — one entry per board square (0..63). Empty
+/** Per-square eval breakdown - one entry per board square (0..63). Empty
  *  squares carry `occupied: false` with all terms zero. Piece kinds:
  *  0=empty, 1=guard, 2=champion, 3=king. Skill availabilities are
  *  fixed-point on `SKILL_AVAIL_MAX = 256` (percent = fp * 100 / 256). */
@@ -152,11 +152,11 @@ export interface EvalBreakdownBySquare {
 export interface EngineClient {
   version(): Promise<string>;
   createEngine(configJson?: string): Promise<void>;
-  /** L8 — open a fresh match in `Phase::Draft`. Caller drives 12 DraftTurn
+  /** L8 - open a fresh match in `Phase::Draft`. Caller drives 12 DraftTurn
    *  plies via `tryApply` / `stepAi`; engine transitions to Phase::Move
    *  automatically. */
   createEngineWithDraft(configJson?: string): Promise<void>;
-  /** L8 — open a fresh match that bypasses draft, with both sides' loadouts
+  /** L8 - open a fresh match that bypasses draft, with both sides' loadouts
    *  already applied. Engine validates loadouts and rejects same-skill-on-
    *  same-piece pairs. */
   createEngineWithLoadouts(
@@ -164,7 +164,7 @@ export interface EngineClient {
     p1Loadout: SideLoadout,
     p2Loadout: SideLoadout,
   ): Promise<void>;
-  /** L8 — snapshot of the in-progress draft. Cheap; safe to call per UI
+  /** L8 - snapshot of the in-progress draft. Cheap; safe to call per UI
    *  refresh. Returns `turnNo === 12` once the draft has completed. */
   draftState(): Promise<DraftStateView>;
   positionView(): Promise<PositionView>;
@@ -180,7 +180,7 @@ export interface EngineClient {
   heuristicEvalBySquare(): Promise<EvalBreakdownBySquare>;
   /** Inspector variant: runs the search regardless of seat kind so HvH
    *  positions can also ask "what would the AI play here?". The seat-
-   *  restricted variant was removed as dead surface — match uses `stepAi`. */
+   *  restricted variant was removed as dead surface - match uses `stepAi`. */
   requestAiMoveForced(): Promise<StepResult>;
   /** Inspector iterative-deepening: runs ID up to `maxDepth` with no time
    *  bound. Caller drives the deepening loop by stepping `maxDepth` up

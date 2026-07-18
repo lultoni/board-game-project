@@ -4,14 +4,14 @@
 //! Win/loss are represented as ±(MATE_SCORE - depth_to_mate) so shorter wins
 //! score higher and the search prefers fast mates.
 //!
-//! ## ns-43 — term-registry architecture
+//! ## ns-43 - term-registry architecture
 //!
 //! The evaluator is a **registry of independent, parameterised terms**
 //! ([`term::EvalTerm`]). [`registry::evaluate_dyn`] builds one
 //! [`context::EvalContext`], runs a single shared board pass for per-piece
 //! terms + side-level terms once, and returns a [`breakdown::DynBreakdown`]
 //! (only the *active* terms). The legacy fixed-field [`EvalBreakdown`] is a
-//! projection of that ([`breakdown::DynBreakdown::to_legacy`]) — kept because
+//! projection of that ([`breakdown::DynBreakdown::to_legacy`]) - kept because
 //! it is serialised to the frontend / telemetry / nn_trainer / search_bench.
 //!
 //! All tunable weights live in [`params::EvalParams`]; `EvalParams::DEFAULT`
@@ -19,7 +19,7 @@
 //! test enforces byte-identical output across the refactor.
 //!
 //! ============================================================
-//! Design philosophy (load-bearing — read before changing eval)
+//! Design philosophy (load-bearing - read before changing eval)
 //! ============================================================
 //!
 //! Source: designer's eval-function notes (Session 28 inbox, Perplexity
@@ -32,7 +32,7 @@
 //!    Eval scores the position as-is; tempo-to-resolution is search's job.
 //! 3. AFTER WIN/LOSS: COUNT REAL THINGS. Material first (pieces, HP, armor,
 //!    money, equipped skills). Must beat random play before anything fancier.
-//! 4. TWO ANGLES ON EVERY ADVANTAGE — TEMPO AND MONEY.
+//! 4. TWO ANGLES ON EVERY ADVANTAGE - TEMPO AND MONEY.
 //! 5. EVAL COST IS A FIRST-CLASS BUDGET. A cheap eval at depth 6 beats an
 //!    expensive one at depth 1. `is_active` gating (later pass) skips terms
 //!    that don't matter for the phase.
@@ -61,7 +61,7 @@ pub const MATE_SCORE: i32 = 1_000_000;
 
 // Const aliases to the default params, kept so the existing test module (and
 // any external callers) that referenced the old top-level consts compile
-// unchanged — and to make the faithful port self-evident. Only referenced from
+// unchanged - and to make the faithful port self-evident. Only referenced from
 // the test module, so allow dead_code in non-test builds.
 #[cfg(test)] pub(crate) const CHAMPION_VALUE:  i32 = EvalParams::DEFAULT.champion_value;
 #[cfg(test)] pub(crate) const HP_PER_POINT:    i32 = EvalParams::DEFAULT.hp_per_point;
@@ -96,7 +96,7 @@ pub fn evaluate_dyn(pos: &Position) -> DynBreakdown {
 
 /// Opaque, evaluator-owned incremental-eval state for one search node.
 ///
-/// `core_engine` never inspects the inner value — only the `Evaluator` that
+/// `core_engine` never inspects the inner value - only the `Evaluator` that
 /// produced it downcasts back to its concrete type. This is the layering seam:
 /// the incremental NNUE `Accumulator` lives in `nn_trainer` (which depends on
 /// `core_engine`), so the search can't name it; it threads an `AccHandle`
@@ -105,12 +105,12 @@ pub fn evaluate_dyn(pos: &Position) -> DynBreakdown {
 ///
 /// `Send` matches the `Evaluator: Send` bound; the handle lives in `SearchCtx`
 /// on the single search thread and never crosses threads. Deliberately NOT
-/// `Clone` — only the producing evaluator knows the concrete type, so cloning
+/// `Clone` - only the producing evaluator knows the concrete type, so cloning
 /// goes through [`Evaluator::clone_acc`].
 pub struct AccHandle(Option<Box<dyn core::any::Any + Send>>);
 
 impl AccHandle {
-    /// The empty handle — an evaluator with no incremental state.
+    /// The empty handle - an evaluator with no incremental state.
     #[inline]
     pub fn none() -> Self { AccHandle(None) }
 
@@ -293,7 +293,7 @@ mod tests {
         pos.actions_remaining = 2;
         pos.current_phase = Phase::Move;
         // With cap = 2 (Lance cost) × 2 (actions) = 4, both sides plateau at
-        // MONEY_PER_UNIT × cap / 2 = 50 each — but P2 is under cap so gets less
+        // MONEY_PER_UNIT × cap / 2 = 50 each - but P2 is under cap so gets less
         // than the plateau. P1 differential should be non-negative and small.
         // The load-bearing invariant: score should be non-negative and reflect
         // P1's money advantage.
@@ -384,7 +384,7 @@ mod tests {
         //   - mobility (ns-43 Term 3a) = champion real movement-space: 8 empty
         //     neighbours at d4 × champ_mob_per_sq.
         //   - skill_term (E4) gated by money=0 → availability=0 → 0.
-        //   - champion_threat (Term 3b) — no enemies/allies in range → 0.
+        //   - champion_threat (Term 3b) - no enemies/allies in range → 0.
         //   - exposure (E2) = 0 (no attackers); coverage (E6) = 0 (no guards).
         //   - tempo (E8) skipped in Draft; offensive_range needs money → 0.
         // Result: material + hp + armor + champion movement-space.
@@ -411,7 +411,7 @@ mod tests {
         place(&mut pos, 4, Player::P2, 0, MailboxEntry::default().with_hp(2));
         // game_result stays None.
         let s = evaluate(&pos);
-        // We don't assert a specific value — just that it computed.
+        // We don't assert a specific value - just that it computed.
         // KING_MATERIAL is 0, so the king contributes only its HP. P1 has nothing.
         // The point is: no panic, no overflow.
         assert!(s > i32::MIN && s < i32::MAX);
@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     fn evaluate_by_square_matches_breakdown_asymmetric() {
-        // A P1 Champion adjacent to a P2 Guard, no other pieces — exercises
+        // A P1 Champion adjacent to a P2 Guard, no other pieces - exercises
         // exposure, coverage, mobility on both sides.
         let mut pos = Position::empty();
         place(&mut pos, 28, Player::P1, 1,
@@ -453,7 +453,7 @@ mod tests {
         let bs = evaluate_by_square(&pos);
         assert_eq!(bs.total, MATE_SCORE);
         assert!(bs.terminal);
-        // All per-square records must be zero — mirrors evaluate_breakdown's
+        // All per-square records must be zero - mirrors evaluate_breakdown's
         // terminal short-circuit.
         for s in bs.squares.iter() {
             assert!(!s.occupied);
@@ -498,7 +498,7 @@ mod tests {
         // dual-adjacency assertion is exercised on a *threatened* ring.
 
         // Case A: Guard at c3 (sq 18) is NOT adjacent to defender at e4 (sq 28)
-        // — chebyshev distance 2. Coverage MUST be 0. Enemy at e6 (sq 44) makes
+        // - chebyshev distance 2. Coverage MUST be 0. Enemy at e6 (sq 44) makes
         // the north ring squares count, so a non-zero shielded would be a bug.
         let mut pos = Position::empty();
         place(&mut pos, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
@@ -511,7 +511,7 @@ mod tests {
         // Case B: Guard at f4 (sq 29) IS adjacent to defender at e4 (sq 28).
         // Enemy champion at e6 (sq 44) gates in the north-facing ring squares
         // {d4, d5, e5, f5} (denom=4); of those, the guard at f4 is dual-adjacent
-        // to {d5, e5, f5}... wait — it shields the ring squares also adjacent to
+        // to {d5, e5, f5}... wait - it shields the ring squares also adjacent to
         // it: {d5, e5, f5} minus those not in the gate. Assert the gated counts.
         let mut pos2 = Position::empty();
         place(&mut pos2, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
@@ -525,7 +525,7 @@ mod tests {
     }
 
     // ============================================================
-    // WastedModifier term (E10, ns-43) — a live Focus/Charge bit with no
+    // WastedModifier term (E10, ns-43) - a live Focus/Charge bit with no
     // castable consumer this Skill phase is a penalty on the holding side.
     // ============================================================
 
@@ -618,7 +618,7 @@ mod tests {
     }
 
     // ============================================================
-    // Stage infra (ns-43) — advantage score + game-stage classifier.
+    // Stage infra (ns-43) - advantage score + game-stage classifier.
     // Infra-only: no term consumes these yet, so goldens are unchanged.
     // ============================================================
 
@@ -674,7 +674,7 @@ mod tests {
     }
 
     // ============================================================
-    // GuardIsolation term (E11, ns-43) — a guard locally outnumbered
+    // GuardIsolation term (E11, ns-43) - a guard locally outnumbered
     // (more enemies than friendlies within radius) is penalised.
     // ============================================================
 
@@ -709,7 +709,7 @@ mod tests {
         let bd = evaluate_dyn(&p);
         let iso = bd.terms.iter().find(|t| t.name == "guard_isolation").unwrap();
         // The guard at 27 sees enemies_near=1, friendlies_near=2 → 0.
-        // (The other P1 pieces are champions, not guards — they don't contribute.)
+        // (The other P1 pieces are champions, not guards - they don't contribute.)
         assert_eq!(iso.p1, 0, "supported guard not penalised");
     }
 
@@ -717,7 +717,7 @@ mod tests {
     fn guard_isolation_ignores_champions_and_kings() {
         // A lone P1 CHAMPION surrounded by enemies must NOT be penalised by this
         // guard-only term (champion_threat/exposure handle champions). With no
-        // guards on the board the term is skipped entirely (is_active=false) —
+        // guards on the board the term is skipped entirely (is_active=false) -
         // absent ⇔ zero contribution, which is exactly what we require.
         let mut p = Position::empty();
         place(&mut p, 27, Player::P1, 1, MailboxEntry::default().with_hp(2));
@@ -730,7 +730,7 @@ mod tests {
     }
 
     // ============================================================
-    // ChampionThreat term (E12, ns-43 Term 3b) — offensive + defensive
+    // ChampionThreat term (E12, ns-43 Term 3b) - offensive + defensive
     // targeting, value-weighted, strike-safety-aware.
     // ============================================================
 
@@ -794,7 +794,7 @@ mod tests {
     }
 
     // ============================================================
-    // EndgameClosing term (E13, ns-43 Term 4) — asymmetric, stage-gated.
+    // EndgameClosing term (E13, ns-43 Term 4) - asymmetric, stage-gated.
     // ============================================================
 
     fn closing_of(pos: &Position) -> (i32, i32) {
@@ -849,7 +849,7 @@ mod tests {
     // `golden_eval_unchanged` test asserts `evaluate()` and the full
     // per-field `EvalBreakdown` match hand-captured expected values. The
     // ns-43 term-registry refactor is behaviour-preserving iff this test
-    // still passes byte-for-byte afterwards. NO Date/rand — fixed positions
+    // still passes byte-for-byte afterwards. NO Date/rand - fixed positions
     // only, so the goldens are deterministic and reproducible.
     // ============================================================
 
@@ -873,7 +873,7 @@ mod tests {
         }
 
         // 3. Canonical opening layout (the `setup_stack_m` constructor is the
-        //    standard start position; its name is a historical artefact — the
+        //    standard start position; its name is a historical artefact - the
         //    layout is unchanged under Stack N).
         suite.push(("opening", Position::setup_stack_m()));
 
@@ -954,10 +954,10 @@ mod tests {
     /// evaluator; the term-registry refactor is behaviour-preserving iff this
     /// still passes byte-for-byte. If a deliberate eval change lands later,
     /// re-capture via the (restored) dump harness and update these literals in
-    /// the SAME commit — never silently.
+    /// the SAME commit - never silently.
     ///
     /// ns-43+ (threat-gated coverage): the `opening` golden's coverage dropped
-    /// 1800→0 per side — the starting ranks have no enemy within r3, so the
+    /// 1800→0 per side - the starting ranks have no enemy within r3, so the
     /// bodyguard "coverage" bonus is (correctly) no longer paid for guarding
     /// empty directions. Symmetric, so the total (differential) is unchanged.
     #[test]
@@ -986,7 +986,7 @@ mod tests {
     }
 
     /// Determinism guard (HARD requirement): the same position must produce the
-    /// exact same score on every call — no rand/Date, no order-dependent float
+    /// exact same score on every call - no rand/Date, no order-dependent float
     /// accumulation, no HashMap-iteration in scoring. Evaluate each golden
     /// position many times and assert byte-identical `evaluate` + full
     /// `EvalBreakdown` every time. Cheap insurance against a future term

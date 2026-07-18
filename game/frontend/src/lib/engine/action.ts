@@ -8,9 +8,9 @@
 //   bit  22      focus_mode       (1 bit)
 //   bits 23..29  aux_sq / approach_sq (6 bits, dual use)
 //   bit  29      has_aux / has_approach (1 bit)
-//   bit  30      DRAFT_TURN_TAG (1 bit) — when set, the other bits use a
+//   bit  30      DRAFT_TURN_TAG (1 bit) - when set, the other bits use a
 //                completely different layout: see encodeDraftTurn.
-//   bit  31      BG_CHOICE_TAG (1 bit) — when set, the action is a
+//   bit  31      BG_CHOICE_TAG (1 bit) - when set, the action is a
 //                BodyguardChoice carrying only `idx` in bits 0..4 (0 =
 //                decline redirect, k = redirect to eligible[k-1]). See
 //                isBodyguardChoice / bgGuardIdx / encodeBodyguardChoice.
@@ -67,7 +67,7 @@ export function actionKindName(k: ActionKindValue): string {
   }
 }
 
-// === L8 — DraftTurn encoding ===============================================
+// === L8 - DraftTurn encoding ===============================================
 //
 // A DraftTurn is a u32 with bit 30 set (the `DRAFT_TURN_TAG`). When that bit
 // is set, the remaining bits encode two (skill_id, sq, slot) picks the
@@ -130,7 +130,7 @@ export function decodeDraftTurn(u32: number): DraftTurnDecoded {
   };
 }
 
-// === Commit 2 — BodyguardChoice encoding ====================================
+// === Commit 2 - BodyguardChoice encoding ====================================
 //
 // Mirrors `Action::encode_bodyguard_choice` / `is_bodyguard_choice` /
 // `bg_guard_idx` in the Rust engine. A BodyguardChoice is the defender's reply
@@ -138,7 +138,7 @@ export function decodeDraftTurn(u32: number): DraftTurnDecoded {
 // `Position::pendingBodyguard != null`. Bit 31 tags the action; bits 0..4 carry
 // `idx` (0 = decline redirect, k = redirect to `pendingBodyguard.eligible[k-1]`).
 //
-// MUST stay byte-identical with the Rust encoding — wire/IDB serialised
+// MUST stay byte-identical with the Rust encoding - wire/IDB serialised
 // actions cross the boundary as raw u32 values.
 
 export const ACTION_BG_CHOICE_TAG = (1 << 31) >>> 0; // 0x8000_0000

@@ -9,8 +9,8 @@ members = [
 
 [workspace.package]
 version = "0.1.1"
-edition = "2021"
-authors = ["Elias"]
+edition = "2026"
+authors = ["Elias Leander Glauert"]
 license = "Unlicense"
 
 [workspace.dependencies]

@@ -29,7 +29,7 @@ pub const LABEL_DIVISOR: f32 = 1000.0;
 
 /// Parse a corpus text file (FEN is the last comma-separated field; `#` comment
 /// lines and blanks are skipped) into positions labelled with the hand-crafted
-/// `evaluate`. Terminal positions are skipped — they bypass the NN in-search.
+/// `evaluate`. Terminal positions are skipped - they bypass the NN in-search.
 pub fn label_corpus(corpus_text: &str) -> Vec<ScalarLabelled> {
     let mut out = Vec::new();
     for line in corpus_text.lines() {
@@ -114,14 +114,14 @@ pub fn label_repo_raw_corpus() -> Vec<ScalarLabelled> {
     }
 }
 
-/// Path to the large NN **training** corpus — DISTINCT from the search
+/// Path to the large NN **training** corpus - DISTINCT from the search
 /// benchmark corpora (`raw_corpus.txt` / `corpus.txt`). Generated on demand,
 /// gitignored, one FEN per line. ~100k positions at the default target.
 pub const TRAINING_CORPUS_FILENAME: &str = "nn_training_corpus.txt";
 
 /// Default training-corpus target: enough labelled positions for the Phase-0
 /// bootstrap to regress `evaluate` into a genuinely heuristic-like net (the
-/// ~120-row benchmark is far too small — see ns-50 Phase-1 findings).
+/// ~120-row benchmark is far too small - see ns-50 Phase-1 findings).
 pub const TRAINING_CORPUS_TARGET: usize = 100_000;
 
 /// Ceiling on games played to reach the target. Generation stops as soon as
@@ -162,7 +162,7 @@ pub fn label_training_corpus_with(
         // Present-but-empty (or all-terminal) file → fall through to regenerate.
     }
     eprintln!(
-        "[bootstrap] training corpus missing at {} — generating {} positions (up to {} games)…",
+        "[bootstrap] training corpus missing at {} - generating {} positions (up to {} games)…",
         path.display(), target, max_games,
     );
     let positions = crate::corpus_gen::generate_training_corpus(target, max_games, seed);
@@ -210,7 +210,7 @@ mod tests {
     /// net must reproduce `evaluate` within a small band on held-out positions,
     /// and materially beat a constant (mean) predictor baseline.
     ///
-    /// `#[ignore]` — the 300-epoch train on the raw corpus takes several
+    /// `#[ignore]` - the 300-epoch train on the raw corpus takes several
     /// minutes (dense-scatter of NUM_FEATURES through burn per example). This is
     /// the Phase-0 milestone gate, run explicitly:
     /// `cargo test -p nn_trainer --release quantized_net_reproduces -- --ignored --nocapture`.
@@ -261,7 +261,7 @@ mod tests {
     /// large in-process training corpus is that the bootstrap net gets much
     /// closer to `evaluate` than the ~116-position benchmark allowed. Generate a
     /// moderate training corpus, train, and print held-out MAE vs the constant
-    /// baseline. `#[ignore]` — generation + train take minutes. Run explicitly:
+    /// baseline. `#[ignore]` - generation + train take minutes. Run explicitly:
     /// `cargo test -p nn_trainer --release bigger_corpus_bootstrap -- --ignored --nocapture`.
     #[test]
     #[ignore = "slow (minutes): bigger-corpus bootstrap accuracy diagnostic"]

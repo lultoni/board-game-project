@@ -3,7 +3,7 @@
 
   Mounts a hidden inline SVG carrying <symbol> defs so the page can render
   glyphs with `<svg><use href="#skill-glyph-N" color="…" /></svg>`. Keep in
-  sync with the copy embedded in `Board.svelte`'s <defs> — that copy stays
+  sync with the copy embedded in `Board.svelte`'s <defs> - that copy stays
   because the match-board SVG already needs them at render time.
 -->
 <svg

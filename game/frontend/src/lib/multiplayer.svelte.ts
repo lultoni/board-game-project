@@ -36,7 +36,7 @@ interface MpState {
    *  so a hard tear-down doesn't yank the countdown out from under the UI. */
   disconnectedSince: number | null;
   /** Latches `true` the first time we receive any traffic from the peer this
-   *  session (first pong, first non-ping data). Survives a close/error —
+   *  session (first pong, first non-ping data). Survives a close/error -
    *  unlike `lastPongAt`, which is nulled on every drop. GraceBanner uses
    *  this to gate visibility: if we never paired up (host's pre-join
    *  rehost window), don't show the "opponent disconnected" banner.
@@ -55,7 +55,7 @@ interface MpState {
    *  session is live and the stale route must not tear it down.
    *
    *  Motivates the guard: SvelteKit's `onDestroy` for a route we've navigated
-   *  away from can fire LATE — after the destination route has mounted and
+   *  away from can fire LATE - after the destination route has mounted and
    *  started a fresh session (e.g. joiner leaves /match/ → lobby → Rejoin
    *  → /match/, and /draft/'s onDestroy from an earlier navigation fires
    *  during the second /match/ mount, calling destroyPeerKeepState() and
@@ -85,7 +85,7 @@ export function getSessionEpoch(): number {
 
 /** Route-ownership token. Monotonically increases every time a route claims
  *  ownership via `claimRouteOwnership()`. Only the token-holder is allowed
- *  to tear the session down — any prior route's late-firing onDestroy sees
+ *  to tear the session down - any prior route's late-firing onDestroy sees
  *  a mismatched token and no-ops. Zero (default) means "no route owns the
  *  session yet" (transient, between lobby and route mount).
  *
@@ -108,14 +108,14 @@ const dataHandlers = new Set<(msg: WireMessage) => void>();
 /** Raw-string subscribers. The role-aware wrapper (createMpEngine) reads
  *  these so it can decode v2 messages (committed, intent, snapshot, …) that
  *  the legacy WireMessage type in multiplayer-protocol.ts doesn't model.
- *  Both raw and decoded paths fire for the same inbound payload — keeping
+ *  Both raw and decoded paths fire for the same inbound payload - keeping
  *  legacy `onData` subscribers unaffected during the v1→v2 cutover. */
 const rawDataHandlers = new Set<(raw: string) => void>();
 /** Direct callbacks for connection-lifecycle events. Fired synchronously
  *  from the transport's onOpen/onClose callbacks (plus the pong-age-out
  *  bridge and its recovery path). Consumers (createMpEngine, the lobby
  *  navigation trigger) subscribe here instead of watching `mpState.status`
- *  via `$effect` — protocol sequencing has no room for Svelte effect
+ *  via `$effect` - protocol sequencing has no room for Svelte effect
  *  scheduling. See PROTOCOL_TRACE.md Part 2 §6. */
 const connectedHandlers = new Set<() => void>();
 const disconnectedHandlers = new Set<() => void>();
@@ -124,7 +124,7 @@ const disconnectedHandlers = new Set<() => void>();
  *  dispatching `resume-request` and mounting the /match/ `mpOnData` listener;
  *  a `resume-accept` arriving in that ~50ms window would otherwise be dropped
  *  and the joiner would hang on the boot screen forever. Latest-wins per
- *  kind is fine — resume-accept/reject are terminal, and pong/snapshot/ply
+ *  kind is fine - resume-accept/reject are terminal, and pong/snapshot/ply
  *  callers are happy to skip stale buffered copies. */
 const inbox = new Map<WireMessage["kind"], WireMessage>();
 /** Per-kind raw buffer used by V2 subscribers (`onRawData`). The lobby's V2
@@ -132,7 +132,7 @@ const inbox = new Map<WireMessage["kind"], WireMessage>();
  *  route mounts and re-subscribes via the wrapper. Anything that arrived in
  *  that window (the first `committed`, a follow-up `snapshot`, …) needs to
  *  survive the gap. We key by the decoded kind so newer-of-same-kind wins,
- *  matching the typed inbox's semantics — committed is a special case (we
+ *  matching the typed inbox's semantics - committed is a special case (we
  *  could miss a ply), but the wrapper detects this via seq gaps and asks for
  *  a snapshot, which the buffer reliably delivers. Cleared on disconnect. */
 const rawInbox = new Map<string, string>();
@@ -173,7 +173,7 @@ const heartbeat = createHeartbeat({
 
 export function pillState(): PillState {
   // Pure read. All anchor writes to `mpState.disconnectedSince` happen at
-  // the source event (onClose/onError, onStatusChange, onTick age-out) —
+  // the source event (onClose/onError, onStatusChange, onTick age-out) -
   // this function must not mutate state, since it's read from inside
   // `$derived` blocks in the UI and Svelte 5 forbids state writes there.
   return derivePillState(mpState.status, mpState.lastPongAt, nowTick);
@@ -222,7 +222,7 @@ export function sendRaw(raw: string): void {
 /** Subscribe to connection-established events. Fires when the transport
  *  actually opens the data channel AND when the pong-age-out recovery path
  *  restores an age-outed session whose WS is still live. Callbacks fire
- *  synchronously — no microtask scheduling — so protocol sequencing is
+ *  synchronously - no microtask scheduling - so protocol sequencing is
  *  deterministic. Disposer removes the callback. */
 export function onConnected(cb: () => void): () => void {
   connectedHandlers.add(cb);
@@ -264,7 +264,7 @@ const transport = createWebSocketTransport({
     mpState.disconnectedSince = null;
     // The transport fires onOpen when the relay says both peers are paired
     // (peer-connected / joined / created envelopes). That is the server's
-    // authoritative pairing signal — trust it as a liveness stamp so the
+    // authoritative pairing signal - trust it as a liveness stamp so the
     // pill renders green immediately instead of sitting yellow for up to
     // 5s waiting for the first heartbeat roundtrip.
     mpState.lastPongAt = Date.now();
@@ -281,7 +281,7 @@ const transport = createWebSocketTransport({
     if (rawDataHandlers.size > 0) {
       for (const h of rawDataHandlers) h(raw);
     } else {
-      // No raw subscriber yet — buffer per V2 kind so the wrapper, mounting
+      // No raw subscriber yet - buffer per V2 kind so the wrapper, mounting
       // after the joiner navigates, still sees session-hello / committed /
       // snapshot that arrived in the gap.
       const v2 = decodeMessageV2(raw);
@@ -298,14 +298,14 @@ const transport = createWebSocketTransport({
       mpState.lastPongAt = Date.now();
       // Pong-age-out recovery: if we flipped `status="disconnected"` from
       // the tick bridge (JS timer throttling / Tauri webview suspension) but
-      // the WS is actually alive — proven by this pong having just arrived —
+      // the WS is actually alive - proven by this pong having just arrived -
       // restore the session in place. Without this the game bricks after any
       // long-enough JS suspension: WS stays open, no `onOpen` re-fires, and
       // `status` is stuck at "disconnected" forever. See PROTOCOL_TRACE.md
       // Part 1 §"pong-age-out bug".
       if (mpState.status === "disconnected" && transport.isActive()) {
         // eslint-disable-next-line no-console
-        console.log("[mp] pong-age-out recovery — WS still open, restoring status");
+        console.log("[mp] pong-age-out recovery - WS still open, restoring status");
         mpState.status = "connected";
         mpState.disconnectedSince = null;
         heartbeat.startPings();
@@ -401,7 +401,7 @@ export function hostWithCode(code: string): Promise<string> {
  *  disconnecting. Preserves `peerEverPaired`, `disconnectedSince`, and any
  *  other latched state across the rebind so GraceBanner stays visible and
  *  the pill keeps showing the code throughout. Used by the lobby's
- *  Rejoin-as-host path — the peer was paired before, so the latch should
+ *  Rejoin-as-host path - the peer was paired before, so the latch should
  *  survive the rebind. */
 export function hostWithCodeKeepState(code: string): Promise<string> {
   destroyPeerKeepState();
@@ -462,7 +462,7 @@ export function disconnect(): void {
  *  the same id), `role`/`peerEverPaired` (so GraceBanner stays visible during
  *  the swap), `disconnectedSince` (so the countdown doesn't reset).
  *
- *  Status falls back to "disconnected" — not "idle" — so the pill renders the
+ *  Status falls back to "disconnected" - not "idle" - so the pill renders the
  *  same red dot throughout the swap. */
 export function destroyPeerKeepState(): void {
   // eslint-disable-next-line no-console
@@ -491,7 +491,7 @@ export function probeHost(code: string, timeoutMs = 2_000): Promise<boolean> {
 }
 
 /** Returns true if multiplayer is supported in this environment.
- *  WebSockets work everywhere — including Linux/webkit2gtk — so this is
+ *  WebSockets work everywhere - including Linux/webkit2gtk - so this is
  *  always true. Kept for API compatibility with existing callers. */
 export function isWebRtcSupported(): boolean {
   return true;

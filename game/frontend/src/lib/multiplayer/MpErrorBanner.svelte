@@ -2,7 +2,7 @@
   // HUD banner that surfaces the most recent multiplayer error
   // (`mpState.lastError`) so the user sees the failure instead of having it
   // buried in a console.warn. Dismiss clears the value so a stale message
-  // doesn't linger forever — the next failure will repopulate it.
+  // doesn't linger forever - the next failure will repopulate it.
   //
   // Anchored top-right by default; routes can override via CSS variable
   // `--mp-error-anchor-top` if they want it lower.

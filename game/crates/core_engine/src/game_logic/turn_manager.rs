@@ -16,7 +16,7 @@ use super::action::Undo;
 ///
 /// 1. Clear combo counters on EVERY piece on the board. Per Stack M rule:
 ///    "combo counter resets at the end of your turn." Originally implemented
-///    as "clear only on the new STM's pieces" (the typical case — combo lives
+///    as "clear only on the new STM's pieces" (the typical case - combo lives
 ///    on enemy pieces from the caster's POV). But self-buff skills like
 ///    Tempest place combo on the caster's OWN pieces, and those would survive
 ///    the turn flip if we only cleared the new STM side, letting the opponent
@@ -29,7 +29,7 @@ use super::action::Undo;
 ///    `income = income_per_turn(round_number)`.
 /// 6. Reset current_phase = Move, actions_remaining = 2 (Move-Phase always
 ///    has 2 actions per Stack M).
-/// 7. Clear moved_this_phase (defence-in-depth — Move→Skill already did).
+/// 7. Clear moved_this_phase (defence-in-depth - Move→Skill already did).
 ///
 /// All previous values are captured in `Undo` so the transition is perfectly
 /// reversible. Zobrist hashing is wired in a later slice.
@@ -40,7 +40,7 @@ pub fn end_turn(pos: &mut Position, undo: &mut Undo) {
     };
 
     // 1. Clear combo counters on EVERY piece (both sides). Stack M says combo
-    //    resets at the end of your turn — and self-buff skills (e.g. Tempest)
+    //    resets at the end of your turn - and self-buff skills (e.g. Tempest)
     //    can place combo on the caster's own pieces, so a one-sided clear
     //    leaves stale combo on the just-acting side's pieces.
     let mut bits = (pos.p1_pieces.0) | (pos.p2_pieces.0);
@@ -59,7 +59,7 @@ pub fn end_turn(pos: &mut Position, undo: &mut Undo) {
         Player::P2 => Player::P1,
     };
 
-    // 2. Turn-scoped state — pending_modifiers is hashed (clear via helper).
+    // 2. Turn-scoped state - pending_modifiers is hashed (clear via helper).
     //    champion_credit / tracked_*_len are NOT hashed (transient) so they
     //    can be cleared by direct write; snapshots already captured in make().
     clear_pending(pos, undo, 0xFF);
@@ -74,7 +74,7 @@ pub fn end_turn(pos: &mut Position, undo: &mut Undo) {
     }
 
     // 4. Disburse start-of-turn income to the new side-to-move.
-    //    Stack M rule: Round 1 has NO income for either player — both sides
+    //    Stack M rule: Round 1 has NO income for either player - both sides
     //    play the opening round on their starting money. Income begins in
     //    Round 2 (each player's turn-start), and follows `income_per_turn`
     //    thereafter. `pos.round_number` here already reflects the round the
@@ -95,7 +95,7 @@ pub fn end_turn(pos: &mut Position, undo: &mut Undo) {
 
 /// Per-turn income for the given round (Stack M).
 ///
-/// Formula: `2 + round_number / 5`. Unbounded — +1 per 5 rounds, no cap.
+/// Formula: `2 + round_number / 5`. Unbounded - +1 per 5 rounds, no cap.
 /// R1–4: 2, R5–9: 3, R10–14: 4, R15–19: 5, R20–24: 6, … and so on without
 /// limit. Saturates at u16::MAX defensively (games will never reach that,
 /// but we don't want to panic on overflow).

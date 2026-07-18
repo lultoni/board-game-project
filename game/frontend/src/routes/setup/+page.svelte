@@ -32,11 +32,11 @@
   // /setup/ is reached two ways:
   //  1. Local-play entry from the main menu (no MP state should be live).
   //  2. Host-side handoff from the lobby once a joiner connects (MP state IS
-  //     live — `mpState.status === "connected"` + multiplayerRole === "host").
+  //     live - `mpState.status === "connected"` + multiplayerRole === "host").
   //
   // We can't key the multiplayer UI off `match.mode` because, post-L7c, the
   // lobby Back link (a plain href, not the cancel button) leaves `match.mode`
-  // and `multiplayerRole` set without a live relay connection — and the
+  // and `multiplayerRole` set without a live relay connection - and the
   // /draft/ route then boots in MP mode and reports "disconnected".
   //
   // Treat the live `mpState.status` as the source of truth: if there's no
@@ -109,7 +109,7 @@
     mpRawUnsub?.();
     mpRawUnsub = null;
     // /setup/ never finalises telemetry (no game has been played). The
-    // decision is just "did we hand off forward?" — if not, keep state so
+    // decision is just "did we hand off forward?" - if not, keep state so
     // the peer can rejoin.
     tearDownMultiplayerOnLeave({
       navigatingForward,
@@ -125,13 +125,13 @@
   let p1: SeatKind = $state(match.side.p1);
   let p2: SeatKind = $state(match.side.p2);
 
-  // L8/Task 8 — draft mode + per-side loadout selection. Custom is the
+  // L8/Task 8 - draft mode + per-side loadout selection. Custom is the
   // default; pre-made picks one of the three curated loadouts (or a saved
   // custom loadout, local play only).
   //
   // For local play, P1 and P2 can independently pick any pre-made or any
   // saved custom loadout. For multiplayer, the picker is a single shared
-  // control that only offers pre-mades — both sides get the same ref. The
+  // control that only offers pre-mades - both sides get the same ref. The
   // fairness story for MP custom loadouts hasn't been designed yet
   // (deferred question), so custom picks are disallowed in MP.
   let draftMode: DraftMode = $state(match.draftMode);
@@ -183,7 +183,7 @@
       const { invoke } = await import("@tauri-apps/api/core");
       raters = await invoke<RaterListing[]>("list_available_raters", { runDir: null });
     } catch {
-      raters = []; // no trainer / no raters yet — picker shows Heuristic only.
+      raters = []; // no trainer / no raters yet - picker shows Heuristic only.
     }
   });
   const champion = $derived(raters.find((r) => r.isChampion) ?? null);
@@ -260,7 +260,7 @@
       match.sideLoadouts = null;
     }
     // MP host coordinates navigation with the joiner via `game-config`. The
-    // matchId slot here is a nav-only placeholder — the real authoritative
+    // matchId slot here is a nav-only placeholder - the real authoritative
     // matchId is anchored later by the wrapper's `session-hello` from
     // /draft/ or /match/. We reuse the mp code so the decoder's non-empty
     // check passes without pretending an IDB row exists.
@@ -274,7 +274,7 @@
       mpSendRaw(encodeMessageV2(msg));
     }
     if (draftMode === "preMade") {
-      // Skip the /draft/ route entirely — /match/ reads sideLoadouts and
+      // Skip the /draft/ route entirely - /match/ reads sideLoadouts and
       // builds the engine with both sides preloaded.
       navigatingForward = true;
       await goto("../match/");
@@ -518,7 +518,7 @@
                   </label>
                 {/each}
                 {#if savedLoadouts.length > 0}
-                  <div class="divider">— {t("loadouts.listHeading")} —</div>
+                  <div class="divider">- {t("loadouts.listHeading")} -</div>
                   {#each savedLoadouts as row (row.id)}
                     {@const isChecked = currentRef.kind === "custom" && currentRef.id === row.id}
                     <label>

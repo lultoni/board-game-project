@@ -2,20 +2,20 @@
 //
 // Two on-the-wire forms:
 //
-//  1. **Share code** — short, quick to copy/paste. Format:
+//  1. **Share code** - short, quick to copy/paste. Format:
 //     `L1:<base64url>` where the body is:
 //        6 bytes of packed skill IDs  (12 × 4 bits, MSB-first, piece order
-//                                      matches SideLoadout — King @ 0, then
+//                                      matches SideLoadout - King @ 0, then
 //                                      5 Champions; slot 1 nibble before
 //                                      slot 2 within each piece)
 //        1 byte name length N         (UTF-8 byte length; hard cap 63)
 //        N bytes of UTF-8 name
 //
 //     `L1:` is the version prefix. Future breaking changes bump to `L2:` etc.
-//     Skill IDs must fit in 4 bits, i.e. 0..15 — the current SKILL_COUNT is
+//     Skill IDs must fit in 4 bits, i.e. 0..15 - the current SKILL_COUNT is
 //     15 so slot value 0 (empty) plus 1..15 is exactly the representable set.
 //
-//  2. **JSON** — archival form. Plain `{ name, loadout }` object. `id` and
+//  2. **JSON** - archival form. Plain `{ name, loadout }` object. `id` and
 //     `createdAt` are minted fresh on import so re-importing an old export
 //     never collides with an existing row's ID.
 //
@@ -34,7 +34,7 @@ type CodecResult = OkPayload | { error: string };
 
 /** Encode a loadout + name into a `L1:<base64url>` share string. Throws on
  *  invalid input (skill out of range 0..15, name too long). Encoding is
- *  deterministic — same input always produces the same string. */
+ *  deterministic - same input always produces the same string. */
 export function encodeShareCode(loadout: SideLoadout, name: string): string {
   const nameBytes = new TextEncoder().encode(name);
   if (nameBytes.length > MAX_NAME_BYTES) {

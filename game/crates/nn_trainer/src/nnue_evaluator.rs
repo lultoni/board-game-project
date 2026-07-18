@@ -1,17 +1,17 @@
-//! `NnueEvaluator` — the search-time `Evaluator` backed by the quantized NNUE
+//! `NnueEvaluator` - the search-time `Evaluator` backed by the quantized NNUE
 //! net (integer forward over an accumulator).
 //!
 //! Two paths, both proven bit-identical (the `accumulator` golden test pins
 //! `apply == refresh`):
-//! - **`evaluate(pos)` — refresh-per-call.** A pure function of `pos`: rebuild
+//! - **`evaluate(pos)` - refresh-per-call.** A pure function of `pos`: rebuild
 //!   the accumulator, run the integer forward. Used at the root and as the
 //!   scratch-path fallback / correctness oracle.
-//! - **`*_acc` seam — incremental (ns-50 Phase-1 wiring).** The search owns an
+//! - **`*_acc` seam - incremental (ns-50 Phase-1 wiring).** The search owns an
 //!   `AccHandle` stack, `fresh_acc`s the root, `push_acc`s it forward on each
 //!   `make`, reads it at leaves via `eval_acc`, and save/restores on `unmake`.
 //!   This is the in-search path the plan's §4.6 speed gate measures.
 //!
-//! Additive — `NnEvaluator` (the dense burn evaluator) stays untouched.
+//! Additive - `NnEvaluator` (the dense burn evaluator) stays untouched.
 
 use core_engine::search::evaluator::{AccHandle, EvalBreakdown, Evaluator, MATE_SCORE};
 use core_engine::state::position::GameResult;
@@ -45,7 +45,7 @@ impl NnueEvaluator {
     /// `forward_int` yields centipawns). Used by the in-game AI load path for
     /// raters whose `model_config.input_dim == NUM_FEATURES` (the dense
     /// `NnEvaluator::load_from_stem` would mismatch on those). The sidecar's
-    /// `eval_scale` is not used — the quantized integer forward already emits
+    /// `eval_scale` is not used - the quantized integer forward already emits
     /// centipawns directly via `LABEL_DIVISOR`.
     pub fn load_from_stem(
         stem: &std::path::Path,
@@ -96,7 +96,7 @@ impl Evaluator for NnueEvaluator {
     //
     // The `AccHandle` boxes a concrete `Accumulator`. Downcasts here are
     // infallible (this evaluator built the box), but every path falls back to
-    // the refresh scratch path on `None`/mismatch — never `unwrap()` — so a
+    // the refresh scratch path on `None`/mismatch - never `unwrap()` - so a
     // mis-wired search can only be slower, never wrong.
 
     #[inline]
@@ -204,11 +204,11 @@ mod tests {
         assert_eq!(eval.evaluate(&pos), expected);
     }
 
-    /// Milestone speed diagnostic: measure per-node inference cost three ways —
+    /// Milestone speed diagnostic: measure per-node inference cost three ways -
     /// hand-crafted `evaluate`, NNUE refresh-per-call (Phase-0 conservative
     /// bound), and NNUE incremental `apply` (the Phase-1 in-search path). Prints
     /// the ratios so the milestone verdict is grounded in a measurement, not an
-    /// estimate. `#[ignore]` — timing noise makes it a diagnostic, not a gate;
+    /// estimate. `#[ignore]` - timing noise makes it a diagnostic, not a gate;
     /// the real gate is the search-sweep NPS ratio.
     #[test]
     #[ignore = "timing diagnostic; run explicitly with --nocapture"]
@@ -244,7 +244,7 @@ mod tests {
         for _ in 0..N { sink += net.forward_int(&Accumulator::refresh(&pos, ft)) as i64; }
         let refresh_ns = t0.elapsed().as_nanos() as f64 / N as f64;
 
-        // 3) NNUE incremental inference cost: apply(undo) + forward_int — the
+        // 3) NNUE incremental inference cost: apply(undo) + forward_int - the
         // eval work the search adds per node on top of make/unmake (which every
         // evaluator pays equally, so it's excluded here). Pre-make once; time
         // clone+apply+forward against the fixed undo.
@@ -312,7 +312,7 @@ mod tests {
     /// (seam-on `NnueEvaluator`) must return BIT-IDENTICAL `SearchResult`
     /// { best, score, nodes } to the refresh-per-call path, across positions ×
     /// depths. `nodes` equality is the strongest signal that ordering / TT /
-    /// pruning are untouched — the whole point is "wiring must not change
+    /// pruning are untouched - the whole point is "wiring must not change
     /// outputs." Also asserts determinism (seam-on twice agrees).
     #[test]
     fn search_incremental_matches_refresh_per_call() {
@@ -322,7 +322,7 @@ mod tests {
         let device = Default::default();
         let model: Mlp<InferenceBackend> =
             MlpConfig::new().with_input_dim(NUM_FEATURES).init(&device);
-        // Same weights on both paths — quantize once, share via clone_from.
+        // Same weights on both paths - quantize once, share via clone_from.
         let seam = NnueEvaluator::from_mlp(&model, QuantScales::default());
         let refresh = RefreshOnlyNnue(NnueEvaluator::from_mlp(&model, QuantScales::default()));
 

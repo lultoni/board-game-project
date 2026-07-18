@@ -3,7 +3,7 @@
 // These mirror the serde shapes produced by the Tauri commands in
 // game/crates/tauri_wrapper/src/lib.rs (which in turn mirror the structs in
 // game/crates/nn_trainer/src/). When the Rust side changes, keep these in
-// sync — serde uses snake_case here (the snapshot/live/matrix structs use
+// sync - serde uses snake_case here (the snapshot/live/matrix structs use
 // the default rename, not camelCase like the engine wrappers).
 
 export type TrainingPhase = "idle" | "training" | "gauntlet" | "bookkeeping";

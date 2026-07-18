@@ -66,7 +66,7 @@
   let aiContinuous = $state(false);
   let aiCancelRequested = false;
 
-  // PlyRenderer drives Board/EffectsLayer for this route. Stage 6a — replaces
+  // PlyRenderer drives Board/EffectsLayer for this route. Stage 6a - replaces
   // the prior inline pieceIds bookkeeping + manual restoreFromSnapshot path.
   // `sfxEnabled: false` because inspector is an analysis tool, not a player
   // surface (matches replay's convention).
@@ -88,7 +88,7 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Engine sync — whenever currentId changes we restore the engine to that node.
+  // Engine sync - whenever currentId changes we restore the engine to that node.
   // ---------------------------------------------------------------------------
 
   let lastSyncedNodeId: string | null = null;
@@ -110,7 +110,7 @@
     approachContext = null;
     try {
       const eng = await getEngine();
-      // Root snapshot for this tree — actions=[], config from configJson.
+      // Root snapshot for this tree - actions=[], config from configJson.
       // The renderer's fastForwardTo restores from here and replays
       // node.actions silently (with checkpoint caching from Stage 6c), then
       // runs the full effect pipeline for the landing ply.
@@ -171,7 +171,7 @@
     busy = true;
     bootError = null;
     try {
-      // Bundle envelopes are not engine MatchLogs — unwrap first if present,
+      // Bundle envelopes are not engine MatchLogs - unwrap first if present,
       // then validate the inner log via the shared trust gate. The bundle
       // shape itself is structurally trivial (schema string + logs array);
       // the size cap on the outer JSON is enforced by the inner validator
@@ -196,7 +196,7 @@
           throw new Error("bundle contained no matches");
         }
         if (log.logs.length > 1) {
-          bootError = `bundle contains ${log.logs.length} matches — loading the first; export individually to inspect others.`;
+          bootError = `bundle contains ${log.logs.length} matches - loading the first; export individually to inspect others.`;
         }
         log = log.logs[0];
         logJson = JSON.stringify(log);
@@ -216,7 +216,7 @@
         throw e;
       }
       if (typeof log.start_fen !== "string") {
-        throw new Error("not a MatchLog — expected start_fen at root (or a bundle envelope with logs[].start_fen)");
+        throw new Error("not a MatchLog - expected start_fen at root (or a bundle envelope with logs[].start_fen)");
       }
       const startFen: string = log.start_fen;
       let configObj = log.config;
@@ -353,7 +353,7 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Action application — branches if the chosen action differs from the
+  // Action application - branches if the chosen action differs from the
   // existing child; otherwise just selects the existing child.
   // ---------------------------------------------------------------------------
 
@@ -464,7 +464,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Ask AI — single-shot, or continuous loop until cancelled.
+  // Ask AI - single-shot, or continuous loop until cancelled.
   // ---------------------------------------------------------------------------
 
   async function askAiOnce(): Promise<void> {
@@ -582,7 +582,7 @@
       status = "tree JSON copied";
     } catch {
       pasteTree = s;
-      status = "clipboard blocked — copy from textarea below";
+      status = "clipboard blocked - copy from textarea below";
     }
   }
 
@@ -616,7 +616,7 @@
       const d = decodeAction(raw);
       let key: string;
       if (d.kind === ActionKind.EndPhase || d.kind === ActionKind.EndTurn) {
-        key = "—";
+        key = "-";
       } else {
         key = formatSquare(d.src);
       }
@@ -624,12 +624,12 @@
       if (!out.has(key)) out.set(key, []);
       out.get(key)!.push(row);
     }
-    // Sort keys: "—" (end actions) first, then by square.
+    // Sort keys: "-" (end actions) first, then by square.
     return new Map(
       [...out.entries()].sort(([a], [b]) => {
         if (a === b) return 0;
-        if (a === "—") return -1;
-        if (b === "—") return 1;
+        if (a === "-") return -1;
+        if (b === "-") return 1;
         return a.localeCompare(b);
       }),
     );
@@ -665,7 +665,7 @@
     const node = currentNode;
     if (!node) return;
     try {
-      // Prefer the node's cached FEN — engine sync may lag behind selection.
+      // Prefer the node's cached FEN - engine sync may lag behind selection.
       const fen = node.fen ?? await (await getEngine()).positionFen();
       await navigator.clipboard.writeText(fen);
       fenCopyState = "copied";
@@ -732,7 +732,7 @@
 
         <div class="card">
           <h3>Fresh draft</h3>
-          <p>Pick seats &amp; loadouts as if starting a new game — then inspect.</p>
+          <p>Pick seats &amp; loadouts as if starting a new game - then inspect.</p>
           <button class="primary" type="button" onclick={() => goto("../setup/")}>Open setup →</button>
         </div>
       </div>
@@ -813,7 +813,7 @@
         {#if !inMovePhase}
           <section class="picker">
             <h3>Legal actions</h3>
-            <p class="muted">All legal actions at this node — click any to apply it.</p>
+            <p class="muted">All legal actions at this node - click any to apply it.</p>
             {#if groupedActions.size === 0}
               <p class="muted">No legal actions. Game may be over.</p>
             {:else}
@@ -841,7 +841,7 @@
           </section>
         {:else}
           <section class="picker">
-            <h3>Legal actions <small class="muted">— or click the board</small></h3>
+            <h3>Legal actions <small class="muted">- or click the board</small></h3>
             {#if groupedActions.size === 0}
               <p class="muted">No legal actions.</p>
             {:else}

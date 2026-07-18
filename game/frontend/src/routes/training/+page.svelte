@@ -150,8 +150,8 @@
     if (phase === "training") {
       const gen = generation ?? "?";
       const pop = populationCount > 0
-        ? ` — ${populationCount} candidates ready`
-        : " — no candidates yet";
+        ? ` - ${populationCount} candidates ready`
+        : " - no candidates yet";
       return `Training generation ${gen}${pop}`;
     }
     if (phase === "gauntlet") {
@@ -159,18 +159,18 @@
       const r = round ?? "?";
       if (activeMatch) {
         const a = activeMatch;
-        return `Gauntlet gen ${gen}, round ${r} — ${a.challenger} vs ${a.defender} (${a.bracket}, game ${a.game_index + 1}/${a.games_total})`;
+        return `Gauntlet gen ${gen}, round ${r} - ${a.challenger} vs ${a.defender} (${a.bracket}, game ${a.game_index + 1}/${a.games_total})`;
       }
-      return `Gauntlet gen ${gen}, round ${r} — preparing next match`;
+      return `Gauntlet gen ${gen}, round ${r} - preparing next match`;
     }
     if (phase === "bookkeeping") {
-      return `Bookkeeping generation ${generation ?? "?"} — saving accepted raters`;
+      return `Bookkeeping generation ${generation ?? "?"} - saving accepted raters`;
     }
     return null;
   });
 
   function fmtEta(s: number | null | undefined): string {
-    if (s === null || s === undefined || !Number.isFinite(s)) return "—";
+    if (s === null || s === undefined || !Number.isFinite(s)) return "-";
     const total = Math.max(0, Math.round(s));
     const h = Math.floor(total / 3600);
     const m = Math.floor((total % 3600) / 60);
@@ -272,9 +272,9 @@
       <span class="divider" aria-hidden="true">·</span>
       <span class="stat-group">
         <span class="lbl">Gen</span>
-        <span class="val">{generation ?? "—"}</span>
+        <span class="val">{generation ?? "-"}</span>
         <span class="lbl">Round</span>
-        <span class="val">{round ?? "—"}</span>
+        <span class="val">{round ?? "-"}</span>
         <span class="lbl">ETA</span>
         <span class="val">{fmtEta(etaSeconds)}</span>
       </span>

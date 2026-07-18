@@ -1,4 +1,4 @@
-//! Zobrist hashing — incremental u64 fingerprint of a Position.
+//! Zobrist hashing - incremental u64 fingerprint of a Position.
 //!
 //! `pos.zobrist` is XOR-updated on every state change so transposition-table
 //! lookups and equality short-circuits stay O(1). Slice 7 wires it in.
@@ -14,7 +14,7 @@
 //! - **Occupancy keys separately from mailbox keys.** Mailbox keys alone
 //!   can't tell apart "empty square" states from each other (they're all
 //!   `MailboxEntry(0)`). `OCC_KEYS[sq][player][kind]` is XOR'd whenever a
-//!   piece appears or disappears at `sq` — it pairs naturally with the
+//!   piece appears or disappears at `sq` - it pairs naturally with the
 //!   bitboard flips in `make_unmake.rs`.
 //!
 //! - **Bucketed keys for unbounded scalars.** `round_number`, `p1_money`,
@@ -34,7 +34,7 @@
 use super::{MailboxEntry, Position};
 use super::position::{GameResult, Phase, PendingBodyguard, Player, modifier_bits};
 
-/// SplitMix64 — a tiny, high-quality 64-bit PRNG suitable for filling
+/// SplitMix64 - a tiny, high-quality 64-bit PRNG suitable for filling
 /// deterministic key tables at compile time. See Vigna 2014.
 #[inline]
 const fn splitmix64(state: &mut u64) -> u64 {
@@ -75,7 +75,7 @@ struct Tables {
     money_p1:  [u64; 1024],         // p1_money mod 1024
     money_p2:  [u64; 1024],
     game_result: [u64; 2],          // [P1Wins, P2Wins]; None contributes 0
-    // === Appended after existing tables — preserves all prior key indices. ===
+    // === Appended after existing tables - preserves all prior key indices. ===
     // These keys are XOR'd only when `Position::pending_bodyguard` is `Some`.
     // Index assignment from `splitmix64` is order-sensitive: any new keys
     // MUST be appended at the END of `make_tables()` so existing key values
@@ -112,7 +112,7 @@ const fn make_tables() -> Tables {
     };
 
     // hp: index 0 contributes 0 so an empty/zero-HP slot adds nothing.
-    // Same convention for armor/combo/skill1/skill2 — keeps `full_recompute`
+    // Same convention for armor/combo/skill1/skill2 - keeps `full_recompute`
     // simple and matches the property-default-is-zero semantics.
     let mut sq = 0usize;
     while sq < 64 {
@@ -154,7 +154,7 @@ const fn make_tables() -> Tables {
     let mut i = 1; while i <  1024 { t.money_p2[i] = splitmix64(&mut s); i += 1; }
     let mut i = 0; while i <  2   { t.game_result[i] = splitmix64(&mut s); i += 1; }
 
-    // === Appended pending-bodyguard keys — preserves prior key indices. ===
+    // === Appended pending-bodyguard keys - preserves prior key indices. ===
     t.pending_bg_active = splitmix64(&mut s);
     let mut tgt = 0usize;
     while tgt < 64 {
@@ -172,7 +172,7 @@ const fn make_tables() -> Tables {
 static T: Tables = make_tables();
 
 // -----------------------------------------------------------------------
-// Piece-kind index used by occupancy keys. Local to this module — the
+// Piece-kind index used by occupancy keys. Local to this module - the
 // production code uses bitboard layers directly; only the zobrist layer
 // needs to enumerate kinds.
 // -----------------------------------------------------------------------
@@ -204,7 +204,7 @@ pub fn mailbox_xor(sq: u8, prev: MailboxEntry, new: MailboxEntry) -> u64 {
 #[inline] pub fn side_key()  -> u64 { T.side_to_move }
 /// Per-phase key contribution. Move contributes 0 (canonical baseline);
 /// Skill and Draft each carry their own independent random key. `set_phase`
-/// XORs out the prev key and in the new key — the helper handles that.
+/// XORs out the prev key and in the new key - the helper handles that.
 #[inline]
 pub fn phase_key_for(phase: Phase) -> u64 {
     match phase {
@@ -277,7 +277,7 @@ pub fn game_result_key(r: Option<GameResult>) -> u64 {
 }
 
 /// XOR contribution of `Position::pending_bodyguard`. `None` is the canonical
-/// baseline (contributes 0) — so the bulk of positions, where no Move-Attack
+/// baseline (contributes 0) - so the bulk of positions, where no Move-Attack
 /// is mid-resolution, hash exactly as they did before this key was added.
 /// `Some` XORs the active key together with the per-(target, attacker_now)
 /// payload key. The eligible-guard list is deterministic given those two
@@ -323,7 +323,7 @@ pub fn full_recompute(pos: &Position) -> u64 {
         h ^= piece_key(sq, player, kind);
     }
 
-    // moved_this_phase — only meaningful in Move Phase, but hash always.
+    // moved_this_phase - only meaningful in Move Phase, but hash always.
     let mut bits = pos.moved_this_phase.0;
     while bits != 0 {
         let sq = bits.trailing_zeros() as u8;
@@ -378,7 +378,7 @@ mod tests {
         let b = a.with_hp(1).with_combo(2);
         let fwd = mailbox_xor(5, a, b);
         let rev = mailbox_xor(5, b, a);
-        assert_eq!(fwd, rev, "mailbox_xor is symmetric — XOR'ing the delta twice cancels");
+        assert_eq!(fwd, rev, "mailbox_xor is symmetric - XOR'ing the delta twice cancels");
     }
 
     #[test]
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     fn pending_bg_active_distinct_from_existing_keys() {
         // Sanity check that the appended splitmix draws don't accidentally
-        // collide with any prior key — probability ~2⁻⁶⁴, but cheap insurance
+        // collide with any prior key - probability ~2⁻⁶⁴, but cheap insurance
         // against an off-by-one in the splitmix call sequence.
         assert_ne!(T.pending_bg_active, 0);
         assert_ne!(T.pending_bg_active, T.side_to_move);

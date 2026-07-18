@@ -1,4 +1,4 @@
-// Skill registry — mirrors `core_engine/src/game_logic/skills.rs`.
+// Skill registry - mirrors `core_engine/src/game_logic/skills.rs`.
 // Static metadata only; live legality comes from the engine's legal_actions.
 
 export type SkillCategory = "strike" | "shield" | "move" | "mystic";
@@ -55,14 +55,14 @@ export const GAME_ONGOING = 0;
 export const GAME_P1_WINS = 1;
 export const GAME_P2_WINS = 2;
 
-// Skill category colors — drives glyph tint on pieces, wheel slices, range
+// Skill category colors - drives glyph tint on pieces, wheel slices, range
 // overlays, and info-card accents. White outline + this fill = the canonical
 // paper-aesthetic render.
 export const CATEGORY_COLOR: Record<SkillCategory, string> = {
-  strike: "#cc3a2a", // red — kill / damage
-  shield: "#3a7acc", // blue — protection
-  move:   "#3aaa55", // green — repositioning
-  mystic: "#8a4abd", // purple — buffs / charge
+  strike: "#cc3a2a", // red - kill / damage
+  shield: "#3a7acc", // blue - protection
+  move:   "#3aaa55", // green - repositioning
+  mystic: "#8a4abd", // purple - buffs / charge
 };
 
 /** Color for a skill's glyph (by id). Returns paper-cream for id 0. */
@@ -72,7 +72,7 @@ export function skillColor(id: number): string {
   return CATEGORY_COLOR[info.category];
 }
 
-/** Self-cast skills don't need a target tile click — clicking the slice
+/** Self-cast skills don't need a target tile click - clicking the slice
  *  fires immediately. */
 export function isSelfCast(id: number): boolean {
   const info = SKILLS[id];

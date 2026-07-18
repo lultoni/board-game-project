@@ -1,4 +1,4 @@
-// Inspector store — tree-of-positions model for the /inspector/ route.
+// Inspector store - tree-of-positions model for the /inspector/ route.
 //
 // Each node is identified by `id` and carries the cumulative `actions[]` from
 // `startFen`. Branching = appending a child whose `actions = [...parent.actions, edge]`.
@@ -35,7 +35,7 @@ export interface InspectorTree {
 
 interface InspectorState {
   tree: InspectorTree | null;
-  /** Live position for the currently-selected node — set by the route after
+  /** Live position for the currently-selected node - set by the route after
    *  the engine resyncs. Drives the board render. */
   position: PositionView | null;
   /** Latest legal actions for the current node, for the action picker. */
@@ -187,7 +187,7 @@ export function buildSnapshotForNode(
   // We piggyback off the configJson captured at tree-build time.
   if (!tree || typeof tree.configJson !== "string") {
     if (typeof fallbackConfigJson !== "string") {
-      throw new Error("inspector: tree has no configJson — was it loaded correctly?");
+      throw new Error("inspector: tree has no configJson - was it loaded correctly?");
     }
     tree.configJson = fallbackConfigJson;
   }

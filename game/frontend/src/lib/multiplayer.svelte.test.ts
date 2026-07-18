@@ -19,7 +19,7 @@ import {
   joinKeepState,
 } from "./multiplayer.svelte";
 
-describe("multiplayer joiner state — hard reset path", () => {
+describe("multiplayer joiner state - hard reset path", () => {
   beforeEach(() => {
     disconnect();
   });
@@ -48,7 +48,7 @@ describe("multiplayer joiner state — hard reset path", () => {
     const joinPromise = join("123456");
     joinPromise.catch(() => { /* no WebSocket in test env; expected */ });
 
-    // Synchronous slice — the pre-join reset happens inside join() before
+    // Synchronous slice - the pre-join reset happens inside join() before
     // the WebSocket is created.
     expect(mpState.disconnectedSince).toBeNull();
     expect(mpState.peerEverPaired).toBe(false);
@@ -58,8 +58,8 @@ describe("multiplayer joiner state — hard reset path", () => {
   });
 });
 
-// The soft-reconnect helper isn't exported, but its core teardown primitive —
-// `destroyPeerKeepState` — is. Asserting its behaviour directly is sufficient
+// The soft-reconnect helper isn't exported, but its core teardown primitive -
+// `destroyPeerKeepState` - is. Asserting its behaviour directly is sufficient
 // to lock in the GraceBanner-preservation invariant: after this runs, all the
 // fields the banner reads survive.
 describe("multiplayer soft teardown (used by auto-redial)", () => {
@@ -87,7 +87,7 @@ describe("multiplayer soft teardown (used by auto-redial)", () => {
     expect(mpState.lastPongAt).toBeNull();
   });
 
-  it("destroyPeerKeepState is idempotent — second call doesn't clobber preserved fields", () => {
+  it("destroyPeerKeepState is idempotent - second call doesn't clobber preserved fields", () => {
     mpState.role = "joiner";
     mpState.code = "424242";
     mpState.peerEverPaired = true;
@@ -146,18 +146,18 @@ describe("multiplayer rejoin (keep-state variants)", () => {
   // The transport's auto-redial ladder is now symmetric across roles: a host
   // whose WS drops re-binds via `bindJoiner`, and the relay + onPromotedToHost
   // path restores the host role. There isn't a WebSocket harness in this test
-  // suite yet, so we can't drive a full close/rebind cycle here — but the
+  // suite yet, so we can't drive a full close/rebind cycle here - but the
   // wrapper's public shape guarantees the entry point exists for both roles:
   // hostWithCodeKeepState and joinKeepState both call the same transport path.
   it("hostWithCodeKeepState and joinKeepState both leave role writable for the transport's onPromotedToHost callback", () => {
-    // Start as host; call joinKeepState — role should flip to joiner (matches
+    // Start as host; call joinKeepState - role should flip to joiner (matches
     // what the relay does when a session promotion happens the other way).
     mpState.role = "host";
     const p1 = joinKeepState("424242");
     p1.catch(() => { /* expected */ });
     expect(mpState.role).toBe("joiner");
 
-    // Start as joiner; call hostWithCodeKeepState — role should flip to host.
+    // Start as joiner; call hostWithCodeKeepState - role should flip to host.
     mpState.role = "joiner";
     const p2 = hostWithCodeKeepState("424242");
     p2.catch(() => { /* expected */ });

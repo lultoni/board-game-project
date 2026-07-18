@@ -195,10 +195,10 @@ describe("telemetry-session helpers", () => {
     expect(extractPlyNo("not json")).toBeNull();
   });
 
-  it("disabled-for-session latch is per-instance — second factory call ignores the first's failures", async () => {
+  it("disabled-for-session latch is per-instance - second factory call ignores the first's failures", async () => {
     // Simulate startMatch failing on instance A by swapping the store with
     // one that rejects. The disabled latch on A flips. Instance B, created
-    // afterwards, must NOT see the latch — it should still attempt the write.
+    // afterwards, must NOT see the latch - it should still attempt the write.
     const failingStore: Partial<IdbTelemetryStore> = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       startMatch: () => Promise.reject(new Error("boom")) as any,
@@ -208,7 +208,7 @@ describe("telemetry-session helpers", () => {
     const a = createTelemetrySession();
     const carrierA = newCarrier();
     expect(await a.startTelemetrySession(carrierA, "hvai")).toBeNull();
-    // Latch on A is now hot — any subsequent recordPly/etc. would be no-op
+    // Latch on A is now hot - any subsequent recordPly/etc. would be no-op
     // even if we restored a working store. Confirm by restoring the working
     // store and verifying B (new instance) succeeds while A stays muted.
     _setTelemetryStoreForTest(store);
@@ -219,7 +219,7 @@ describe("telemetry-session helpers", () => {
     expect(idB).not.toBeNull();
     expect(carrierB.telemetryMatchId).toBe(idB);
 
-    // A is still disabled — startTelemetrySession would clear the latch, but
+    // A is still disabled - startTelemetrySession would clear the latch, but
     // we only call recordPly here to prove the latch was set, not that it
     // can never be cleared.
     const eng = stubEngine({ plies: [JSON.stringify({ ply_no: 1 })], finaliseCalled: 0 });

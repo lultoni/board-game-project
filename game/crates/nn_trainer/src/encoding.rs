@@ -1,6 +1,6 @@
 //! Position → input-tensor encoding for the NN position rater.
 //!
-//! The encoder is **P1-POV** by convention — same sign as
+//! The encoder is **P1-POV** by convention - same sign as
 //! `core_engine::search::evaluator::evaluate()`. The NN trains on positions
 //! framed as "what's P1's expected outcome here," so we never mirror or
 //! re-orient the board. P2-to-move positions get their P2/P1 features
@@ -34,18 +34,18 @@
 //! ## NOT encoded (yet)
 //!
 //! Skipped intentionally for v1:
-//! - `pending_modifiers` (Focus / Charge flags) — small, encoded later if
+//! - `pending_modifiers` (Focus / Charge flags) - small, encoded later if
 //!   the rater plateaus.
-//! - `tracked_enemies` / `tracked_casters` — multi-Champion combo bookkeeping;
+//! - `tracked_enemies` / `tracked_casters` - multi-Champion combo bookkeeping;
 //!   the combo *counter* on the target square already carries the load.
-//! - `pending_bodyguard` — extremely transient mid-stack state. The rater
+//! - `pending_bodyguard` - extremely transient mid-stack state. The rater
 //!   never sees these positions in self-play (the search resolves them
 //!   before yielding to eval).
-//! - `moved_this_phase` — derivable from history; for a static-eval input
+//! - `moved_this_phase` - derivable from history; for a static-eval input
 //!   this is borderline cheating and biases the rater toward the current
 //!   search's blind spots.
-//! - `champion_credit` — endgame accounting; defer to v2.
-//! - `game_result` — terminal positions bypass the NN entirely
+//! - `champion_credit` - endgame accounting; defer to v2.
+//! - `game_result` - terminal positions bypass the NN entirely
 //!   (`HeuristicEvaluator`'s ±MATE_SCORE branch fires first).
 //!
 //! Adding any of these is a backwards-compatible widening of `INPUT_DIM`
@@ -54,7 +54,7 @@
 use core_engine::state::Position;
 use core_engine::state::position::{Phase, Player};
 
-/// Per-square feature width — keep in sync with the writer below.
+/// Per-square feature width - keep in sync with the writer below.
 pub const PER_SQUARE_DIM: usize = 2 + 3 + 3 + 3 + 16 + 16 + 1;
 
 /// 64 squares × PER_SQUARE_DIM = 2816.
@@ -95,7 +95,7 @@ pub fn encode_position(pos: &Position) -> Vec<f32> {
 
         let m = pos.mailbox[sq as usize];
 
-        // HP one-hot 0..=2 — clamp defensively (Stack M caps at 2).
+        // HP one-hot 0..=2 - clamp defensively (Stack M caps at 2).
         let hp = m.hp().min(2) as usize;
         out[base + off + hp] = 1.0;
         off += 3;
@@ -118,7 +118,7 @@ pub fn encode_position(pos: &Position) -> Vec<f32> {
         // Combo scalar, normalised. Clamp 5+ to 5 then /4 → values in [0, 1.25].
         let combo = m.combo().min(5) as f32 / 4.0;
         out[base + off] = combo;
-        // off += 1;  // (unused — last in block)
+        // off += 1;  // (unused - last in block)
     }
 
     // --- Global block ------------------------------------------------------
@@ -176,7 +176,7 @@ mod tests {
     fn setup_stack_m_is_mirror_symmetric_in_board_block() {
         // Stack M setup is mirror-symmetric: P1 features should equal P2
         // features when swapped across the board. We check it's not the
-        // all-zero case (which would also be symmetric — and wrong).
+        // all-zero case (which would also be symmetric - and wrong).
         let pos = Position::setup_stack_m();
         let v = encode_position(&pos);
         let board: &[f32] = &v[..BOARD_BLOCK_DIM];

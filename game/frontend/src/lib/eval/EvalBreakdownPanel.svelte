@@ -49,7 +49,7 @@
       // E9 renders as a differential-only row: whichever side has higher raw
       // reach shows the weighted advantage, the other shows 0. The eval term
       // itself is `(p1 - p2) * WEIGHT` so per-side magnitudes aren't
-      // meaningful in isolation — showing both sides at raw*WEIGHT was
+      // meaningful in isolation - showing both sides at raw*WEIGHT was
       // misleading (implied additive contribution). Reach flag has no
       // per-side "score", only a differential.
       { label: "Off reach", p1: Math.max(0, (cur.offensive_range_p1 - cur.offensive_range_p2)) * REACH_WEIGHT,

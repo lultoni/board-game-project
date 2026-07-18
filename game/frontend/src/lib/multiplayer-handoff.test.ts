@@ -99,7 +99,7 @@ describe("takeoverAsHost", () => {
     );
 
     expect(r.ok).toBe(true);
-    // No fresh mint / checkpoint — the existing row is reused.
+    // No fresh mint / checkpoint - the existing row is reused.
     expect(log.events).toEqual([
       "destroyPeer",
       "updateRole:existing-joiner-row:host",
@@ -202,7 +202,7 @@ describe("takeoverAsHost", () => {
 
     expect(r.ok).toBe(false);
     expect((r as { reason?: string }).reason).toBe("rehost-failed");
-    // Promotion DID happen — mpState is host now, wrapper was flipped.
+    // Promotion DID happen - mpState is host now, wrapper was flipped.
     // The user must navigate to lobby or click again to recover.
     expect(mpEngine.promoteCalls).toEqual([{ matchId: "row-1" }]);
     expect(mpState.role).toBe("host");

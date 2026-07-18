@@ -7,7 +7,7 @@
 //!
 //! Granularity is per-generation, not mid-generation. Mid-`train_lineages`
 //! cancellation would require plumbing a callback through every gradient
-//! step and serialising Adam optimiser moments — out of scope. Checkpoint
+//! step and serialising Adam optimiser moments - out of scope. Checkpoint
 //! location is fixed at `<raters_dir>/in_progress/` + an umbrella
 //! `in_progress.json` sidecar. On normal end-of-generation (after
 //! `index.save`) the directory + sidecar are deleted; presence on next
@@ -43,7 +43,7 @@ pub const CHECKPOINT_FORMAT_VERSION: u32 = 1;
 /// On-disk sidecar describing the in-progress generation. Sibling files
 /// `lin-{i}.mpk` + `lin-{i}.json` carry each lineage's weights and a
 /// minimal metadata stub (the metadata stub is required by
-/// `save_rater`/`load_rater` — we ignore most fields when round-tripping).
+/// `save_rater`/`load_rater` - we ignore most fields when round-tripping).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CheckpointSidecar {
     pub format_version: u32,
@@ -58,7 +58,7 @@ pub struct CheckpointSidecar {
     /// Re-derived on resume, stored here so a check would catch
     /// drift.
     pub gen_seed: u64,
-    /// `MlpConfig` snapshot — needed to build the load skeleton.
+    /// `MlpConfig` snapshot - needed to build the load skeleton.
     pub model_config: MlpConfig,
     /// Per-lineage metadata. Index order = lineage index = `Lineage.id`.
     pub lineages: Vec<LineageStub>,
@@ -72,7 +72,7 @@ pub struct LineageStub {
     pub seed: u64,
     pub loss_history: Vec<f32>,
     /// Path stem relative to the checkpoint directory. Always
-    /// `lin-{id}` — kept explicit so a future rename doesn't silently
+    /// `lin-{id}` - kept explicit so a future rename doesn't silently
     /// break old checkpoints.
     pub stem: String,
 }
@@ -198,7 +198,7 @@ where
 }
 
 /// Load a previously-saved lineage pool. Returns `Ok(None)` when no
-/// sidecar is present (the common case — no resume needed). Returns
+/// sidecar is present (the common case - no resume needed). Returns
 /// `Err(DigestMismatch)` when the sidecar exists but the caller's
 /// `RunConfig` digest differs from the one on disk; the orchestrator
 /// quarantines the stale checkpoint and falls through to a fresh
@@ -235,7 +235,7 @@ pub fn load_lineages<B: AutodiffBackend>(
         // load_rater::<B> with the autodiff backend builds a skeleton
         // via `MlpConfig::init::<B>(device)` and loads the inference-
         // recorded record into it. burn's NamedMpkFileRecorder is
-        // backend-agnostic at the wire level — the parameters
+        // backend-agnostic at the wire level - the parameters
         // re-acquire autograd hooks when loaded into the autodiff
         // skeleton.
         let (model, _meta) = load_rater::<B>(&stem, device)?;
@@ -260,7 +260,7 @@ pub struct ResumeState<B: AutodiffBackend> {
 }
 
 /// Delete a checkpoint after the generation that produced it has been
-/// accepted (or rejected — either way, the work is no longer in
+/// accepted (or rejected - either way, the work is no longer in
 /// progress). Idempotent: missing directory / sidecar is a no-op.
 pub fn clear_lineages(raters_dir: &Path) -> Result<(), CheckpointError> {
     let dir = checkpoint_dir(raters_dir);
@@ -299,7 +299,7 @@ pub fn quarantine_stale(raters_dir: &Path) -> Result<(), CheckpointError> {
 /// Write the umbrella sidecar atomically (temp-then-rename). On Unix,
 /// rename within the same filesystem is atomic; on Windows the
 /// `std::fs::rename` semantics replace the target. Either way, an
-/// interrupted write leaves no sidecar — and therefore no resume.
+/// interrupted write leaves no sidecar - and therefore no resume.
 fn write_sidecar_atomic(
     raters_dir: &Path,
     sidecar: &CheckpointSidecar,

@@ -1,20 +1,20 @@
-//! Draft-phase helpers — L8 Phase C.
+//! Draft-phase helpers - L8 Phase C.
 //!
 //! Phase B added the `DraftTurn` action and the `legal_draft_turns` /
 //! `apply_draft_turn` mechanics. This module sits one layer up:
 //!
-//! 1. **`DraftState`** — a compact, UI-facing snapshot of where the draft is.
+//! 1. **`DraftState`** - a compact, UI-facing snapshot of where the draft is.
 //!    `which side picks next`, `how many turns have been committed`, and a
 //!    `used_slots[ply][slot]` bitmap so the frontend can grey out targets
 //!    that are already filled.
 //!
-//! 2. **`next_preset_draft_turn`** — given a target `SideLoadout` for the
+//! 2. **`next_preset_draft_turn`** - given a target `SideLoadout` for the
 //!    side-to-move, return the next legal `DraftTurn` that drives the
 //!    mailbox toward that loadout. This is the AI's draft strategy in L8:
-//!    no search, no heuristic — just unroll a fixed preset two picks per
+//!    no search, no heuristic - just unroll a fixed preset two picks per
 //!    ply. See `oq-83` for the real-AI-draft follow-up slice.
 //!
-//! 3. **`DEFAULT_AI_LOADOUT`** — placeholder constant used by `Match::step_ai`
+//! 3. **`DEFAULT_AI_LOADOUT`** - placeholder constant used by `Match::step_ai`
 //!    when the AI side enters Phase::Draft. The designer will replace this
 //!    with the curated "First/Second/Third game" presets in a later slice
 //!    (see task #32 / oq-65).
@@ -25,21 +25,21 @@ use crate::state::position::{Phase, Player, Position};
 
 // === DraftState (UI-facing) =================================================
 
-/// A snapshot of where the draft is. Generated on demand from `Position` —
+/// A snapshot of where the draft is. Generated on demand from `Position` -
 /// no extra state is stored on the Position itself. Used by the Tauri /
 /// wasm wrappers to feed the frontend's draft UI.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DraftState {
     /// Number of `DraftTurn` plies committed so far (0..=12).
     pub turn_no: u8,
-    /// Whose turn it is to pick. Undefined once `turn_no == 12` — the phase
+    /// Whose turn it is to pick. Undefined once `turn_no == 12` - the phase
     /// has already transitioned to Move and `pos.to_move` reflects the next
     /// play-phase actor (P1, per Stack M setup).
     pub side_to_move: Player,
-    /// `used_slots[piece_idx][slot]` — `true` iff that mailbox slot already
+    /// `used_slots[piece_idx][slot]` - `true` iff that mailbox slot already
     /// holds a non-zero skill. Indexed as (piece_index, slot):
     ///   - piece_index 0..6  → P1's 6 skill-bearers (King at 0, Champions
-    ///     1..5 by ascending starting square — same order as `SideLoadout`).
+    ///     1..5 by ascending starting square - same order as `SideLoadout`).
     ///   - piece_index 6..12 → P2's 6 skill-bearers (same internal order).
     ///   - slot 0..2          → mailbox slot1, slot2.
     pub used_slots: [[bool; 2]; 12],
@@ -112,19 +112,19 @@ pub fn draft_state(pos: &Position) -> DraftState {
 /// designer will replace this with curated "First / Second / Third game"
 /// loadouts in a later slice (task #32, oq-65).
 ///
-/// Layout (matches `SideLoadout` indexing — King first, then 5 Champions in
+/// Layout (matches `SideLoadout` indexing - King first, then 5 Champions in
 /// ascending starting-square order):
 ///
-///   piece 0 (King)      : Shield (6),  Heal   (7)   — defensive King
-///   piece 1 (Champion)  : Lance  (1),  Dash   (9)   — frontline striker
-///   piece 2 (Champion)  : Hook   (2),  Plate  (8)   — pulling tank
-///   piece 3 (Champion)  : Break  (3),  Focus  (14)  — armour-cracker w/ buff
-///   piece 4 (Champion)  : Tempest(5),  Charge (15)  — AOE swing
-///   piece 5 (Champion)  : Swap   (12), Shove  (11)  — repositioning
+///   piece 0 (King)      : Shield (6),  Heal   (7)   - defensive King
+///   piece 1 (Champion)  : Lance  (1),  Dash   (9)   - frontline striker
+///   piece 2 (Champion)  : Hook   (2),  Plate  (8)   - pulling tank
+///   piece 3 (Champion)  : Break  (3),  Focus  (14)  - armour-cracker w/ buff
+///   piece 4 (Champion)  : Tempest(5),  Charge (15)  - AOE swing
+///   piece 5 (Champion)  : Swap   (12), Shove  (11)  - repositioning
 ///
 /// No same-skill-on-same-piece duplicates. Hits every skill category
 /// (Strike, Shield, Move, Mystic) so post-draft play exercises the full
-/// engine. Not balanced — just non-broken.
+/// engine. Not balanced - just non-broken.
 pub const DEFAULT_AI_LOADOUT: SideLoadout = [
     (6,  7),    // King: Shield + Heal
     (1,  9),    // Champ 1: Lance + Dash
@@ -135,7 +135,7 @@ pub const DEFAULT_AI_LOADOUT: SideLoadout = [
 ];
 
 /// Alternate loadout used by P2 in AIvAI matches so both AIs don't draft the
-/// same army. Different picks across every piece — same coverage guarantee
+/// same army. Different picks across every piece - same coverage guarantee
 /// (all four skill categories present) but a distinct playstyle: heavier on
 /// direct strikes and reach, lighter on tanking.
 pub const DEFAULT_AI_LOADOUT_P2: SideLoadout = [
@@ -154,14 +154,14 @@ pub const DEFAULT_AI_LOADOUT_P2: SideLoadout = [
 /// Returns `None` if:
 ///   - the position is not in `Phase::Draft`, or
 ///   - the side-to-move has fewer than 2 unfilled slots remaining (which
-///     can only happen during a transitional or corrupt state — the normal
+///     can only happen during a transitional or corrupt state - the normal
 ///     flow guarantees 2 unfilled slots per ply until the 6th).
 ///
 /// Strategy: walk the side-to-move's skill-bearers in `SideLoadout` index
 /// order; for each piece compare current mailbox slots to the preset; emit
 /// picks for any slot whose preset entry is non-zero and whose current
 /// mailbox slot is empty. Return the first two such picks bundled as one
-/// `DraftTurn`. Deterministic — given the same `(pos, preset)` the same
+/// `DraftTurn`. Deterministic - given the same `(pos, preset)` the same
 /// action comes back.
 pub fn next_preset_draft_turn(pos: &Position, preset: &SideLoadout) -> Option<Action> {
     if pos.current_phase != Phase::Draft { return None; }
@@ -182,7 +182,7 @@ pub fn next_preset_draft_turn(pos: &Position, preset: &SideLoadout) -> Option<Ac
         if *n >= 2 { return; }
         let e = pos.mailbox[sq as usize];
         let (ps1, ps2) = preset[preset_idx];
-        // Slot 1 first, then slot 2 — order doesn't matter to the engine
+        // Slot 1 first, then slot 2 - order doesn't matter to the engine
         // (resolver doesn't care which slot a skill is in) but we pick a
         // stable ordering for determinism.
         if e.skill1() == 0 && ps1 != 0 {
@@ -285,7 +285,7 @@ mod tests {
             let bearers = (pos.kings | pos.champions) & player_pieces;
             let king_sq = (pos.kings.0 & bearers.0).trailing_zeros() as u8;
             let king_e = pos.mailbox[king_sq as usize];
-            // Order-independent comparison — engine doesn't care which slot.
+            // Order-independent comparison - engine doesn't care which slot.
             let king_skills = sorted2(king_e.skill1(), king_e.skill2());
             let expected_king = sorted2(DEFAULT_AI_LOADOUT[0].0, DEFAULT_AI_LOADOUT[0].1);
             assert_eq!(king_skills, expected_king,

@@ -1,4 +1,4 @@
-// TauriClient — invokes commands on the native engine via Tauri v2 IPC.
+// TauriClient - invokes commands on the native engine via Tauri v2 IPC.
 // Holds a u64 handle returned by `create_engine`.
 
 import { invoke } from "@tauri-apps/api/core";
@@ -94,7 +94,7 @@ export class TauriClient implements EngineClient {
   #handle = 0;
 
   /** Guard for every method that operates on an existing engine. A zero
-   *  handle means `dispose()` ran or the engine was never created — calling
+   *  handle means `dispose()` ran or the engine was never created - calling
    *  into the Rust `EngineRegistry` with `0` panics in debug builds and
    *  returns the wrong engine in release builds (registry lookup keyed on
    *  u64). Throwing synchronously here gives callers a recoverable error
@@ -110,7 +110,7 @@ export class TauriClient implements EngineClient {
   // `createEngine*` / `restoreFromSnapshot` call routes through this so
   // re-entering a route (e.g. /draft/ → /match/ → back to /setup/ → /draft/)
   // doesn't leak Rust-side `Match` records into the `EngineRegistry`. The
-  // WASM client doesn't need this — its worker holds a single engine that
+  // WASM client doesn't need this - its worker holds a single engine that
   // `createEngine*` overwrites in place.
   async #replaceHandle(newHandle: number): Promise<void> {
     const prev = this.#handle;
