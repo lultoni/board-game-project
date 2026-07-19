@@ -13,7 +13,7 @@
 //!
 //! ## Scale
 //!
-//! Training labels live in {−1, +1} (P1 wins / P2 wins). A converged rater
+//! Training labels live in {-1, +1} (P1 wins / P2 wins). A converged rater
 //! will return values in roughly [-1, +1] for non-terminal positions; a
 //! per-rater scale factor maps that to centipawn-scale. The factor is fitted
 //! by `crate::calibration` (slope-only OLS against the heuristic) and stored

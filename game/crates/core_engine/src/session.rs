@@ -54,7 +54,7 @@ use serde::{Serialize, Deserialize};
 use crate::game_logic::action::{Action, Undo};
 use crate::game_logic::{generator, make_unmake};
 use crate::search::alpha_beta::{find_best_with_evaluator, SearchResult};
-use crate::search::evaluator::{Evaluator, HeuristicEvaluator};
+use crate::search::evaluator::{Evaluator, HeuristicEvaluator, evaluate_breakdown};
 use crate::search::transposition::TranspositionTable;
 use crate::state::Position;
 use crate::state::action_notation::action_to_notation;
@@ -373,6 +373,7 @@ impl Match {
                     post_p1_money, post_p2_money,
                     post_tracked_enemies, post_tracked_casters,
                     ai: None,
+                    background_eval: None,
                 });
             }
         }
@@ -474,6 +475,7 @@ impl Match {
                 post_p1_money, post_p2_money,
                 post_tracked_enemies, post_tracked_casters,
                 ai,
+                background_eval: None,
             });
         }
         Ok(())
@@ -577,7 +579,14 @@ impl Match {
         let r = self.request_ai_move()?;
         let thought_ms = crate::time::now_ms().saturating_sub(t0).min(u32::MAX as u64) as u32;
         if let Some(a) = r.best {
-            let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
+            // Part A (Change 5): capture the heuristic breakdown of the
+            // position the AI is about to move INTO, so replay analysis sees
+            // the full per-term decomposition of the chosen line's leaf, not
+            // just the alpha-beta score.
+            let post_breakdown = self.post_move_breakdown(a);
+            let meta = SearchMeta::from_search_with_breakdown(
+                r.depth, r.nodes, r.score, Some(post_breakdown),
+            );
             // try_apply could in principle reject if the AI returned an
             // action our generator no longer considers legal - that'd be a
             // bug in alpha-beta, not in this call site. Propagate as a panic
@@ -586,6 +595,19 @@ impl Match {
                 .expect("alpha-beta returned an illegal action");
         }
         Ok(r)
+    }
+
+    /// Heuristic breakdown of the position AFTER `action` is applied, WITHOUT
+    /// committing the move. `make → evaluate → unmake` restores the position
+    /// exactly. Used to enrich `SearchMeta` (Part A of Change 5) so replay
+    /// analysis has the chosen line's leaf decomposition, and by the Tauri
+    /// live-play `step_ai` path. `action` must be legal for the current
+    /// position (callers pass the search's own best move).
+    pub fn post_move_breakdown(&mut self, action: Action) -> crate::search::evaluator::EvalBreakdown {
+        let undo = make_unmake::make(&mut self.position, action);
+        let bd = evaluate_breakdown(&self.position);
+        make_unmake::unmake(&mut self.position, &undo);
+        bd
     }
 
     /// Pop the last applied action and reverse it. Gated by `config.allow_undo`.
@@ -620,6 +642,65 @@ impl Match {
         let pos = &self.position;
         if let Some(log) = self.log.as_mut() {
             log.finish(now_unix_ms, result, pos);
+        }
+    }
+
+    /// Part B (Change 5): run a TIME-BOUNDED background search on the CURRENT
+    /// position (the one produced by the ply just recorded — typically a human
+    /// move) and stash the engine's assessment into that ply's
+    /// `background_eval`. This gives replay analysis the engine's read on
+    /// positions a human created, which `ai` (only set for AI plies) never
+    /// covers.
+    ///
+    /// Intended to be called AFTER `try_apply_timed` returns, off the apply
+    /// hot path (the Tauri layer runs it on a background thread). No-op when
+    /// `auto_log` is off, when there is no recorded ply yet, when the game is
+    /// already over, or in the draft phase (no meaningful search). Only the
+    /// score + post-position breakdown are kept — the best move is discarded.
+    ///
+    /// `budget_ms` is a wall-clock budget: iterative deepening climbs to
+    /// whatever depth the position allows within that window (bounded by
+    /// `MAX_BG_EVAL_DEPTH` as a hard ceiling), so a sharp position reaches a
+    /// deep read while a quiet one finishes early. A fixed depth would be the
+    /// wrong knob — cheap positions overshoot and sharp ones starve. The
+    /// shared transposition table warms from prior in-game searches, so
+    /// repeated calls are cheap. Passing `budget_ms == 0` falls back to a
+    /// shallow fixed depth (no wall clock available on the caller).
+    pub fn annotate_last_ply_with_background_eval(&mut self, budget_ms: u64) {
+        // Nothing to annotate unless we're logging and have a recorded ply.
+        if self.log.as_ref().map(|l| l.plies.is_empty()).unwrap_or(true) {
+            return;
+        }
+        if self.position.game_result.is_some() { return; }
+        if self.position.current_phase == Phase::Draft { return; }
+
+        /// Hard depth ceiling for the background eval's iterative deepening.
+        /// The wall clock (`budget_ms`) is the primary bound; this just caps
+        /// the search in a trivially-cheap position where ID would otherwise
+        /// keep climbing pointlessly.
+        const MAX_BG_EVAL_DEPTH: u8 = 20;
+        /// Fallback depth when no wall-clock budget is supplied.
+        const FALLBACK_DEPTH: u8 = 6;
+
+        let (time_limit_ms, max_depth) = if budget_ms == 0 {
+            (0, FALLBACK_DEPTH)
+        } else {
+            (budget_ms, MAX_BG_EVAL_DEPTH)
+        };
+
+        let r = find_best_with_evaluator(
+            &mut self.position, &mut self.tt, time_limit_ms, max_depth,
+            &*self.evaluator, None,
+        );
+        // Breakdown of the current (post-human-move) position — the engine's
+        // static read on the state the human just produced.
+        let breakdown = evaluate_breakdown(&self.position);
+        let meta = SearchMeta::from_search_with_breakdown(r.depth, r.nodes, r.score, Some(breakdown));
+
+        if let Some(log) = self.log.as_mut() {
+            if let Some(last) = log.plies.last_mut() {
+                last.background_eval = Some(meta);
+            }
         }
     }
 
@@ -921,13 +1002,16 @@ mod tests {
         assert_eq!(m.position().current_phase, Phase::Move);
         assert_eq!(m.position().actions_remaining, 2);
         // Every skill-bearing piece on both sides is now fully equipped.
+        // Iterate the occupied king/champion squares directly off the bitboard
+        // (trailing_zeros + clear-lowest-bit) rather than scanning all 64.
         let pos = m.position();
-        for sq in 0..64u8 {
-            if pos.kings.contains(sq) || pos.champions.contains(sq) {
-                let e = pos.mailbox[sq as usize];
-                assert!(e.skill1() != 0 && e.skill2() != 0,
-                    "sq {} still has empty slots after AI-driven draft", sq);
-            }
+        let mut bb = pos.kings.0 | pos.champions.0;
+        while bb != 0 {
+            let sq = bb.trailing_zeros() as u8;
+            bb &= bb - 1;
+            let e = pos.mailbox[sq as usize];
+            assert!(e.skill1() != 0 && e.skill2() != 0,
+                "sq {} still has empty slots after AI-driven draft", sq);
         }
     }
 

@@ -168,7 +168,7 @@
               <td>{row.label}</td>
               <td class="num" class:pos={row.value > 0} class:neg={row.value < 0}>
                 {#if row.isMagnitude && row.value > 0}
-                  −{row.value}
+                  -{row.value}
                 {:else}
                   {fmtSigned(row.value)}
                 {/if}

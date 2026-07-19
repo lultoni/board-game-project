@@ -5,8 +5,8 @@
 // `/inspector/`) create one of these and feed actions through `applyAndRender`
 // (or `renderApplied` for the MP non-acting-peer path). The driver:
 //
-//   * holds the current rendered `position` + `legal` (or writes through to a
-//     supplied carrier - see `positionSink`),
+//   * holds the current rendered `position` + `legal` (and notifies an
+//     external consumer of each write via `onStateUpdate`),
 //   * tracks `pieceIds` so Board's `{#each}` key stays stable across moves and
 //     CSS slide transitions actually run,
 //   * tracks `shakingSquares` for hit-shake animation,
@@ -58,14 +58,6 @@ export interface PreStateSnapshot {
   preBodyguardPending: PendingBodyguardView | null;
 }
 
-/** A `$state`-backed carrier the renderer writes through to. Match passes
- *  the global `match` store here; replay/inspector leave it unset and read
- *  the renderer's own `position`/`legal` instead. */
-export interface PositionSink {
-  position: PositionView | null;
-  legal: Uint32Array;
-}
-
 /** Opaque timer handle. Browser's `setTimeout` returns `number`; Node's
  *  returns an object - we don't care which, only that callers thread it
  *  back through `clearTimeout`. */
@@ -77,10 +69,12 @@ export interface PlyRendererScheduler {
 }
 
 export interface PlyRendererOpts {
-  /** When set, every post-apply state flip writes here instead of the
-   *  driver-local position/legal. The driver's getters still surface the
-   *  same values. */
-  positionSink?: PositionSink;
+  /** Notified after every post-apply state flip with the new position + legal
+   *  actions. The renderer owns its own copy (used for reconcile); this is a
+   *  one-way notification so an external consumer - the match store - can
+   *  mirror the authoritative state. Replay/inspector leave it unset and read
+   *  the renderer's own `position`/`legal` getters instead. */
+  onStateUpdate?: (position: PositionView, legal: Uint32Array) => void;
   /** SFX gate. `false` (or a thunk returning false) silences `sfx.play` calls
    *  for this renderer instance. Default: enabled. */
   sfxEnabled?: boolean | (() => boolean);
@@ -146,7 +140,7 @@ export interface PieceMotion {
   startedAt: number;
   /** Number of hops = waypoints.length - 1 (0 when a piece never moves). Kept
    *  as a separate field so consumers don't recompute; also drives the total
-   *  animation duration (hops × slide + optional lunge segment). */
+   *  animation duration (hops x slide + optional lunge segment). */
   hops: number;
 }
 
@@ -506,7 +500,10 @@ export function createPlyRenderer(
     timers.clear();
   }
 
-  // Driver-local position/legal - used only when no positionSink is supplied.
+  // Driver-owned render state. The renderer is always the owner of the
+  // position/legal it renders; `onStateUpdate` (when set) mirrors each write
+  // out to an external consumer (the match store) without the renderer ever
+  // writing into that store directly.
   let localPosition = $state<PositionView | null>(null);
   let localLegal = $state<Uint32Array>(new Uint32Array());
 
@@ -557,21 +554,21 @@ export function createPlyRenderer(
   }
 
   function getPosition(): PositionView | null {
-    return opts.positionSink ? opts.positionSink.position : localPosition;
+    return localPosition;
   }
 
   function setPosition(pv: PositionView): void {
-    if (opts.positionSink) opts.positionSink.position = pv;
-    else localPosition = pv;
+    localPosition = pv;
+    opts.onStateUpdate?.(pv, localLegal);
   }
 
   function getLegal(): Uint32Array {
-    return opts.positionSink ? opts.positionSink.legal : localLegal;
+    return localLegal;
   }
 
   function setLegal(la: Uint32Array): void {
-    if (opts.positionSink) opts.positionSink.legal = la;
-    else localLegal = la;
+    localLegal = la;
+    if (localPosition) opts.onStateUpdate?.(localPosition, la);
   }
 
   function reconcilePieceIds(): void {
@@ -608,7 +605,7 @@ export function createPlyRenderer(
     }, SHAKE_DURATION_MS);
   }
 
-  /** Total ms a PieceMotion will consume: `hops × slideDur` for the walk plus
+  /** Total ms a PieceMotion will consume: `hops x slideDur` for the walk plus
    *  one extra hop's worth for a kill-lunge or lunge-return segment when set. */
   function motionDurationMs(m: PieceMotion, dur: number): number {
     let total = m.hops * dur;

@@ -16,7 +16,7 @@
 //!       --show-board --step-delay-ms 400 # auto-advance every 400 ms
 //!
 //! Flags:
-//!   --show-board        ASCII 8×8 board + full per-piece state after every action
+//!   --show-board        ASCII 8x8 board + full per-piece state after every action
 //!   --show-fen          one-line FEN after every action
 //!   --no-color          disable ANSI color
 //!   --step              wait for Enter between plies (overrides --step-delay-ms)

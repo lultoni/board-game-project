@@ -9,7 +9,7 @@
 //! independent shuffle of the 15 ids), which produces unrealistic games - a net
 //! tuned on them mis-learns. It now uses the **weighted-incremental** algorithm
 //! ported from `core_engine/examples/build_corpus.rs::random_loadout`: fill the
-//! 12 slots (6 pieces × 2) in shuffled order under per-side skill caps, then
+//! 12 slots (6 pieces x 2) in shuffled order under per-side skill caps, then
 //! require ≥3 of the 4 categories present AND at least one Strike (retry from
 //! scratch otherwise - retries are cheap). This is the corpus builder's
 //! realistic distribution, so self-play loadouts match the positions the net
@@ -68,7 +68,7 @@ fn cat_idx(c: SkillCategory) -> usize {
 
 /// Produce a `validate_loadout`-clean, *realistic* `SideLoadout` from `rng`.
 ///
-/// The 12 slots (6 pieces × 2 slots) are filled in a shuffled order. For each
+/// The 12 slots (6 pieces x 2 slots) are filled in a shuffled order. For each
 /// slot we pick uniformly from the skills that (a) haven't hit their per-side
 /// cap yet, and (b) don't already occupy the OTHER slot on the same piece
 /// (the per-piece no-duplicate rule). After all slots are filled we require
@@ -230,7 +230,7 @@ mod tests {
                 if let Some(sk) = skill_from_id(id) {
                     assert!(
                         n <= skill_cap(sk),
-                        "skill id {id} appears {n}× > cap {}: {l:?}",
+                        "skill id {id} appears {n}x > cap {}: {l:?}",
                         skill_cap(sk)
                     );
                 }

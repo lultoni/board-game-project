@@ -47,7 +47,7 @@ pub struct EvalContext<'a> {
     pub phase:            Phase,
     /// Skill actions per round for the current round (0 during Draft).
     pub actions_per_round: u8,
-    /// E3 money caps: `max_owned_skill_cost × actions_per_round`.
+    /// E3 money caps: `max_owned_skill_cost x actions_per_round`.
     pub p1_money_cap: u16,
     pub p2_money_cap: u16,
 

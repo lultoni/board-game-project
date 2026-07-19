@@ -164,6 +164,149 @@ pub fn skill_target_owner(s: Skill) -> TargetOwner {
     }
 }
 
+// === Static metadata export (frontend contract) ============================
+//
+// The frontend keeps a synchronous mirror of the skill table (for Svelte
+// template expressions that cannot await) plus the handful of game constants
+// it reads off the wire. To keep the mirror honest, the engine exposes the
+// canonical values here and the frontend asserts equality in a contract test
+// (`skills.contract.test.ts`). Drift becomes a test failure, never a silent
+// render bug.
+
+use serde::{Deserialize, Serialize};
+
+/// Serializable per-skill metadata. Mirrors the TypeScript `SkillInfo` plus the
+/// two behaviour flags the UI needs so it never hardcodes skill ids.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillMetadata {
+    pub id:            u8,
+    /// i18n key root, e.g. "lance".
+    pub key:           &'static str,
+    /// "strike" | "shield" | "move" | "mystic".
+    pub category:      &'static str,
+    pub cost:          u8,
+    pub default_range: u8,
+    /// "enemy" | "ally" | "either" | "empty" | "self".
+    pub target_owner:  &'static str,
+    /// True iff this skill has distinct `focus_mode=0` and `focus_mode=1`
+    /// variants under Focus. Currently Blast (10) and Shove (11). Exposing this
+    /// flag removes the hardcoded id check in the frontend's `skill-targets`.
+    pub has_focus_mode_choice: bool,
+    /// True iff this skill opens the direction picker (`choice_idx` encodes the
+    /// push direction). Currently only Shove (11).
+    pub needs_direction_pick: bool,
+}
+
+#[inline]
+fn category_str(c: SkillCategory) -> &'static str {
+    match c {
+        SkillCategory::Strike => "strike",
+        SkillCategory::Shield => "shield",
+        SkillCategory::Move   => "move",
+        SkillCategory::Mystic => "mystic",
+    }
+}
+
+#[inline]
+fn target_owner_str(o: TargetOwner) -> &'static str {
+    match o {
+        TargetOwner::Enemy    => "enemy",
+        TargetOwner::Ally      => "ally",
+        TargetOwner::Either   => "either",
+        TargetOwner::Empty    => "empty",
+        TargetOwner::SelfOnly => "self",
+    }
+}
+
+/// i18n key root for a skill. Kept alongside the table so the metadata export
+/// and any future key-driven lookup share one source.
+#[inline]
+pub fn skill_key(s: Skill) -> &'static str {
+    match s {
+        Skill::Lance   => "lance",
+        Skill::Hook    => "hook",
+        Skill::Break   => "break",
+        Skill::Steal   => "steal",
+        Skill::Tempest => "tempest",
+        Skill::Shield  => "shield",
+        Skill::Heal    => "heal",
+        Skill::Plate   => "plate",
+        Skill::Dash    => "dash",
+        Skill::Blast   => "blast",
+        Skill::Shove   => "shove",
+        Skill::Swap    => "swap",
+        Skill::Retreat => "retreat",
+        Skill::Focus   => "focus",
+        Skill::Charge  => "charge",
+    }
+}
+
+/// Metadata for a single skill by id (1..=15). Panics on 0 or >15 - callers
+/// have a `Skill`, so the id is always in range.
+fn skill_metadata(s: Skill) -> SkillMetadata {
+    SkillMetadata {
+        id:            s as u8,
+        key:           skill_key(s),
+        category:      category_str(skill_category(s)),
+        cost:          skill_cost(s),
+        default_range: skill_default_range(s),
+        target_owner:  target_owner_str(skill_target_owner(s)),
+        // Focus splits Blast/Shove into activation-range vs effect-range
+        // variants; every other skill has a single interpretation.
+        has_focus_mode_choice: matches!(s, Skill::Blast | Skill::Shove),
+        // Only Shove asks the player for a push direction.
+        needs_direction_pick:  matches!(s, Skill::Shove),
+    }
+}
+
+/// Full metadata table for all 15 skills, ordered by id (1..=15). The frontend
+/// mirror is asserted against this via the Tauri `skill_metadata` command.
+pub fn all_skill_metadata() -> [SkillMetadata; 15] {
+    core::array::from_fn(|i| {
+        let id = (i as u8) + 1;
+        skill_metadata(skill_from_id(id).expect("1..=15 are all valid skill ids"))
+    })
+}
+
+/// Game-wide byte constants the frontend reads off the wire. Mirrors the
+/// TypeScript constants block in `engine/skills.ts`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameConstants {
+    pub phase_move:                u8, // 0
+    pub phase_skill:               u8, // 1
+    pub phase_draft:               u8, // 2
+    pub modifier_focus:            u8, // 0x01
+    pub modifier_charge:           u8, // 0x02
+    pub modifier_move_attack_used: u8, // 0x04
+    pub player_p1:                 u8, // 0
+    pub player_p2:                 u8, // 1
+    pub game_ongoing:              u8, // 0
+    pub game_p1_wins:              u8, // 1
+    pub game_p2_wins:              u8, // 2
+    pub skill_count:               u8, // 15
+}
+
+/// The single source of truth for the game constants the UI mirrors. Values
+/// come from `position::modifier_bits` and the `position_view` encoding in
+/// `wrapper_api` so the wire encoding and this table cannot drift.
+pub fn game_constants() -> GameConstants {
+    use crate::state::position::modifier_bits;
+    GameConstants {
+        phase_move:                0,
+        phase_skill:               1,
+        phase_draft:               2,
+        modifier_focus:            modifier_bits::FOCUS,
+        modifier_charge:           modifier_bits::CHARGE,
+        modifier_move_attack_used: modifier_bits::MOVE_ATTACK_USED,
+        player_p1:                 0,
+        player_p2:                 1,
+        game_ongoing:              0,
+        game_p1_wins:              1,
+        game_p2_wins:              2,
+        skill_count:               15,
+    }
+}
+
 // === Draft loadouts (L8) ====================================================
 //
 // A `SideLoadout` is one side's skill assignment: 6 entries of (skill1, skill2)
@@ -319,5 +462,37 @@ mod tests {
             // Just exercise the match; we mostly care it doesn't panic.
             let _ = skill_category(s);
         }
+    }
+
+    #[test]
+    fn all_skill_metadata_is_id_ordered_and_consistent() {
+        let table = all_skill_metadata();
+        assert_eq!(table.len(), 15);
+        for (i, m) in table.iter().enumerate() {
+            let id = (i as u8) + 1;
+            let s = skill_from_id(id).unwrap();
+            assert_eq!(m.id, id, "table must be ordered by id");
+            assert_eq!(m.cost, skill_cost(s));
+            assert_eq!(m.default_range, skill_default_range(s));
+            assert_eq!(m.key, skill_key(s));
+        }
+        // Only Blast/Shove carry a focus-mode choice; only Shove picks a dir.
+        let focus: Vec<u8> = table.iter().filter(|m| m.has_focus_mode_choice).map(|m| m.id).collect();
+        assert_eq!(focus, vec![Skill::Blast as u8, Skill::Shove as u8]);
+        let dir: Vec<u8> = table.iter().filter(|m| m.needs_direction_pick).map(|m| m.id).collect();
+        assert_eq!(dir, vec![Skill::Shove as u8]);
+    }
+
+    #[test]
+    fn game_constants_match_engine_encoding() {
+        use crate::state::position::modifier_bits;
+        let c = game_constants();
+        assert_eq!(c.phase_move, 0);
+        assert_eq!(c.phase_skill, 1);
+        assert_eq!(c.phase_draft, 2);
+        assert_eq!(c.modifier_focus, modifier_bits::FOCUS);
+        assert_eq!(c.modifier_charge, modifier_bits::CHARGE);
+        assert_eq!(c.modifier_move_attack_used, modifier_bits::MOVE_ATTACK_USED);
+        assert_eq!(c.skill_count, 15);
     }
 }

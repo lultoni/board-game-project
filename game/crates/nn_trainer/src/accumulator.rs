@@ -262,7 +262,7 @@ impl Accumulator {
     }
 
     /// Revert globals: reconstruct the pre-make global set from `undo` + the
-    /// post-make `pos` (pre-make money = current − delta) and swap to it.
+    /// post-make `pos` (pre-make money = current - delta) and swap to it.
     fn revert_globals(&mut self, undo: &Undo, pos: &Position, ft: &FeatureTransform) {
         let mut old_globals = Vec::with_capacity(6);
         global_features_from_undo(undo, pos, &mut |f| old_globals.push(f));
@@ -362,7 +362,7 @@ fn global_features_from_undo(undo: &Undo, pos: &Position, push: &mut impl FnMut(
         1 => Phase::Skill,
         _ => Phase::Draft,
     };
-    // Pre-make money = post-make money − applied delta.
+    // Pre-make money = post-make money - applied delta.
     let p1_money = (pos.p1_money as i32 - undo.p1_money_delta as i32) as u16;
     let p2_money = (pos.p2_money as i32 - undo.p2_money_delta as i32) as u16;
     sparse::global_indices(

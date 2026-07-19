@@ -146,14 +146,27 @@ pub fn try_apply(
     raw_action: u32,
     applied_at_unix_ms: u64,
 ) -> Result<StepResult, ApplyError> {
+    try_apply_with_thought(m, raw_action, /*thought_ms=*/ 0, applied_at_unix_ms)
+}
+
+/// Like `try_apply` but records `thought_ms` (human decision time) into the
+/// ply's telemetry. The wrapper computes `thought_ms` from a start-of-turn
+/// timestamp it tracks; the engine has no clock of its own. `StepResult`
+/// echoes `thought_ms` back so the frontend can display it immediately.
+pub fn try_apply_with_thought(
+    m: &mut Match,
+    raw_action: u32,
+    thought_ms: u32,
+    applied_at_unix_ms: u64,
+) -> Result<StepResult, ApplyError> {
     let a = Action(raw_action);
-    m.try_apply_timed(a, /*thought_ms=*/ 0, applied_at_unix_ms, /*ai=*/ None)?;
+    m.try_apply_timed(a, thought_ms, applied_at_unix_ms, /*ai=*/ None)?;
     Ok(StepResult {
         applied_action: raw_action,
         score:          0,
         depth:          0,
         nodes:          0,
-        thought_ms:     0,
+        thought_ms,
         game_result:    encode_game_result(m.game_result()),
     })
 }
@@ -180,7 +193,10 @@ pub fn step_ai_with_cb(
         .min(u32::MAX as u64) as u32;
 
     let applied = if let Some(a) = r.best {
-        let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
+        // Part A (Change 5): attach the post-move heuristic breakdown so the
+        // Tauri live-play path records the same rich SearchMeta as `step_ai`.
+        let breakdown = m.post_move_breakdown(a);
+        let meta = SearchMeta::from_search_with_breakdown(r.depth, r.nodes, r.score, Some(breakdown));
         // alpha-beta returning an illegal action would be a bug in search,
         // not a runtime error - propagate as None so the UI can surface it.
         match m.try_apply_timed(a, thought_ms, applied_at_unix_ms, Some(meta)) {
@@ -275,10 +291,43 @@ pub fn finalise_log(m: &mut Match, now_unix_ms: u64, result_byte: u8) {
     m.finalise_log(now_unix_ms, result);
 }
 
+/// Part B (Change 5): run a time-bounded background search on the current
+/// position and patch the last recorded ply's `background_eval`. Called off
+/// the apply hot path (the Tauri layer runs it on a worker thread after
+/// `try_apply` returns). `budget_ms` is a wall-clock budget — iterative
+/// deepening climbs to whatever depth the position allows in that window
+/// (0 ⇒ shallow fixed-depth fallback). No-op when not logging / no ply /
+/// game over / draft.
+pub fn annotate_last_ply_background_eval(m: &mut Match, budget_ms: u64) {
+    m.annotate_last_ply_with_background_eval(budget_ms);
+}
+
 /// Serialise a save-game snapshot.
 #[inline]
 pub fn snapshot_json(m: &Match) -> String {
     crate::telemetry::to_json(&m.to_snapshot())
+}
+
+/// Number of plies recorded in the match log so far, or 0 when the match
+/// isn't logging. Used by the background AIvAI producer to publish a
+/// "known ply count" ceiling the frontend log-player advances toward.
+#[inline]
+pub fn log_ply_count(m: &Match) -> usize {
+    m.match_log().map_or(0, |l| l.plies.len())
+}
+
+/// Map the match's current terminal state to the `result_byte` convention
+/// `finalise_log` expects (0 = P1Win, 1 = P2Win, 2 = Draw, 3 = Aborted).
+/// A live (non-terminal) position maps to `Aborted` — the background
+/// producer uses this when it stops on a leave/abort or a no-move wedge
+/// rather than a natural win.
+#[inline]
+pub fn finalise_result_byte(m: &Match) -> u8 {
+    match m.game_result() {
+        Some(GameResult::P1Wins) => 0,
+        Some(GameResult::P2Wins) => 1,
+        None                     => 3, // no draws in this ruleset; live → aborted
+    }
 }
 
 /// Reconstruct a `Match` from a snapshot JSON. Wrapper supplies the wall
@@ -378,6 +427,35 @@ mod tests {
         Match::new(Config::local_aivai())
     }
 
+    fn fresh_logging_match() -> Match {
+        let mut cfg = Config::local_aivai();
+        cfg.auto_log = true;
+        Match::new_with_clock(cfg, 1_700_000_000_000)
+    }
+
+    #[test]
+    fn log_ply_count_tracks_applied_plies() {
+        let mut m = fresh_logging_match();
+        assert_eq!(log_ply_count(&m), 0, "fresh log has no plies");
+        // Apply the AI's first move; the log grows by one.
+        step_ai(&mut m, 1_700_000_000_001).unwrap();
+        assert_eq!(log_ply_count(&m), 1, "one ply recorded after a step");
+    }
+
+    #[test]
+    fn log_ply_count_zero_when_not_logging() {
+        let mut m = fresh_match(); // auto_log off
+        step_ai(&mut m, 1).unwrap();
+        assert_eq!(log_ply_count(&m), 0, "no log → ply count 0");
+    }
+
+    #[test]
+    fn finalise_result_byte_live_position_is_aborted() {
+        let m = fresh_logging_match();
+        // A fresh, ongoing game has no result → maps to Aborted (3).
+        assert_eq!(finalise_result_byte(&m), 3);
+    }
+
     #[test]
     fn position_view_matches_position_fields() {
         let m = fresh_match();
@@ -444,6 +522,24 @@ mod tests {
         assert_eq!(r.nodes, 0);
         assert_eq!(r.thought_ms, 0);
         assert_eq!(r.game_result, 0); // ongoing
+    }
+
+    #[test]
+    fn try_apply_with_thought_records_thought_ms() {
+        // With auto_log on, the recorded ply must carry the caller-supplied
+        // thought_ms (human decision time), not the hardcoded 0 that plain
+        // `try_apply` uses.
+        let mut cfg = Config::local_hvh();
+        cfg.auto_log = true;
+        let mut m = Match::new(cfg);
+        let mut buf: Vec<u32> = Vec::new();
+        legal_actions_into(&m, &mut buf);
+        let raw = buf[0];
+        let r = try_apply_with_thought(&mut m, raw, /*thought_ms=*/ 4200, 1_700_000_000_000).unwrap();
+        assert_eq!(r.thought_ms, 4200, "StepResult echoes thought_ms");
+        let ply = m.match_log().unwrap().plies.last().unwrap();
+        assert_eq!(ply.thought_ms, 4200, "PlyRecord captures human think-time");
+        assert!(ply.ai.is_none(), "human ply has no SearchMeta");
     }
 
     #[test]

@@ -29,7 +29,7 @@ Fresh `--depth 6` numbers (`--runs 5`, median-by-nodes, this box under normal lo
 
 | Metric | Value |
 |---|---|
-| Geometric-mean NPS | **~587 K** (was 2.5M pre-ns-43 - eval rewrite cut throughput ~4×) |
+| Geometric-mean NPS | **~587 K** (was 2.5M pre-ns-43 - eval rewrite cut throughput ~4x) |
 | Positions over 1000 ms at d6 | **5 / 30** |
 | Worst position | `opening-with-skills-03` - **5504 ms**, 2.52M nodes, EBF 11.67 |
 | eval calls / node | **0.58** (more than half of all nodes pay a full static eval) |
@@ -47,7 +47,7 @@ skill-phase-full-04      1008 ms     399 931 nodes   ebf  8.58
 
 Two independent problems fall straight out of these numbers, and both are large:
 
-### Problem 1 - eval is 10-40× too slow (throughput axis)
+### Problem 1 - eval is 10-40x too slow (throughput axis)
 
 `search_bench --eval-only` measures the static eval in isolation:
 
@@ -57,7 +57,7 @@ ns/eval: min 1242   mean 2304   geo 2224   max 3129
 
 A hand-written static eval of this complexity should be **50-200 ns**. We are at
 **~2300 ns**. At eval/node = 0.58, that's ~1300 ns of eval per node - plausibly
-**>50 % of all node time is the evaluator**, which explains the 4× NPS collapse
+**>50 % of all node time is the evaluator**, which explains the 4x NPS collapse
 since the pre-ns-43 baseline.
 
 **Root cause - the ns-43 registry rebuilds itself on every call.** The search
@@ -69,7 +69,7 @@ registry::default_terms() + evaluate_dyn() → DynBreakdown::to_legacy()`
    (`default_terms`) - 14 heap allocations + vtable setup, every call.
 2. Allocates 3 more `Vec`s (`active`, `per_piece`, `side_level`).
 3. Allocates `acc: Vec<(i32,i32)>` and `entries: Vec<TermEntry>`.
-4. Dispatches through `dyn EvalTerm` for every term × every occupied square.
+4. Dispatches through `dyn EvalTerm` for every term x every occupied square.
 5. Projects the whole `DynBreakdown` to the legacy fixed-field struct
    (`to_legacy()`) - building the frontend-facing breakdown at every leaf.
 
@@ -92,7 +92,7 @@ that produces these EBFs, and PVS is its required re-search partner (catalogue �
 
 Attacking throughput (Problem 1) multiplies every position's speed by a constant;
 attacking tree shape (Problem 2) shrinks the exponent on exactly the positions that
-blow the 1s budget. **We need both.** A 3× eval speedup alone would pull
+blow the 1s budget. **We need both.** A 3x eval speedup alone would pull
 `opening-with-skills-03` from 5.5s to ~1.8s - still over budget - so ordering work
 is not optional.
 
@@ -133,7 +133,7 @@ is out of scope for the throughput phase - keep those separate.
 
 ---
 
-## Work, in priority order (Elo-per-hour × fits-our-goal)
+## Work, in priority order (Elo-per-hour x fits-our-goal)
 
 ### Phase 1 - Eval throughput (Problem 1). Do this first; it's the biggest, safest win.
 
@@ -165,8 +165,8 @@ keep their golden coverage. Expected: removes allocations 3-5 above from every l
 **1c. Kill remaining per-call allocations.** After 1a/1b, profile once more
 (`--eval-only`). Any residual `Vec::with_capacity` in the hot path becomes a
 stack array (term count is a small compile-time constant) or is removed. Target:
-**≤ 300 ns/eval**, ideally ≤ 150. That alone is a 7-15× eval speedup and roughly a
-2-3× search NPS improvement given eval is >50 % of node time.
+**≤ 300 ns/eval**, ideally ≤ 150. That alone is a 7-15x eval speedup and roughly a
+2-3x search NPS improvement given eval is >50 % of node time.
 
 **1d. (If needed) incremental eval.** Only if 1a-1c don't get the corpus under
 budget when combined with Phase 2. Make/unmake already touch the affected squares;

@@ -23,7 +23,7 @@
 //!   sets the `live.sub` sentinel.
 //! - `<run_dir>/raters/index.json` - registry of accepted raters.
 //! - `<run_dir>/raters/vNNNN.{mpk,json}` - accepted rater blobs + sidecars.
-//! - `<run_dir>/matrix.json` - challenger×defender match matrix.
+//! - `<run_dir>/matrix.json` - challengerxdefender match matrix.
 //!
 //! ## Backends
 //!
@@ -836,7 +836,7 @@ mod tests {
             model: RunConfig::sparse_model(),
             bootstrap: BootstrapConfig { learning_rate: 1e-3, batch_size: 64, epochs: 200 },
             seed_root: 0xABCD_1234,
-            // Moderate temp corpus (bounded gen time; still ~170× the old 116).
+            // Moderate temp corpus (bounded gen time; still ~170x the old 116).
             training_corpus_path: Some(dir.join("train_corpus.txt")),
             training_corpus_target: Some(20_000),
         };

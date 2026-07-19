@@ -211,7 +211,7 @@
             class:active={preset === "smoke"}
             disabled={isRunning}
             onclick={() => { sfx.play("click"); preset = "smoke"; }}
-            title="2 gen × 4 lineage, depth-2 corpus, seconds"
+            title="2 gen x 4 lineage, depth-2 corpus, seconds"
           >Smoke</button>
           <button
             role="radio"
@@ -219,7 +219,7 @@
             class:active={preset === "medium"}
             disabled={isRunning}
             onclick={() => { sfx.play("click"); preset = "medium"; }}
-            title="5 gen × 4 lineage, depth-4 corpus"
+            title="5 gen x 4 lineage, depth-4 corpus"
           >Medium</button>
           <button
             role="radio"
@@ -227,7 +227,7 @@
             class:active={preset === "long"}
             disabled={isRunning}
             onclick={() => { sfx.play("click"); preset = "long"; }}
-            title="10 gen × 8 lineage, depth-6 corpus (GPU)"
+            title="10 gen x 8 lineage, depth-6 corpus (GPU)"
           >Long</button>
         </div>
       </div>

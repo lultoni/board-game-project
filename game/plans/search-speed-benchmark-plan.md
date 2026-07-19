@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Grade candidate optimisations to the alpha-beta search loop before NN-rater training begins. Training time is dominated by `search_nodes_per_second × games_per_generation × generations` - every speedup compounds across millions of self-play games. We optimise here once, hard, then move to evaluator work.
+Grade candidate optimisations to the alpha-beta search loop before NN-rater training begins. Training time is dominated by `search_nodes_per_second x games_per_generation x generations` - every speedup compounds across millions of self-play games. We optimise here once, hard, then move to evaluator work.
 
 **Termination condition for this work:** designer is happy with raw search speed. Then we pivot to the evaluator side (NN rater).
 

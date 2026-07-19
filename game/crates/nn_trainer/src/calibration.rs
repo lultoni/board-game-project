@@ -1,6 +1,6 @@
 //! Centipawn-scale calibration for a trained NN rater.
 //!
-//! A converged rater returns roughly {−1, +1} for "P2 winning" / "P1 winning"
+//! A converged rater returns roughly {-1, +1} for "P2 winning" / "P1 winning"
 //! positions, but the search compares those scores against a heuristic
 //! evaluator working in centipawns. Multiplying the raw NN output by
 //! `DEFAULT_EVAL_SCALE = 3000` is a reasonable starting heuristic - but a
@@ -12,13 +12,13 @@
 //! ## Method: slope-only OLS
 //!
 //! We fit a single scalar `k` minimising
-//!   Σ (k·nn_raw_i − heuristic_cp_i)²
+//!   Σ (k·nn_raw_i - heuristic_cp_i)²
 //! over a calibration probe set. The closed form is
 //!   k = Σ(x_i · y_i) / Σ(x_i²)
 //! where `x_i = nn_raw_i` and `y_i = heuristic_cp_i`. No intercept - the NN
-//! is sign-symmetric around 0 by construction (`{−1,+1}` labels averaged to
+//! is sign-symmetric around 0 by construction (`{-1,+1}` labels averaged to
 //! 0), and adding an offset would distort the symmetry we rely on for
-//! `evaluate(pos) == −evaluate(mirror(pos))`-style invariants in the search.
+//! `evaluate(pos) == -evaluate(mirror(pos))`-style invariants in the search.
 //!
 //! ## Probe set
 //!

@@ -25,32 +25,32 @@
 
 ## Section 2 - Elias Game Log
 
-| Rd | Rt | SS | Runes (s+g−sp=e) | Skills used | Events / Notes |
+| Rd | Rt | SS | Runes (s+g-sp=e) | Skills used | Events / Notes |
 |----|----|----|------------------|-------------|----------------|
-| 1  | 0  | 2  | 6+0−5=1          | Rust Shield + Armorsmith | Setting up my defense for later |
-| 2  | 2  | 2  | 1+2−2=1          | Rust Shield on "right flanker" | Mario kopiert aktuell meine moves weil er selber noch keine Ahnung hat von Spiel |
-| 3  | -  | 2  | 1+2−0=3          | -                         | Advanced right flank a bit more (trying to use Hook Pull + Lance Thrust) |
-| 4  | -  | 2  | 3+2−3=2          | Armorsmith on Guard in front | For stronger Guard presence later |
-| 5  | 3  | 2  | 2+3−3=2          | Armorsmith on another Guard in front | - |
-| 6  | -  | 2  | 2+3−0=5          | -                         | Advancing pieces forward |
-| 7  | -  | 2  | 5+3−2=6          | - | Moving forward on right flank + using Rust Shield there |
-| 8  | -  | 2  | 6+3−3=6          | -                         | More Guards on right flank + Armorsmith on another Guard |
-| 9  | 4  | 2  | 6+3−4=5          | Focus Strike + Hook Pull on a Guard on the right flank (first strike skill) | - |
-| 10 | -  | 3  | 5+4−6=3          | Hook Pull (kill the Guard he healed) and then Armor Smith on the other flank | **First Guard kill.** |
-| 11 | -  | 3  | 3+4−7=0          | Attack from move into Focus + Hook + Hook | **First Champion kill.** Margin: "good!!" Note: "(was a result of bad strategy from mario)" |
-| 12 | -  | 3  | 0+4−3=1          | Attack + Hook | Killed another Guard on right flank |
-| 13 | -  | 3  | 1+4−3=2          | Focus + Rust Shield for Guard on right flank (i moved Armor Breaker in front left tho) | - |
-| 14 | 5  | 3  | 2+4−6=0          | 3× Armor Breaker | Removed his expensive armor for cheap |
-| 15 | -  | 3  | 0+5−5=0          | Field Medic on injured Guard + Air Blast (push another) | - |
-| 16 | -  | 3  | 0+5−5=0          | Zigzag move w/ Guard for 1 DMG, then Blade Call + Armor Breaker to kill | - |
-| 17 | -  | 3  | 0+5−4=1          | Double move into standing-off Guard + 2× Lance Thrust into him | - |
-| 18 | -  | 3  | 0+5−5=0 		     | 1 attack on injured Guard und 1 attack on Champ + 1 push the Champ to move in range of Hook to kill | - |
-| 19 | -  | 3  | 0+5−4=2.  	     | 1 attack + Rune Theft (−1 for mario) to kill a Guard, then Armor Breaker on another Guard | - |
-| 20 | -  | 3  | 2+6−8=0          | Quick Dash, Armor Breaker, Rune Theft (-0) | - |
-| 21 | 6  | 4  | 0+6−6=0          | Focus, Armor Breaker, Focus, Armor Breaker | - |
-| 22 | -  | 4  | 0+6−0=6          | "Injured effect on Lance Thrust unclear" (rule ambiguity Elias flagged in real-time) | - |
-| 23 | -  | 4  | 6+6−9=3          | 3× Rune Theft to kill his last Strike Champ |  |
-| 24 | -  | 4  | 3+6−9=0          | 3× Rune Theft + a move to kill his last Champ | **Mario gave up** after this row |
+| 1  | 0  | 2  | 6+0-5=1          | Rust Shield + Armorsmith | Setting up my defense for later |
+| 2  | 2  | 2  | 1+2-2=1          | Rust Shield on "right flanker" | Mario kopiert aktuell meine moves weil er selber noch keine Ahnung hat von Spiel |
+| 3  | -  | 2  | 1+2-0=3          | -                         | Advanced right flank a bit more (trying to use Hook Pull + Lance Thrust) |
+| 4  | -  | 2  | 3+2-3=2          | Armorsmith on Guard in front | For stronger Guard presence later |
+| 5  | 3  | 2  | 2+3-3=2          | Armorsmith on another Guard in front | - |
+| 6  | -  | 2  | 2+3-0=5          | -                         | Advancing pieces forward |
+| 7  | -  | 2  | 5+3-2=6          | - | Moving forward on right flank + using Rust Shield there |
+| 8  | -  | 2  | 6+3-3=6          | -                         | More Guards on right flank + Armorsmith on another Guard |
+| 9  | 4  | 2  | 6+3-4=5          | Focus Strike + Hook Pull on a Guard on the right flank (first strike skill) | - |
+| 10 | -  | 3  | 5+4-6=3          | Hook Pull (kill the Guard he healed) and then Armor Smith on the other flank | **First Guard kill.** |
+| 11 | -  | 3  | 3+4-7=0          | Attack from move into Focus + Hook + Hook | **First Champion kill.** Margin: "good!!" Note: "(was a result of bad strategy from mario)" |
+| 12 | -  | 3  | 0+4-3=1          | Attack + Hook | Killed another Guard on right flank |
+| 13 | -  | 3  | 1+4-3=2          | Focus + Rust Shield for Guard on right flank (i moved Armor Breaker in front left tho) | - |
+| 14 | 5  | 3  | 2+4-6=0          | 3x Armor Breaker | Removed his expensive armor for cheap |
+| 15 | -  | 3  | 0+5-5=0          | Field Medic on injured Guard + Air Blast (push another) | - |
+| 16 | -  | 3  | 0+5-5=0          | Zigzag move w/ Guard for 1 DMG, then Blade Call + Armor Breaker to kill | - |
+| 17 | -  | 3  | 0+5-4=1          | Double move into standing-off Guard + 2x Lance Thrust into him | - |
+| 18 | -  | 3  | 0+5-5=0 		     | 1 attack on injured Guard und 1 attack on Champ + 1 push the Champ to move in range of Hook to kill | - |
+| 19 | -  | 3  | 0+5-4=2.  	     | 1 attack + Rune Theft (-1 for mario) to kill a Guard, then Armor Breaker on another Guard | - |
+| 20 | -  | 3  | 2+6-8=0          | Quick Dash, Armor Breaker, Rune Theft (-0) | - |
+| 21 | 6  | 4  | 0+6-6=0          | Focus, Armor Breaker, Focus, Armor Breaker | - |
+| 22 | -  | 4  | 0+6-0=6          | "Injured effect on Lance Thrust unclear" (rule ambiguity Elias flagged in real-time) | - |
+| 23 | -  | 4  | 6+6-9=3          | 3x Rune Theft to kill his last Strike Champ |  |
+| 24 | -  | 4  | 3+6-9=0          | 3x Rune Theft + a move to kill his last Champ | **Mario gave up** after this row |
 
 **Post-game timing notes:** Rule explain start ~15:00 / 14:30 / 14:45?  Game start 15:35  Game end 18:05  Feedback end Mario 18:10, Elias 18:28.
 
@@ -58,34 +58,34 @@
 
 ## Section 3 - Mario Game Log
 
-| Rd | Rt | Runes (s+g−sp=e) | Skills used | Events / Notes |
+| Rd | Rt | Runes (s+g-sp=e) | Skills used | Events / Notes |
 |----|----|------------------|-------------|----------------|
-| 1  | -  | 6+0−3=3          | Armorsmith: +1 Armor for King | - |
-| 2  | 2  | 3+2−3=2          | Armorsmith: +1 Armor for King | - |
-| 3  | 2  | 2+2−3=1          | Armorsmith: +1 Armor for Medic | - |
-| 4  | 2  | 1+2−0=3          | - | - |
-| 5  | 2  | 3+3−3=3          | Armorsmith: +1 for King | - |
-| 6  | 3  | 3+3−0=6          | - | (✓) |
-| 7  | 3  | 6+3−3=6          | Armorsmith: +1 for Guard | - |
-| 8  | 3  | 6+3−3=6          | Armorsmith: +1 for Guard (ditto marks) | - |
-| 9  | 3  | 6+3−3=6          | Healing one injured Guard | (small struck-through note) |
-| 10 | 3  | 6+4−6=4          | 2× Armorsmith | - |
-| 11 | 3  | 4+4−6=2          | 2× Armor Guard (= Armorsmith on Guard) | - |
-| 12 | 3  | 2+4−6=0          | 2× Armor (= Armorsmith) | - |
-| 13 | 3  | 0+4−0=4          | - | - |
-| 14 | 3  | 4+4−6=2          | 2× Rune Theft | - |
-| 15 | 3  | 2+5−6=1          | 2× Armor Guard | - |
-| 16 | 3  | 1+5−3=3          | 1 Angriff Guard | - |
-| 17 | 3  | 3+5−2=0          | 1× Strike (unclear, maybe lance thrust) | - |
-| 18 | 3  | 0+5−3=2 -1       |  | - |
-| 19 | 3  | 1+5−6=0 			| 2× Armor | - |
-| 20 | 3  | 0+6−6=0          | 1× Armor + 1 Healer (Field Medic) | - |
-| 21 | 3  | 0+6−6=0          | 2× Strike | - |
-| 22 | 3  | 0+6−6=0          | Quick Dash + 1× Armorsmith | - |
-| 23 | 3  | 0+6−6=0          | 2× Armorsmith | - |
+| 1  | -  | 6+0-3=3          | Armorsmith: +1 Armor for King | - |
+| 2  | 2  | 3+2-3=2          | Armorsmith: +1 Armor for King | - |
+| 3  | 2  | 2+2-3=1          | Armorsmith: +1 Armor for Medic | - |
+| 4  | 2  | 1+2-0=3          | - | - |
+| 5  | 2  | 3+3-3=3          | Armorsmith: +1 for King | - |
+| 6  | 3  | 3+3-0=6          | - | (✓) |
+| 7  | 3  | 6+3-3=6          | Armorsmith: +1 for Guard | - |
+| 8  | 3  | 6+3-3=6          | Armorsmith: +1 for Guard (ditto marks) | - |
+| 9  | 3  | 6+3-3=6          | Healing one injured Guard | (small struck-through note) |
+| 10 | 3  | 6+4-6=4          | 2x Armorsmith | - |
+| 11 | 3  | 4+4-6=2          | 2x Armor Guard (= Armorsmith on Guard) | - |
+| 12 | 3  | 2+4-6=0          | 2x Armor (= Armorsmith) | - |
+| 13 | 3  | 0+4-0=4          | - | - |
+| 14 | 3  | 4+4-6=2          | 2x Rune Theft | - |
+| 15 | 3  | 2+5-6=1          | 2x Armor Guard | - |
+| 16 | 3  | 1+5-3=3          | 1 Angriff Guard | - |
+| 17 | 3  | 3+5-2=0          | 1x Strike (unclear, maybe lance thrust) | - |
+| 18 | 3  | 0+5-3=2 -1       |  | - |
+| 19 | 3  | 1+5-6=0 			| 2x Armor | - |
+| 20 | 3  | 0+6-6=0          | 1x Armor + 1 Healer (Field Medic) | - |
+| 21 | 3  | 0+6-6=0          | 2x Strike | - |
+| 22 | 3  | 0+6-6=0          | Quick Dash + 1x Armorsmith | - |
+| 23 | 3  | 0+6-6=0          | 2x Armorsmith | - |
 | 24 | -  | 0+6=6            | - | **Aufgegeben (gave up)** |
 
-**Critical observation in Mario's log**: ~20 Armorsmith activations across 24 rounds. **Zero recorded Standard Attacks.** (but he did use them when he was near my pieces, so it did happen, he just did not write it down here because the form did not ask for it - maybe it should?) All offence was 2 bursts: Round 14 (2× Rune Theft), Rounds 17/21 (Strike skills). The rest was Armor stacking - almost entirely passive defense.
+**Critical observation in Mario's log**: ~20 Armorsmith activations across 24 rounds. **Zero recorded Standard Attacks.** (but he did use them when he was near my pieces, so it did happen, he just did not write it down here because the form did not ask for it - maybe it should?) All offence was 2 bursts: Round 14 (2x Rune Theft), Rounds 17/21 (Strike skills). The rest was Armor stacking - almost entirely passive defense.
 -> reevaluate this if this is actually true based on reworked table
 
 ---
@@ -191,7 +191,7 @@ Blank.
 
 Most items resolved by your corrections. Open items:
 
-2. ~~**Mario R18 −1**~~ - **resolved by cross-referencing Elias R19** ("Rune Theft −1 for mario"). The −1 in Mario's R18 is Mario losing 1 Rune to Elias's Rune Theft; the rounds are offset by 1 because each player logs the event on their own turn. No action needed.
+2. ~~**Mario R18 -1**~~ - **resolved by cross-referencing Elias R19** ("Rune Theft -1 for mario"). The -1 in Mario's R18 is Mario losing 1 Rune to Elias's Rune Theft; the rounds are offset by 1 because each player logs the event on their own turn. No action needed.
 3. **Mario Q15 margin "wenig genutzt"** - this refers to *the Bodyguard rule* (rarely triggered)?
 
 ---
@@ -205,9 +205,9 @@ Most items resolved by your corrections. Open items:
 | First Champion kill | R11 (Elias killed) | n/a |
 | Captures made (self-reported) | 9 | not recorded |
 | Captures suffered (self-reported) | 6 | not recorded |
-| Standard attacks logged in events | **~5** (R11, R12, R18 ×2, R19) | **≥1** (R16 "1 Angriff Guard"); more likely happened but weren't asked for in the form |
+| Standard attacks logged in events | **~5** (R11, R12, R18 x2, R19) | **≥1** (R16 "1 Angriff Guard"); more likely happened but weren't asked for in the form |
 | Skill activations logged | ~25+ | ~22+ (overwhelmingly Armorsmith) |
-| Largest single-turn spend | 9 Runes (R23 = 3× Rune Theft; R24 = 3× Rune Theft + move) | 6 Runes (many rounds) |
+| Largest single-turn spend | 9 Runes (R23 = 3x Rune Theft; R24 = 3x Rune Theft + move) | 6 Runes (many rounds) |
 | Bodyguard triggers | "?" count - but Q15: "with less standoff it happened way more often"; **repositioned for it: Yes** | "wenig genutzt" |
 | Rune hoarding | "Always wanted more / balanced" | "Always wanted more" |
 | Game length rating | 3 / 4 (straddled "just right" and "a bit long") | 4 (a bit long) |
@@ -224,9 +224,9 @@ These are observations from your edits that will shape the analysis. Not transcr
 
 After your reorganisation, the log is internally consistent and tells a clean story:
 
-- **R22**: `0+6−0=6`, skill cell holds the rule-ambiguity note ("Injured effect on Lance Thrust unclear"). **Elias didn't fire a single skill this turn** - he stalled on a rule he wasn't sure how to apply (cross-references side-note #5). End of turn: 6 unspent Runes, no actions taken.
-- **R23**: `6+6−9=3` - clean 9-Rune burst (3× Rune Theft to kill the last Strike Champ).
-- **R24**: `3+6−9=0` - another 9-Rune burst (3× Rune Theft + move) → Mario gave up.
+- **R22**: `0+6-0=6`, skill cell holds the rule-ambiguity note ("Injured effect on Lance Thrust unclear"). **Elias didn't fire a single skill this turn** - he stalled on a rule he wasn't sure how to apply (cross-references side-note #5). End of turn: 6 unspent Runes, no actions taken.
+- **R23**: `6+6-9=3` - clean 9-Rune burst (3x Rune Theft to kill the last Strike Champ).
+- **R24**: `3+6-9=0` - another 9-Rune burst (3x Rune Theft + move) → Mario gave up.
 
 **This is a concrete data point**: a rule ambiguity (OQ-31 / side-note #5 territory: how Injured Range penalty interacts with Range-1 skills) cost the winning player an entire action turn. Worth surfacing in the analysis, not just the side-notes. The fact that Elias paused mid-game *while winning* and decided not to risk a misplay says the rule needs explicit clarification in baseline.
 

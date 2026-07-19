@@ -1,13 +1,13 @@
 //! Quantized integer forward pass for the NNUE tail net.
 //!
 //! The in-search inference path must NOT call `burn` per node (ns-49 measured a
-//! dense burn forward at ~382× the hand-crafted eval). This module runs the net
+//! dense burn forward at ~382x the hand-crafted eval). This module runs the net
 //! as a hand-written integer forward over the accumulator + small tail layers.
 //! See `design/inbox/nnue-rework-plan.md` §3.4.
 //!
 //! ## Scheme (fixed-point, uniform per-domain scales)
 //!
-//! Topology: `Accumulator(i32 × 128) → clippedReLU → 128→32 → clippedReLU →
+//! Topology: `Accumulator(i32 x 128) → clippedReLU → 128→32 → clippedReLU →
 //! 32→32 → clippedReLU → 32→1 → centipawns`, matching the trained
 //! `hidden_sizes = [128, 32, 32]` (ns-50 tail-cost rework; was [256,64,32]).
 //!
@@ -173,7 +173,7 @@ impl QuantizedNet {
         self.out.forward(&a2i, false, &mut a3);
 
         // a3[0] is the raw output in the scale-QW/scale-1 product domain,
-        // already `>> QW_SHIFT` (scale 1, i.e. normalized-label units × 1).
+        // already `>> QW_SHIFT` (scale 1, i.e. normalized-label units x 1).
         // Dequant is identity here (scale 1); scale to centipawns.
         let cp = (a3[0] as f32) * self.out_to_cp;
         (cp.round() as i32).clamp(-MAX_NN_SCORE, MAX_NN_SCORE)

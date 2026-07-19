@@ -15,7 +15,7 @@
 //!       --out game/bench/results/run.json
 //!
 //!   cargo run -p search_bench --release -- --determinism
-//!       (runs the corpus 10× at depth 6 and asserts identical node counts)
+//!       (runs the corpus 10x at depth 6 and asserts identical node counts)
 //!
 //! Output format: structured JSON (one object per position + an aggregate
 //! block). Field names are intentionally stable; downstream diff tooling
@@ -675,7 +675,7 @@ fn write_json(
 }
 
 fn run_determinism(entries: &[CorpusEntry], depth: u8, runs: usize, evaluator: &dyn Evaluator) {
-    eprintln!("Determinism check: {} positions × {} runs each at depth {}", entries.len(), runs, depth);
+    eprintln!("Determinism check: {} positions x {} runs each at depth {}", entries.len(), runs, depth);
     let mut all_ok = true;
     for entry in entries {
         let template = match from_fen(&entry.fen) {
@@ -719,7 +719,7 @@ fn run_determinism(entries: &[CorpusEntry], depth: u8, runs: usize, evaluator: &
 
 fn run_eval_only(entries: &[CorpusEntry], iterations: u64, out_path: Option<&PathBuf>) {
     eprintln!(
-        "Eval-only bench: {} positions × {} iterations each",
+        "Eval-only bench: {} positions x {} iterations each",
         entries.len(),
         iterations
     );

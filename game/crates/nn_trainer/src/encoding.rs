@@ -9,7 +9,7 @@
 //!
 //! ## Feature layout (INPUT_DIM = 2825)
 //!
-//! Per square (64 squares × 44 features = 2816):
+//! Per square (64 squares x 44 features = 2816):
 //!   - owner       (2) : [is_p1, is_p2]            (both zero → empty)
 //!   - kind        (3) : [is_king, is_champion, is_guard]
 //!   - hp          (3) : one-hot 0..=2             (Stack M cap)
@@ -57,7 +57,7 @@ use core_engine::state::position::{Phase, Player};
 /// Per-square feature width - keep in sync with the writer below.
 pub const PER_SQUARE_DIM: usize = 2 + 3 + 3 + 3 + 16 + 16 + 1;
 
-/// 64 squares × PER_SQUARE_DIM = 2816.
+/// 64 squares x PER_SQUARE_DIM = 2816.
 pub const BOARD_BLOCK_DIM: usize = 64 * PER_SQUARE_DIM;
 
 /// Global features appended after the board block.
@@ -164,7 +164,7 @@ mod tests {
         let v = encode_position(&pos);
         // Per-square block, owner+kind+combo zero on every square. HP one-hot,
         // armor one-hot, skill1 one-hot (id=0=unequipped), and skill2 one-hot
-        // each fire at index 0 → 4 ones per square × 64 = 256 ones.
+        // each fire at index 0 → 4 ones per square x 64 = 256 ones.
         // Globals: side_to_move (P1, default), phase (Move, default), and
         // round_number (=1, scalar 1/50) fire = 3 more nonzero entries.
         let nonzero: usize = v.iter().filter(|x| **x != 0.0).count();

@@ -4,6 +4,7 @@
 // see when hovering or arming a skill.
 
 import { ActionKind, decodeAction } from "$lib/engine";
+import { skillById } from "$lib/engine/skills";
 
 export interface SkillVariant {
   raw: number;
@@ -29,6 +30,34 @@ export interface SkillTargetSet {
   variantsByTarget: Map<number, SkillVariant[]>;
 }
 
+/** Pre-filters `legal` to only the Skill actions cast by `src` with `skillId`,
+ *  decoded into `SkillVariant`s. Every exported scan in this module is a thin
+ *  wrapper over this single O(n) pass - the (kind/src/skillId) preamble lives
+ *  here and nowhere else. */
+function filterSkillActions(
+  legal: Uint32Array,
+  src: number,
+  skillId: number,
+): SkillVariant[] {
+  const out: SkillVariant[] = [];
+  for (let i = 0; i < legal.length; i++) {
+    const raw = legal[i];
+    const a = decodeAction(raw);
+    if (a.kind !== ActionKind.Skill) continue;
+    if (a.src !== src) continue;
+    if (a.skillId !== skillId) continue;
+    out.push({
+      raw,
+      target: a.target,
+      choiceIdx: a.choiceIdx,
+      focusMode: a.focusMode,
+      auxSq: a.auxSq,
+      hasAux: a.hasAux,
+    });
+  }
+  return out;
+}
+
 export function skillTargetsFor(
   legal: Uint32Array,
   src: number,
@@ -37,27 +66,14 @@ export function skillTargetsFor(
   const squares = new Set<number>();
   const byTarget = new Map<number, number[]>();
   const variantsByTarget = new Map<number, SkillVariant[]>();
-  for (let i = 0; i < legal.length; i++) {
-    const raw = legal[i];
-    const a = decodeAction(raw);
-    if (a.kind !== ActionKind.Skill) continue;
-    if (a.src !== src) continue;
-    if (a.skillId !== skillId) continue;
-    squares.add(a.target);
-    const v: SkillVariant = {
-      raw,
-      target: a.target,
-      choiceIdx: a.choiceIdx,
-      focusMode: a.focusMode,
-      auxSq: a.auxSq,
-      hasAux: a.hasAux,
-    };
-    const list = byTarget.get(a.target);
-    if (list) list.push(raw);
-    else byTarget.set(a.target, [raw]);
-    const vlist = variantsByTarget.get(a.target);
+  for (const v of filterSkillActions(legal, src, skillId)) {
+    squares.add(v.target);
+    const list = byTarget.get(v.target);
+    if (list) list.push(v.raw);
+    else byTarget.set(v.target, [v.raw]);
+    const vlist = variantsByTarget.get(v.target);
     if (vlist) vlist.push(v);
-    else variantsByTarget.set(a.target, [v]);
+    else variantsByTarget.set(v.target, [v]);
   }
   return { squares, byTarget, variantsByTarget };
 }
@@ -69,35 +85,23 @@ export function skillIsCastable(
   src: number,
   skillId: number,
 ): boolean {
-  for (let i = 0; i < legal.length; i++) {
-    const raw = legal[i];
-    const a = decodeAction(raw);
-    if (a.kind !== ActionKind.Skill) continue;
-    if (a.src !== src) continue;
-    if (a.skillId !== skillId) continue;
-    return true;
-  }
-  return false;
+  return filterSkillActions(legal, src, skillId).length > 0;
 }
 
 /** Whether the (src, skillId) pair has variants distinguished by `focus_mode`.
- *  Only Blast (skill 10) and Shove (skill 11) under Focus have two distinct
- *  interpretations the player must choose between. */
+ *  Only skills with two distinct Focus interpretations (Blast, Shove) can - the
+ *  `hasFocusModeChoice` flag comes from the engine's skill metadata, so no
+ *  skill ids are hardcoded here. */
 export function hasFocusModeChoice(
   legal: Uint32Array,
   src: number,
   skillId: number,
 ): boolean {
-  if (skillId !== 10 && skillId !== 11) return false;
+  if (!skillById(skillId)?.hasFocusModeChoice) return false;
   let sawActivation = false;
   let sawEffect = false;
-  for (let i = 0; i < legal.length; i++) {
-    const raw = legal[i];
-    const a = decodeAction(raw);
-    if (a.kind !== ActionKind.Skill) continue;
-    if (a.src !== src) continue;
-    if (a.skillId !== skillId) continue;
-    if (a.focusMode) sawEffect = true;
+  for (const v of filterSkillActions(legal, src, skillId)) {
+    if (v.focusMode) sawEffect = true;
     else sawActivation = true;
     if (sawActivation && sawEffect) return true;
   }
@@ -114,17 +118,9 @@ export function hasRetargetVariants(
   src: number,
   skillId: number,
 ): boolean {
-  for (let i = 0; i < legal.length; i++) {
-    const raw = legal[i];
-    const a = decodeAction(raw);
-    if (a.kind !== ActionKind.Skill) continue;
-    if (a.src !== src) continue;
-    if (a.skillId !== skillId) continue;
-    // Focus-retargeted Shield/Dash/Retreat carry hasAux=true; aux_sq is the
-    // recipient. (Non-Focus self-casts have target == src and hasAux=false.)
-    if (a.hasAux && a.auxSq !== src) return true;
-  }
-  return false;
+  // Focus-retargeted Shield/Dash/Retreat carry hasAux=true; aux_sq is the
+  // recipient. (Non-Focus self-casts have target == src and hasAux=false.)
+  return filterSkillActions(legal, src, skillId).some((v) => v.hasAux && v.auxSq !== src);
 }
 
 /** Whether (src, skillId) has BOTH a self-cast branch (no aux) and at least
@@ -138,13 +134,8 @@ export function hasSelfAndRetargetChoice(
 ): boolean {
   let sawSelf = false;
   let sawRetarget = false;
-  for (let i = 0; i < legal.length; i++) {
-    const raw = legal[i];
-    const a = decodeAction(raw);
-    if (a.kind !== ActionKind.Skill) continue;
-    if (a.src !== src) continue;
-    if (a.skillId !== skillId) continue;
-    if (a.hasAux && a.auxSq !== src) sawRetarget = true;
+  for (const v of filterSkillActions(legal, src, skillId)) {
+    if (v.hasAux && v.auxSq !== src) sawRetarget = true;
     else sawSelf = true;
     if (sawSelf && sawRetarget) return true;
   }
@@ -173,15 +164,10 @@ export function allyMoverCandidates(
   skillId: number,
 ): number[] {
   const set = new Set<number>();
-  for (let i = 0; i < legal.length; i++) {
-    const raw = legal[i];
-    const a = decodeAction(raw);
-    if (a.kind !== ActionKind.Skill) continue;
-    if (a.src !== src) continue;
-    if (a.skillId !== skillId) continue;
-    if (!a.hasAux || a.auxSq === src) continue;
-    if (a.auxSq === a.target) continue; // Shield: ally IS the target, not a mover.
-    set.add(a.auxSq);
+  for (const v of filterSkillActions(legal, src, skillId)) {
+    if (!v.hasAux || v.auxSq === src) continue;
+    if (v.auxSq === v.target) continue; // Shield: ally IS the target, not a mover.
+    set.add(v.auxSq);
   }
   return [...set].sort((x, y) => x - y);
 }
@@ -196,15 +182,10 @@ export function allyMoverDestinations(
   focusMode: boolean | null,
 ): Set<number> {
   const out = new Set<number>();
-  for (let i = 0; i < legal.length; i++) {
-    const raw = legal[i];
-    const a = decodeAction(raw);
-    if (a.kind !== ActionKind.Skill) continue;
-    if (a.src !== src) continue;
-    if (a.skillId !== skillId) continue;
-    if (!a.hasAux || a.auxSq !== allySq) continue;
-    if (focusMode !== null && a.focusMode !== focusMode) continue;
-    out.add(a.target);
+  for (const v of filterSkillActions(legal, src, skillId)) {
+    if (!v.hasAux || v.auxSq !== allySq) continue;
+    if (focusMode !== null && v.focusMode !== focusMode) continue;
+    out.add(v.target);
   }
   return out;
 }
@@ -219,16 +200,24 @@ export function rawForAllyMove(
   destSq: number,
   focusMode: boolean | null,
 ): number | null {
-  for (let i = 0; i < legal.length; i++) {
-    const raw = legal[i];
-    const a = decodeAction(raw);
-    if (a.kind !== ActionKind.Skill) continue;
-    if (a.src !== src) continue;
-    if (a.skillId !== skillId) continue;
-    if (!a.hasAux || a.auxSq !== allySq) continue;
-    if (a.target !== destSq) continue;
-    if (focusMode !== null && a.focusMode !== focusMode) continue;
-    return raw;
-  }
-  return null;
+  const v = filterSkillActions(legal, src, skillId).find(
+    (v) =>
+      v.hasAux &&
+      v.auxSq === allySq &&
+      v.target === destSq &&
+      (focusMode === null || v.focusMode === focusMode),
+  );
+  return v?.raw ?? null;
+}
+
+/** Find the raw u32 for a self-cast action - the variant whose target is the
+ *  caster itself (Shield/Focus/Charge, and the self branch of a Focus-staged
+ *  retargetable skill). Returns null if none exists. */
+export function rawForSelfCast(
+  legal: Uint32Array,
+  src: number,
+  skillId: number,
+): number | null {
+  const v = filterSkillActions(legal, src, skillId).find((v) => v.target === src);
+  return v?.raw ?? null;
 }

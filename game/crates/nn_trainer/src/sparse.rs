@@ -17,9 +17,9 @@
 //! features (old off, new on) - the property that keeps the accumulator delta
 //! small and makes `apply == refresh` cheap.
 //!
-//! Per-square block (64 squares × PER_SQUARE = 3328), for square `sq` at base
+//! Per-square block (64 squares x PER_SQUARE = 3328), for square `sq` at base
 //! `sq * PER_SQUARE`:
-//!   - owner+kind (6) : one-hot over {P1,P2}×{King,Champion,Guard}
+//!   - owner+kind (6) : one-hot over {P1,P2}x{King,Champion,Guard}
 //!                      (empty square → none active)
 //!   - hp        (3) : one-hot 0..=2                (Stack M cap)
 //!   - armor     (3) : one-hot 0..=2
@@ -49,7 +49,7 @@ use core_engine::state::position::{Phase, Player};
 
 // --- Per-square group widths + intra-square offsets ------------------------
 
-const OWNER_KIND: usize = 6; // {P1,P2} × {K,C,G}
+const OWNER_KIND: usize = 6; // {P1,P2} x {K,C,G}
 const HP: usize = 3;
 const ARMOR: usize = 3;
 const SKILL1: usize = 16;
@@ -67,7 +67,7 @@ const OFF_SKILL1: usize = OFF_ARMOR + ARMOR; // 12
 const OFF_SKILL2: usize = OFF_SKILL1 + SKILL1; // 28
 const OFF_COMBO: usize = OFF_SKILL2 + SKILL2; // 44
 
-/// 64 squares × PER_SQUARE.
+/// 64 squares x PER_SQUARE.
 pub const BOARD_BLOCK: usize = 64 * PER_SQUARE; // 3328
 
 // --- Global group widths + offsets (relative to BOARD_BLOCK) ---------------
@@ -348,7 +348,7 @@ mod tests {
             let diff = before.symmetric_difference(&after).count();
             // A full refresh touches ~326 features; any single action must flip
             // dramatically fewer. AOE (Tempest, ≤9 squares) is the worst case:
-            // ≤ 9 squares × 6 feature-flips + a few globals - comfortably < 80.
+            // ≤ 9 squares x 6 feature-flips + a few globals - comfortably < 80.
             assert!(
                 diff <= 80,
                 "action flipped {diff} features (expected a small bounded set)"

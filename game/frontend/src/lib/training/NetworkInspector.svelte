@@ -102,7 +102,7 @@
         <span class="lbl">Forward output</span>
         <span class="val">{inspection.forwardOutput.toFixed(4)}</span>
         <span class="hint">
-          (unit-scale; ×{inspection.evalScale.toFixed(0)} →
+          (unit-scale; x{inspection.evalScale.toFixed(0)} →
           {Math.round(inspection.forwardOutput * inspection.evalScale)} cp)
         </span>
       </section>

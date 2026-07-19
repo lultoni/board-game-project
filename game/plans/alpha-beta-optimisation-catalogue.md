@@ -30,9 +30,9 @@ Highest-leverage area. Ideal ordering shrinks tree toward `sqrt(N)`. Modern engi
 
 | Technique | What it does | Speedup | Complexity | Correctness | Fits our game? |
 |---|---|---|---|---|---|
-| **TT-move first** | Try the TT entry's stored move first. | 2-5× at depth-N from depth-(N-1) data. Biggest single gain. | Low | Yes (ordering only) | Yes - but legality-check the TT move against current phase before trusting it. |
+| **TT-move first** | Try the TT entry's stored move first. | 2-5x at depth-N from depth-(N-1) data. Biggest single gain. | Low | Yes (ordering only) | Yes - but legality-check the TT move against current phase before trusting it. |
 | **PV-move** | Order previous iteration's PV move first. | Subsumed by TT-move when TT is reliable. | Low | Yes | Yes; often redundant with TT-move. |
-| **MVV-LVA** | Captures ordered by victim-value / attacker-value. | Significant in chess. | Low | Heuristic | **Adapt.** No captures. Substitute: HP-reducing skills ordered by `(damage_dealt × target_value) / cost`. King-threatening skills get top priority. |
+| **MVV-LVA** | Captures ordered by victim-value / attacker-value. | Significant in chess. | Low | Heuristic | **Adapt.** No captures. Substitute: HP-reducing skills ordered by `(damage_dealt x target_value) / cost`. King-threatening skills get top priority. |
 | **SEE** | Simulates recapture cascade on a square to label captures +/-/=. | Major in QS and cut-nodes. | Medium | Heuristic-ish | **Limited fit.** No attacker-stack on squares; ranged skills with shared money pool break the model. See §3 for our adaptation. |
 | **Killer moves** | Two quiet moves per ply that caused beta-cutoffs at siblings. | 10-30% node reduction. | Low | Heuristic | Yes - keep separate killer slots per phase (Move vs Skill), since move sets are disjoint. |
 | **History heuristic** | `[side][from][to] += depth²` on cutoffs; order quiet moves by score. | 10-20% on top of killers. | Low | Heuristic | Yes - index by `[side][action_kind][from][to]` where `action_kind` covers move/skill_id/EndPhase. Let `EndPhase` accrue history too. |
@@ -52,8 +52,8 @@ Highest-leverage area. Ideal ordering shrinks tree toward `sqrt(N)`. Modern engi
 
 | Technique | What it does | Gain | Complexity | Correctness | Fits? |
 |---|---|---|---|---|---|
-| **Null-move pruning (NMP)** | Hypothetically pass; depth−R reduced search; if β-cutoff, prune. R typically 2-4. | 2-3×. Biggest pruning gain in chess. | Low-medium | Heuristic; fails in zugzwang | **See special caveats below.** |
-| **Reverse futility pruning (RFP) / Static NMP** | If `static_eval − margin×depth ≥ β` at low depth and non-PV, return `static_eval`. | 30-80 Elo in amateur engines. | Low | Heuristic | Yes. Disable when King is directly threatened. |
+| **Null-move pruning (NMP)** | Hypothetically pass; depth-R reduced search; if β-cutoff, prune. R typically 2-4. | 2-3x. Biggest pruning gain in chess. | Low-medium | Heuristic; fails in zugzwang | **See special caveats below.** |
+| **Reverse futility pruning (RFP) / Static NMP** | If `static_eval - marginxdepth ≥ β` at low depth and non-PV, return `static_eval`. | 30-80 Elo in amateur engines. | Low | Heuristic | Yes. Disable when King is directly threatened. |
 | **Futility pruning** | At depth 1-2, skip quiet moves where `static_eval + max_gain + margin < α`. | 20-40 Elo. | Low | Heuristic | Yes. Tune `max_gain` for our damage range (much more compressible than chess piece values). |
 | **Late Move Reductions (LMR)** | Reduce depth for moves past the first few. `R = base + ln(depth)·ln(move_idx) / divisor`. Re-search at full depth on fail-high. | "Effective branching factor < 2." 100+ Elo in modern engines. | Medium | Heuristic with re-search safety net | **One of our highest-leverage adds** given Skill-Phase branching. Don't reduce: PV node, in-check, King-threatening, TT-move, killers. |
 | **Late Move Pruning (LMP) / Move-count pruning** | At low depth and non-PV, skip moves with index above `threshold(depth)` entirely. | 20-50 Elo. | Low | Heuristic (more aggressive than LMR) | Yes - particularly valuable for `EndPhase`-padded tails of skill-phase move lists. |
@@ -116,9 +116,9 @@ Configurations tried (all gate `lmp_active = lmp_threshold > 0 && !is_mate(α) &
 The conceptual basis of NMP is "if I do nothing, my position is still ≥ β." In our game, `EndPhase` is a legal move - it transitions Move → Skill → end-of-round, **advancing state**. So:
 
 - **The real "null move" is NOT `EndPhase`.** It's "give opponent two consecutive turns without changing any state" - flip side-to-move + advance ply hash, no state change.
-- **Implement NMP and `EndPhase` as distinct operations.** Searching `EndPhase` at depth−R does not give NMP-equivalent information.
+- **Implement NMP and `EndPhase` as distinct operations.** Searching `EndPhase` at depth-R does not give NMP-equivalent information.
 - **Zugzwang analog.** If we ever add "you take damage at end of your turn" effects (poison, bleed, upkeep), disable NMP near end-of-round. Stack M has no such effects today but `bp-plague` (Plague skill backpocket) would introduce it.
-- **NMP-refutation TT-move trick still works.** On NMP fail-low, the depth−R−1 search returns a move from opponent's perspective - extract from TT to seed move ordering.
+- **NMP-refutation TT-move trick still works.** On NMP fail-low, the depth-R-1 search returns a move from opponent's perspective - extract from TT to seed move ordering.
 
 ---
 
@@ -139,14 +139,14 @@ The conceptual basis of NMP is "if I do nothing, my position is still ≥ β." I
 ### Delta pruning adaptation
 - Chess: skip captures where `eval + victim_value + margin < α`.
 - Ours: skip HP-skills where `eval + max_HP_swing_this_skill + margin < α`.
-- `max_HP_swing` = `damage_after_armor × value_of_most_valuable_piece_in_range`. Cheap precomputed table.
+- `max_HP_swing` = `damage_after_armor x value_of_most_valuable_piece_in_range`. Cheap precomputed table.
 
 ### SEE adaptation - the hard part
 
 Chess SEE assumes square X is repeatedly attacked by a stack of pieces in ascending value order. Ranged skills break this: no positional attacker-stack, money is global. Two viable adaptations:
 
 1. **Skill-Exchange Evaluation (single-step, no recursion).** Compute net HP swing for one skill cast against a target, including immediate counter-cast if target survives and has a damaging skill within range/cost. Truncate at depth 2 (cast, counter). Captures ~80% of what SEE buys without trying to recurse.
-2. **Cost-aware filter.** Skill costs M, deals D damage. "Winning" iff `D × target_value − M × own_money_value > 0`. Cheapest filter, sufficient for QS pruning.
+2. **Cost-aware filter.** Skill costs M, deals D damage. "Winning" iff `D x target_value - M x own_money_value > 0`. Cheapest filter, sufficient for QS pruning.
 
 **Caveat.** Don't port chess SEE pseudocode literally. The mismatch will produce subtle bugs (treating money like an attacker in the stack).
 
@@ -174,9 +174,9 @@ Drop-in replacement: first move with `[α, β]`, rest with null window `[α, α+
 **Session 36 result - rejected (standalone).** Implemented PVS with absolute-POV framing (P1 null-window `[α, α+1]`, P2 null-window `[β-1, β]`), gated by `depth >= 2`. Outcome at depth-6: +0.8% wall-clock (essentially a no-op - killers+history orders so well that PVS finds nothing left to save). Time-mode budgets: 500/1000/3000ms each gained 1-4 positions, but 100ms lost 2 positions (opening-02 8→7, midgame-low-skill-06 9→8) and 3000ms lost 1 (endgame-sparse-06 18→17). Regressions are deterministic (see LMP entry's methodological note). Hypothesis: PVS's win materialises when null-window re-searches are *cheap* - that requires LMR to be reducing the re-search depth. Standalone PVS atop strong move ordering has almost nothing to save. **Revisit alongside LMR** - PVS is the canonical re-search target for LMR, so they should be implemented together and graded as a pair.
 
 ### Aspiration windows
-After iteration N, set `α = score_N − δ`, `β = score_N + δ` for iteration N+1, with δ ~ 25 cp. Widen exponentially on fail. Gain: 10-20% time-to-depth. Low complexity. Don't aspirate until depth ≥ 5. Disable near mate scores.
+After iteration N, set `α = score_N - δ`, `β = score_N + δ` for iteration N+1, with δ ~ 25 cp. Widen exponentially on fail. Gain: 10-20% time-to-depth. Low complexity. Don't aspirate until depth ≥ 5. Disable near mate scores.
 
-**Session 36 result - rejected (standalone).** Tried at δ=50/150/300 with 4× exponential widening, MAX_WIDENINGS=4, MIN_DEPTH=5. Outcome: depth-6 wall-clock improved ~25%, BUT 1-3 corpus positions regressed by 1 ply at the extreme time budgets (100ms and 3000ms) regardless of δ. δ=300 also regressed depth-6 wall-clock (+3.8%). No δ achieves strict no-regression across the multi-budget sweep. Regressions are deterministic, not noise (baseline 3-run vs 10-run sweeps agreed on every position at every budget - see LMP entry above for the methodological note). Hypothesis: at very tight budgets the re-search after a fail-high/fail-low burns enough time to fall short of the next depth. **Revisit after LMR/PVS** - those make the re-search itself cheaper and may eliminate the time-mode regressions. Don't retry the same parameter range alone.
+**Session 36 result - rejected (standalone).** Tried at δ=50/150/300 with 4x exponential widening, MAX_WIDENINGS=4, MIN_DEPTH=5. Outcome: depth-6 wall-clock improved ~25%, BUT 1-3 corpus positions regressed by 1 ply at the extreme time budgets (100ms and 3000ms) regardless of δ. δ=300 also regressed depth-6 wall-clock (+3.8%). No δ achieves strict no-regression across the multi-budget sweep. Regressions are deterministic, not noise (baseline 3-run vs 10-run sweeps agreed on every position at every budget - see LMP entry above for the methodological note). Hypothesis: at very tight budgets the re-search after a fail-high/fail-low burns enough time to fall short of the next depth. **Revisit after LMR/PVS** - those make the re-search itself cheaper and may eliminate the time-mode regressions. Don't retry the same parameter range alone.
 
 ---
 
@@ -188,7 +188,7 @@ Already have Zobrist + BoundFlag. Recommended layers:
 |---|---|---|---|
 | **TT-move ordering** | Already implied (§1). | Low | - |
 | **Two-tier (depth-preferred + always-replace)** | Each slot holds two entries: one keeps deepest, one keeps freshest. | Medium | Classic Thompson/Condon scheme; robust default. |
-| **Bucketed (4-way set-associative)** | Each cache line holds 4 entries; replace lowest-depth on store. | Medium | Modern preferred. Matches L1 cache line (64B) for 4 × 16B entries. |
+| **Bucketed (4-way set-associative)** | Each cache line holds 4 entries; replace lowest-depth on store. | Medium | Modern preferred. Matches L1 cache line (64B) for 4 x 16B entries. |
 | **Aging** | Tag entries with a "search generation" counter; prefer replacing older. | Low | Essential - stale entries from prior root searches outlive their usefulness. |
 | **Mate-score adjustment on store/probe** | Store as "distance from this node"; on probe, add current ply back. | Low | Skip this and mate-distance reporting breaks. We already do this - verify. |
 
@@ -203,7 +203,7 @@ Already have Zobrist + BoundFlag. Recommended layers:
 
 | Refinement | What | Notes |
 |---|---|---|
-| **Internal Iterative Deepening (IID)** | When no TT-move at PV node, search at depth−2 first to get a TT-move, then proceed at full depth. | Low gain in modern engines (TT hit rate is high); cheap to add. |
+| **Internal Iterative Deepening (IID)** | When no TT-move at PV node, search at depth-2 first to get a TT-move, then proceed at full depth. | Low gain in modern engines (TT hit rate is high); cheap to add. |
 | **Internal Iterative Reductions (IIR)** | Inverse: when no TT-move at non-PV cut-nodes, reduce depth by 1. | Stockfish 2020+. ~10-20 Elo. Lower complexity than IID; replaces it in some engines. |
 | **ID + aspiration** | Covered §5. | - |
 | **Time-management coupling** | Per-iteration time check; abort iteration if next is unlikely to finish in budget. | Our node-mask check is fine; add "iteration time grew Nx" predictor for early termination. |
@@ -264,7 +264,7 @@ Ordered by Elo-per-engineering-hour for our specific engine. Reasoning follows C
 5. **LMR** (4-8 h, including formula tuning). Often biggest single Elo jump. Pair with PVS - shared null-window re-search structure. **Critical for our high-branching Skill phase.**
 6. **Reverse Futility Pruning** (1 h). Cheap, low-risk, 30-80 Elo.
 7. **Adapt Quiescence Search** to our loud/quiet distinction. Stand-pat + delta pruning + King-threat extension. Use single-step Skill-Exchange Evaluation, not chess-SEE port.
-8. **Null-move pruning** with zugzwang awareness. Disable if any "damage on end-of-round" mechanic is added. 2-3× speedup when working.
+8. **Null-move pruning** with zugzwang awareness. Disable if any "damage on end-of-round" mechanic is added. 2-3x speedup when working.
 9. **Check extension** (King-threat analog). Conservative trigger. ~20-40 Elo.
 10. **Futility pruning + LMP** at low depth. Cheap on top of RFP.
 11. **Countermove + 1-ply continuation history.** Diminishing returns but cumulative.
@@ -413,7 +413,7 @@ Per the catalogue's recommended order, remaining Phase B / early-Phase-C items t
 
 The ns-43 term registry rebuilt itself on every `evaluate()`: 14 `Box<dyn
 EvalTerm>` allocations (`default_terms`), an `active`/`per_piece`/`side_level`/
-`acc`/`entries` `Vec` chain, `dyn` dispatch per term × square, and a full
+`acc`/`entries` `Vec` chain, `dyn` dispatch per term x square, and a full
 `DynBreakdown::to_legacy()` projection to the frontend struct - all pure
 overhead in the search leaf, which only wants an `i32`.
 
@@ -429,7 +429,7 @@ Two behaviour-preserving changes (commit `60dbc1e`), gated by `golden_eval_uncha
 
 Sweep vs the fresh post-ns-43 baseline (determinism 30/30):
 - **depth6: geo-NPS 587K → 1,153K (+96.5%), total d6 22,496ms → 11,221ms
-  (−50.1%), positions-over-1s 5 → 3.** midgame-move-05 (1519→836ms) and
+  (-50.1%), positions-over-1s 5 → 3.** midgame-move-05 (1519→836ms) and
   skill-phase-full-04 (1008→501ms) crossed under 1s. Every position ~50% faster;
   zero score/best-move regressions.
 - time budgets: deeper at all four, **0 shallower anywhere** (100ms +0.43 plies /
@@ -437,7 +437,7 @@ Sweep vs the fresh post-ns-43 baseline (determinism 30/30):
 
 **The `--eval-only` microbench was misleading - read this before trusting one
 again.** eval-only ran ~2270 ns/eval before AND after (flat, warm allocator,
-predictable branch pattern in a tight loop). It completely hid a ~2× *search*
+predictable branch pattern in a tight loop). It completely hid a ~2x *search*
 NPS gain. The win is allocator + cache pressure amortised across 5M+ real search
 nodes with interleaved make/unmake, not per-call eval latency. **Grade
 eval-throughput refactors on the search sweep, not eval-only.**
@@ -475,10 +475,10 @@ Implemented together per the §5 note (commit `a9a734f`), both behind
   actions (`is_loud` covers Move-Attacks + Strike/Blast + BodyguardChoice).
 
 Sweep vs the Phase-1 baseline (determinism 30/30):
-- **depth6: total 11,221ms → 9,567ms (−14.7%), over-1s 3 → 2**
-  (skill-phase-full-03 1691→591ms crossed under). geo-NPS −4.5% (LMR re-searches
+- **depth6: total 11,221ms → 9,567ms (-14.7%), over-1s 3 → 2**
+  (skill-phase-full-03 1691→591ms crossed under). geo-NPS -4.5% (LMR re-searches
   lower the raw node rate even as the tree shrinks). Skill-phase/opening tails
-  −40…−78%.
+  -40…-78%.
 - time budgets deeper at all four: 100ms +0.37 plies (7 deeper/0 shallower),
   500ms +0.60 (14/1), 1000ms +0.67 (12/0), 3000ms +0.70 (16/3).
 
@@ -491,7 +491,7 @@ retro saw. They were already over 1s (not newly crossed over), over-1s dropped
 3→2, and the aggregate improves at every budget → net win, accepted.
 
 **Tuning tried:** a gentler formula (`0.5 + ln·ln/3.0`, min_idx 4) halved the
-speedup (−7.2% vs −14.7%) and did NOT remove the midgame-move-01 fixed-depth
+speedup (-7.2% vs -14.7%) and did NOT remove the midgame-move-01 fixed-depth
 sign flip (LMR reduces the true-best line there regardless of formula
 gentleness) - so conservatism bought no correctness, only lost speed. Kept the
 aggressive setting.
@@ -521,9 +521,9 @@ ordering against a slow eval and no other pruning. It now sits atop fast-eval +
 QS + LMR/PVS, which absorb that churn.
 
 Sweep vs the Phase-2 baseline (determinism 30/30):
-- **depth6: total 9,567ms → 5,199ms (−45.7%), geo-NPS +1.7%, over-1s held at 2.**
+- **depth6: total 9,567ms → 5,199ms (-45.7%), geo-NPS +1.7%, over-1s held at 2.**
   opening-with-skills-03 3475→1591ms (ebf 11.9→10.6), midgame-move-03
-  2762→1521ms (ebf 12.2→11.0). Skill-phase/opening tails −70…−87%.
+  2762→1521ms (ebf 12.2→11.0). Skill-phase/opening tails -70…-87%.
 - time budgets deeper at all four: 100ms +0.47 plies (10 deeper/1 shallower),
   500ms +0.47 (13/1), 1000ms +0.60 (13/0), 3000ms +0.87 (12/1).
 
@@ -540,7 +540,7 @@ not the low-depth thresholds, so low-depth aggression is free-ish and helps the
 goal. Kept the aggressive schedule.
 
 Remaining d6-over-1s after Phase 3a: opening-with-skills-03 (~1.6s),
-midgame-move-03 (~1.5s) - the last two, both ~1.5× over. Next levers: aspiration
+midgame-move-03 (~1.5s) - the last two, both ~1.5x over. Next levers: aspiration
 windows (narrow root window → fewer top-of-tree nodes) or a further LMP nudge.
 
 ---
@@ -548,7 +548,7 @@ windows (narrow root window → fewer top-of-tree nodes) or a further LMP nudge.
 ### Phase 3b: Aspiration windows - REJECTED again (root re-search cost)
 
 Re-graded atop fast-eval + LMR/PVS + LMP (the Session 36 revisit condition).
-`ENABLE_ASPIRATION`, `ASP_MIN_DEPTH=5`, `ASP_DELTA=40`, ×3 exponential widen,
+`ENABLE_ASPIRATION`, `ASP_MIN_DEPTH=5`, `ASP_DELTA=40`, x3 exponential widen,
 keep-the-other-bound on a fail. Determinism held 30/30, but depth6 **regressed
 +25.8%** (5,199ms → 6,543ms) and both remaining offenders got *worse*
 (opening-with-skills-03 1591→2238ms, midgame-move-03 1521→2234ms).
@@ -570,7 +570,7 @@ then saves nothing.
 Session 48 (ns-49). Goal was the last 2 over-1s d6 positions. After the search
 wins (Phases 1-3), profiling turned to the eval itself.
 
-**What landed (−2.5% to −3.2% d6, byte- AND node-identical, 448 tests green):**
+**What landed (-2.5% to -3.2% d6, byte- AND node-identical, 448 tests green):**
 
 1. **Physical-only attackers table on the eval path.** `EvalContext::new` built
    the full `build_attackers_table` (physical scatter + skill-scatter). But the
@@ -588,7 +588,7 @@ wins (Phases 1-3), profiling turned to the eval itself.
 
 **What was rejected - vectorizing champion_threat (negative result):**
 
-The initial profile *looked* like `champion_threat` was a 10× hot spot
+The initial profile *looked* like `champion_threat` was a 10x hot spot
 (2314 ns/board-pass in opening-with-skills-03 vs ~50-90 ns for every other term).
 **That was a microbench artifact** - timing the term through the per-term probe's
 `PieceContext` dispatch loop. Timed *directly*, champion_threat is ~260 ns,
@@ -603,11 +603,11 @@ verbatim reference over the corpus + ~1800 random positions - but **regressed th
 search sweep +1.9%**. The common case is 0-2 hits per champion, where the simple
 per-hit loop beats the popcount/closure machinery. Reverted completely (FAR_RAY
 table + all probes removed). Lesson: **grade eval micro-opts on the search sweep,
-and beware the per-term microbench** (it inflated a non-hot-spot ~9×).
+and beware the per-term microbench** (it inflated a non-hot-spot ~9x).
 
 **NN eval as a throughput lever - REJECTED (wrong tool).** Measured a single
 `NnEvaluator` forward pass (burn `NdArray`, dense `2825→256→64→32→1`) at
-**~394 µs/call vs ~1 µs for the hand-crafted eval - ~382× slower.** A single NN
+**~394 µs/call vs ~1 µs for the hand-crafted eval - ~382x slower.** A single NN
 pass is not faster; it is dramatically slower per call. NN is a *strength* lever,
 not a *throughput* one, and only via a ground-up NNUE-style redesign (sparse
 per-piece-per-square features + an incrementally-updated accumulator wired into

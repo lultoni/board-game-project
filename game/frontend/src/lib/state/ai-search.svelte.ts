@@ -9,6 +9,7 @@
 // eval fields are position-level (not per-search), so they stay shared.
 
 import type { EvalBreakdown, EvalBreakdownBySquare } from "../engine/types";
+import type { PlyEval } from "../engine/ply-eval";
 
 export type Side = "p1" | "p2";
 
@@ -27,6 +28,11 @@ interface AiSearchState {
   heuristicEvalBySquare: EvalBreakdownBySquare | null;
   prevRoundBreakdown: EvalBreakdown | null;
   lastRoundSeen: number | null;
+  /** Engine's search-based assessment of the latest ply (B3). Refreshed from
+   *  the `background-eval-ready` Tauri event after a human move: a shallow
+   *  time-bounded search score/depth, distinct from the depth-0
+   *  `heuristicEvalBreakdown` shown live. Null until the first event. */
+  backgroundEval: PlyEval | null;
 }
 
 function emptySide(): SideSearchState {
@@ -46,6 +52,7 @@ const state = $state<AiSearchState>({
   heuristicEvalBySquare: null,
   prevRoundBreakdown: null,
   lastRoundSeen: null,
+  backgroundEval: null,
 });
 
 // Non-reactive throttle bookkeeping, per side.
@@ -58,6 +65,7 @@ export const aiSearch = {
   get heuristicEvalBySquare() { return state.heuristicEvalBySquare; },
   get prevRoundBreakdown() { return state.prevRoundBreakdown; },
   get lastRoundSeen() { return state.lastRoundSeen; },
+  get backgroundEval() { return state.backgroundEval; },
   /** True iff either side has an in-flight search. Kept for consumers
    *  that gate on "any AI is thinking" (poll suppression, button disable). */
   get anyThinking() { return state.p1.thinking || state.p2.thinking; },
@@ -107,6 +115,10 @@ export function setLastRoundSeen(round: number | null): void {
   state.lastRoundSeen = round;
 }
 
+export function setBackgroundEval(e: PlyEval | null): void {
+  state.backgroundEval = e;
+}
+
 /** Full reset - route teardown or entering a new match. */
 export function resetAiSearch(): void {
   state.p1 = emptySide();
@@ -115,6 +127,7 @@ export function resetAiSearch(): void {
   state.heuristicEvalBySquare = null;
   state.prevRoundBreakdown = null;
   state.lastRoundSeen = null;
+  state.backgroundEval = null;
   lastDepthUpdateMs.p1 = 0;
   lastDepthUpdateMs.p2 = 0;
 }

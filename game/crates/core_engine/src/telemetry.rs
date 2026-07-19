@@ -45,12 +45,29 @@ pub struct SearchMeta {
     pub mate_in:    Option<i32>,
     /// "Centipawn"-style score when not a mate; None when `was_mate`.
     pub score_cp:   Option<i32>,
+    /// Heuristic breakdown of the position AFTER the searched move was applied
+    /// (Part A) — or, for background eval on human plies, of the current
+    /// post-human-move position (Part B). Gives full per-term visibility in
+    /// replay analysis beyond the single alpha-beta score. `None` for legacy
+    /// logs and any SearchMeta built without a breakdown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_move_breakdown: Option<EvalBreakdown>,
 }
 
 impl SearchMeta {
     /// Build from an alpha-beta SearchResult. Threshold matches L3's
     /// `MATE_THRESHOLD = MATE_SCORE - MAX_PLY` (128).
     pub fn from_search(depth: u8, nodes: u64, score: i32) -> Self {
+        Self::from_search_with_breakdown(depth, nodes, score, None)
+    }
+
+    /// Like `from_search` but attaches the post-move heuristic breakdown.
+    pub fn from_search_with_breakdown(
+        depth: u8,
+        nodes: u64,
+        score: i32,
+        post_move_breakdown: Option<EvalBreakdown>,
+    ) -> Self {
         const MAX_PLY: i32 = 128;
         let threshold = MATE_SCORE - MAX_PLY;
         let was_mate = score.abs() > threshold;
@@ -59,7 +76,7 @@ impl SearchMeta {
         } else {
             (None, Some(score))
         };
-        SearchMeta { depth, nodes, raw_score: score, was_mate, mate_in, score_cp }
+        SearchMeta { depth, nodes, raw_score: score, was_mate, mate_in, score_cp, post_move_breakdown }
     }
 }
 
@@ -222,6 +239,13 @@ pub struct PlyRecord {
     // AI metadata; None when human played
     #[serde(default)]
     pub ai:                    Option<SearchMeta>,
+    /// Engine's own assessment of the position AFTER a human ply, filled in
+    /// asynchronously by `Match::annotate_last_ply_with_background_eval` (a
+    /// shallow search that does NOT block the apply pipeline). `None` for AI
+    /// plies (they already carry `ai`), for legacy logs, and for human plies
+    /// that were never annotated (e.g. background eval disabled).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_eval:       Option<SearchMeta>,
 }
 
 fn default_phase() -> Phase { Phase::Move }
@@ -598,6 +622,78 @@ mod tests {
     }
 
     #[test]
+    fn step_ai_searchmeta_carries_post_move_breakdown() {
+        // Part A (Change 5): every AI ply's SearchMeta must include the
+        // heuristic breakdown of the position it moved into, and that
+        // breakdown must equal a fresh evaluate_breakdown of the post-move FEN.
+        let mut m = Match::new(cfg_aivai_short());
+        for _ in 0..4 {
+            if m.game_result().is_some() { break; }
+            m.step_ai().unwrap();
+        }
+        let log = m.match_log().unwrap();
+        assert!(!log.plies.is_empty());
+        for p in &log.plies {
+            let ai = p.ai.as_ref().expect("AI ply must carry SearchMeta");
+            let bd = ai.post_move_breakdown.expect("Part A: post_move_breakdown present");
+            // The searched-leaf breakdown was captured on the exact post-move
+            // position, which is what `post_fen` records.
+            let post = Position::from_fen(&p.post_fen).expect("post_fen parses");
+            assert_eq!(bd, evaluate_breakdown(&post),
+                       "post_move_breakdown must match evaluate_breakdown(post position)");
+        }
+    }
+
+    #[test]
+    fn annotate_last_ply_fills_background_eval_for_human_ply() {
+        // Part B (Change 5): a human ply carries no `ai`, but after
+        // annotate_last_ply_with_background_eval it carries `background_eval`
+        // with the engine's shallow read of the post-human-move position.
+        let mut cfg = Config::local_hvh();
+        cfg.auto_log = true;
+        let mut m = Match::new(cfg);
+        let first = m.legal_actions()[0];
+        m.try_apply(first).unwrap();
+        assert!(m.match_log().unwrap().plies.last().unwrap().background_eval.is_none(),
+                "background_eval starts empty");
+        // budget_ms=0 → deterministic fixed-depth fallback (no wall-clock
+        // flakiness in tests).
+        m.annotate_last_ply_with_background_eval(0);
+        let last = m.match_log().unwrap().plies.last().unwrap();
+        assert!(last.ai.is_none(), "human ply still has no `ai`");
+        let bg = last.background_eval.expect("Part B: background_eval populated");
+        assert!(bg.depth > 0, "background eval searched at least depth 1");
+        assert!(bg.post_move_breakdown.is_some(), "background eval carries breakdown");
+    }
+
+    #[test]
+    fn annotate_last_ply_noop_without_logging() {
+        // No auto_log → no plies → annotate is a safe no-op (no panic).
+        let mut m = Match::new(Config::local_hvh());
+        let first = m.legal_actions()[0];
+        m.try_apply(first).unwrap();
+        m.annotate_last_ply_with_background_eval(0); // must not panic
+        assert!(m.match_log().is_none());
+    }
+
+    #[test]
+    fn annotate_last_ply_time_bounded_reaches_depth() {
+        // With a wall-clock budget, iterative deepening should climb past the
+        // trivial depth-1 floor. A generous 500ms window guarantees at least a
+        // few plies of depth even on a slow CI box.
+        let mut cfg = Config::local_hvh();
+        cfg.auto_log = true;
+        let mut m = Match::new(cfg);
+        let first = m.legal_actions()[0];
+        m.try_apply(first).unwrap();
+        m.annotate_last_ply_with_background_eval(500);
+        let bg = m.match_log().unwrap().plies.last().unwrap()
+            .background_eval.expect("time-bounded eval populated");
+        assert!(bg.depth >= 2, "500ms budget should climb past depth 1, got {}", bg.depth);
+        assert!(bg.post_move_breakdown.is_some());
+    }
+
+    #[test]
     fn notation_has_header_and_per_ply_lines() {
         let mut m = Match::new(cfg_aivai_short());
         for _ in 0..4 {
@@ -633,6 +729,7 @@ mod tests {
             post_moved_this_phase: 0, post_p1_money: 0, post_p2_money: 0,
             post_tracked_enemies: vec![], post_tracked_casters: vec![],
             ai: None,
+            background_eval: None,
         });
         log.total_plies = 1;
         let text = notation::to_text(&log);

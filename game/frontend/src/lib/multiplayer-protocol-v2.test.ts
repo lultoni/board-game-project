@@ -17,6 +17,8 @@ describe("encode/decode round-trip (v2)", () => {
     { kind: "session-hello", matchId: "abc", phase: "play", seq: 42, code: "100000" },
     { kind: "intent", phase: "draft", nonce: "i-abc123", raw: 0 },
     { kind: "intent", phase: "play", nonce: "i-zz", raw: 0xffffffff },
+    { kind: "intent", phase: "play", nonce: "i-t", raw: 5, thoughtMs: 2500 },
+    { kind: "intent", phase: "play", nonce: "i-t0", raw: 5, thoughtMs: 0 },
     {
       kind: "committed",
       seq: 1,
@@ -106,6 +108,16 @@ describe("decodeMessageV2 rejects malformed payloads", () => {
     expect(decodeMessageV2('{"kind":"intent","phase":"draft","nonce":"i-x","raw":-1}')).toBeNull();
     expect(decodeMessageV2('{"kind":"intent","phase":"draft","nonce":"i-x","raw":4294967296}')).toBeNull();
     expect(decodeMessageV2('{"kind":"intent","phase":"draft","nonce":"i-x","raw":1.5}')).toBeNull();
+  });
+
+  it("intent accepts optional thoughtMs but rejects a malformed one (B2)", () => {
+    // Absent → valid (back-compat with pre-B2 joiners).
+    expect(decodeMessageV2('{"kind":"intent","phase":"play","nonce":"i-x","raw":0}')).not.toBeNull();
+    // Valid non-negative number → accepted.
+    expect(decodeMessageV2('{"kind":"intent","phase":"play","nonce":"i-x","raw":0,"thoughtMs":1200}')).not.toBeNull();
+    // Negative / non-finite / non-number → whole message rejected.
+    expect(decodeMessageV2('{"kind":"intent","phase":"play","nonce":"i-x","raw":0,"thoughtMs":-1}')).toBeNull();
+    expect(decodeMessageV2('{"kind":"intent","phase":"play","nonce":"i-x","raw":0,"thoughtMs":"5"}')).toBeNull();
   });
 
   it("committed requires seq>=1, decimal-string postZobrist, originNonce null or non-empty string", () => {

@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMpEngine, type MpEngineHandle } from "./multiplayer-engine";
 import type { WireMessageV2, WirePhase } from "./multiplayer-protocol-v2";
-import type { EngineClient, EvalBreakdown, PositionView, StepResult } from "./engine";
+import type { EngineClient, EvalBreakdown, GameConstantsWire, PositionView, SkillMetadataWire, StepResult } from "./engine";
 
 // ---------- Fake engine ----------------------------------------------------
 //
@@ -15,6 +15,8 @@ import type { EngineClient, EvalBreakdown, PositionView, StepResult } from "./en
 
 class FakeEngine implements EngineClient {
   applied: number[] = [];
+  /** turnStartedMs arg captured on each tryApply — asserts think-time wiring. */
+  tryApplyTurnStartedMs: number[] = [];
   illegalRaws = new Set<number>();
   /** Force a divergent Zobrist (simulating bad joiner mirror state). */
   zobristOverride: bigint | null = null;
@@ -49,9 +51,19 @@ class FakeEngine implements EngineClient {
   }
   async legalActions(): Promise<Uint32Array> { return new Uint32Array(); }
   async actionToNotation(_raw: number): Promise<string> { return ""; }
-  async tryApply(raw: number): Promise<StepResult> {
+  async skillMetadata(): Promise<SkillMetadataWire[]> { return []; }
+  async gameConstants(): Promise<GameConstantsWire> {
+    return {
+      phaseMove: 0, phaseSkill: 1, phaseDraft: 2,
+      modifierFocus: 1, modifierCharge: 2, modifierMoveAttackUsed: 4,
+      playerP1: 0, playerP2: 1,
+      gameOngoing: 0, gameP1Wins: 1, gameP2Wins: 2, skillCount: 15,
+    };
+  }
+  async tryApply(raw: number, turnStartedMs = 0): Promise<StepResult> {
     if (this.illegalRaws.has(raw)) throw new Error("illegal");
     this.applied.push(raw);
+    this.tryApplyTurnStartedMs.push(turnStartedMs);
     return {
       appliedAction: raw,
       score: 0,
@@ -86,6 +98,11 @@ class FakeEngine implements EngineClient {
   }
   async matchLogJson(): Promise<string | null> { return null; }
   async latestPlyJson(): Promise<string | null> { return null; }
+  async onBackgroundEvalReady(): Promise<() => void> { return () => { /* no-op */ }; }
+  async startAivaiProducer(): Promise<void> { /* noop */ }
+  async aivaiProducerLog(): Promise<string | null> { return null; }
+  async stopAivaiProducer(): Promise<string | null> { return null; }
+  async onAivaiProgress(): Promise<() => void> { return () => { /* no-op */ }; }
   async finaliseLog(): Promise<void> { /* noop */ }
   async dispose(): Promise<void> { /* noop */ }
   async setAiEvaluator(): Promise<void> { /* noop */ }
@@ -187,7 +204,7 @@ beforeEach(() => {
 function build(
   role: "host" | "joiner" | "solo",
   phase: WirePhase = "draft",
-  opts?: { ensureLiveEngine?: () => Promise<void> | void },
+  opts?: { ensureLiveEngine?: () => Promise<void> | void; getTurnStartedMs?: () => number },
 ): {
   eng: FakeEngine;
   bus: Bus;
@@ -207,6 +224,7 @@ function build(
       eng,
       getRole: () => currentRole,
       getCode: () => currentCode,
+      getTurnStartedMs: opts?.getTurnStartedMs,
       ensureLiveEngine: opts?.ensureLiveEngine,
       send: bus.send,
       subscribe: bus.subscribe,
@@ -251,6 +269,18 @@ describe("solo", () => {
     expect(r.reason).toBe("illegal");
   });
 
+  it("forwards getTurnStartedMs() to tryApply as think-time (Change 4)", async () => {
+    const { eng, handle } = build("solo", "draft", { getTurnStartedMs: () => 1234 });
+    await handle.submitAction(42);
+    expect(eng.tryApplyTurnStartedMs).toEqual([1234]);
+  });
+
+  it("passes 0 to tryApply when getTurnStartedMs is unwired", async () => {
+    const { eng, handle } = build("solo");
+    await handle.submitAction(42);
+    expect(eng.tryApplyTurnStartedMs).toEqual([0]);
+  });
+
   it("fires onPhaseChange('play') when the engine crosses out of draft", async () => {
     const { eng, listeners, handle, bus } = build("solo", "draft");
     eng.currentPhase = 2;
@@ -288,6 +318,42 @@ describe("host", () => {
     const hello = bus.sent.find((m) => m.kind === "session-hello");
     expect(hello).toBeDefined();
     expect(hello).toMatchObject({ phase: "play", seq: 0, matchId: "host-match-1", code: "281947" });
+  });
+
+  it("forwards getTurnStartedMs() on the host's OWN submit (Change 4)", async () => {
+    const { eng, handle } = build("host", "draft", { getTurnStartedMs: () => 5000 });
+    handle.notifyConnectionOpen();
+    await handle.submitAction(10);
+    expect(eng.tryApplyTurnStartedMs).toEqual([5000]);
+  });
+
+  it("does NOT attribute host think-time to an incoming joiner intent (Change 4)", async () => {
+    // The joiner's move is the opponent's; the host's turn clock must not
+    // be applied to it. tryApply for the intent gets 0.
+    const { eng, bus, handle } = build("host", "draft", { getTurnStartedMs: () => 5000 });
+    handle.notifyConnectionOpen();
+    bus.push({ kind: "intent", phase: "draft", nonce: "i-abc", raw: 99 });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(eng.applied).toEqual([99]);
+    expect(eng.tryApplyTurnStartedMs).toEqual([0]);
+  });
+
+  it("records the JOINER's shipped think-time on an incoming intent (B2)", async () => {
+    // Joiner reported thoughtMs=2500. Host reconstructs turnStartedMs so the
+    // engine recovers ~2500ms via now − turnStartedMs. We assert the captured
+    // turnStartedMs ≈ Date.now() − 2500 (host's tryApply is called synchronously
+    // enough that its Date.now() ≈ ours here).
+    const { eng, bus, handle } = build("host", "play");
+    handle.notifyConnectionOpen();
+    const before = Date.now();
+    bus.push({ kind: "intent", phase: "play", nonce: "j-9", raw: 99, thoughtMs: 2500 });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    const after = Date.now();
+    expect(eng.applied).toEqual([99]);
+    const captured = eng.tryApplyTurnStartedMs[0];
+    // turnStartedMs = tryApplyDateNow − 2500, and before−2500 ≤ that ≤ after−2500.
+    expect(captured).toBeGreaterThanOrEqual(before - 2500);
+    expect(captured).toBeLessThanOrEqual(after - 2500);
   });
 
   it("submitAction is refused while paused, returns reason=paused", async () => {
@@ -529,6 +595,25 @@ describe("joiner", () => {
     await Promise.resolve();
     // Drop this incomplete assertion path; the next test exercises audit properly.
     void promise; void listeners;
+  });
+
+  it("ships its own think-time in the intent (B2)", async () => {
+    // Joiner's start-of-turn was 3000ms ago (fake clock via getTurnStartedMs).
+    const now = Date.now();
+    const { bus, handle } = build("joiner", "play", { getTurnStartedMs: () => now - 3000 });
+    void handle.submitAction(42);
+    const intent = bus.sent.find((m) => m.kind === "intent") as { thoughtMs?: number };
+    expect(intent).toBeDefined();
+    // ~3000ms; allow slack for the Date.now() reads straddling the call.
+    expect(intent.thoughtMs).toBeGreaterThanOrEqual(3000);
+    expect(intent.thoughtMs).toBeLessThan(3500);
+  });
+
+  it("ships thoughtMs=0 when its turn clock is unwired (B2)", async () => {
+    const { bus, handle } = build("joiner", "play");
+    void handle.submitAction(42);
+    const intent = bus.sent.find((m) => m.kind === "intent") as { thoughtMs?: number };
+    expect(intent.thoughtMs).toBe(0);
   });
 
   it("intent → audit succeeds when Zobrist matches", async () => {

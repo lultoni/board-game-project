@@ -28,7 +28,7 @@
 //      constants in match-store) read "host" / code reactively across the UI.
 //
 //   5. await hostWithCode(code) - register the new peer with the broker.
-//      Retries 4× on transient transport errors for broker eviction.
+//      Retries 4x on transient transport errors for broker eviction.
 //      Idempotent w.r.t. mpState.role/code (it re-writes the same values).
 //
 // If any step fails after (1), the carrier is partially mutated and the user

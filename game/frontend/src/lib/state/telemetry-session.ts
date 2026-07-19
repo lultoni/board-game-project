@@ -36,8 +36,9 @@ export interface TelemetrySession {
     eng: EngineClient,
     endReason: EndReason,
     resultByte: 0 | 1 | 2 | 3,
+    logJsonOverride?: string | null,
   ): Promise<void>;
-  abandonTelemetrySession(carrier: TelemetryCarrier, eng?: EngineClient): Promise<void>;
+  abandonTelemetrySession(carrier: TelemetryCarrier, eng?: EngineClient, logJsonOverride?: string | null): Promise<void>;
   networkLostTelemetrySession(carrier: TelemetryCarrier, eng?: EngineClient): Promise<void>;
   abandonTelemetrySessionSync(carrier: TelemetryCarrier): void;
   networkLostTelemetrySessionSync(carrier: TelemetryCarrier): void;
@@ -133,12 +134,16 @@ export function createTelemetrySession(): TelemetrySession {
     eng: EngineClient,
     endReason: EndReason,
     resultByte: 0 | 1 | 2 | 3,
+    logJsonOverride?: string | null,
   ): Promise<void> {
     if (!carrier.telemetryMatchId || disabled) return;
     const id = carrier.telemetryMatchId;
     carrier.telemetryMatchId = null;
     try {
-      const logJson = await eng.matchLogJson();
+      // AIvAI (Change 6) passes the background PRODUCER's log here — that is
+      // the authoritative game, not the frontend view engine's replay. When
+      // omitted, read the given engine's own log (HvH / HvAI / MP).
+      const logJson = logJsonOverride !== undefined ? logJsonOverride : await eng.matchLogJson();
       if (!logJson) return;
       let totalPlies = 0;
       let totalWallMs = 0;
@@ -169,13 +174,18 @@ export function createTelemetrySession(): TelemetrySession {
   async function abandonTelemetrySession(
     carrier: TelemetryCarrier,
     eng?: EngineClient,
+    logJsonOverride?: string | null,
   ): Promise<void> {
     if (!carrier.telemetryMatchId || disabled) return;
     const id = carrier.telemetryMatchId;
     carrier.telemetryMatchId = null;
     try {
       let partial: string | undefined;
-      if (eng) {
+      // AIvAI passes the producer's (post-abort, finalised) log here so the
+      // abandoned row's log length equals exactly what the producer computed.
+      if (logJsonOverride !== undefined) {
+        partial = logJsonOverride ?? undefined;
+      } else if (eng) {
         try {
           partial = (await eng.matchLogJson()) ?? undefined;
         } catch {

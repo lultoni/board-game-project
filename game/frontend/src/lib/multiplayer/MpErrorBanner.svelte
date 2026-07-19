@@ -19,7 +19,7 @@
     <span class="icon" aria-hidden="true">⚠</span>
     <span class="msg">{mpState.lastError}</span>
     <button type="button" class="dismiss" onclick={dismiss} aria-label="dismiss">
-      ×
+      x
     </button>
   </div>
 {/if}

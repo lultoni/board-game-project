@@ -111,7 +111,7 @@ const ALL_SKILLS: [Skill; 15] = [
 
 /// Build a plausible SideLoadout using weighted-incremental placement.
 ///
-/// The 12 slots (6 pieces × 2 slots) are filled in a shuffled order. For each
+/// The 12 slots (6 pieces x 2 slots) are filled in a shuffled order. For each
 /// slot we pick uniformly from the skills that:
 ///   (a) haven't hit their per-side cap yet, and
 ///   (b) don't already occupy the OTHER slot on the same piece.

@@ -252,7 +252,7 @@ mod tests {
         // corpus, "materially better than constant" is the honest gate.)
         assert!(
             mae < baseline * 0.75,
-            "quantized net MAE {mae:.1} cp did not beat 0.75× baseline {baseline:.1} cp"
+            "quantized net MAE {mae:.1} cp did not beat 0.75x baseline {baseline:.1} cp"
         );
         assert!(mae.is_finite());
     }

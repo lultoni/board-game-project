@@ -18,8 +18,8 @@
 //! v1 uses **game-outcome labels** (AlphaZero-style): every non-terminal
 //! position visited during a game is labelled with the eventual game
 //! result, in the same P1-POV sign convention as `evaluator::evaluate`
-//! (+1 → P1 wins, −1 → P2 wins). The trainer scales these to match the
-//! eval's i32 range later; here we keep the raw {−1, +1}.
+//! (+1 → P1 wins, -1 → P2 wins). The trainer scales these to match the
+//! eval's i32 range later; here we keep the raw {-1, +1}.
 //!
 //! Deep-search-score labels (the alternative from §4) can be added as a
 //! second pass once we have a baseline.
@@ -34,7 +34,7 @@ use core_engine::state::position::GameResult;
 
 /// A single (position, label) training example.
 ///
-/// `label` is in {−1.0, +1.0} for game-outcome labels. Position is captured
+/// `label` is in {-1.0, +1.0} for game-outcome labels. Position is captured
 /// *before* the move that was played from it, so the rater learns to score
 /// positions the search will actually see.
 #[derive(Clone, Debug)]

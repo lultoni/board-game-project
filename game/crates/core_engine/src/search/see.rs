@@ -104,7 +104,7 @@ const ARMOR_PER_POINT: i32 = 120;
 /// `.claude/eval-perf-passes.md`). Realistic in-game is 3-5.
 const SEE_MAX_ATTACKERS: usize = 8;
 
-/// Two sides × 8 slots = 16 total plies in a single-target exchange rollout.
+/// Two sides x 8 slots = 16 total plies in a single-target exchange rollout.
 const SEE_MAX_PLIES: usize = 16;
 
 /// Precomputed 1 << sq lookup.

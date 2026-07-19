@@ -33,4 +33,8 @@ pub use telemetry::{
 
 pub use search::evaluator::{evaluate, evaluate_breakdown, EvalBreakdown, MATE_SCORE};
 
+pub use game_logic::skills::{
+    all_skill_metadata, game_constants, SkillMetadata, GameConstants,
+};
+
 pub use state::action_notation::{action_to_notation, notation_to_action, NotationError};

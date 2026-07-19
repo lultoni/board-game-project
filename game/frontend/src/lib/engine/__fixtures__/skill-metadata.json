@@ -1,0 +1,168 @@
+{
+  "constants": {
+    "gameOngoing": 0,
+    "gameP1Wins": 1,
+    "gameP2Wins": 2,
+    "modifierCharge": 2,
+    "modifierFocus": 1,
+    "modifierMoveAttackUsed": 4,
+    "phaseDraft": 2,
+    "phaseMove": 0,
+    "phaseSkill": 1,
+    "playerP1": 0,
+    "playerP2": 1,
+    "skillCount": 15
+  },
+  "skills": [
+    {
+      "category": "strike",
+      "cost": 2,
+      "defaultRange": 1,
+      "hasFocusModeChoice": false,
+      "id": 1,
+      "key": "lance",
+      "needsDirectionPick": false,
+      "targetOwner": "enemy"
+    },
+    {
+      "category": "strike",
+      "cost": 3,
+      "defaultRange": 2,
+      "hasFocusModeChoice": false,
+      "id": 2,
+      "key": "hook",
+      "needsDirectionPick": false,
+      "targetOwner": "enemy"
+    },
+    {
+      "category": "strike",
+      "cost": 2,
+      "defaultRange": 2,
+      "hasFocusModeChoice": false,
+      "id": 3,
+      "key": "break",
+      "needsDirectionPick": false,
+      "targetOwner": "enemy"
+    },
+    {
+      "category": "strike",
+      "cost": 4,
+      "defaultRange": 2,
+      "hasFocusModeChoice": false,
+      "id": 4,
+      "key": "steal",
+      "needsDirectionPick": false,
+      "targetOwner": "enemy"
+    },
+    {
+      "category": "strike",
+      "cost": 4,
+      "defaultRange": 2,
+      "hasFocusModeChoice": false,
+      "id": 5,
+      "key": "tempest",
+      "needsDirectionPick": false,
+      "targetOwner": "enemy"
+    },
+    {
+      "category": "shield",
+      "cost": 2,
+      "defaultRange": 0,
+      "hasFocusModeChoice": false,
+      "id": 6,
+      "key": "shield",
+      "needsDirectionPick": false,
+      "targetOwner": "self"
+    },
+    {
+      "category": "shield",
+      "cost": 3,
+      "defaultRange": 1,
+      "hasFocusModeChoice": false,
+      "id": 7,
+      "key": "heal",
+      "needsDirectionPick": false,
+      "targetOwner": "ally"
+    },
+    {
+      "category": "shield",
+      "cost": 3,
+      "defaultRange": 1,
+      "hasFocusModeChoice": false,
+      "id": 8,
+      "key": "plate",
+      "needsDirectionPick": false,
+      "targetOwner": "ally"
+    },
+    {
+      "category": "move",
+      "cost": 3,
+      "defaultRange": 2,
+      "hasFocusModeChoice": false,
+      "id": 9,
+      "key": "dash",
+      "needsDirectionPick": false,
+      "targetOwner": "empty"
+    },
+    {
+      "category": "move",
+      "cost": 2,
+      "defaultRange": 2,
+      "hasFocusModeChoice": true,
+      "id": 10,
+      "key": "blast",
+      "needsDirectionPick": false,
+      "targetOwner": "enemy"
+    },
+    {
+      "category": "move",
+      "cost": 3,
+      "defaultRange": 3,
+      "hasFocusModeChoice": true,
+      "id": 11,
+      "key": "shove",
+      "needsDirectionPick": true,
+      "targetOwner": "enemy"
+    },
+    {
+      "category": "move",
+      "cost": 4,
+      "defaultRange": 2,
+      "hasFocusModeChoice": false,
+      "id": 12,
+      "key": "swap",
+      "needsDirectionPick": false,
+      "targetOwner": "ally"
+    },
+    {
+      "category": "move",
+      "cost": 4,
+      "defaultRange": 3,
+      "hasFocusModeChoice": false,
+      "id": 13,
+      "key": "retreat",
+      "needsDirectionPick": false,
+      "targetOwner": "empty"
+    },
+    {
+      "category": "mystic",
+      "cost": 2,
+      "defaultRange": 0,
+      "hasFocusModeChoice": false,
+      "id": 14,
+      "key": "focus",
+      "needsDirectionPick": false,
+      "targetOwner": "self"
+    },
+    {
+      "category": "mystic",
+      "cost": 3,
+      "defaultRange": 0,
+      "hasFocusModeChoice": false,
+      "id": 15,
+      "key": "charge",
+      "needsDirectionPick": false,
+      "targetOwner": "self"
+    }
+  ]
+}

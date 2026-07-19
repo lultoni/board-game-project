@@ -109,7 +109,7 @@ Full historical detail (per-position tables, bench artifacts, diagnostic traces,
 ### Baseline → Pass 3 audit (compressed)
 
 - **Baseline (pre-MAEE, 2026-07-05):** eval geo mean ~1101 ns. Endgame FEN correctness was broken (AI didn't find the killing move at d6).
-- **Post-MAEE (2026-07-07):** MAEE landed for correctness. Eval geo mean 2021 ns (1.84×). d6 corpus wall time ~745 s, several positions with node explosions. Endgame FEN correct. Bench: `bench/results/eval-post-maee.json`, `bench/results/search-post-maee-d6.json`.
+- **Post-MAEE (2026-07-07):** MAEE landed for correctness. Eval geo mean 2021 ns (1.84x). d6 corpus wall time ~745 s, several positions with node explosions. Endgame FEN correct. Bench: `bench/results/eval-post-maee.json`, `bench/results/search-post-maee-d6.json`.
 - **Pass 1 (2026-07-07):** phase gates on MAEE + skill_activity, `actions_remaining==0` short-circuit (later reverted), `AttackerList` cap 16 → 8, cost `i32` → `i16`, `SKILL_VALUE` const table, `SQ_BIT[64]`, targeted `#[inline]`. Eval geo mean → 743 ns. d6 wall time ~316 s. Some horizon-effect regressions on skill-phase positions.
 - **Pass 2 (2026-07-07):** added `bench_counters` feature (TLS `Cell<Snapshot>` counters). Counters diagnosed 4/5 mysterious Pass 1 regressions as caused by the `actions_remaining==0` short-circuit - reverted. Dropped the phase gates entirely (MAEE inputs are phase-invariant). Added forced-move root short-circuit in `alpha_beta.rs`. Attempted forced-move extension in-tree - reverted (extended at every phase-boundary EndPhase, tanked depth). Eval geo mean 1853 ns; d6 wall time ~740 s.
 - **Pass 3 (2026-07-07):** per-position `AttackersTable` built once per `evaluate_breakdown`; `MAEE_MAX_PLIES` 32 → 16; `maee_paranoid` canary feature. Eval geo mean → 1719 ns; d6 wall time → 364 s (behaviour-preserving vs Pass 2; some per-position regressions from table-build fixed cost on cheap positions).
@@ -126,14 +126,14 @@ Anchor: `46371dd`. Bundled per user's explicit approval.
 - Bench-gated counters `see_table_builds`, `see_capture_calls`; legacy `maee_*` counter fields kept zeroed.
 - 4 new SEE unit tests; full 396-test suite passes.
 
-Result vs Pass 3 chunk 2: eval geo mean **1719 → 334 ns** (5.15×); d6 wall time **58.7 → 11.3 s** (5.2×); d6 nodes **24.7 M → 13.8 M** (-44%; SEE-ordered QS captures produce better cutoffs than MAEE-perturbed leaf ordering did). Bench: `bench/results/eval-post-pass4.json`, `bench/results/search-post-pass4-d6.json`.
+Result vs Pass 3 chunk 2: eval geo mean **1719 → 334 ns** (5.15x); d6 wall time **58.7 → 11.3 s** (5.2x); d6 nodes **24.7 M → 13.8 M** (-44%; SEE-ordered QS captures produce better cutoffs than MAEE-perturbed leaf ordering did). Bench: `bench/results/eval-post-pass4.json`, `bench/results/search-post-pass4-d6.json`.
 
 ### Pass 4+ (2026-07-08) - SEE for Strike/Blast + bench JSON emission - **DONE**
 
 - Added `see_single_hit(pos, target) -> i32` for single-shot skill actions (no exchange rollout - Strike/Blast doesn't move the attacker into reply range).
 - QS Skill-action ordering uses `see_single_hit` (or `MATE_SCORE` on king target). Previously neutral-keyed to 0.
 - `search_bench` JSON writer emits `see_table_builds` / `see_capture_calls` in per-position and aggregate blocks.
-- Investigated `skill-phase-full-03`'s +128% node regression from Pass 3 → Pass 4: **not** caused by ordering - SEE-ordering the Skill actions changed nodes by 15 (0.00%). Inherent to the position's tree shape under the cleaner eval; accepted as trade-off (per-node still 5× cheaper).
+- Investigated `skill-phase-full-03`'s +128% node regression from Pass 3 → Pass 4: **not** caused by ordering - SEE-ordering the Skill actions changed nodes by 15 (0.00%). Inherent to the position's tree shape under the cleaner eval; accepted as trade-off (per-node still 5x cheaper).
 
 Result vs Pass 4: nodes flat (+21); d6 wall time **11.3 → 10.5 s** (-7.5%). Bench: `bench/results/search-post-pass4plus-d6.json`.
 
@@ -164,7 +164,7 @@ Per-category character (time Δ vs Pass 4+):
 
 The regressions trace to move-ordering shifts (TT hit rate drops, EBF rises), not to per-call cost alone. Accepted as net-positive on the corpus; **flag** for the next critique run - SEE now has enough behaviour that ordering quality is worth its own investigation.
 
-**Combined Pass 1 → Pass 4++ vs post-MAEE baseline:** d6 wall time ~745 s → 8.3 s, **~90× speedup**.
+**Combined Pass 1 → Pass 4++ vs post-MAEE baseline:** d6 wall time ~745 s → 8.3 s, **~90x speedup**.
 
 ---
 
@@ -208,8 +208,8 @@ Original entries were framed around "TT stores unstable MAEE-perturbed scores." 
 
 ### Group I - Guard movement (BFS-2 rewrite)
 
-- **`movement_targets_speed2` shift-and-mask rewrite.** Still allocates `dist[64] / front[64] / next[64]` scratch per call and uses branchy `(0..8).contains(&r)` clipping. Pure shift-and-mask BFS-2 would replace it. Alternatively, a **64 × 256 speed-2-by-ring-occupancy lookup table** (16 KB) would kill the BFS entirely.
-- **"Double-cut" cheby-1×2 BFS (user-proposed 2026-07-08).** Prior experiment showed ~4K distinct BFS-2 outcomes per origin. PEXT ruled out (no ARM). Alternative: stage BFS-2 as two BFS-1 hops, precomputed per origin over cheby-1 blocker mask (256 entries × 64 = 16 KB), run twice with the intermediate landing set as the seed. Caveat: second hop's blocker view must reflect that the first-hop landing was unoccupied. Verify hops are independent before shipping.
+- **`movement_targets_speed2` shift-and-mask rewrite.** Still allocates `dist[64] / front[64] / next[64]` scratch per call and uses branchy `(0..8).contains(&r)` clipping. Pure shift-and-mask BFS-2 would replace it. Alternatively, a **64 x 256 speed-2-by-ring-occupancy lookup table** (16 KB) would kill the BFS entirely.
+- **"Double-cut" cheby-1x2 BFS (user-proposed 2026-07-08).** Prior experiment showed ~4K distinct BFS-2 outcomes per origin. PEXT ruled out (no ARM). Alternative: stage BFS-2 as two BFS-1 hops, precomputed per origin over cheby-1 blocker mask (256 entries x 64 = 16 KB), run twice with the intermediate landing set as the seed. Caveat: second hop's blocker view must reflect that the first-hop landing was unoccupied. Verify hops are independent before shipping.
 - **Memoise BFS-2 across call sites.** Same Guard/occupancy recomputed from multiple call-sites per leaf.
 - **Chebyshev-2 pre-reject** - a Guard 6 squares away currently pays full BFS-2.
 - **`movement_attack_targets_speed2` reuse `move1_table`.** Recomputes neighbours when `move1_table[enemy]` already gives all 8.

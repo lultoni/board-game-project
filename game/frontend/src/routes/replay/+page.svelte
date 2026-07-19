@@ -12,6 +12,9 @@
     SNAPSHOT_BUDGETS,
     SnapshotValidationError,
     validateMatchLog,
+    plyEvalOf,
+    formatPlyEval,
+    type SearchMetaLog,
     type EngineClient,
   } from "$lib/engine";
   import { consumePendingMatchLog } from "$lib/storage/library-handoff";
@@ -41,6 +44,7 @@
   let loadError = $state<string | null>(null);
   let plies = $state<number[]>([]);
   let notations = $state<string[]>([]);
+  let plyEvalLabels = $state<Array<string | null>>([]);
   let currentPly = $state(0);
   let playing = $state(false);
   let busy = $state(false);
@@ -53,6 +57,15 @@
   const actionLabel = $derived(
     currentPly > 0 && currentPly <= plies.length
       ? (notations[currentPly - 1] || String(plies[currentPly - 1]))
+      : null,
+  );
+
+  // Engine's assessment of the position AFTER the current ply (B3): AI plies
+  // show the search that chose the move; human plies show the time-bounded
+  // background eval. Null when the ply carries neither (legacy log, etc.).
+  const currentPlyEvalLabel = $derived(
+    currentPly > 0 && currentPly <= plyEvalLabels.length
+      ? plyEvalLabels[currentPly - 1]
       : null,
   );
 
@@ -111,9 +124,19 @@
         }
         throw e;
       }
-      const log = JSON.parse(json) as { plies?: Array<{ action: { raw: number; notation?: string } }> };
+      const log = JSON.parse(json) as {
+        plies?: Array<{
+          action: { raw: number; notation?: string };
+          ai?: SearchMetaLog | null;
+          background_eval?: SearchMetaLog | null;
+        }>;
+      };
       const rawPlies: number[] = (log.plies ?? []).map((p) => p.action.raw >>> 0);
       const plyNotations: string[] = (log.plies ?? []).map((p) => p.action.notation ?? "");
+      // Per-ply engine assessment (Change 5 + B3): AI plies carry `ai`, human
+      // plies carry `background_eval` (the time-bounded post-move read). Both
+      // reduce to a compact label shown in the ply-info line.
+      const plyEvals: Array<string | null> = (log.plies ?? []).map((p) => formatPlyEval(plyEvalOf(p)));
 
       const fullSnap = snapshotJsonFromMatchLog(json);
       if (fullSnap === null) {
@@ -127,6 +150,7 @@
       baseSnapshotJson = startSnap;
       plies = rawPlies;
       notations = plyNotations;
+      plyEvalLabels = plyEvals;
       currentPly = 0;
       await eng.restoreFromSnapshot(startSnap);
       await renderer.resyncFromEngine();
@@ -395,6 +419,9 @@
           {:else}
             <span class="last-action">{actionLabel}</span>
           {/if}
+          {#if currentPlyEvalLabel}
+            <span class="ply-eval" title="Engine assessment of the position after this ply">{currentPlyEvalLabel}</span>
+          {/if}
         </div>
         <button
           type="button"
@@ -646,6 +673,13 @@
   }
   .last-action {
     color: var(--paper-ink);
+  }
+  .ply-eval {
+    margin-left: 0.6em;
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    color: var(--paper-ink-muted, #6b6b6b);
+    opacity: 0.85;
   }
   .copy-fen {
     padding: 0.3em 0.7em;

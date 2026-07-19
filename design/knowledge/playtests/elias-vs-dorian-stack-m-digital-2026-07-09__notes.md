@@ -2,7 +2,7 @@
 
 *Digital prototype, online play, 2026-07-09. Raw game log exported at end - telemetry answers everything factual. This file is for feel, judgment, and things the log can't see.*
 
-*Stack M under test: board 8×8, Armor max 2, Injured has no penalty, no draw conditions, Steal costs 4, Combo Bonus also triggers on movement-causing skills.*
+*Stack M under test: board 8x8, Armor max 2, Injured has no penalty, no draw conditions, Steal costs 4, Combo Bonus also triggers on movement-causing skills.*
 
 ---
 
@@ -20,7 +20,7 @@ Comment: mmh i would say it depended really. because what was happening sometime
 **Mid-game stalling** - did the "Armor stack + nothing happens" pattern reappear? Yes clearly / briefly / not really / not at all.  
 Comment: well it _could_ happen (as it does with engines playing themselves) as the person who breaks the standoff usually is in the disadvantage (losing a piece more at the end of trades), but it is not bound to happen - it again depends on player behaviour, but the most optimla strat that seemed to emerge seemed to be stalling it out. armor was still a very present thing inside the game, but it was never directly "only stacking armor on passive", rather it was "wait up so i have money again to attack".
 
-**Board size (8×8)** - cramped / a bit tight / just right / a bit open / too sparse.  
+**Board size (8x8)** - cramped / a bit tight / just right / a bit open / too sparse.  
 Did pieces feel like they had enough escape options? Yes / sometimes / no.  
 Comment: i felt this board size to feel really natural and perfectly fitting for the pieces to move around and create interesting positions
 

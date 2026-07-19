@@ -112,9 +112,9 @@ export function renderSkill(
   // Scale age by the same speed multiplier the outer ttl encodes. Each per-skill
   // renderer uses its own local `_TTL` constant and divides `age / _TTL` to get
   // a normalized progress; by pre-dividing age we make those constants read as
-  // baseline (mult=1) timings while the effect actually plays over `mult × _TTL`
-  // real milliseconds. Cinematic viewers see a 2.5× slower flourish; fast
-  // viewers see a 0.5× snappier one. `off` never reaches here (mult=0 skips the
+  // baseline (mult=1) timings while the effect actually plays over `mult x _TTL`
+  // real milliseconds. Cinematic viewers see a 2.5x slower flourish; fast
+  // viewers see a 0.5x snappier one. `off` never reaches here (mult=0 skips the
   // push entirely in ply-renderer's `pushFx`).
   const mult = ttl / FX_LIFETIME_MS.skill;
   const scaledAge = mult > 0 ? age / mult : age;

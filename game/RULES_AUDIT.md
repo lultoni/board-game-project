@@ -54,10 +54,10 @@ One actionable bug was found. It is called out inline and summarised in the [Fin
 ## 2. Components
 
 ### Board size
-**Rule:** 8×8 grid.
+**Rule:** 8x8 grid.
 **Status:** CORRECT
 **Evidence:** `position.rs:111` — `mailbox: [MailboxEntry; 64]`. Square addressing is `rank * 8 + file` throughout. `bitboard.rs` — `Bitboard` is a `u64` newtype; the 64-bit width is the board.
-**Adjustability:** HARD — the board size is deeply structural. `Bitboard` is a `u64`, all square indices are computed as `rank * 8 + file`, the magic bitboard tables are pre-built for 8×8 geometry, and `[MailboxEntry; 64]` is the mailbox size. Changing board dimensions would require rebuilding the entire bitboard and magic-table infrastructure. There is no `BOARD_SIZE` constant — the 8×8 assumption is encoded in the type itself.
+**Adjustability:** HARD — the board size is deeply structural. `Bitboard` is a `u64`, all square indices are computed as `rank * 8 + file`, the magic bitboard tables are pre-built for 8x8 geometry, and `[MailboxEntry; 64]` is the mailbox size. Changing board dimensions would require rebuilding the entire bitboard and magic-table infrastructure. There is no `BOARD_SIZE` constant — the 8x8 assumption is encoded in the type itself.
 
 ### Piece counts per player
 **Rule:** 1 King · 5 Champions · 6 Guards per player.
@@ -157,7 +157,7 @@ One actionable bug was found. It is called out inline and summarised in the [Fin
 **Rule:** Spend 1 action to move one piece.
 **Status:** CORRECT
 **Evidence:** `make_unmake.rs:1399-1401` — `dec_actions` is called at the end of every move application, decrementing by exactly 1. For Move-Attacks with a pending Bodyguard choice, `dec_actions` is deferred to `apply_bodyguard_choice` but still fires exactly once.
-**Adjustability:** EASY — the decrement is implicit (always −1). Variable-cost moves would require replacing the call-site constant.
+**Adjustability:** EASY — the decrement is implicit (always -1). Variable-cost moves would require replacing the call-site constant.
 
 ### Each piece may only be moved once per Move Phase
 **Rule:** Each piece may only be moved once per Move Phase.
@@ -397,10 +397,10 @@ One actionable bug was found. It is called out inline and summarised in the [Fin
 **Evidence:** `make_unmake.rs:972-1017` — `combo_tick` calls `ensure_tracked_caster` and `ensure_tracked_enemy` to assign indices, then checks the `champion_credit` bitmask. If the (caster, target) bit is already set, the function returns `false` (no tick). `relocate_piece` (`make_unmake.rs:1090-1096`) updates both tracking arrays when a piece moves mid-turn, so a pushed/pulled piece that is subsequently retargeted remains correctly deduped.
 **Adjustability:** EASY — the gate is a single bit in a `u128` bitmask.
 
-### Bonus damage formula: counter − 1
-**Rule:** Any skill that affects a target with a combo counter > 0 deals damage equal to counter − 1.
+### Bonus damage formula: counter - 1
+**Rule:** Any skill that affects a target with a combo counter > 0 deals damage equal to counter - 1.
 **Status:** CORRECT
-**Evidence:** `make_unmake.rs:934-952` — `apply_strike_damage` snapshots `existing_combo` before calling `combo_tick`. For a new caster (tick fires, counter advances), the bonus is `existing_combo` (pre-tick value = counter − 1 after increment). For a returning caster (tick does not fire), the bonus is `existing_combo.saturating_sub(1)`. Both cases produce the same value a naive "counter − 1" formula would give. The test `combo_returning_caster_bonus_is_counter_minus_one` directly verifies the same-caster-twice case yields a bonus of zero.
+**Evidence:** `make_unmake.rs:934-952` — `apply_strike_damage` snapshots `existing_combo` before calling `combo_tick`. For a new caster (tick fires, counter advances), the bonus is `existing_combo` (pre-tick value = counter - 1 after increment). For a returning caster (tick does not fire), the bonus is `existing_combo.saturating_sub(1)`. Both cases produce the same value a naive "counter - 1" formula would give. The test `combo_returning_caster_bonus_is_counter_minus_one` directly verifies the same-caster-twice case yields a bonus of zero.
 **Adjustability:** EASY — the formula is an arithmetic expression in three resolver sites (strike, Blast, Shove).
 
 ### A skill that both hits and moves the target ticks the counter only once
@@ -478,7 +478,7 @@ One actionable bug was found. It is called out inline and summarised in the [Fin
 **Status:** CORRECT
 **Evidence:** `make_unmake.rs:1161-1163` — `skill_phase_budget(round_number) = 2 + (round_number - 1) / 10`. Verification against the rules table:
 
-| Round | `(r−1)/10` | Formula result | Rules | Match |
+| Round | `(r-1)/10` | Formula result | Rules | Match |
 |-------|-----------|---------------|-------|-------|
 | 1 | 0 | 2 | 2 | ✓ |
 | 10 | 0 | 2 | 2 | ✓ |
@@ -529,9 +529,9 @@ Each entry confirms cost, category, range, and effect against the rules table an
 ---
 
 ### Lance
-**Rule:** (Strike, cost 2) Target within Range−1 takes 1 damage.
+**Rule:** (Strike, cost 2) Target within Range-1 takes 1 damage.
 **Status:** CORRECT
-**Evidence:** `skills.rs:83, 112, 133` — cost 2, default range 1, category Strike. `make_unmake.rs:552-558` — `apply_strike_damage(pos, src, tgt, 1, undo)`, `debit_money(2)`, `strike_move_caster`, `dec_actions`. The Range−1 is encoded as a stored default range of 1 rather than as a runtime modifier applied to a base-2 range.
+**Evidence:** `skills.rs:83, 112, 133` — cost 2, default range 1, category Strike. `make_unmake.rs:552-558` — `apply_strike_damage(pos, src, tgt, 1, undo)`, `debit_money(2)`, `strike_move_caster`, `dec_actions`. The Range-1 is encoded as a stored default range of 1 rather than as a runtime modifier applied to a base-2 range.
 **Adjustability:** EASY — cost in `skill_cost`, base damage in the `apply_lance` call argument, range in `skill_default_range`.
 
 ---
@@ -667,6 +667,6 @@ No open findings. All rule violations and documentation debts identified during 
 
 **164 rule clauses checked across 16 rule sections. All 164 are correctly implemented.**
 
-The codebase is a faithful translation of `design/RULES.md`. Most parameters are EASY to adjust — costs, ranges, income tables, and progression tiers are all in single named constants or one-line functions. The structurally HARD constraints are: board size (8×8 baked into `u64` bitboards and magic tables) and the 2-HP / 2-Armor mailbox encoding (bit-width limited, though the current values fit comfortably within the available bits).
+The codebase is a faithful translation of `design/RULES.md`. Most parameters are EASY to adjust — costs, ranges, income tables, and progression tiers are all in single named constants or one-line functions. The structurally HARD constraints are: board size (8x8 baked into `u64` bitboards and magic tables) and the 2-HP / 2-Armor mailbox encoding (bit-width limited, though the current values fit comfortably within the available bits).
 
 The one area that warrants a written design ruling is the scope of the Focus +1 Range modifier: the rule text says "applies to base-2 skills" but also gives the example "Self + Focus → Range 1," which implies it applies to all non-Mystic skills. The code resolves the ambiguity in the broader direction; the rules should be updated to match.

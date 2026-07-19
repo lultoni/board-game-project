@@ -5,7 +5,7 @@
 // All effects carry an optional `ttl` field: when set, the overlay uses it
 // as the lifetime in place of the FX_LIFETIME_MS default. Producers stamp
 // this at creation time (scaled by animationSpeed via `fxLifetime(kind)`)
-// so a cinematic viewer's flourishes run 2.5× as long as a normal viewer's
+// so a cinematic viewer's flourishes run 2.5x as long as a normal viewer's
 // without needing the renderer to track speed itself.
 
 export type Effect =

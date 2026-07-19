@@ -175,8 +175,8 @@ crank `n_generations=20` on the GPU if the gauntlet itself is a no-op.
 2. **Cap predecessor count at `MAX_PREDECESSORS = 16`** (configurable via
    `RunConfig` later). Take the *most recent* 16 - they're the strongest
    opponents and the ones we most care about not regressing against. Cost
-   is `O(N)` per generation: at 20 generations × 20 predecessors × 3
-   brackets × 3 games that's 3600 games/gen, too much.
+   is `O(N)` per generation: at 20 generations x 20 predecessors x 3
+   brackets x 3 games that's 3600 games/gen, too much.
 3. **Parent resolution: candidate must beat the *immediate predecessor*
    AND meet the non-regression bar against every other predecessor in the
    window.** Same semantics `tier2_acceptance` already encodes -
@@ -572,7 +572,7 @@ kill-switch only used by the `qs_match` example for A/B grading).
    depth-2; add a depth-4 variant.
 2. `real_run()` shape test: assert depth ≥ 4 and generations ≥ 4.
 3. `BracketBudget` wiring: custom budget `{fast: 50, ...}` makes wall-clock
-   roughly proportional (loose bound - 5× difference is outside flake).
+   roughly proportional (loose bound - 5x difference is outside flake).
 4. Smoke test unchanged - must continue to complete in seconds.
 
 **Benchmark plan: depth-4 vs depth-6 wall-clock**
@@ -708,7 +708,7 @@ Load path in `evaluate_fen_at_stem` / `inspect_fen_at_stem`: read
   `forward(x) = 0.5 * x[0]`; feed positions with known heuristic scores;
   assert fitted `k` matches closed-form.
 - Property: random `(x_i, y_i)` from a target `k_true` + noise → `|k_fit
-  − k_true| < tol`.
+  - k_true| < tol`.
 - Roundtrip: `RaterMetadata { eval_scale: 1234.5 }` survives save/load.
   Hand-rolled JSON without the field deserialises with `eval_scale ==
   0.0`.

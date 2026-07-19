@@ -9,8 +9,10 @@ import type {
   EvalBreakdown,
   EvalBreakdownBySquare,
   FinalResultByte,
+  GameConstantsWire,
   PositionView,
   SideLoadout,
+  SkillMetadataWire,
   StepResult,
 } from "./types";
 
@@ -172,10 +174,19 @@ export class TauriClient implements EngineClient {
     return invoke<string>("action_to_notation_cmd", { raw: raw >>> 0 });
   }
 
-  async tryApply(action: number): Promise<StepResult> {
+  async skillMetadata(): Promise<SkillMetadataWire[]> {
+    return invoke<SkillMetadataWire[]>("skill_metadata");
+  }
+
+  async gameConstants(): Promise<GameConstantsWire> {
+    return invoke<GameConstantsWire>("game_constants_cmd");
+  }
+
+  async tryApply(action: number, turnStartedMs = 0): Promise<StepResult> {
     const dto = await invoke<StepResultDto>("try_apply", {
       handle: this.#requireHandle(),
       rawAction: action >>> 0,
+      turnStartedMs,
     });
     return normaliseStepResult(dto);
   }
@@ -239,6 +250,50 @@ export class TauriClient implements EngineClient {
 
   async latestPlyJson(): Promise<string | null> {
     return await invoke<string | null>("latest_ply_json", { handle: this.#requireHandle() });
+  }
+
+  async onBackgroundEvalReady(cb: (handle: number) => void): Promise<() => void> {
+    try {
+      return await listen<{ handle: number }>("background-eval-ready", (ev) => {
+        cb(ev.payload.handle);
+      });
+    } catch (err) {
+      console.warn("background-eval-ready listen failed; continuing without it:", err);
+      return () => { /* no-op unlisten */ };
+    }
+  }
+
+  async startAivaiProducer(
+    viewSnapshotJson: string,
+    p1: { source: "heuristic" | "run" | "blessed"; id?: string | null },
+    p2: { source: "heuristic" | "run" | "blessed"; id?: string | null },
+  ): Promise<void> {
+    await invoke<void>("start_aivai_producer", {
+      viewSnapshotJson,
+      p1Source: p1.source,
+      p1Id: p1.id ?? null,
+      p2Source: p2.source,
+      p2Id: p2.id ?? null,
+    });
+  }
+
+  async aivaiProducerLog(): Promise<string | null> {
+    return await invoke<string | null>("aivai_producer_log");
+  }
+
+  async stopAivaiProducer(): Promise<string | null> {
+    return await invoke<string | null>("stop_aivai_producer");
+  }
+
+  async onAivaiProgress(cb: (plies: number, done: boolean) => void): Promise<() => void> {
+    try {
+      return await listen<{ plies: number; done?: boolean }>("aivai-progress", (ev) => {
+        cb(ev.payload.plies, ev.payload.done === true);
+      });
+    } catch (err) {
+      console.warn("aivai-progress listen failed; continuing without it:", err);
+      return () => { /* no-op unlisten */ };
+    }
   }
 
   async finaliseLog(result: FinalResultByte): Promise<void> {

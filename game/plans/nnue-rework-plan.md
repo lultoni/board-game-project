@@ -15,11 +15,11 @@ that parked question decisively, and the answer changes the architecture:
 - **Hand-crafted `evaluate_scalar`: ~200-1000 ns/call** (varies with position +
   bench overhead; ~260 ns in isolation).
 - **Current `NnEvaluator` (burn `NdArray`, dense `2825→256→64→32→1`): ~394 µs/call
-  - ~382× slower.** Batch-size-1 dense inference through a generic f32 tensor
+  - ~382x slower.** Batch-size-1 dense inference through a generic f32 tensor
   framework is pathologically slow per-call: it re-encodes a 2825-float vector
-  and recomputes the full 2825×256 first layer every node.
+  and recomputes the full 2825x256 first layer every node.
 
-A leaf evaluator that costs 382× the current eval cannot run inside the search at
+A leaf evaluator that costs 382x the current eval cannot run inside the search at
 the node rates training needs (millions of nodes across millions of self-play
 games). **The dense design is a non-starter for search-speed inference**,
 independent of how well it could be trained.
@@ -36,7 +36,7 @@ ours because it never evaluates its first (huge) layer from scratch:
    kept as running state. A move flips only a few input features, so the
    accumulator is updated by **adding/subtracting a handful of weight columns**
    on make, and reversing them on unmake - **O(features changed) ≈ O(1) per
-   node**, not O(input × hidden). Only the tiny remaining layers run fully.
+   node**, not O(input x hidden). Only the tiny remaining layers run fully.
 3. **Integer quantization + SIMD.** int8/int16 accumulator with hand-written
    AVX, ~an order of magnitude over generic f32.
 
@@ -161,7 +161,7 @@ end-to-end slice that de-risks the whole architecture.
 ### 3.1 Sparse binary features (replaces the dense 2825-f32 vector)
 
 - **Per-piece-per-square occupancy**, one plane per (owner, piece-kind):
-  {P1,P2} × {King, Champion, Guard} × 64 = 384 base binary features. A move sets
+  {P1,P2} x {King, Champion, Guard} x 64 = 384 base binary features. A move sets
   ≤ a few of these.
 - **Per-square mailbox state as binary buckets** (NOT raw ints): hp, armor as
   one-hot/threshold buckets; skill1/skill2 as one-hot over the 15 skill IDs;
@@ -174,13 +174,13 @@ end-to-end slice that de-risks the whole architecture.
   each node (cheap) OR bucket them into features too. Decide in Phase 0.
 - **King-relative indexing** (HalfKP-style) is the classic NNUE feature multiplier.
   **Open question - do we need it?** Chess uses it because king safety dominates;
-  our board is 8×8 with a king too. Start WITHOUT king-relative (simpler, smaller
+  our board is 8x8 with a king too. Start WITHOUT king-relative (simpler, smaller
   feature set); add it only if Phase-0 accuracy or Phase-1 strength demands it.
   Logged as a decision to revisit, not a day-1 commitment.
 
 ### 3.2 Topology
 
-- `sparse_features → accumulator (e.g. 2×256 or 512) → 32 → 1`, with a
+- `sparse_features → accumulator (e.g. 2x256 or 512) → 32 → 1`, with a
   clipped-ReLU (int-friendly) between layers. Final scalar in P1-POV centipawns,
   same sign/scale convention as `evaluate_scalar` (Phase 0 target).
 - Accumulator width is the main size/strength knob; start small (256), grow if
@@ -193,7 +193,7 @@ This is the part that does not exist today and is the whole point:
 - `Accumulator` = the running first-layer sum, held in the search stack alongside
   the position (or in `SearchCtx`).
 - On `make(move)`: compute the set of feature indices that turned on/off (piece
-  left A, arrived B, skill/hp/armor/flag deltas), and `acc += W[:,on] − W[:,off]`.
+  left A, arrived B, skill/hp/armor/flag deltas), and `acc += W[:,on] - W[:,off]`.
 - On `unmake`: reverse (either recompute the delta, or snapshot-and-restore the
   accumulator - snapshot is simpler and O(width), decide by measurement).
 - **A full-recompute path must exist** (`refresh(pos) -> Accumulator`) both for the
@@ -234,7 +234,7 @@ EVERY node including after unmakes.
 6. **Milestone:** quantized net reproduces `evaluate_scalar` within ε (target band
    TBD - e.g. mean |Δ| < a few % of typical score) AND the in-search integer
    inference is measured at ≲ a small multiple of the hand-crafted eval's ns/call.
-   If inference is still >~5× the hand-crafted eval, the architecture needs
+   If inference is still >~5x the hand-crafted eval, the architecture needs
    rework before proceeding (revisit width/quantization/accumulator).
 
 **Phase 1 - Self-play refinement (large randomized mutation + gauntlet).** The
@@ -345,7 +345,7 @@ single hard constraint is **passive observation that cannot slow training**.
 ## 7. Risks & honest caveats
 
 - **The payoff is strength, not speed.** If Phase 0 shows the accumulator eval is,
-  say, 3× the hand-crafted eval's cost, the search does ~3× less work per second -
+  say, 3x the hand-crafted eval's cost, the search does ~3x less work per second -
   which is only a net win if the net is enough *smarter* to reach equal decisions
   at shallower depth. That's a bet on trainability, validated only in Phase 1's
   gauntlet. Phase 0 proves *feasibility*, not *superiority*.
@@ -369,7 +369,7 @@ single hard constraint is **passive observation that cannot slow training**.
 ## 8. Cross-references
 
 - `alpha-beta-optimisation-catalogue.md` Phase 4 - the Session-48 measurement (NN
-  ~382× the hand-crafted eval; why incremental doesn't work for the hand-crafted
+  ~382x the hand-crafted eval; why incremental doesn't work for the hand-crafted
   eval but DOES for NNUE features). The evidence behind the architecture decision.
 - `crates/nn_trainer/` - existing NN crate, built to the retired plan. This rework
   re-points it: dense `encoding.rs` (INPUT_DIM=2825) → sparse + accumulator;

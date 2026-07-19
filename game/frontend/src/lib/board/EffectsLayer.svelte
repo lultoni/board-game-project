@@ -6,7 +6,7 @@
   interface Props {
     /** SVG viewBox edge in pixels. Same value as Board. */
     viewBox: number;
-    /** Padding around the 8×8 grid baked into the SVG's viewBox so the
+    /** Padding around the 8x8 grid baked into the SVG's viewBox so the
      *  radial wheel can render outside the grid. Same value as Board's
      *  WHEEL_PAD. The canvas fills the SVG element's outer box, so we
      *  use this to map from grid-local coords to canvas pixels. */

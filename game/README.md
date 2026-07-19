@@ -82,7 +82,7 @@ Open the desktop app and navigate to `/training`:
 - **Tournament Standings** - W/L/D per population member
 - **Lineage Tree** - every accepted rater (click to inspect)
 - **Network Inspector** - forward output + per-layer weight stats
-- **Gauntlet Matrix** - N×N win-rate heatmap per bracket
+- **Gauntlet Matrix** - NxN win-rate heatmap per bracket
 
 Training run outputs are persisted under `game/runs/active/` (gitignored). Copy a run to `game/runs/archive/<run-id>/` to keep it.
 

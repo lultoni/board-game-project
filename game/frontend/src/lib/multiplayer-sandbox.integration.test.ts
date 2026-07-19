@@ -17,7 +17,7 @@
 import { describe, it, expect } from "vitest";
 import { createMpEngine } from "./multiplayer-engine";
 import type { WireMessageV2, WirePhase } from "./multiplayer-protocol-v2";
-import type { EngineClient, EvalBreakdown, PositionView, StepResult } from "./engine";
+import type { EngineClient, EvalBreakdown, GameConstantsWire, PositionView, SkillMetadataWire, StepResult } from "./engine";
 
 // A fake engine that models the ONE shared handle. `applied` is the move
 // history; snapshot/restore round-trip it as JSON so a sandbox fork can be
@@ -51,6 +51,15 @@ class SharedFakeEngine implements EngineClient {
   }
   async legalActions(): Promise<Uint32Array> { return new Uint32Array(); }
   async actionToNotation(_raw: number): Promise<string> { return ""; }
+  async skillMetadata(): Promise<SkillMetadataWire[]> { return []; }
+  async gameConstants(): Promise<GameConstantsWire> {
+    return {
+      phaseMove: 0, phaseSkill: 1, phaseDraft: 2,
+      modifierFocus: 1, modifierCharge: 2, modifierMoveAttackUsed: 4,
+      playerP1: 0, playerP2: 1,
+      gameOngoing: 0, gameP1Wins: 1, gameP2Wins: 2, skillCount: 15,
+    };
+  }
   async tryApply(raw: number): Promise<StepResult> {
     this.applied.push(raw);
     return { appliedAction: raw, score: 0, depth: 0, nodes: 0n, thoughtMs: 0, gameResult: 0 };
@@ -78,6 +87,11 @@ class SharedFakeEngine implements EngineClient {
   }
   async matchLogJson(): Promise<string | null> { return null; }
   async latestPlyJson(): Promise<string | null> { return null; }
+  async onBackgroundEvalReady(): Promise<() => void> { return () => { /* no-op */ }; }
+  async startAivaiProducer(): Promise<void> { /* no-op */ }
+  async aivaiProducerLog(): Promise<string | null> { return null; }
+  async stopAivaiProducer(): Promise<string | null> { return null; }
+  async onAivaiProgress(): Promise<() => void> { return () => { /* no-op */ }; }
   async finaliseLog(): Promise<void> {}
   async dispose(): Promise<void> {}
   async setAiEvaluator(): Promise<void> {}

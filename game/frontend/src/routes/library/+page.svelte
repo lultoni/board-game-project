@@ -197,7 +197,7 @@
   {#if exportSkipNotice}
     <p class="export-skip-notice" role="status">
       {exportSkipNotice}
-      <button type="button" onclick={() => (exportSkipNotice = null)} aria-label="dismiss">×</button>
+      <button type="button" onclick={() => (exportSkipNotice = null)} aria-label="dismiss">x</button>
     </p>
   {/if}
 

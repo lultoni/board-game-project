@@ -14,6 +14,8 @@ export type {
   EvalBreakdown,
   SquareBreakdown,
   EvalBreakdownBySquare,
+  SkillMetadataWire,
+  GameConstantsWire,
 } from "./types";
 export { ActionKind, decodeAction, actionKindName, encodeDraftTurn, decodeDraftTurn, isDraftTurn, DRAFT_TURN_TAG, ACTION_BG_CHOICE_TAG, MAX_BODYGUARD_ELIGIBLE, isBodyguardChoice, bgGuardIdx, encodeBodyguardChoice } from "./action";
 export type { ActionDecoded, ActionKindValue, DraftTurnDecoded } from "./action";
@@ -34,6 +36,19 @@ export type {
 } from "./snapshot-validator";
 export { runAiCall, AiCallError } from "./ai-hooks";
 export type { AiCallOpts, AiCallReason } from "./ai-hooks";
+export {
+  requestBestMove,
+  requestBestMoveAtDepth,
+  startAivaiProducer,
+  stopAivaiProducer,
+  aivaiProducerLog,
+  onAivaiProgress,
+  producerRawsFromLog,
+  snapshotActionCount,
+} from "./ai-service";
+export type { AivaiEvaluatorChoice } from "./ai-service";
+export { plyEvalOf, formatPlyEval } from "./ply-eval";
+export type { PlyEval, SearchMetaLog, PlyRecordEvalView } from "./ply-eval";
 
 let cached: EngineClient | null = null;
 

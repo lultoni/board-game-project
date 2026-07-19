@@ -310,7 +310,7 @@ mod tests {
 
     /// THE Phase-1 wiring gate: the search using the incremental accumulator
     /// (seam-on `NnueEvaluator`) must return BIT-IDENTICAL `SearchResult`
-    /// { best, score, nodes } to the refresh-per-call path, across positions ×
+    /// { best, score, nodes } to the refresh-per-call path, across positions x
     /// depths. `nodes` equality is the strongest signal that ordering / TT /
     /// pruning are untouched - the whole point is "wiring must not change
     /// outputs." Also asserts determinism (seam-on twice agrees).

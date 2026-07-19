@@ -94,6 +94,11 @@ export interface MatchState {
    *  double-finalise across reactive re-runs, claim-win double-clicks, and
    *  the beforeunload guard. Reset whenever a new match begins. */
   telemetryFinalised: boolean;
+  /** `Date.now()` reading captured when the current player's action window
+   *  opened (match start, and on every phase/turn transition detected in
+   *  `afterApplied`). Passed to `eng.tryApply(raw, turnStartedMs)` so the
+   *  engine records human decision time in telemetry. 0 = unset (no timing). */
+  turnStartedMs: number;
 }
 
 export const match = $state<MatchState>({
@@ -112,6 +117,7 @@ export const match = $state<MatchState>({
   telemetryMatchId: null,
   localSeat: null,
   telemetryFinalised: false,
+  turnStartedMs: 0,
 });
 
 /** Single-source-of-truth reactive accessors for multiplayer role + code.
@@ -147,6 +153,7 @@ export function resetMatchState(): void {
   match.preSandboxMode = null;
   match.telemetryMatchId = null;
   match.telemetryFinalised = false;
+  match.turnStartedMs = 0;
   // MP role/code now live in `mpState` (single source) and are exposed here
   // as the module-level `$derived` constants `multiplayerRole` /
   // `multiplayerCode`. We don't touch them here - the lobby owns MP
@@ -220,12 +227,13 @@ export function finalizeTelemetrySession(
   eng: EngineClient,
   endReason: EndReason,
   resultByte: 0 | 1 | 2 | 3,
+  logJsonOverride?: string | null,
 ): Promise<void> {
-  return telemetry.finalizeTelemetrySession(match, eng, endReason, resultByte);
+  return telemetry.finalizeTelemetrySession(match, eng, endReason, resultByte, logJsonOverride);
 }
 
-export function abandonTelemetrySession(eng?: EngineClient): Promise<void> {
-  return telemetry.abandonTelemetrySession(match, eng);
+export function abandonTelemetrySession(eng?: EngineClient, logJsonOverride?: string | null): Promise<void> {
+  return telemetry.abandonTelemetrySession(match, eng, logJsonOverride);
 }
 
 export function networkLostTelemetrySession(eng?: EngineClient): Promise<void> {

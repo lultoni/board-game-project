@@ -168,8 +168,8 @@
   }: Props = $props();
 
   const SIZE = $derived(viewBox / 8);
-  /** Pad around the 8×8 grid inside the SVG's viewBox so the radial
-   *  skill wheel (which extends ~1.05 × SIZE beyond a piece's tile)
+  /** Pad around the 8x8 grid inside the SVG's viewBox so the radial
+   *  skill wheel (which extends ~1.05 x SIZE beyond a piece's tile)
    *  can render AND receive pointer events without spilling outside
    *  the SVG element's hit-box. Using a negative-origin viewBox keeps
    *  all square coordinates (0..viewBox) unchanged. */

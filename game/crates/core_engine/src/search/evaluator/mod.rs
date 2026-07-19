@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn money_differential() {
-        // E3: money value requires owned skills (cap = max_skill_cost × actions).
+        // E3: money value requires owned skills (cap = max_skill_cost x actions).
         // Give both sides an identical piece so both have a skill_cost baseline,
         // but different money. Differential must be positive when P1 has more.
         let mut pos = Position::empty();
@@ -292,8 +292,8 @@ mod tests {
         pos.p2_money = 4;
         pos.actions_remaining = 2;
         pos.current_phase = Phase::Move;
-        // With cap = 2 (Lance cost) × 2 (actions) = 4, both sides plateau at
-        // MONEY_PER_UNIT × cap / 2 = 50 each - but P2 is under cap so gets less
+        // With cap = 2 (Lance cost) x 2 (actions) = 4, both sides plateau at
+        // MONEY_PER_UNIT x cap / 2 = 50 each - but P2 is under cap so gets less
         // than the plateau. P1 differential should be non-negative and small.
         // The load-bearing invariant: score should be non-negative and reflect
         // P1's money advantage.
@@ -382,7 +382,7 @@ mod tests {
         // Pin the math for a lone P1 Champion HP=2 armor=2 skills=Tempest+Charge,
         // no enemies, no money. Under the current terms:
         //   - mobility (ns-43 Term 3a) = champion real movement-space: 8 empty
-        //     neighbours at d4 × champ_mob_per_sq.
+        //     neighbours at d4 x champ_mob_per_sq.
         //   - skill_term (E4) gated by money=0 → availability=0 → 0.
         //   - champion_threat (Term 3b) - no enemies/allies in range → 0.
         //   - exposure (E2) = 0 (no attackers); coverage (E6) = 0 (no guards).
@@ -557,7 +557,7 @@ mod tests {
         clean.pending_modifiers = 0;
         let baseline = evaluate(&clean);
         // P1 holds the wasted buff → its eval is LOWER than baseline by exactly
-        // wasted_modifier_per_cost × Focus cost.
+        // wasted_modifier_per_cost x Focus cost.
         let expected_pen = EvalParams::DEFAULT.wasted_modifier_per_cost
             * crate::game_logic::skills::skill_cost(Skill::Focus) as i32;
         assert_eq!(baseline - with_focus, expected_pen);
@@ -681,7 +681,7 @@ mod tests {
     #[test]
     fn guard_isolation_penalises_outnumbered_guard() {
         // P1 guard at d4 (sq 27) with TWO P2 champions within radius 2 and no
-        // friendly support → outnumber = 2. Penalty = per_step × 2 on P1.
+        // friendly support → outnumber = 2. Penalty = per_step x 2 on P1.
         let mut p = Position::empty();
         place(&mut p, 27, Player::P1, 2, MailboxEntry::default().with_hp(2));
         place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2)); // adjacent enemy
@@ -690,7 +690,7 @@ mod tests {
         let iso = bd.terms.iter().find(|t| t.name == "guard_isolation")
             .expect("guard_isolation term present");
         assert_eq!(iso.p1, EvalParams::DEFAULT.guard_iso_per_step * 2,
-            "lone P1 guard outnumbered 2-0 → penalty magnitude 2×per_step");
+            "lone P1 guard outnumbered 2-0 → penalty magnitude 2xper_step");
         assert_eq!(iso.p2, 0, "P2 champions are not outnumbered here");
         // signed_total negates the penalty into the P1-POV total.
         assert_eq!(iso.signed, -(EvalParams::DEFAULT.guard_iso_per_step * 2));
@@ -699,7 +699,7 @@ mod tests {
     #[test]
     fn guard_isolation_zero_when_supported() {
         // P1 guard at d4 (sq 27), one P2 champion adjacent (28), but TWO P1
-        // friendlies also within radius 2 → enemies(1) − friendlies(2) < 0 →
+        // friendlies also within radius 2 → enemies(1) - friendlies(2) < 0 →
         // outnumber clamps to 0 → no penalty on that guard.
         let mut p = Position::empty();
         place(&mut p, 27, Player::P1, 2, MailboxEntry::default().with_hp(2));

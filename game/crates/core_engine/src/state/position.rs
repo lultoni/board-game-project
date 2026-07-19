@@ -104,7 +104,7 @@ pub mod modifier_bits {
 
 #[derive(Clone, Debug)]
 pub struct Position {
-    // === Layer 1: Spatial state (bitboards) - 5× u64. ===
+    // === Layer 1: Spatial state (bitboards) - 5x u64. ===
     pub p1_pieces: Bitboard,
     pub p2_pieces: Bitboard,
     pub kings:     Bitboard,
@@ -163,7 +163,7 @@ pub struct Position {
     /// Bitmap: bit `caster_slot * MAX_TRACKED_ENEMIES + target_slot` is set
     /// iff the caster at `tracked_casters[caster_slot]` has already ticked
     /// the combo counter of the enemy at `tracked_enemies[target_slot]` this
-    /// turn. 8 casters × 16 enemies = 128 bits → u128. Cleared at end of turn.
+    /// turn. 8 casters x 16 enemies = 128 bits → u128. Cleared at end of turn.
     pub champion_credit: u128,
 
     /// Pending two-ply bodyguard resolution state. `Some` between an attacker's

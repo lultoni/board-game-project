@@ -17,7 +17,7 @@ Even in Pole B, the feeling that "you have to take Armor or you die" came back. 
 Because picks could be played immediately and the board state shifted dramatically every turn, neither player planned - both reacted. No multi-turn intent. Connects to Principle 4 (cleverness > attrition): a draft model that makes long-horizon planning impossible breaks the core fantasy.
 
 ### Combinatorial breadth broke "perfect information"
-So many possible picks × actions × interactions per turn that the *feeling* of perfect information was lost, even though formally PI held. **PI in the rules ≠ PI in the experience.** This is a new datapoint distinct from OQ-62 (which is about draft determinism in Pole A).
+So many possible picks x actions x interactions per turn that the *feeling* of perfect information was lost, even though formally PI held. **PI in the rules ≠ PI in the experience.** This is a new datapoint distinct from OQ-62 (which is about draft determinism in Pole A).
 
 ### Trade made
 Pole B replaced Pole A's "no idea what the skills do at start" problem with "too much happens per turn to plan." Not strictly better - different failure mode.

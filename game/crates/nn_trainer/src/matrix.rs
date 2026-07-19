@@ -1,6 +1,6 @@
 //! Gauntlet match-matrix persistence (plan §9, §10 panel 5).
 //!
-//! `<run_dir>/matrix.json` holds the N×N grid of every-version-vs-every-
+//! `<run_dir>/matrix.json` holds the NxN grid of every-version-vs-every-
 //! version match results, keyed by `(challenger, defender, bracket)`. The
 //! orchestrator updates an entry every time a series finishes; the UI
 //! polls the file at low cadence to render the gauntlet-matrix panel.
@@ -105,7 +105,7 @@ impl GauntletMatrix {
     /// existing counters - callers that want overwrite semantics should
     /// remove the entry first or build a fresh matrix.
     ///
-    /// The plan calls for an N×N grid where each cell is a single series,
+    /// The plan calls for an NxN grid where each cell is a single series,
     /// but the orchestrator may run a candidate against a baseline multiple
     /// times across generations (different mirror seeds, different perturbs).
     /// Accumulating is the right default: the win-rate stabilises as more

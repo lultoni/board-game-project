@@ -256,7 +256,7 @@ fn find_one_magic(sq: u8, ortho: bool, rng: &mut MagicRng) -> (u64, u32, Vec<u64
             return (magic, shift, table);
         }
     }
-    // 8×8 magics are dense; failure would indicate a logic bug, not bad luck.
+    // 8x8 magics are dense; failure would indicate a logic bug, not bad luck.
     panic!("no magic found for sq {sq} ortho {ortho}");
 }
 
@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn empty_board_full_8_directions() {
         // Centre square e4 = file 4 rank 3 → sq 28. Range 4 covers the whole
-        // 8-direction reach (which on an 8×8 board with src in the middle
+        // 8-direction reach (which on an 8x8 board with src in the middle
         // is the Chebyshev-≤4 ring minus squares off the rays).
         let attacks = skill_attacks(28, 0, 4);
         // Expected: every square on a rank/file/diagonal of sq 28, exclusive of sq 28.
@@ -822,8 +822,8 @@ mod tests {
 
     #[test]
     fn move2_empty_board_centre_reaches_24() {
-        // BFS-2 from a fully interior square reaches the 5×5 block = 24 squares.
-        // sq 27 = rank 3 file 3 - all 5×5 neighbours are on-board.
+        // BFS-2 from a fully interior square reaches the 5x5 block = 24 squares.
+        // sq 27 = rank 3 file 3 - all 5x5 neighbours are on-board.
         let m = movement_targets_speed2(27, 0); // d4
         assert_eq!(m.0.count_ones(), 24);
     }

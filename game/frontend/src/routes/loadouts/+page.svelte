@@ -558,7 +558,7 @@
                         class="slot-clear"
                         onclick={() => clearSlot(0)}
                         title={t("loadouts.clearSlot")}
-                      >×</button>
+                      >x</button>
                     {/if}
                   </label>
                   <label>
@@ -576,7 +576,7 @@
                         class="slot-clear"
                         onclick={() => clearSlot(1)}
                         title={t("loadouts.clearSlot")}
-                      >×</button>
+                      >x</button>
                     {/if}
                   </label>
                 </div>

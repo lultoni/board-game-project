@@ -4,7 +4,7 @@
 //
 //  1. **Share code** - short, quick to copy/paste. Format:
 //     `L1:<base64url>` where the body is:
-//        6 bytes of packed skill IDs  (12 × 4 bits, MSB-first, piece order
+//        6 bytes of packed skill IDs  (12 x 4 bits, MSB-first, piece order
 //                                      matches SideLoadout - King @ 0, then
 //                                      5 Champions; slot 1 nibble before
 //                                      slot 2 within each piece)

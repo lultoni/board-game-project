@@ -1,7 +1,7 @@
 // Unified TS types for the engine-bridge boundary (Tauri IPC).
 
 export interface PositionView {
-  /** [p1, p2, kings, champions, guards] as 5 × u64. */
+  /** [p1, p2, kings, champions, guards] as 5 x u64. */
   bitboards: BigUint64Array;
   /** 64 entries, u16 packed (see decodeMailbox). */
   mailbox: Uint16Array;
@@ -71,6 +71,36 @@ export type SideLoadout = readonly [
 ];
 
 export type FinalResultByte = 0 | 1 | 2 | 3; // P1Win | P2Win | Draw | Aborted
+
+/** Engine-canonical skill metadata (mirror of Rust `SkillMetadata`, camelCase
+ *  off the wire). The synchronous `SKILLS` table in `engine/skills.ts` is
+ *  asserted against this by `skills.contract.test.ts`. */
+export interface SkillMetadataWire {
+  id: number;
+  key: string;
+  category: string;
+  cost: number;
+  defaultRange: number;
+  targetOwner: string;
+  hasFocusModeChoice: boolean;
+  needsDirectionPick: boolean;
+}
+
+/** Engine-canonical game constants (mirror of Rust `GameConstants`). */
+export interface GameConstantsWire {
+  phaseMove: number;
+  phaseSkill: number;
+  phaseDraft: number;
+  modifierFocus: number;
+  modifierCharge: number;
+  modifierMoveAttackUsed: number;
+  playerP1: number;
+  playerP2: number;
+  gameOngoing: number;
+  gameP1Wins: number;
+  gameP2Wins: number;
+  skillCount: number;
+}
 
 /** Per-component decomposition of the static heuristic eval. Mirrors the
  *  Rust `search::evaluator::EvalBreakdown` struct 1:1 (snake_case field
@@ -172,7 +202,17 @@ export interface EngineClient {
   /** Encode a raw action u32 to canonical notation (e.g. "a1-b2", "b2*d4:Tempest").
    *  Stateless — does not require an active engine handle. */
   actionToNotation(raw: number): Promise<string>;
-  tryApply(action: number): Promise<StepResult>;
+  /** Engine-canonical skill table. Stateless (no engine handle). Used only by
+   *  the contract test that guards the synchronous `SKILLS` mirror. */
+  skillMetadata(): Promise<SkillMetadataWire[]>;
+  /** Engine-canonical game constants. Stateless. Used only by the contract
+   *  test that guards the synchronous constants in `engine/skills.ts`. */
+  gameConstants(): Promise<GameConstantsWire>;
+  /** Apply a human action. `turnStartedMs` (a `Date.now()` reading captured
+   *  when the current turn/phase began) lets the engine record human decision
+   *  time in telemetry; omit / pass 0 for non-live contexts (replay, inspector,
+   *  snapshot rebuild) where think-time is meaningless. */
+  tryApply(action: number, turnStartedMs?: number): Promise<StepResult>;
   stepAi(onDepth?: (depth: number, score: number) => void): Promise<StepResult>;
   /** Compute the static heuristic evaluation of the current board position.
    *  Returns the full per-component breakdown; `total` is P1-POV
@@ -198,6 +238,38 @@ export interface EngineClient {
    *  persistence layer to write per-ply incrementally without re-serialising
    *  the entire log. */
   latestPlyJson(): Promise<string | null>;
+  /** Subscribe to the `background-eval-ready` event the engine emits after a
+   *  human ply's time-bounded background search completes (Change 5 Part B).
+   *  The callback fires with the affected engine handle; the consumer then
+   *  reads `latestPlyJson()` to pick up the freshly-annotated `background_eval`.
+   *  Returns an unlisten function. On WASM this is a no-op returning a no-op
+   *  unlisten (no background thread there). */
+  onBackgroundEvalReady(cb: (handle: number) => void): Promise<() => void>;
+  /** AIvAI producer (Change 6): start a background thread that plays the whole
+   *  AI-vs-AI game to completion from `viewSnapshotJson` (so producer + view
+   *  share start_fen+config), re-installing both seat evaluators (from_snapshot
+   *  resets them to heuristic). The producer appends each ply to its own log
+   *  and emits `aivai-progress`; the frontend log-player advances a separate
+   *  view engine at display cadence. No-op on non-Tauri clients. */
+  startAivaiProducer(
+    viewSnapshotJson: string,
+    p1: { source: "heuristic" | "run" | "blessed"; id?: string | null },
+    p2: { source: "heuristic" | "run" | "blessed"; id?: string | null },
+  ): Promise<void>;
+  /** Non-joining read of the producer's currently-published MatchLog JSON
+   *  (raw actions + ply count). `null` when no producer is running. */
+  aivaiProducerLog(): Promise<string | null>;
+  /** Abort + JOIN the producer, returning its final authoritative MatchLog
+   *  JSON. Awaited on leaving an AIvAI match: the join guarantees the in-flight
+   *  ply is appended + the log finalised before the caller persists it, so the
+   *  saved log length equals exactly what the producer computed. `null` when no
+   *  producer was running. */
+  stopAivaiProducer(): Promise<string | null>;
+  /** Subscribe to `aivai-progress` (the producer appended a ply). The callback
+   *  fires with the producer's current ply count (the ceiling the log-player
+   *  advances toward) and whether the producer has finished. Returns an
+   *  unlisten fn. No-op returning a no-op unlisten on non-Tauri clients. */
+  onAivaiProgress(cb: (plies: number, done: boolean) => void): Promise<() => void>;
   finaliseLog(result: FinalResultByte): Promise<void>;
   /** Free engine resources (Tauri only; no-op on WASM). */
   dispose(): Promise<void>;

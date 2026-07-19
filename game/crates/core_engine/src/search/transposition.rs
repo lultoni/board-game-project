@@ -25,7 +25,7 @@
 //! We treat `key == 0` as "slot empty". Any real position whose Zobrist
 //! hash happens to be exactly 0 will be indistinguishable from an empty
 //! slot - a missed TT hit, never a correctness bug. The probability over
-//! a 10⁹-node search horizon is ~5×10⁻¹¹; accepted.
+//! a 10⁹-node search horizon is ~5x10⁻¹¹; accepted.
 //!
 //! # Generation counter
 //!

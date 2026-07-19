@@ -1,4 +1,4 @@
-//! 64-bit bitboard newtype. One bit per square on the 8×8 board.
+//! 64-bit bitboard newtype. One bit per square on the 8x8 board.
 //!
 //! Square indexing: bit `i` corresponds to square `i` in row-major order,
 //! `i = rank * 8 + file`, rank 0 = bottom row (player 1 side), file 0 = left.

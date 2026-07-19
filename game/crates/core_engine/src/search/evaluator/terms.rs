@@ -399,8 +399,8 @@ impl EvalTerm for WastedModifier {
 /// anywhere (per designer: the bad guard was deep + surrounded, not in space).
 ///
 /// Penalty (positive magnitude; `signed_total` negates it, like `exposure`):
-///   `guard_iso_per_step × outnumber`, where
-///   `outnumber = max(0, enemies_near − friendlies_near)`,
+///   `guard_iso_per_step x outnumber`, where
+///   `outnumber = max(0, enemies_near - friendlies_near)`,
 /// optionally amplified by `guard_iso_depth_pct` when the guard stands on the
 /// enemy's half (P1 guard on rank ≥ 4, P2 guard on rank ≤ 3).
 pub struct GuardIsolation;

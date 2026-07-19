@@ -1,6 +1,6 @@
 //! Layer 1 - Core State Representation.
 //!
-//! Spatial state as bitboards (5× u64), entity state as a `[u16; 64]` mailbox,
+//! Spatial state as bitboards (5x u64), entity state as a `[u16; 64]` mailbox,
 //! global resources as scalars, plus an incremental Zobrist hash.
 //!
 //! Layout per ADR-005:

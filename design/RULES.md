@@ -24,7 +24,7 @@ Capture the opponent's **King**. The game ends immediately when a King is remove
 
 ## Components
 
-- **Board:** 8×8 grid.
+- **Board:** 8x8 grid.
 - **Per player:** 1 King · 5 Champions · 6 Guards.
 - **Champions and the King have 2 Equip Slots each.** Skills are equipped into these slots. **Guards have no Equip Slots and carry no skills.**
 
@@ -32,7 +32,7 @@ Capture the opponent's **King**. The game ends immediately when a King is remove
 
 ## Setup
 
-- **Board:** the **8×8 grid**.
+- **Board:** the **8x8 grid**.
 - **First player:** flip a coin (or decide verbally).
 - **Piece placement:**
   - **Back row (row 1/8):** the King stands in the middle of the row, *offset so the two Kings are not directly opposite each other.* On one side of the King stand 2 Champions; on the other side stand 3 Champions. In the end there will be 2 free squares left and right of the pieces.
@@ -134,7 +134,7 @@ The same Champion can activate multiple skills (including the same one) in one t
 - Range 1 = adjacent tile along the Path
 - Range 2 = 2 tiles away along the Path (etc.)
 
-**Default Range = 2**, unless a skill explicitly names "self" or "adjacent." A skill with a Range modifier (e.g. "Range −1") is still a Range 2 skill with a modifier applied. It is not treated as adjacent or self.
+**Default Range = 2**, unless a skill explicitly names "self" or "adjacent." A skill with a Range modifier (e.g. "Range -1") is still a Range 2 skill with a modifier applied. It is not treated as adjacent or self.
 
 **Self vs. adjacent:** "Self" skills (Range 0) target only the caster. "Adjacent" skills (Range 1) target only neighbouring pieces - never the caster, even with a Range buff. Range buffs (e.g. Focus) shift the targeting window outward: Self + Focus → Range 1. Range buffs do not collapse Adjacent skills inward toward Self.
 
@@ -204,7 +204,7 @@ As the game goes on, both Money income and Skill-Phase action count grow - late-
 
 | Cat. | Name | Cost | Effect |
 |------|------|------|--------|
-| Strike | Lance | 2 | Target within Range−1 takes 1 damage. |
+| Strike | Lance | 2 | Target within Range-1 takes 1 damage. |
 | Strike | Hook | 3 | Target takes 1 damage, pulled 1 tile toward caster along the Path. |
 | Strike | Break | 2 | Remove 1 Armor from target. *(Deals no HP damage unless boosted by Charge.)* |
 | Strike | Steal | 4 | Target takes 1 damage. Steal 1 Money from opponent. |

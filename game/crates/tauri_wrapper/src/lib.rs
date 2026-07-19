@@ -353,18 +353,123 @@ fn action_to_notation_cmd(raw: u32) -> String {
     core_engine::action_to_notation(core_engine::game_logic::action::Action(raw), None)
 }
 
+// ---------------------------------------------------------------------------
+// Static metadata - the engine is the single source of truth for the skill
+// table and game constants the frontend mirrors. `skill_metadata` /
+// `game_constants_cmd` are pure reads (no engine handle); the frontend asserts
+// its synchronous mirror against them in a contract test so the two can't drift.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillMetadataDto {
+    pub id:            u8,
+    pub key:           String,
+    pub category:      String,
+    pub cost:          u8,
+    pub default_range: u8,
+    pub target_owner:  String,
+    pub has_focus_mode_choice: bool,
+    pub needs_direction_pick:  bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GameConstantsDto {
+    pub phase_move:                u8,
+    pub phase_skill:               u8,
+    pub phase_draft:               u8,
+    pub modifier_focus:            u8,
+    pub modifier_charge:           u8,
+    pub modifier_move_attack_used: u8,
+    pub player_p1:                 u8,
+    pub player_p2:                 u8,
+    pub game_ongoing:              u8,
+    pub game_p1_wins:              u8,
+    pub game_p2_wins:              u8,
+    pub skill_count:               u8,
+}
+
 #[tauri::command]
-fn try_apply(
-    handle:     u64,
-    raw_action: u32,
-    registry:   State<'_, EngineRegistry>,
+fn skill_metadata() -> Vec<SkillMetadataDto> {
+    core_engine::all_skill_metadata()
+        .into_iter()
+        .map(|m| SkillMetadataDto {
+            id:            m.id,
+            key:           m.key.to_string(),
+            category:      m.category.to_string(),
+            cost:          m.cost,
+            default_range: m.default_range,
+            target_owner:  m.target_owner.to_string(),
+            has_focus_mode_choice: m.has_focus_mode_choice,
+            needs_direction_pick:  m.needs_direction_pick,
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn game_constants_cmd() -> GameConstantsDto {
+    let c = core_engine::game_constants();
+    GameConstantsDto {
+        phase_move:                c.phase_move,
+        phase_skill:               c.phase_skill,
+        phase_draft:               c.phase_draft,
+        modifier_focus:            c.modifier_focus,
+        modifier_charge:           c.modifier_charge,
+        modifier_move_attack_used: c.modifier_move_attack_used,
+        player_p1:                 c.player_p1,
+        player_p2:                 c.player_p2,
+        game_ongoing:              c.game_ongoing,
+        game_p1_wins:              c.game_p1_wins,
+        game_p2_wins:              c.game_p2_wins,
+        skill_count:               c.skill_count,
+    }
+}
+
+#[tauri::command]
+async fn try_apply(
+    handle:          u64,
+    raw_action:      u32,
+    turn_started_ms: Option<u64>,
+    app:             tauri::AppHandle,
+    registry:        State<'_, EngineRegistry>,
 ) -> Result<StepResultDto, String> {
     let now = unix_ms_now();
-    registry.with(handle, |e| {
-        api::try_apply(&mut e.m, raw_action, now)
+    // Human decision time = now − start-of-turn. A missing / zero start means
+    // "no timing available" (replay, inspector, snapshot rebuild) → record 0.
+    let turn_started_ms = turn_started_ms.unwrap_or(0);
+    let thought_ms = if turn_started_ms == 0 {
+        0
+    } else {
+        now.saturating_sub(turn_started_ms).min(u32::MAX as u64) as u32
+    };
+    let dto = registry.with(handle, |e| {
+        api::try_apply_with_thought(&mut e.m, raw_action, thought_ms, now)
             .map(StepResultDto::from)
             .map_err(|err| format!("{err:?}"))
-    })?
+    })??;
+
+    // Part B (Change 5): fire a shallow background eval on the resulting
+    // position (the state the human just created) WITHOUT blocking this apply
+    // response. The registry mutex serialises this against the next apply, so
+    // it never races the engine. On completion, emit `background-eval-ready`
+    // so the frontend can refresh its eval display mid-game if it cares. The
+    // apply response has already returned by the time this runs.
+    //
+    // `app` is `'static + Send`; fetch the managed registry INSIDE the task so
+    // we don't try to send a lifetime-bound `State<'_>` across the thread.
+    let app_for_task = app.clone();
+    tokio::task::spawn_blocking(move || {
+        let registry = app_for_task.state::<EngineRegistry>();
+        let _ = registry.with(handle, |e| {
+            // Time-bounded: ~1s wall clock lets iterative deepening reach a
+            // useful depth in sharp positions without stalling quiet ones.
+            api::annotate_last_ply_background_eval(&mut e.m, /*budget_ms=*/ 1000);
+        });
+        let _ = app_for_task.emit("background-eval-ready", serde_json::json!({ "handle": handle }));
+    });
+
+    Ok(dto)
 }
 
 /// AI step. CPU-bound - runs inside `block_in_place` so the Tauri async
@@ -467,7 +572,7 @@ fn snapshot_json(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Str
 // ---------------------------------------------------------------------------
 
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 
 /// Process-global training-run state. At most one run can be active at a time.
 #[derive(Default)]
@@ -745,16 +850,19 @@ fn list_available_raters(run_dir: Option<String>) -> Result<Vec<RaterListing>, S
 /// installed via `Match::set_evaluator`. For `"heuristic"`, `id` is ignored.
 ///
 /// Errors leave the match's existing evaluator untouched.
-#[tauri::command]
-fn set_ai_evaluator(
-    handle: u64,
-    source: String,
+/// Build a position evaluator from a `(source, id, run_dir)` triple. `source`
+/// is `"heuristic"`, `"run"`, or `"blessed"`; for the NN sources `id` names a
+/// rater under the appropriate index. Shared by the `set_ai_evaluator` command
+/// and the background AIvAI producer (which must re-install evaluators after
+/// building its Match from a snapshot, since `from_snapshot` resets the
+/// evaluator to `HeuristicEvaluator`).
+fn build_evaluator(
+    source: &str,
     id: Option<String>,
     run_dir: Option<String>,
-    registry: State<'_, EngineRegistry>,
-) -> Result<(), String> {
-    let evaluator: Box<dyn core_engine::search::evaluator::Evaluator + Send> = match source.as_str() {
-        "heuristic" => Box::new(core_engine::search::evaluator::HeuristicEvaluator),
+) -> Result<Box<dyn core_engine::search::evaluator::Evaluator + Send>, String> {
+    match source {
+        "heuristic" => Ok(Box::new(core_engine::search::evaluator::HeuristicEvaluator)),
         "run" | "blessed" => {
             let id = id.ok_or_else(|| "rater id required for non-heuristic source".to_string())?;
             let dir = if source == "run" {
@@ -777,15 +885,26 @@ fn set_ai_evaluator(
             if meta.model_config.input_dim == nn_trainer::NUM_FEATURES {
                 let nnue = nn_trainer::NnueEvaluator::load_from_stem(&stem)
                     .map_err(|e| format!("load NNUE rater {id}: {e}"))?;
-                Box::new(nnue)
+                Ok(Box::new(nnue))
             } else {
                 let nn = nn_trainer::NnEvaluator::load_from_stem(&stem)
                     .map_err(|e| format!("load rater {id}: {e}"))?;
-                Box::new(nn)
+                Ok(Box::new(nn))
             }
         }
-        other => return Err(format!("unknown evaluator source: {other}")),
-    };
+        other => Err(format!("unknown evaluator source: {other}")),
+    }
+}
+
+#[tauri::command]
+fn set_ai_evaluator(
+    handle: u64,
+    source: String,
+    id: Option<String>,
+    run_dir: Option<String>,
+    registry: State<'_, EngineRegistry>,
+) -> Result<(), String> {
+    let evaluator = build_evaluator(&source, id, run_dir)?;
     registry.with(handle, |entry| entry.m.set_evaluator(evaluator))?;
     Ok(())
 }
@@ -908,6 +1027,197 @@ fn stop_training_run(state: State<'_, TrainingState>) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// AIvAI background producer (plan §6, Change 6).
+//
+// For AI-vs-AI matches the engine plays the whole game to completion on its
+// own background thread as fast as it can, appending each ply to ITS match
+// log. The frontend is a "log player" that replays the producer's log at the
+// display cadence through a SEPARATE view engine. This decouples engine speed
+// from display rate: the producer races ahead; the view renders when it wants.
+//
+// Key design points (see the plan doc):
+//   * The producer owns its OWN `Match` MOVED INTO THE THREAD - it is NOT in
+//     the shared `EngineRegistry`, so its ~1s-per-ply search never holds the
+//     registry mutex and never starves the view engine's sub-ms reads.
+//   * It publishes its latest log JSON + ply count into shared state each ply
+//     so the frontend can pull raw actions and raise its "known ply" ceiling.
+//   * Abort is loop-level only (no mid-search abort): the loop checks the flag
+//     between plies. On leave the frontend awaits `stop_aivai_producer`, which
+//     sets the flag and JOINS the thread so the in-flight ply is appended
+//     before the authoritative log is read - guaranteeing the saved log length
+//     equals what the producer actually computed.
+// ---------------------------------------------------------------------------
+
+/// Shared state written by the producer thread and read by the frontend via
+/// `aivai_producer_log`. `log` holds the latest serialized `MatchLog`; `plies`
+/// is the ply-count ceiling the frontend log-player advances toward.
+#[derive(Default)]
+struct AivaiProducerShared {
+    log:   Mutex<Option<String>>,
+    plies: AtomicUsize,
+}
+
+#[derive(Default)]
+struct AivaiProducerInner {
+    abort:  Option<Arc<AtomicBool>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+    shared: Option<Arc<AivaiProducerShared>>,
+}
+
+/// Process-global AIvAI producer state. At most one producer runs at a time
+/// (a new match aborts any prior producer first). Registered with `.manage`.
+#[derive(Default)]
+pub struct AivaiProducerState {
+    inner: Mutex<AivaiProducerInner>,
+}
+
+/// Set the abort flag and JOIN the producer thread, returning its final
+/// (authoritative) log JSON. Shared between the `stop_aivai_producer` command
+/// and the app exit hook. Bounded by one ply's think-time: the loop only
+/// checks the flag between plies, so a join waits at most for the in-flight
+/// search to finish (then the ply is appended + the log is finalised).
+fn join_aivai_producer(state: &AivaiProducerState) -> Option<String> {
+    let (abort, handle, shared) = {
+        let mut inner = state.inner.lock().unwrap();
+        (inner.abort.take(), inner.handle.take(), inner.shared.take())
+    };
+    if let Some(flag) = abort.as_ref() {
+        flag.store(true, Ordering::Relaxed);
+    }
+    if let Some(h) = handle {
+        // The thread writes the finalised log into `shared` before exiting, so
+        // joining guarantees we read the complete log below.
+        let _ = h.join();
+    }
+    shared.and_then(|s| s.log.lock().unwrap().clone())
+}
+
+/// Start the background AIvAI producer from the view engine's snapshot so the
+/// producer and view share an identical `start_fen` + config. Aborts any prior
+/// producer first. `p{1,2}_source`/`id` re-install the seat evaluators, because
+/// `from_snapshot` resets the evaluator to `HeuristicEvaluator` - without this
+/// the producer would silently play the heuristic instead of the picked rater.
+#[tauri::command]
+fn start_aivai_producer(
+    view_snapshot_json: String,
+    p1_source: String,
+    p1_id: Option<String>,
+    p2_source: String,
+    p2_id: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AivaiProducerState>,
+) -> Result<(), String> {
+    // Abort + join any prior producer (e.g. a rapid re-entry into /match/).
+    let _ = join_aivai_producer(&state);
+
+    let mut m = api::from_snapshot_json(&view_snapshot_json, unix_ms_now())
+        .map_err(|e| format!("producer snapshot parse: {e:?}"))?;
+
+    // Re-install both seats' evaluators. Match holds a single evaluator, so the
+    // second install wins - mirroring the frontend's `applyEvaluatorSettings`
+    // (which calls setAiEvaluator twice, p1 then p2). We keep that behaviour
+    // identical rather than introducing per-seat evaluators here.
+    if let Ok(e1) = build_evaluator(&p1_source, p1_id, None) {
+        m.set_evaluator(e1);
+    }
+    if let Ok(e2) = build_evaluator(&p2_source, p2_id, None) {
+        m.set_evaluator(e2);
+    }
+
+    let shared = Arc::new(AivaiProducerShared::default());
+    // Seed the published log with the pre-play state so a very-early leave
+    // (before the first ply completes) still reads a valid (possibly 0-ply)
+    // log rather than None.
+    *shared.log.lock().unwrap() = api::match_log_json(&m);
+    shared.plies.store(api::log_ply_count(&m), Ordering::Relaxed);
+
+    let abort = Arc::new(AtomicBool::new(false));
+    let abort_thread = Arc::clone(&abort);
+    let shared_thread = Arc::clone(&shared);
+    let app_thread = app.clone();
+
+    let handle = std::thread::spawn(move || {
+        // Catch panics so a search bug tears down the producer cleanly instead
+        // of poisoning the process (mirrors the training thread).
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_aivai_producer_loop(&mut m, &abort_thread, &shared_thread, &app_thread);
+        }));
+    });
+
+    let mut inner = state.inner.lock().unwrap();
+    inner.abort = Some(abort);
+    inner.handle = Some(handle);
+    inner.shared = Some(shared);
+    Ok(())
+}
+
+/// The producer's play-to-completion loop. Steps the AI ply-by-ply until the
+/// game ends, a no-move wedge is hit, or the abort flag is set. Publishes the
+/// log + ply count and emits a throttled `aivai-progress` event after each ply.
+fn run_aivai_producer_loop(
+    m: &mut Match,
+    abort: &AtomicBool,
+    shared: &AivaiProducerShared,
+    app: &tauri::AppHandle,
+) {
+    loop {
+        if abort.load(Ordering::Relaxed) {
+            break;
+        }
+        let now = unix_ms_now();
+        match api::step_ai(m, now) {
+            // Natural end (mate) or a misconfigured non-AI seat: stop the loop.
+            Err(_) => break,
+            // No-move on a live position (engine wedge): STOP rather than spin
+            // at 100% CPU re-searching the same position forever. The frontend
+            // has an `aiAutoPlay=false` guard for this; the headless loop must
+            // break explicitly.
+            Ok(r) if r.applied_action == 0 => break,
+            Ok(_) => {}
+        }
+        // Publish the freshly-extended log + ceiling for the frontend to pull.
+        *shared.log.lock().unwrap() = api::match_log_json(m);
+        let n = api::log_ply_count(m);
+        shared.plies.store(n, Ordering::Relaxed);
+        let _ = app.emit("aivai-progress", serde_json::json!({ "plies": n }));
+
+        if m.game_result().is_some() {
+            break;
+        }
+    }
+    // Finalise: pick the terminal result (or Aborted for a leave / wedge) and
+    // stamp the log so the persisted library entry is complete.
+    let now = unix_ms_now();
+    let result_byte = api::finalise_result_byte(m);
+    api::finalise_log(m, now, result_byte);
+    *shared.log.lock().unwrap() = api::match_log_json(m);
+    let n = api::log_ply_count(m);
+    shared.plies.store(n, Ordering::Relaxed);
+    let _ = app.emit("aivai-progress", serde_json::json!({ "plies": n, "done": true }));
+}
+
+/// Non-joining read of the producer's currently-published log. Used by the
+/// frontend log-player to pull raw actions and by the natural-end finalise
+/// path (the producer has already finished by the time the view plays through
+/// to the game-over ply, so this holds the complete log).
+#[tauri::command]
+fn aivai_producer_log(state: State<'_, AivaiProducerState>) -> Option<String> {
+    let inner = state.inner.lock().unwrap();
+    inner.shared.as_ref().and_then(|s| s.log.lock().unwrap().clone())
+}
+
+/// Abort + join the producer and return its final authoritative log. The
+/// frontend awaits this on leaving an AIvAI match: joining guarantees the
+/// in-flight ply is appended and the log finalised before we persist, so the
+/// saved log length equals exactly what the producer computed.
+#[tauri::command]
+async fn stop_aivai_producer(state: State<'_, AivaiProducerState>) -> Result<Option<String>, String> {
+    // The join can block up to one ply's think-time; run it off the async
+    // executor so we don't pin a runtime worker.
+    Ok(tokio::task::block_in_place(|| join_aivai_producer(&state)))
+}
+
+// ---------------------------------------------------------------------------
 // Entry point.
 // ---------------------------------------------------------------------------
 
@@ -916,6 +1226,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(EngineRegistry::default())
         .manage(TrainingState::default())
+        .manage(AivaiProducerState::default())
         .invoke_handler(tauri::generate_handler![
             engine_version,
             create_engine,
@@ -929,8 +1240,13 @@ pub fn run() {
             position_fen,
             legal_actions,
             action_to_notation_cmd,
+            skill_metadata,
+            game_constants_cmd,
             try_apply,
             step_ai,
+            start_aivai_producer,
+            aivai_producer_log,
+            stop_aivai_producer,
             heuristic_eval,
             heuristic_eval_by_square,
             request_ai_move_forced,
@@ -970,6 +1286,10 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 let state = app_handle.state::<TrainingState>();
                 signal_stop(&state);
+                // Abort + join any running AIvAI producer so Cmd+Q doesn't
+                // leave a detached search thread racing the process teardown.
+                let producer = app_handle.state::<AivaiProducerState>();
+                let _ = join_aivai_producer(&producer);
             }
         });
 }
@@ -981,6 +1301,36 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regenerate the frontend contract fixture from the engine's canonical
+    /// metadata. The frontend's `skills.contract.test.ts` asserts its
+    /// synchronous `SKILLS` mirror against this file, so the two can only drift
+    /// if this fixture is stale. Run `cargo test -p tauri_wrapper
+    /// emit_skill_metadata_fixture` after any skill-table change to refresh it;
+    /// the Rust `skill_metadata` / `game_constants_cmd` DTOs are the source.
+    #[test]
+    fn emit_skill_metadata_fixture() {
+        let crate_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture = std::path::Path::new(crate_dir)
+            .parent()  // crates/
+            .and_then(|p| p.parent()) // game/
+            .expect("crate dir has game/ ancestor")
+            .join("frontend/src/lib/engine/__fixtures__/skill-metadata.json");
+        let payload = serde_json::json!({
+            "skills": skill_metadata(),
+            "constants": game_constants_cmd(),
+        });
+        let json = serde_json::to_string_pretty(&payload).unwrap() + "\n";
+        std::fs::create_dir_all(fixture.parent().unwrap()).unwrap();
+        // Only rewrite when the content changes so the test is idempotent and
+        // doesn't dirty the tree on every run.
+        let stale = std::fs::read_to_string(&fixture).map_or(true, |existing| existing != json);
+        if stale {
+            std::fs::write(&fixture, &json).unwrap();
+        }
+        // Sanity: the fixture round-trips and covers all 15 skills.
+        assert_eq!(skill_metadata().len(), 15);
+    }
 
     #[test]
     fn registry_handles_are_distinct_and_nonzero() {
@@ -1242,5 +1592,49 @@ mod tests {
         let inner = state.inner.lock().unwrap();
         assert!(inner.stop.is_none());
         assert!(inner.handle.is_none());
+    }
+
+    #[test]
+    fn join_aivai_producer_on_empty_state_is_noop() {
+        // No producer running: joining must not panic and returns None. Hit on
+        // the exit hook when no AIvAI match was ever started.
+        let state = AivaiProducerState::default();
+        assert!(join_aivai_producer(&state).is_none());
+        // Idempotent - a second join is still a clean no-op.
+        assert!(join_aivai_producer(&state).is_none());
+        let inner = state.inner.lock().unwrap();
+        assert!(inner.abort.is_none());
+        assert!(inner.handle.is_none());
+        assert!(inner.shared.is_none());
+    }
+
+    #[test]
+    fn join_aivai_producer_returns_published_log_and_clears() {
+        // A producer that has finished leaves its abort flag set, its thread
+        // joinable, and its final log published in `shared`. join_ must return
+        // that log and clear all three slots so the next start sees a fresh
+        // state. We simulate this without a real AppHandle by populating the
+        // state the way `start_aivai_producer` would and letting the thread
+        // exit immediately.
+        let state = AivaiProducerState::default();
+        let shared = Arc::new(AivaiProducerShared::default());
+        *shared.log.lock().unwrap() = Some("{\"plies\":[]}".to_string());
+        shared.plies.store(0, Ordering::Relaxed);
+        let abort = Arc::new(AtomicBool::new(false));
+        let handle = std::thread::spawn(|| { /* exits immediately */ });
+        {
+            let mut inner = state.inner.lock().unwrap();
+            inner.abort = Some(abort);
+            inner.handle = Some(handle);
+            inner.shared = Some(Arc::clone(&shared));
+        }
+
+        let log = join_aivai_producer(&state);
+        assert_eq!(log.as_deref(), Some("{\"plies\":[]}"));
+
+        let inner = state.inner.lock().unwrap();
+        assert!(inner.abort.is_none(), "abort slot cleared after join");
+        assert!(inner.handle.is_none(), "handle slot cleared after join");
+        assert!(inner.shared.is_none(), "shared slot cleared after join");
     }
 }

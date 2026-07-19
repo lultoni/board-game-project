@@ -11,9 +11,18 @@
     validateSnapshot,
     isSelfCast,
     SKILLS,
+    skillById,
     MODIFIER_FOCUS,
     MODIFIER_CHARGE,
     runAiCall,
+    plyEvalOf,
+    startAivaiProducer,
+    stopAivaiProducer,
+    aivaiProducerLog,
+    onAivaiProgress,
+    producerRawsFromLog,
+    snapshotActionCount,
+    type SearchMetaLog,
   } from "$lib/engine";
   import { resolveLoadout, mirrorLoadout } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
@@ -40,7 +49,7 @@
     findActionByKind,
     approachChoicesFor,
   } from "$lib/state/move-targets";
-  import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, hasSelfAndRetargetChoice, variantIsSelfCast, allyMoverCandidates, allyMoverDestinations, rawForAllyMove, type SkillVariant } from "$lib/state/skill-targets";
+  import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, hasSelfAndRetargetChoice, variantIsSelfCast, allyMoverCandidates, allyMoverDestinations, rawForAllyMove, rawForSelfCast, type SkillVariant } from "$lib/state/skill-targets";
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
@@ -77,6 +86,7 @@
     setHeuristicBySquare,
     setPrevRoundBreakdown,
     setLastRoundSeen,
+    setBackgroundEval,
     resetAiSearch,
   } from "$lib/state/ai-search.svelte";
 
@@ -108,6 +118,24 @@
   let aiAutoPlay = $state(true);
   /** When true, pause after the current move finishes instead of mid-animation. */
   let pendingPause = $state(false);
+  // === AIvAI producer/view split (Change 6) ================================
+  // For AIvAI the ENGINE plays the whole game to completion on a background
+  // thread (the "producer") while the frontend is a "log player" that replays
+  // the producer's log through the interactive view engine at display cadence.
+  /** Raw actions the producer has computed so far (its match log). The ceiling
+   *  the view advances toward; refreshed from the producer log on each
+   *  `aivai-progress` event. */
+  let producerRaws = $state<number[]>([]);
+  /** How many plies the view engine has rendered. Never exceeds
+   *  `producerRaws.length`. */
+  let viewPly = $state(0);
+  /** True once the producer thread has finished (game over / wedge). */
+  let producerDone = $state(false);
+  /** Unlisten handle for the `aivai-progress` subscription. */
+  let aivaiProgressUnsub: (() => void) | null = null;
+  /** True while awaiting the producer's final ply on leave (drives the
+   *  "finishing current move…" state). */
+  let leavingAivai = $state(false);
   /** Transient toast for export / sandbox feedback. Cleared by a timer. */
   let toast = $state<string>("");
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -533,33 +561,41 @@
     lastGameResult = result;
   });
 
-  /** AI scheduler. Whenever it's an AI seat's turn and the loop is allowed
-   *  to run, queue a `runAiStep()`. For HvAI this fires automatically on
-   *  every AI ply. For AIvAI it chains turn-after-turn while `aiAutoPlay`
-   *  is true; pausing freezes the loop after the in-flight call returns.
-   *  Anchored on `phaseKey()` rather than `position` directly so a stable
-   *  side+phase pair doesn't re-trigger when other position fields change.
-   *
-   *  Owns a single timer handle (`aiTimer`) rather than a boolean latch. The
-   *  handle is set synchronously when the timer is scheduled and only cleared
-   *  inside the timer callback or by teardown - no microtask window where a
-   *  re-entrant $effect run could schedule a duplicate. */
+  /** HvAI scheduler. When it's the AI seat's turn, queue a `runAiStep()` (a
+   *  single blocking search + apply, rendered immediately). AIvAI does NOT use
+   *  this path anymore — it's driven by the producer/view log-player below.
+   *  Anchored on `phaseKey()` so a stable side+phase pair doesn't re-trigger
+   *  when other position fields change. */
   $effect(() => {
     if (!ready) return;
     if (match.mode === "sandbox") return;
+    if (match.mode === "aivai") return; // AIvAI is the producer/view loop, not stepAi
     if (!currentSeatIsAi) return;
-    // For AIvAI, gate on the play/pause toggle. For HvAI, always run.
-    if (match.mode === "aivai" && !aiAutoPlay) return;
     if (busy) return;
-    // Visible cooldown (so a spectator can watch AIvAI step-by-step, or HvAI
-    // has a beat to repaint the board). `runAiStep` runs the search in
-    // parallel with this delay - the cooldown is a floor, not a sequential
-    // wait. For AIvAI we honour the user-configured step delay; HvAI is a
-    // small fixed beat.
-    const delay = match.mode === "aivai"
-      ? Math.max(16, settings.aivaiStepDelayMs)
-      : 30;
-    void runAiStep(delay);
+    // Small fixed beat so the board repaints between the human's move and the
+    // AI reply. `runAiStep` runs the search in parallel with this delay - it's
+    // a floor, not a sequential wait.
+    void phaseKey();
+    void runAiStep(30);
+  });
+
+  /** AIvAI paced view loop (Change 6). The producer thread races ahead and
+   *  publishes its ply count via `aivai-progress` (→ `producerRaws`). This loop
+   *  is the DISPLAY clock: while playing and there are un-rendered plies, it
+   *  waits for the current animation to settle plus the user-configured step
+   *  delay, then renders exactly one more ply. It never renders past
+   *  `producerRaws.length`, so a fast producer can't outrun the animations.
+   *  Re-fires whenever `viewPly`, `producerRaws`, or `aiAutoPlay` change. */
+  $effect(() => {
+    if (!ready) return;
+    if (match.mode !== "aivai") return;
+    if (!aiAutoPlay) return;
+    if (busy) return;
+    // Nothing new to show yet — the producer will bump the ceiling and re-fire.
+    if (viewPly >= producerRaws.length) return;
+    void viewPly;
+    void producerRaws.length;
+    void advanceView(Math.max(16, settings.aivaiStepDelayMs));
   });
 
   onMount(async () => {
@@ -573,11 +609,33 @@
     try {
       eng = await getEngine();
       renderer = createPlyRenderer(eng, {
-        positionSink: match,
+        // The renderer owns its rendered state; we mirror each flip into the
+        // match store here. The store is the explicit writer of its own
+        // fields - the renderer only notifies.
+        onStateUpdate: (pos, legal) => {
+          match.position = pos;
+          match.legal = legal;
+        },
         sfxEnabled: true,
         onMoveLanding: (finalSq) => {
           usedThisPhase = new Set([...usedThisPhase, finalSq]);
         },
+      });
+      // B3: after a human ply, the engine runs a time-bounded background eval
+      // and emits `background-eval-ready`. Pick up the freshly-annotated
+      // `background_eval` from the latest ply and surface it in the HUD. Local
+      // + hotseat only — in multiplayer the authoritative log lives on the
+      // host and eval display would be misleading for the joiner's mirror.
+      backgroundEvalUnsub = await eng.onBackgroundEvalReady(async () => {
+        if (!eng) return;
+        try {
+          const json = await eng.latestPlyJson();
+          if (!json) return;
+          const ply = JSON.parse(json) as { ai?: SearchMetaLog | null; background_eval?: SearchMetaLog | null };
+          setBackgroundEval(plyEvalOf(ply));
+        } catch {
+          // A malformed/absent ply just leaves the prior eval in place.
+        }
       });
       const pending = match.pendingSnapshotJson;
       // Snapshot side before reset so it survives the reset (which clears
@@ -650,6 +708,9 @@
       await applyEvaluatorSettings(eng);
       await renderer.resyncFromEngine();
       lastPhaseKey = phaseKey();
+      // Stamp the decision clock for the opening action window; afterApplied()
+      // only sees transitions AFTER the first apply, so seed it here.
+      match.turnStartedMs = Date.now();
       match.mode = wasMultiplayer ? "multiplayer" : modeFromSeats(match.side);
       await refreshMatchLogAvailable();
       // Start the telemetry session for non-analysis modes. No-op for
@@ -689,6 +750,7 @@
           eng,
           getRole: () => (isMp ? ((mpState.role ?? "joiner") as Role) : "solo"),
           getCode: () => mpState.code,
+          getTurnStartedMs: () => match.turnStartedMs,
           ensureLiveEngine: ensureLiveEngineOnTrueLine,
           send: (m: WireMessageV2) => mpSendRaw(encodeMessageV2(m)),
           subscribe: (cb) => mpOnRawData((raw) => {
@@ -750,6 +812,58 @@
       // has already fired and we missed it. Fire once synchronously so the
       // engine emits its `session-hello`.
       if (mpState.status === "connected") mpEngine.notifyConnectionOpen();
+
+      // AIvAI (Change 6): the engine plays the whole game to completion on a
+      // background "producer" thread; this view engine becomes a log player.
+      // Seed the producer from THIS engine's snapshot so producer + view share
+      // an identical start_fen + config; re-install both seat evaluators
+      // (from_snapshot resets them to heuristic engine-side). Gate on the mode
+      // set above; HvAI / MP / sandbox never start a producer.
+      if (match.mode === "aivai") {
+        try {
+          const viewSnapshotJson = await eng.snapshotJson();
+          // The view engine may already have plies baked in from the pending
+          // snapshot it booted from (crucially, the 12 DRAFT plies for a drafted
+          // AIvAI match — /draft/ runs those, then forwards a Move-phase
+          // snapshot here). `from_snapshot` REBUILDS the producer's log by
+          // replaying every action in the snapshot, so the producer log's
+          // leading plies ARE those already-applied ones. The view engine is
+          // positioned AFTER them, so the log-player must START at that offset —
+          // replaying a draft raw onto a Move-phase view engine is exactly the
+          // "illegal action" we must avoid. `actions.length` in the snapshot is
+          // that baseline ply count.
+          viewPly = snapshotActionCount(viewSnapshotJson);
+          await startAivaiProducer(
+            eng,
+            viewSnapshotJson,
+            { source: settings.p1Evaluator.source, id: settings.p1Evaluator.id },
+            { source: settings.p2Evaluator.source, id: settings.p2Evaluator.id },
+          );
+          // Progress events only raise the ply-count ceiling + refresh the raw
+          // list; the paced view loop (below) decides WHEN to render the next
+          // ply, so a fast producer never outruns the animation buffers.
+          aivaiProgressUnsub = await onAivaiProgress(eng, async (_plies, done) => {
+            try {
+              const log = await aivaiProducerLog(eng!);
+              producerRaws = producerRawsFromLog(log);
+            } catch {
+              // A transient read failure just leaves the prior ceiling; the
+              // next event refreshes it.
+            }
+            if (done) producerDone = true;
+          });
+          // Initial pull: the producer starts emitting immediately, so a very
+          // fast game could fire (and even finish) between `startAivaiProducer`
+          // and the listener attaching above. Read the current log once now so
+          // we pick up any plies already computed; every subsequent event
+          // refreshes the full list, so no ceiling bump is ever lost.
+          try {
+            producerRaws = producerRawsFromLog(await aivaiProducerLog(eng));
+          } catch { /* first event will populate it */ }
+        } catch (e) {
+          console.warn("[aivai] producer start failed; falling back to idle:", e);
+        }
+      }
       ready = true;
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
@@ -765,6 +879,8 @@
   let mpPaused = $state(false);
   /** Disposer for the $effect.root that bridges mpState → wrapper lifecycle. */
   let mpConnectedUnsub: (() => void) | null = null;
+  /** Unlisten for the `background-eval-ready` Tauri event (B3). */
+  let backgroundEvalUnsub: (() => void) | null = null;
 
   // MP HUD: is it the peer's turn? Used by MultiplayerStatusStrip to render
   // "Waiting for Player N…" whenever the local player has no agency. Local +
@@ -910,6 +1026,9 @@
     if (k !== lastPhaseKey) {
       usedThisPhase = new Set();
       lastPhaseKey = k;
+      // A new action window opened for whoever is now to move. Stamp the
+      // decision-clock start so the next human apply records think-time.
+      match.turnStartedMs = Date.now();
     }
   }
 
@@ -997,9 +1116,10 @@
       }
       // Persist AI ply telemetry. Sandbox is gated above (early return).
       await recordPly(eng);
-      // The engine has advanced, but `match.position` (the renderer's
-      // positionSink) is still the PRE-step snapshot - refresh() hasn't run
-      // yet. snapshotPreState reads from there, so this is safe.
+      // The engine has advanced, but the renderer's rendered state (mirrored
+      // into `match.position` via onStateUpdate) is still the PRE-step
+      // snapshot - renderApplied hasn't flipped it yet. snapshotPreState reads
+      // the renderer's own state, so this is safe.
       const pre = renderer.snapshotPreState(raw);
       await renderer.renderApplied(raw, pre);
       // Wait for the piece animation to finish before the next AI step so the
@@ -1031,6 +1151,56 @@
       // advances past this snapshot). afterApplied already bumped plyCount
       // on the applied AI ply, so `plyCount` at this point == "AI just moved".
       endSearch(side, plyCount);
+      busy = false;
+    }
+  }
+
+  /** AIvAI log-player step (Change 6): render exactly ONE more ply from the
+   *  producer's computed log through the VIEW engine, respecting the display
+   *  cadence. This is the replay route's `stepForward` pattern applied to the
+   *  producer log — the engine already computed the ply; we only apply it to
+   *  the view engine and render it. Deliberately does NOT call `recordPly`:
+   *  the producer's log is the authoritative one saved to the library.
+   *
+   *  `minDelayMs` runs in parallel with the (near-instant) view apply so the
+   *  visible cadence is a floor. The animation gate runs AFTER the render so
+   *  the next ply doesn't start until the board settles. */
+  async function advanceView(minDelayMs: number = 0): Promise<void> {
+    if (!eng || !renderer || busy) return;
+    if (match.mode !== "aivai") return;
+    if (viewPly >= producerRaws.length) return;
+    const raw = producerRaws[viewPly];
+    busy = true;
+    try {
+      renderer.drainPendingSkillRefresh();
+      const delayP = minDelayMs > 0
+        ? new Promise<void>((r) => setTimeout(r, minDelayMs))
+        : Promise.resolve();
+      // Apply the producer-computed raw to the view engine and render it. The
+      // renderer reads post-state from the (view) engine, which now sits at the
+      // post-ply position — exactly as replay's stepForward relies on.
+      await Promise.all([
+        renderer.applyAndRender(raw, async () => { await eng!.tryApply(raw); }),
+        delayP,
+      ]);
+      viewPly += 1;
+      // Settle the board before the loop re-fires for the next ply.
+      if (settings.respectAnimation) {
+        await renderer.animationDone();
+      } else {
+        const slideDur = slideDurationMs();
+        if (slideDur > 0) await new Promise<void>((r) => setTimeout(r, slideDur));
+      }
+      match.lastApplied = raw;
+      afterApplied();
+      // Honour a deferred pause requested mid-render.
+      if (pendingPause) {
+        pendingPause = false;
+        aiAutoPlay = false;
+      }
+    } catch (e) {
+      bootError = (e as Error)?.message ?? String(e);
+    } finally {
       busy = false;
     }
   }
@@ -1119,9 +1289,10 @@
         return;
       }
       if (armedSkillTargets.has(sq)) {
-        // Shove (11) needs a push-direction pick before firing. Open the
-        // direction picker on the target tile and let the player choose.
-        if (armedSkill.skillId === 11) {
+        // Direction-pick skills (Shove) need a push-direction choice before
+        // firing. The `needsDirectionPick` flag comes from engine metadata, so
+        // no skill id is hardcoded here.
+        if (skillById(armedSkill.skillId)?.needsDirectionPick === true) {
           openDirectionPicker(armedSkill.square, armedSkill.skillId, sq);
           return;
         }
@@ -1173,10 +1344,17 @@
   //    surfaced as a defender chooser before the action applies.
   function handlePieceDrop(src: number, path: number[], cx: number, cy: number) {
     if (!interactive) return;
-    if (match.selection !== src) {
+    // When the dropped piece was already the selection, the `moveTargets`
+    // $derived already holds moveTargetsFor(match.legal, src); reuse it. When
+    // it wasn't, set the selection and compute directly - a $derived read in
+    // the same synchronous tick would still see the stale pre-assignment value.
+    let targets;
+    if (match.selection === src) {
+      targets = moveTargets;
+    } else {
       match.selection = src;
+      targets = moveTargetsFor(match.legal, src);
     }
-    const targets = moveTargetsFor(match.legal, src);
     const dropSq = path[path.length - 1];
     const candidates = targets.byTarget.get(dropSq);
     if (!candidates || candidates.size === 0) {
@@ -1204,22 +1382,6 @@
     if (endPhaseAction !== null) applyRaw(endPhaseAction);
   }
 
-  // Find the raw u32 for a self-cast skill (target == src). Used when a
-  // self-cast skill slice on the wheel is clicked: we don't need a target
-  // click, just look up and fire. Returns null if no such action.
-  function rawForSelfCast(src: number, skillId: number): number | null {
-    for (let i = 0; i < match.legal.length; i++) {
-      const raw = match.legal[i];
-      const a = decodeAction(raw);
-      if (a.kind !== ActionKind.Skill) continue;
-      if (a.src !== src) continue;
-      if (a.skillId !== skillId) continue;
-      if (a.target !== src) continue;
-      return raw;
-    }
-    return null;
-  }
-
   function handleWheelSliceClick(slice: import("$lib/board/SkillWheel.svelte").SliceKind) {
     if (!interactive) return;
     if (!wheelOpen) return;
@@ -1235,7 +1397,7 @@
       if (isSelfCast(slice.skillId)) {
         const retargetable = hasRetargetVariants(match.legal, src, slice.skillId);
         if (!retargetable) {
-          const raw = rawForSelfCast(src, slice.skillId);
+          const raw = rawForSelfCast(match.legal, src, slice.skillId);
           if (raw !== null) {
             armedSkill = null;
             applyRaw(raw);
@@ -1562,6 +1724,22 @@
     const localEng = eng;
     if (!localEng) return;
     (async () => {
+      if (match.mode === "aivai") {
+        // AIvAI: the background producer already finalised ITS log (the
+        // authoritative one). The view engine's log is a replay we never
+        // persist, so we neither finaliseLog nor read the view engine here —
+        // we persist the producer's log. By the time the view has played
+        // through to the game-over ply, the producer has long finished, so its
+        // published log is complete.
+        let producerLog: string | null = null;
+        try {
+          producerLog = await aivaiProducerLog(localEng);
+        } catch (e) {
+          console.warn("[aivai] producer log read on finalise failed:", e);
+        }
+        await finalizeTelemetrySession(localEng, "checkmate", resultByte, producerLog);
+        return;
+      }
       try {
         await localEng.finaliseLog(resultByte);
       } catch (e) {
@@ -1614,17 +1792,36 @@
         && !match.telemetryFinalised) {
       const id = match.telemetryMatchId;
       const engRef = eng;
+      const isAivai = match.mode === "aivai";
+      // AIvAI: stop the background producer FIRST (abort + join the thread —
+      // bounded by one ply's think-time), then persist ITS finalised log. This
+      // is what guarantees the saved log length equals exactly what the
+      // producer computed "behind closed doors", not what the view displayed.
+      // Marking `leavingAivai` drives the "finishing current move…" HUD state.
+      if (isAivai) leavingAivai = true;
       void (async () => {
         try {
           let partial: string | undefined;
-          if (engRef) {
+          if (isAivai && engRef) {
+            try {
+              partial = (await stopAivaiProducer(engRef)) ?? undefined;
+            } catch { /* producer stop failed; abandon without a log */ }
+          } else if (engRef) {
             try { partial = (await engRef.matchLogJson()) ?? undefined; } catch { /* engine bad state */ }
           }
           await getTelemetryStore().markAbandoned(id, partial);
         } catch {
           // Swallow - telemetry must never block navigation.
+        } finally {
+          leavingAivai = false;
         }
       })();
+    } else if (match.mode === "aivai" && eng) {
+      // Finalised (natural end) or no telemetry row, but a producer may still
+      // be alive (rare: user leaves on the exact game-over frame). Abort it so
+      // no detached thread keeps running.
+      const engRef = eng;
+      void stopAivaiProducer(engRef).catch(() => { /* best-effort */ });
     }
     if (mpEngine) {
       mpEngine.dispose();
@@ -1633,6 +1830,14 @@
     if (mpConnectedUnsub) {
       mpConnectedUnsub();
       mpConnectedUnsub = null;
+    }
+    if (backgroundEvalUnsub) {
+      backgroundEvalUnsub();
+      backgroundEvalUnsub = null;
+    }
+    if (aivaiProgressUnsub) {
+      aivaiProgressUnsub();
+      aivaiProgressUnsub = null;
     }
     // Leaving /match/ before a natural end means we're going back to the
     // lobby (or home). Soft-tear the transport so the peer sees the drop but
@@ -1688,7 +1893,7 @@
   {#if bootError}
     <div class="err" role="alert">
       <span>{bootError}</span>
-      <button type="button" class="err-dismiss" onclick={() => (bootError = null)} aria-label="dismiss">×</button>
+      <button type="button" class="err-dismiss" onclick={() => (bootError = null)} aria-label="dismiss">x</button>
     </div>
   {/if}
 
@@ -1816,10 +2021,15 @@
                   : t("result.draw")}
             </p>
           {:else if match.mode === "aivai"}
+            <!-- AIvAI is a log player over the background producer (Change 6):
+                 Play/Pause toggles the paced view loop; Step advances one ply
+                 from the producer's already-computed log. "Playback complete"
+                 is when the view has rendered every ply AND the producer has
+                 finished the game. -->
             <button
               type="button"
               class="btn-primary"
-              disabled={match.position?.gameResult !== 0}
+              disabled={leavingAivai || (producerDone && viewPly >= producerRaws.length)}
               onclick={() => {
                 if (busy && aiAutoPlay) {
                   pendingPause = !pendingPause;
@@ -1832,8 +2042,8 @@
             <button
               type="button"
               class="btn-secondary"
-              disabled={busy || aiAutoPlay || match.position?.gameResult !== 0}
-              onclick={() => void runAiStep()}
+              disabled={busy || aiAutoPlay || leavingAivai || viewPly >= producerRaws.length}
+              onclick={() => void advanceView()}
             >{t("controls.step")}</button>
           {:else}
             <button
@@ -1945,6 +2155,20 @@
               {evalScore > 0 ? '+' : ''}{evalScore}
             </span>
           </div>
+          {#if aiSearch.backgroundEval}
+            {@const be = aiSearch.backgroundEval}
+            <div class="eval-bar-row engine-eval-row" title="Engine's time-bounded search read of the last move">
+              <span class="eval-label">Engine</span>
+              <span class="eval-score">
+                {#if be.wasMate && be.mateIn !== null}
+                  #{be.mateIn}
+                {:else}
+                  {(be.scoreCp ?? 0) > 0 ? '+' : ''}{be.scoreCp ?? 0}
+                {/if}
+                <span class="eval-depth">d{be.depth}</span>
+              </span>
+            </div>
+          {/if}
         {/if}
       </aside>
 
@@ -2261,6 +2485,16 @@
   .eval-score { font-weight: 700; font-variant-numeric: tabular-nums; }
   .eval-score.positive { color: #3a7a3a; }
   .eval-score.negative { color: #a03030; }
+  .engine-eval-row {
+    margin-top: 0.25em;
+    background: var(--paper-square-dark, #e3d7b8);
+  }
+  .eval-depth {
+    margin-left: 0.35em;
+    font-weight: 400;
+    font-size: 0.85em;
+    color: var(--paper-ink-soft, #6a6055);
+  }
   .export-group button {
     font: inherit;
     width: 100%;

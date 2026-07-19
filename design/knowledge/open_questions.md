@@ -1,0 +1,48 @@
+- first player advantage
+    - has to be watched if the first/starting player consistently wins more games
+    - this has to be weighted as well with play skills. if P1 makes mistakes that cost them the game it could still be that this advantage exists
+- standoff problem
+    - oposing pieces are not stadning in front of each other, instead having a 2 tile distance between them, making it look like 2 armies just staring each other down, waiting for the other side to engage first.
+    - in an ideal world the pieces would be intertwined with each other, making for interesting and complex positions without actually always being under thread of immediatly dying.
+        - aka: there is never just "one point of interest/contact", but rather many potential points of contact (altho it already exists today, as any piece moving forward would be such a potential point, but i more mean having pieces targeted by others, but it not being worth the attack to go in on those)
+- could we introduce economy skills more in a future potential skill rework?
+    - but: "Performance-based income forces players toward whichever strategy earns Runes fastest, constraining creative expression. Auto-economy is strategy-neutral."
+- constricted movement could be brought back if we cannot find a solution to breath or standoff
+- do we need the bodyguard rule or could it be cut out entirely?
+    - i am saying this because it introduces a lot of exceptions and edge cases and adjutments and such that might not we worth the benefit
+    - i mean it only brings champs being protected to move out (but if we remove it then champs might again have more standoff)
+    - aka: without bodyguard, any champion is more of a direct target (for move attacks) as they deliver more value or potential value than guards
+    - could be removed if we perchance restrict movement to make direct attacks less of a threat
+- Do we still have a Mid-Game exchange pit?
+    - like does all the action happen in one single place as a mid-game-climax before we then again have a passive phase with nothing happening?
+- Do we have drawn out endgames with the king just running away?
+- Is Armor a prerequisite to actually winning a game?
+- Does drafting feel fun and fair? Or is drafting just "trying to counter the opponents picks"?
+    - Revisting Drafting with something like simultaneous reveal
+        - done if draft feels stale or under-explored
+        - one idea: clash royale style drafting (but depends if this clashes with our core design principles)
+- Can we reach our desired game length of 30-60 minutes per match for a semi-casual game?
+- do we need draw contidions (or other measure that encourage certain behaviour) to stop players from...
+    - playing passively (might be a bit hard - if neither side wants to engage the game should not just end in a draw but rather it should be easier to break the deadlock)
+    - not engaging and pushing when they are ahead (yes i totally think so. i would even argue that this is a core flaw we currently have)
+    - having to sit through endgames where its clear that one side will win. even tho a king could run away forever it should still be counted as a loss for example. (yes again i think this is a core design flaw that would make both humans and computers play differently so games do not turn into a "running away" or "stalling it out" simulator)
+        - this endgame acceleration can be very lucrative. perchance it will be different with constrained movement, but we should definitly have a determinsitc way of saying when a game is over prior to actually losing the king itself.
+- is the king a real target during play?
+    - it should be, like in chess.
+    - the king should be a central target to try and "snipe" or run toward instead of just plowing through the frontlines first before ever seeing the king - or is this the same as in chess and i am just inflating this point here?
+- can we introduce a way for skills to not feel "permanent and the same" throughout the game?
+    - like drafting the skills at the start once makes it so that you cannot adjust anything once you are _inside_ the game. this is a problem because if you realise you made a drafting mistake early on you then have no choice but to play it out and regret that decision.
+    - aka: early game decisions (or drafting i suppose) snowball HARD.
+    - i think a cool idea could be to have skills either be aqquired during the game itself or have the skills change and evolve during the game to allow more versatile strategies.
+    - we have to keep in mind tho that just because you now do not have the huge preassure to draft well at the start does not mean you have your independant strategy anymore. like if you can change and adjust mid-game it could then once again become purely reactive to counter pick your opponents development instead of doing your own strat. would need to be tested tho if this hypothesis is true or not.
+- are single pieces using too many skills in a single turn?
+    - if so we could either put a hard limit on the amount of skills a single piece can use or like make every skill after the first or second one deal 1 self damage
+- are some defense skills not viable?
+- do we want to test 3 move actions in 1 turn?
+    - dorian flagged as wanting to move more but i feel like complete turns are already affecting and changing way too much so maybe not
+- do we want to actually try the 6x6 and less pieces approach once? just to see how it would work out and what effect it would have?
+    - i mean it _could_ deliver interesting insights into how the game would feel to play on an even smaller board.
+    - definitly worth testing
+- is king still just a mystic skill slave?
+    - if yes then we can think about the king not being allowed to hold mystic skills or not giving him skill slots at all
+    - altho the solution above does not really fix the cause but rather the symptom.

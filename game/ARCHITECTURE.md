@@ -120,7 +120,7 @@ The `Position` struct is the complete game state. It holds:
 - **Per-square data** — `mailbox: [MailboxEntry; 64]` (entries on unoccupied squares are undefined, matching Stockfish convention).
 - **Resources** — `p1_money: u16`, `p2_money: u16`, `round_number: u16`, `to_move: Player`, `current_phase: Phase`, `actions_remaining: u8`.
 - **Turn tracking** — `moved_this_phase: Bitboard`, `pending_modifiers: u8` (three flags: `FOCUS = 1<<0`, `CHARGE = 1<<1`, `MOVE_ATTACK_USED = 1<<2`).
-- **Combo tracking** — `tracked_enemies: [u8; 16]`, `tracked_casters: [u8; 8]`, `champion_credit: u128` (a compact 8×16 cross-product bitmap).
+- **Combo tracking** — `tracked_enemies: [u8; 16]`, `tracked_casters: [u8; 8]`, `champion_credit: u128` (a compact 8x16 cross-product bitmap).
 - **Bodyguard** — `pending_bodyguard: Option<PendingBodyguard>` (mid-resolution state between a tentative Move-Attack and the defender's interception choice).
 - **Hash** — `zobrist: u64` (always in sync with the above fields).
 - **Terminal** — `game_result: Option<GameResult>`.
@@ -240,7 +240,7 @@ Given a `Position`, produces the complete legal `Vec<Action>` for the current pl
 
 **Move phase** — if `pending_bodyguard` is `Some`, only `BodyguardChoice` actions are emitted. Otherwise, for each unmoved piece, `reachable(src, speed, occ, opp_bb)` is called (a Chebyshev BFS returning empty-reachable, attack-reachable, and per-square BFS distances). Plain moves and Move-Attacks are emitted with their `approach_sq` encoded in the action. `EndPhase` is always appended.
 
-**Skill phase** — walks every piece × every equipped skill, checks cost, dispatches by `TargetOwner`, handles Focus-retarget and focus-effect variants. `EndPhase` is always appended.
+**Skill phase** — walks every piece x every equipped skill, checks cost, dispatches by `TargetOwner`, handles Focus-retarget and focus-effect variants. `EndPhase` is always appended.
 
 **Draft phase** — delegates to `make_unmake::legal_draft_turns(pos)` for the full cross-product enumeration.
 
@@ -276,7 +276,7 @@ All state changes flow through the `pub(super)` helpers exported by `make_unmake
 
 Two concerns: a lightweight UI-facing snapshot of the draft state, and a preset-driven draft strategy for AI seats.
 
-`DraftState` (a `Copy` struct) encodes the current draft turn number, the active player, and a 12×2 grid of which skill slots are already filled. It is computed on demand from `Position` — nothing extra is stored.
+`DraftState` (a `Copy` struct) encodes the current draft turn number, the active player, and a 12x2 grid of which skill slots are already filled. It is computed on demand from `Position` — nothing extra is stored.
 
 `next_preset_draft_turn(pos, preset)` is the deterministic AI draft picker. It walks the side-to-move's skill-bearers in canonical order (King first, Champions ascending) and returns the first two unfilled slots that match the preset loadout. `DEFAULT_AI_LOADOUT` and `DEFAULT_AI_LOADOUT_P2` are curated four-category presets used for single-player and AIvAI games respectively. Full-search draft AI is a documented future work item.
 
@@ -318,7 +318,7 @@ All five heuristics are individually toggleable at runtime via atomic bool flags
 
 Quiescence search called at the `depth <= 0` boundary. Continues through "loud" actions — Move-Attacks, Strike-category skills (`Lance`, `Hook`, `Break`, `Steal`, `Tempest`), `Blast`, and `BodyguardChoice` — until the position is quiet, resolving the horizon effect.
 
-`is_loud(action, pos)` classifies actions. `is_king_threatened(pos, side)` is a fast bitboard approximation (no full move generation): it checks Chebyshev distance for Move-Attacks in the Move phase and skill range × money for Strike/Blast skills in the Skill phase. Over-approximation is safe because false positives only force additional search.
+`is_loud(action, pos)` classifies actions. `is_king_threatened(pos, side)` is a fast bitboard approximation (no full move generation): it checks Chebyshev distance for Move-Attacks in the Move phase and skill range x money for Strike/Blast skills in the Skill phase. Over-approximation is safe because false positives only force additional search.
 
 `quiesce(pos, alpha, beta, ply, qs_ply, ctx)` implements stand-pat with a check-evasion gate. It builds a SEE-scored `[(i32, Action); 128]` list, sorts it by insertion sort, and iterates with recursive make/unmake calls. The cap is `MAX_QS_PLY = 8` within quiescence and `MAX_PLY = 128` absolute. The QS does not write to the transposition table and does not update killer or history heuristics.
 
@@ -412,8 +412,8 @@ All 14 evaluation term implementations.
 |---|---|
 | `Material` | Base piece value (`champion_value` / `guard_value`) |
 | `Hp` | Current HP as a fraction of `hp_per_point` |
-| `Armor` | Current armor × `armor_per_point` |
-| `Skills` | Weighted average of equipped skill values × their availability sigmoid |
+| `Armor` | Current armor x `armor_per_point` |
+| `Skills` | Weighted average of equipped skill values x their availability sigmoid |
 | `Mobility` | Reachable empty squares (champions/king) — changed in ns-43 from "enemies in range" to separate threat from reach |
 | `Exposure` | Penalty: unshielded-attacker count (0-3) indexes `exposure_mult`; kings use the steeper `king_exposure` curve |
 | `Coverage` | Guards shielding a champion/king in directions where an enemy is approaching |
@@ -425,7 +425,7 @@ All 14 evaluation term implementations.
 | Term | What it measures |
 |---|---|
 | `Money` | Useful money (quadratic ramp to a cap, plateau above it) |
-| `Tempo` | Actions remaining × `tempo_per_action` |
+| `Tempo` | Actions remaining x `tempo_per_action` |
 | `OffensiveRange` | Max strike/Shove range including optional Focus +1, weighted by `offensive_range_weight` |
 | `WastedModifier` | Penalty when Focus or Charge is pending but no castable consumer exists this phase |
 | `EndgameClosing` | Active only in End stage with a material lead: leader drives king pressure and escape denial; trailer maximises king safety and compactness |
@@ -628,7 +628,7 @@ Dense f32 position encoder. `encode_position(pos) -> Vec<f32>` produces a flat v
 
 Sparse binary feature encoder for the NNUE-style accumulator. Rather than a dense vector, `encode_sparse(pos, out)` fills `out: &mut Vec<u32>` with the indices of active features — the "hot" dimensions in what would be a `NUM_FEATURES = 3352` one-hot vector.
 
-`NUM_FEATURES = 3352` breaks down as `BOARD_BLOCK = 3328` (64 squares × 52 features per square) plus `GLOBAL_BLOCK = 24`. The per-square encoding differs from the dense path: combo is an 8-bucket one-hot (8 values) rather than a scalar (1 value).
+`NUM_FEATURES = 3352` breaks down as `BOARD_BLOCK = 3328` (64 squares x 52 features per square) plus `GLOBAL_BLOCK = 24`. The per-square encoding differs from the dense path: combo is an 8-bucket one-hot (8 values) rather than a scalar (1 value).
 
 `global_indices(to_move, phase, p1_money, p2_money, round_number, actions_remaining, push)` takes raw scalars rather than a `&Position` reference so that `accumulator.rs` can reconstruct pre-make global feature indices from an `Undo` without requiring the pre-make position. This is the critical invariant that enables `Accumulator::revert`.
 
@@ -651,7 +651,7 @@ The inner column update loop (`add_col_i16` / `sub_col_i16`) is a plain scalar w
 
 ### 11.7 `src/quantized.rs`
 
-Integer forward pass for the NNUE tail layers. Bypasses all Burn/autograd overhead during search — a Burn forward pass was measured at ~382× the hand-crafted integer path.
+Integer forward pass for the NNUE tail layers. Bypasses all Burn/autograd overhead during search — a Burn forward pass was measured at ~382x the hand-crafted integer path.
 
 Weights are quantised to i16 in output-major layout padded to a multiple of `LANES = 8` for lane-aligned SIMD via `wide::i16x8`. The quantisation scales are `QA = 1024.0` for the feature-transform layer and `QW = 64.0` for the tail layers. Clipped-ReLU ceiling is `CR_MAX = 8192`.
 
@@ -737,7 +737,7 @@ Per-ply board state IPC for the Live Match View. Subscription-gated: `is_subscri
 
 ### 11.26 `src/matrix.rs`
 
-Gauntlet match-matrix persistence. `GauntletMatrix` stores a flat `Vec<MatrixEntry>` recording challenger × defender × bracket results. `record_series` accumulates into an existing cell or inserts a new one. All reads and writes use atomic rename. The matrix is displayed in the Training Observatory's Matrix tab and is also used as a data source for future tuning analysis.
+Gauntlet match-matrix persistence. `GauntletMatrix` stores a flat `Vec<MatrixEntry>` recording challenger x defender x bracket results. `record_series` accumulates into an existing cell or inserts a new one. All reads and writes use atomic rename. The matrix is displayed in the Training Observatory's Matrix tab and is also used as a data source for future tuning analysis.
 
 ---
 

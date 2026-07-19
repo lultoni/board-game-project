@@ -42,7 +42,13 @@ export type WireMessageV2 =
   // try_apply on the AUTH engine. `nonce` is opaque to host; joiner uses it
   // to correlate the eventual `committed` (matching `originNonce`) or
   // `intent-rejected` reply, and to ignore late duplicates after a drop.
-  | { kind: "intent"; phase: WirePhase; nonce: string; raw: number }
+  //   thoughtMs: the joiner's own decision time for this move (now − its
+  //              start-of-turn clock). The host records it into the canonical
+  //              MatchLog so BOTH sides' think-time survives (the host has no
+  //              way to observe the joiner's clock otherwise). Optional for
+  //              back-compat with pre-B2 joiners; the host treats a missing
+  //              value as 0 (unknown).
+  | { kind: "intent"; phase: WirePhase; nonce: string; raw: number; thoughtMs?: number }
 
   // Host → joiner. Authoritative commit. Emitted after host's AUTH engine
   // accepts an action - whether host-originated or accepted from a joiner
@@ -169,12 +175,17 @@ export function decodeMessageV2(s: string): WireMessageV2 | null {
     }
 
     case "intent": {
-      const r = m as { phase?: unknown; nonce?: unknown; raw?: unknown };
+      const r = m as { phase?: unknown; nonce?: unknown; raw?: unknown; thoughtMs?: unknown };
       if (
         isWirePhase(r.phase)
         && typeof r.nonce === "string"
         && r.nonce.length > 0
         && isU32(r.raw)
+        // thoughtMs is optional; when present it must be a finite non-negative
+        // number. A malformed value drops the whole message rather than
+        // silently corrupting telemetry.
+        && (r.thoughtMs === undefined
+            || (typeof r.thoughtMs === "number" && Number.isFinite(r.thoughtMs) && r.thoughtMs >= 0))
       ) {
         return m as WireMessageV2;
       }

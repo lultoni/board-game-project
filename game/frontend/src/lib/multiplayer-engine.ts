@@ -114,6 +114,14 @@ export interface MpEngineDeps {
    *  to be a cheap no-op when not in sandbox. Optional - defaults to a no-op
    *  for solo and for tests that don't wire it. */
   ensureLiveEngine?: () => Promise<void> | void;
+  /** Live accessor for the local player's start-of-turn timestamp
+   *  (`match.turnStartedMs`, a `Date.now()` reading). Passed to
+   *  `eng.tryApply(raw, turnStartedMs)` on the local player's OWN moves
+   *  (solo + host self-submit) so the engine records human decision time.
+   *  Not applied to opponent moves (their think-time isn't ours to measure).
+   *  Optional - defaults to 0 (no timing) for tests / solo callers that
+   *  don't wire it. */
+  getTurnStartedMs?: () => number;
 }
 
 export interface MpEngineOpts {
@@ -218,6 +226,15 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     if (intentTimestamps.length >= RATE_CAP_PER_SEC) return true;
     intentTimestamps.push(now);
     return false;
+  }
+
+  /** Local player's decision time for the move being submitted: now − the
+   *  start-of-turn clock. Mirrors the Rust guard — a 0/unset start means "no
+   *  timing available" and yields 0 rather than a nonsense-large delta. */
+  function computeLocalThoughtMs(): number {
+    const started = deps.getTurnStartedMs?.() ?? 0;
+    if (started === 0) return 0;
+    return Math.max(0, Date.now() - started);
   }
 
   // Joiner: in-flight intents waiting for `committed` or `intent-rejected`.
@@ -416,7 +433,16 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         let postZobrist: bigint;
         try {
           prePositionView = await deps.eng.positionView();
-          await deps.eng.tryApply(m.raw);
+          // Record the JOINER's own think-time (shipped in the intent) into
+          // the canonical log. `tryApply` takes a start-of-turn timestamp and
+          // the engine computes `now − turnStartedMs`; reconstruct that start
+          // as `now − thoughtMs` so the engine recovers the joiner's value.
+          // The Rust `now` fires ~sub-ms after this Date.now(), well within
+          // tolerance for a human decision time measured in seconds. A missing
+          // / zero thoughtMs (pre-B2 joiner) yields turnStartedMs=0 → the
+          // engine records 0 (unknown), exactly the prior behaviour.
+          const turnStartedMs = m.thoughtMs && m.thoughtMs > 0 ? Date.now() - m.thoughtMs : 0;
+          await deps.eng.tryApply(m.raw, turnStartedMs);
           const view = await deps.eng.positionView();
           postZobrist = view.zobrist;
         } catch {
@@ -634,7 +660,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       let prePositionView: PositionView;
       try {
         prePositionView = await deps.eng.positionView();
-        await deps.eng.tryApply(raw);
+        await deps.eng.tryApply(raw, deps.getTurnStartedMs?.() ?? 0);
       } catch (e) {
         return { accepted: false, reason: (e as Error)?.message ?? "illegal" };
       }
@@ -654,7 +680,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       let postZobrist: bigint;
       try {
         prePositionView = await deps.eng.positionView();
-        await deps.eng.tryApply(raw);
+        await deps.eng.tryApply(raw, deps.getTurnStartedMs?.() ?? 0);
         const view = await deps.eng.positionView();
         postZobrist = view.zobrist;
       } catch (e) {
@@ -696,7 +722,11 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
         }
       }, 15_000);
       pendingIntents.set(nonce, { raw, resolve, timer });
-      deps.send({ kind: "intent", phase, nonce, raw });
+      // Include the joiner's OWN think-time so the host records it in the
+      // canonical log (the host can't observe our start-of-turn clock). 0 when
+      // unwired (tests / no timing available).
+      const thoughtMs = computeLocalThoughtMs();
+      deps.send({ kind: "intent", phase, nonce, raw, thoughtMs });
     });
   }
 

@@ -998,7 +998,7 @@ fn ensure_tracked_enemy(pos: &mut Position, sq: u8) -> u8 {
     let i = pos.tracked_enemies_len;
     // Hard panic in release as well as debug: writing past the array would
     // be UB and the prior debug_assert! got stripped from release builds
-    // (see OQ-85). The cap backs the 16×8-bit `champion_credit` u128
+    // (see OQ-85). The cap backs the 16x8-bit `champion_credit` u128
     // cross-product. Hitting it means the turn touched >16 distinct enemy
     // combo-tick targets, which exceeds the opponent's piece count (12).
     assert!((i as usize) < MAX_TRACKED_ENEMIES,
@@ -1275,7 +1275,7 @@ fn draft_complete(pos: &Position) -> bool {
 /// position. Each DraftTurn is two picks - every ordered pair of legal
 /// individual picks is emitted (modulo the same-piece-same-skill filter).
 ///
-/// Cost note: with 15 skills × ~12 empty slots per side at draft start, the
+/// Cost note: with 15 skills x ~12 empty slots per side at draft start, the
 /// raw cross-product is ~32 400 actions. After per-piece duplicate filtering
 /// and same-piece-conflict filtering the number is smaller but still large.
 /// This is acceptable for L8 - the AI uses a random heuristic, not a search.
@@ -2390,9 +2390,11 @@ mod tests {
         if a.tracked_casters_len != b.tracked_casters_len { return Some(format!("tracked_casters_len: {} vs {}", a.tracked_casters_len, b.tracked_casters_len)); }
         if a.champion_credit != b.champion_credit { return Some(format!("champion_credit: {:#x} vs {:#x}", a.champion_credit, b.champion_credit)); }
         if a.game_result != b.game_result { return Some("game_result".into()); }
-        let occ = a.p1_pieces.0 | a.p2_pieces.0;
-        for sq in 0u8..64 {
-            if occ & (1u64 << sq) != 0 && a.mailbox[sq as usize].0 != b.mailbox[sq as usize].0 {
+        let mut occ = a.p1_pieces.0 | a.p2_pieces.0;
+        while occ != 0 {
+            let sq = occ.trailing_zeros() as u8;
+            occ &= occ - 1;
+            if a.mailbox[sq as usize].0 != b.mailbox[sq as usize].0 {
                 return Some(format!("mailbox[{}]: {:#x} vs {:#x}", sq, a.mailbox[sq as usize].0, b.mailbox[sq as usize].0));
             }
         }
@@ -4171,12 +4173,13 @@ mod tests {
             "Move phase begins with 2 actions");
 
         // Every skill-bearing piece on both sides has both slots filled.
-        for sq in 0..64u8 {
-            if pos.kings.contains(sq) || pos.champions.contains(sq) {
-                let e = pos.mailbox[sq as usize];
-                assert!(e.skill1() != 0, "sq {} has empty skill1 after draft", sq);
-                assert!(e.skill2() != 0, "sq {} has empty skill2 after draft", sq);
-            }
+        let mut bb = pos.kings.0 | pos.champions.0;
+        while bb != 0 {
+            let sq = bb.trailing_zeros() as u8;
+            bb &= bb - 1;
+            let e = pos.mailbox[sq as usize];
+            assert!(e.skill1() != 0, "sq {} has empty skill1 after draft", sq);
+            assert!(e.skill2() != 0, "sq {} has empty skill2 after draft", sq);
         }
     }
 
@@ -4238,12 +4241,13 @@ mod tests {
         assert_eq!(pos.to_move, before_to_move);
         assert_eq!(pos.actions_remaining, before_actions);
         // Every skill slot is back to 0.
-        for sq in 0..64u8 {
-            if pos.kings.contains(sq) || pos.champions.contains(sq) {
-                let e = pos.mailbox[sq as usize];
-                assert_eq!(e.skill1(), 0, "sq {} skill1 not restored", sq);
-                assert_eq!(e.skill2(), 0, "sq {} skill2 not restored", sq);
-            }
+        let mut bb = pos.kings.0 | pos.champions.0;
+        while bb != 0 {
+            let sq = bb.trailing_zeros() as u8;
+            bb &= bb - 1;
+            let e = pos.mailbox[sq as usize];
+            assert_eq!(e.skill1(), 0, "sq {} skill1 not restored", sq);
+            assert_eq!(e.skill2(), 0, "sq {} skill2 not restored", sq);
         }
     }
 

@@ -674,7 +674,7 @@ mod tests {
     #[test]
     fn guard_speed_2_lone_centre() {
         // Single P1 Guard at d4 (sq 27, rank 3 file 3). Speed 2.
-        // Reachable empties: the 5×5 Chebyshev-r=2 region minus the centre
+        // Reachable empties: the 5x5 Chebyshev-r=2 region minus the centre
         // (24 squares) minus the corners that BFS still reaches (all of them
         // do, since the board is empty). So 24 squares.
         let p1 = Bitboard::from_square(27);

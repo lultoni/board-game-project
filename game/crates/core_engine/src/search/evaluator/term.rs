@@ -21,7 +21,7 @@
 //! Each term owns how its per-side magnitudes fold into the scalar total via
 //! [`EvalTerm::signed_total`]. Default `p1 - p2`; `exposure` overrides to
 //! `-(p1 - p2)` (it is a penalty); `offensive_range` overrides to
-//! `(p1 - p2) × weight`. Keeping the sign/weight inside the term is what lets
+//! `(p1 - p2) x weight`. Keeping the sign/weight inside the term is what lets
 //! the registry stay term-agnostic.
 
 use super::context::EvalContext;

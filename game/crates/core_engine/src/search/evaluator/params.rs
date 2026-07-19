@@ -30,7 +30,7 @@ pub struct EvalParams {
     pub champ_skill_cov_per_enemy: i32,
     pub champ_skill_cov_cap:       i32,
     pub king_mob_per_sq:          i32,
-    /// Champion real movement-space (ns-43 Term 3a): reachable empty squares ×
+    /// Champion real movement-space (ns-43 Term 3a): reachable empty squares x
     /// this. Champions are speed-1. Mild positional value (skill-cast paths,
     /// endgame maneuvering) - not the main event. The former champion
     /// "mobility" (enemies-in-range) moved to the `champion_threat` term.
@@ -54,7 +54,7 @@ pub struct EvalParams {
 
     // Wasted-modifier penalty (E10 - ns-43). A live Focus/Charge bit with no
     // castable consumer this Skill phase is money already spent for nothing.
-    // Penalty = this × the buff's own skill_cost (Focus 2 / Charge 3), so a
+    // Penalty = this x the buff's own skill_cost (Focus 2 / Charge 3), so a
     // wasted Charge (3 money) stings more than a wasted Focus (2 money).
     pub wasted_modifier_per_cost: i32,
 
@@ -75,8 +75,8 @@ pub struct EvalParams {
     // neither category dominates. Target values reuse material weights but are
     // scaled down by `threat_value_shift` (a right-shift) so a champion in
     // range of an enemy champion isn't worth another whole champion.
-    pub threat_offensive_weight: i32, // ×/100 applied to the offensive sub-score
-    pub threat_defensive_weight: i32, // ×/100 applied to the defensive sub-score
+    pub threat_offensive_weight: i32, // x/100 applied to the offensive sub-score
+    pub threat_defensive_weight: i32, // x/100 applied to the defensive sub-score
     pub threat_value_shift:      u32, // right-shift on target material value
     pub threat_safety_penalty_pct: i32, // % kept when a strike's landing sq is unsafe
     pub threat_softcap:          i32, // saturation ceiling per sub-score (hyperbola k)
@@ -99,10 +99,10 @@ pub struct EvalParams {
     // advantage magnitude below which the position is "even" and the term stays
     // neutral (no forced aggression in a dead-even endgame).
     pub close_lead_min:         i32,
-    pub close_king_pressure:    i32, // leader: × (7 − dist(nearest threatener → enemy king))
-    pub close_escape_denial:    i32, // leader: × (8 − enemy-king escape squares)
-    pub defend_king_safety:     i32, // trailer: × (dist(nearest enemy threatener → own king))
-    pub defend_compactness:     i32, // trailer: × (own pieces adjacent to own king)
+    pub close_king_pressure:    i32, // leader: x (7 - dist(nearest threatener → enemy king))
+    pub close_escape_denial:    i32, // leader: x (8 - enemy-king escape squares)
+    pub defend_king_safety:     i32, // trailer: x (dist(nearest enemy threatener → own king))
+    pub defend_compactness:     i32, // trailer: x (own pieces adjacent to own king)
 
     // Skill availability sigmoid (E4).
     pub skill_avail_k:   i32,
@@ -140,12 +140,12 @@ impl EvalParams {
         wasted_modifier_per_cost: 25, // ≈ money_per_unit: a wasted buff ≈ its money burned.
 
         guard_iso_radius:    2,
-        guard_iso_per_step:  120,  // ≈ 0.2 × guard_value per net enemy in the neighbourhood.
+        guard_iso_per_step:  120,  // ≈ 0.2 x guard_value per net enemy in the neighbourhood.
         guard_iso_depth_pct: 100,  // neutral: depth amplification off until measured.
 
         // Champion threat (Term 3b). Target values are material >> shift (4):
         // champion 1000>>4 ≈ 62, guard 600>>4 ≈ 37 per target in range. Weights
-        // ×/100. Soft cap ~200 per sub-score keeps a champ's threat contribution
+        // x/100. Soft cap ~200 per sub-score keeps a champ's threat contribution
         // in the low-hundreds (comparable to coverage/mobility, below material).
         threat_offensive_weight:   100,
         threat_defensive_weight:   100,
@@ -154,8 +154,8 @@ impl EvalParams {
         threat_softcap:            200,
         threat_king_bonus:         80,
 
-        // Stage thresholds. Full Stack-M opening = 17200 total material (2 ×
-        // (5×1000 + 6×600)) → Opening. Mid once ~40% of material is gone; End
+        // Stage thresholds. Full Stack-M opening = 17200 total material (2 x
+        // (5x1000 + 6x600)) → Opening. Mid once ~40% of material is gone; End
         // once ~65% is gone. Each round elapsed credits stage_round_bias toward
         // "later" so a long game trends to End even at higher material.
         stage_mid_threshold: 10000,
@@ -174,7 +174,7 @@ impl EvalParams {
         skill_avail_k:   3,
         skill_avail_max: 256,
 
-        // cost×40 + range_bonus{0→0,1→10,2→20,≥3→30} + cat_bonus{Strike→30,Move→20,Shield→15,Mystic→10}.
+        // costx40 + range_bonus{0→0,1→10,2→20,≥3→30} + cat_bonus{Strike→30,Move→20,Shield→15,Mystic→10}.
         skill_value: [
               0, // 0  unequipped
             120, // 1  Lance
