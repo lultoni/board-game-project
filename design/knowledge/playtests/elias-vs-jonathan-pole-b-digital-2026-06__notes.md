@@ -6,7 +6,7 @@
 
 - Jonathan (P2) won after **15 rounds**.
 - First Guard death: ~R7.
-- First Champion death: ~R9–R10.
+- First Champion death: ~R9-R10.
 
 ## Insights (verbatim from designer, post-game)
 
@@ -23,14 +23,14 @@ So many possible picks × actions × interactions per turn that the *feeling* of
 Pole B replaced Pole A's "no idea what the skills do at start" problem with "too much happens per turn to plan." Not strictly better - different failure mode.
 
 ### Game went fast (which is good) but felt empty (which is bad)
-15 rounds is much shorter than P4 (28–29). Short is good - but "short because you didn't think" is not what we want. The goal is **short + with overarching tactic**, not short + reactive.
+15 rounds is much shorter than P4 (28-29). Short is good - but "short because you didn't think" is not what we want. The goal is **short + with overarching tactic**, not short + reactive.
 
 ## Direction shift (designer call)
 
 Return focus to **Pole A** with two concrete sub-goals:
 
 1. **Onboard new players better.** Solve OQ-56 Problem A (draft entry complexity) by offering **pre-made loadouts for inexperienced players** rather than asking them to draft.
-2. **Drastically shorten the game.** Target **30–60 minutes** (down from ~2h30 in P4).
+2. **Drastically shorten the game.** Target **30-60 minutes** (down from ~2h30 in P4).
 
 Pole B is not dead, but is no longer the active track. Pole B's "skills-during-play" goal (OQ-56 Problem B - mid-game adaptability) still needs a different solution path; one option is **accepting non-adaptability if games are short enough** that a bad loadout doesn't dominate an hour of play.
 

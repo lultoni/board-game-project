@@ -351,7 +351,7 @@ only" v1).
 
 ## 4. Backend type aliases become feature-gated `pub type`s
 
-**Why fourth**: tasks 1–3 stabilise the orchestrator API; task 5 changes
+**Why fourth**: tasks 1-3 stabilise the orchestrator API; task 5 changes
 depth without touching types. Doing the backend-aliasing sweep *after*
 those means we sweep once, not twice, and we can validate the alias on a
 config-driven real run instead of the smoke-test defaults. Must land

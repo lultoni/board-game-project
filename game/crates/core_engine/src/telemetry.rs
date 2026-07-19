@@ -25,6 +25,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::skills::skill_from_id;
+use crate::state::action_notation::action_to_notation;
 use crate::search::evaluator::{evaluate_breakdown, EvalBreakdown, MATE_SCORE};
 use crate::session::{Config, SeatKind};
 use crate::state::Position;
@@ -78,6 +79,13 @@ pub struct ActionDecoded {
     /// loadable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub picks:      Option<[DraftPick; 2]>,
+    /// Compact action notation string (e.g. "a1-b2", "b2*d4:Tempest").
+    /// Captured before `make()` in `session.rs::try_apply_timed` so that
+    /// BodyguardChoice redirects are resolved to guard squares while
+    /// `pending_bodyguard` is still live. `#[serde(default)]` keeps legacy
+    /// match-log JSON (no `notation` field) deserialising — defaults to "".
+    #[serde(default)]
+    pub notation:   String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +101,11 @@ pub struct DraftPick {
 
 impl ActionDecoded {
     pub fn from_action(a: Action) -> Self {
+        let notation = action_to_notation(a, None);
+        Self::from_action_with_notation(a, notation)
+    }
+
+    pub fn from_action_with_notation(a: Action, notation: String) -> Self {
         if a.is_draft_turn() {
             let (s1, q1, l1) = a.draft_pick1();
             let (s2, q2, l2) = a.draft_pick2();
@@ -113,14 +126,10 @@ impl ActionDecoded {
                         skill_name: skill_from_id(s2).map(|s| format!("{:?}", s)),
                     },
                 ]),
+                notation,
             };
         }
         if a.is_bodyguard_choice() {
-            // BodyguardChoice carries only `idx` (in bits 0..4). The
-            // attacker / target / approach squares are recovered from
-            // `pos.pending_bodyguard` at apply-time, so we have nothing else
-            // to surface here. Stash the idx in `skill_id` (small int field)
-            // so downstream tools can render it without a schema bump.
             return ActionDecoded {
                 raw:        a.0,
                 kind:       "BodyguardChoice".to_string(),
@@ -129,6 +138,7 @@ impl ActionDecoded {
                 skill_id:   a.bg_guard_idx(),
                 skill_name: None,
                 picks:      None,
+                notation,
             };
         }
         let kind_str = match a.kind() {
@@ -150,6 +160,7 @@ impl ActionDecoded {
             skill_id:   a.skill_id(),
             skill_name,
             picks:      None,
+            notation,
         }
     }
 }
@@ -390,47 +401,6 @@ pub fn config_hash(c: &Config) -> u64 {
 pub mod notation {
     use super::*;
 
-    /// Square index → "a1".."h8".
-    fn sq_name(sq: u8) -> String {
-        if sq >= 64 { return format!("?{}", sq); }
-        let file = (b'a' + (sq % 8)) as char;
-        let rank = (sq / 8) + 1;
-        format!("{}{}", file, rank)
-    }
-
-    fn fmt_action(d: &ActionDecoded) -> String {
-        match d.kind.as_str() {
-            "Move"     => format!("Move {}→{}", sq_name(d.src), sq_name(d.target)),
-            "Skill"    => {
-                let name = d.skill_name.clone().unwrap_or_else(|| format!("Skill#{}", d.skill_id));
-                format!("{} {}→{}", name, sq_name(d.src), sq_name(d.target))
-            }
-            "EndPhase" => "EndPhase".to_string(),
-            "EndTurn"  => "EndTurn".to_string(),
-            "DraftTurn" => {
-                let fmt_pick = |p: &DraftPick| -> String {
-                    let n = p.skill_name.clone().unwrap_or_else(|| format!("Skill#{}", p.skill_id));
-                    format!("{}@{}:s{}", n, sq_name(p.sq), p.slot + 1)
-                };
-                match &d.picks {
-                    Some([a, b]) => format!("Draft {} + {}", fmt_pick(a), fmt_pick(b)),
-                    None         => "Draft".to_string(),
-                }
-            }
-            "BodyguardChoice" => {
-                // `skill_id` is reused as `idx` for BG actions (0 = decline,
-                // 1..=N = redirect to eligible[idx-1]). The attacker / target
-                // / approach squares are in pos.pending_bodyguard.
-                if d.skill_id == 0 {
-                    "BG decline".to_string()
-                } else {
-                    format!("BG redirect→eligible[{}]", d.skill_id - 1)
-                }
-            }
-            other      => other.to_string(),
-        }
-    }
-
     fn fmt_swing(prev: i32, post: i32) -> String {
         let d = post - prev;
         if d.abs() < 200 { return "      ".to_string(); }
@@ -463,7 +433,7 @@ pub mod notation {
         for (i, p) in log.plies.iter().enumerate() {
             let seat = match p.seat_player { Player::P1 => "P1", Player::P2 => "P2" };
             let kind = match p.seat_kind   { SeatKind::Human => "Human", SeatKind::Ai => "Ai" };
-            let act  = fmt_action(&p.action);
+            let act  = &p.action.notation;
             let swing = fmt_swing(p.prev_static_eval, p.post_static_eval);
             let ai_tag = p.ai.as_ref().map(fmt_ai).unwrap_or_default();
             s.push_str(&format!(

@@ -142,7 +142,7 @@
               class="col-vs num"
               class:pos={row.prevDelta !== null && row.prevDelta > 0}
               class:neg={row.prevDelta !== null && row.prevDelta < 0}
-            >{row.prevDelta === null ? "–" : fmtSigned(row.prevDelta)}</span>
+            >{row.prevDelta === null ? "-" : fmtSigned(row.prevDelta)}</span>
           {/if}
         </div>
         {#if i === 0}

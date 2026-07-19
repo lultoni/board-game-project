@@ -9,7 +9,7 @@
 //!   mailbox value), we keep separate per-property tables for HP, Armor,
 //!   Combo, Skill1, Skill2. Total footprint ~30 KiB across all tables;
 //!   `mailbox_xor` decomposes prev/new entries and XORs only the properties
-//!   that actually changed (1–2 lookups in the common case, 5 worst-case).
+//!   that actually changed (1-2 lookups in the common case, 5 worst-case).
 //!
 //! - **Occupancy keys separately from mailbox keys.** Mailbox keys alone
 //!   can't tell apart "empty square" states from each other (they're all

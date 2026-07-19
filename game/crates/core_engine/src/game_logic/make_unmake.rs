@@ -643,9 +643,16 @@ fn apply_tempest(pos: &mut Position, action: Action, undo: &mut Undo) {
         if !pos.is_occupied(n) { continue; }
         let Some(push_dest) = magic::step_away(tgt, n) else { continue }; // off-board
         if pos.is_occupied(push_dest) { continue; }
-        // Strict reading: each pushed piece is "affected" by a movement-causing
-        // skill from a new Champion → tick combo.
-        let _ = combo_tick(pos, src, n, undo);
+        // Only tick combo for enemy pieces (Stack M: friendly pushes don't count).
+        let caster_is_p1 = pos.p1_pieces.contains(src);
+        let pushed_is_enemy = if caster_is_p1 {
+            pos.p2_pieces.contains(n)
+        } else {
+            pos.p1_pieces.contains(n)
+        };
+        if pushed_is_enemy {
+            let _ = combo_tick(pos, src, n, undo);
+        }
         relocate_piece(pos, n, push_dest, undo);
     }
 
@@ -1133,7 +1140,7 @@ fn transfer_money(pos: &mut Position, from: Player, to: Player,
 ///
 /// Skill-Phase action budget follows the paper-baseline progression curve
 /// adopted into Stack M (oq-69 resolved, session-31): +1 action per 10 rounds,
-/// starting at 2. R1–10:2, R11–20:3, R21–30:4, R31–40:5, R41–50:6, …
+/// starting at 2. R1-10:2, R11-20:3, R21-30:4, R31-40:5, R41-50:6, …
 /// End-of-turn (Skill → next turn) is delegated to `turn_manager::end_turn`.
 fn apply_end_phase(pos: &mut Position, undo: &mut Undo) {
     match pos.current_phase {
@@ -1155,7 +1162,7 @@ fn apply_end_phase(pos: &mut Position, undo: &mut Undo) {
 ///
 /// Formula: `2 + (round_number - 1) / 10`. Unbounded - +1 per 10 rounds.
 /// The paper rule sheet shows "R31+: 5" as a table cut-off, not a cap;
-/// R41–50 is 6, R51–60 is 7, and so on. Saturates at u8::MAX defensively
+/// R41-50 is 6, R51-60 is 7, and so on. Saturates at u8::MAX defensively
 /// (games will never reach that, but we don't want to panic on overflow).
 #[inline]
 pub(crate) fn skill_phase_budget(round_number: u16) -> u8 {
@@ -3744,7 +3751,7 @@ mod tests {
 
     #[test]
     fn skill_phase_budget_paper_curve() {
-        // Paper baseline: R1–10:2, R11–20:3, R21–30:4, R31+:5… and unbounded
+        // Paper baseline: R1-10:2, R11-20:3, R21-30:4, R31+:5… and unbounded
         // beyond. The "R31+:5" line in the paper rule sheet was shorthand
         // for the table cut-off, NOT a cap.
         assert_eq!(skill_phase_budget(1), 2);

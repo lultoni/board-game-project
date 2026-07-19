@@ -154,7 +154,7 @@ fn generate_move_phase(pos: &Position) -> Vec<Action> {
 
 // === Skill Phase ============================================================
 
-/// Enumerate Skill-Phase actions. Slices 3–6 wire the per-skill emission;
+/// Enumerate Skill-Phase actions. Slices 3-6 wire the per-skill emission;
 /// all 15 resolvers ship.
 ///
 /// For each caster on the side-to-move with money ≥ skill cost, emit one

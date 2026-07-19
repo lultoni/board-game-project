@@ -50,6 +50,7 @@ class SharedFakeEngine implements EngineClient {
     };
   }
   async legalActions(): Promise<Uint32Array> { return new Uint32Array(); }
+  async actionToNotation(_raw: number): Promise<string> { return ""; }
   async tryApply(raw: number): Promise<StepResult> {
     this.applied.push(raw);
     return { appliedAction: raw, score: 0, depth: 0, nodes: 0n, thoughtMs: 0, gameResult: 0 };

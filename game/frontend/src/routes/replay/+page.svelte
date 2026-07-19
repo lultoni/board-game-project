@@ -8,7 +8,6 @@
     decodeAction,
     isBodyguardChoice,
     isDraftTurn,
-    formatAction,
     ActionKind,
     SNAPSHOT_BUDGETS,
     SnapshotValidationError,
@@ -41,6 +40,7 @@
   let pastedRaw = $state("");
   let loadError = $state<string | null>(null);
   let plies = $state<number[]>([]);
+  let notations = $state<string[]>([]);
   let currentPly = $state(0);
   let playing = $state(false);
   let busy = $state(false);
@@ -52,7 +52,7 @@
 
   const actionLabel = $derived(
     currentPly > 0 && currentPly <= plies.length
-      ? formatAction(plies[currentPly - 1])
+      ? (notations[currentPly - 1] || String(plies[currentPly - 1]))
       : null,
   );
 
@@ -111,8 +111,9 @@
         }
         throw e;
       }
-      const log = JSON.parse(json) as { plies?: Array<{ action: { raw: number } }> };
+      const log = JSON.parse(json) as { plies?: Array<{ action: { raw: number; notation?: string } }> };
       const rawPlies: number[] = (log.plies ?? []).map((p) => p.action.raw >>> 0);
+      const plyNotations: string[] = (log.plies ?? []).map((p) => p.action.notation ?? "");
 
       const fullSnap = snapshotJsonFromMatchLog(json);
       if (fullSnap === null) {
@@ -125,6 +126,7 @@
 
       baseSnapshotJson = startSnap;
       plies = rawPlies;
+      notations = plyNotations;
       currentPly = 0;
       await eng.restoreFromSnapshot(startSnap);
       await renderer.resyncFromEngine();
@@ -351,7 +353,7 @@
             <div class="status-block">
               <div class="stat-row">
                 <span class="stat-label">Round</span>
-                <span class="stat-value">{renderer.position?.roundNumber ?? "–"}</span>
+                <span class="stat-value">{renderer.position?.roundNumber ?? "-"}</span>
               </div>
               <div class="stat-row">
                 <span class="stat-label">Phase</span>
@@ -361,7 +363,7 @@
               </div>
               <div class="stat-row">
                 <span class="stat-label">Actions</span>
-                <span class="stat-value">{renderer.position?.actionsRemaining ?? "–"}</span>
+                <span class="stat-value">{renderer.position?.actionsRemaining ?? "-"}</span>
               </div>
             </div>
 

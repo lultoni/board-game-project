@@ -111,7 +111,7 @@ pub struct RunConfig {
     pub gauntlet_think_ms: u64,
     /// Std-dev of the Gaussian noise added to the champion's weights each
     /// iteration - the "big jump" magnitude. Larger than the retired gradient
-    /// perturb (0.03–0.05): mutation self-play bets on occasional large jumps.
+    /// perturb (0.03-0.05): mutation self-play bets on occasional large jumps.
     pub mutation_std: f32,
     /// Model topology. Must match a persisted champion's topology on resume.
     pub model: MlpConfig,
@@ -613,7 +613,7 @@ fn write_live(
         format_version: LIVE_POSITION_VERSION,
         written_at_ms: 0,
         fen: fen::to_fen(pos),
-        last_action: format!("{:?}", action),
+        last_action: core_engine::action_to_notation(*action, None),
         ply,
         challenger: challenger.to_string(),
         defender: defender.to_string(),

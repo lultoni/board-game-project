@@ -165,7 +165,7 @@
     return savedLoadouts.filter((r) => loadoutIsCompatible(r.loadout));
   });
 
-  /** Fisher–Yates shuffle using `crypto.getRandomValues` for non-determinism.
+  /** Fisher-Yates shuffle using `crypto.getRandomValues` for non-determinism.
    *  The auto-draft is single-player only, so no seed synchronisation is
    *  needed. */
   function shuffle<T>(arr: T[]): T[] {

@@ -168,6 +168,10 @@ export class TauriClient implements EngineClient {
     return Uint32Array.from(arr);
   }
 
+  async actionToNotation(raw: number): Promise<string> {
+    return invoke<string>("action_to_notation_cmd", { raw: raw >>> 0 });
+  }
+
   async tryApply(action: number): Promise<StepResult> {
     const dto = await invoke<StepResultDto>("try_apply", {
       handle: this.#requireHandle(),

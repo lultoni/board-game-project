@@ -56,8 +56,7 @@
 //! `zobrist` is derived. `from_fen` recomputes the incremental hash from
 //! scratch via `zobrist::full_recompute` (Slice 7).
 //!
-//! See `crates/core_engine/SCENARIO_FORMAT.md` for the action-text and
-//! scenario-file grammars built on top of FEN.
+//! See `crates/core_engine/src/state/action_notation.rs` for the action notation grammar.
 
 use crate::state::{
     bitboard::Bitboard,

@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { formatAction } from "$lib/engine";
   import type { AiHint } from "$lib/state/inspector-store.svelte";
 
   interface Props {
     hint: AiHint;
+    notation: string;
     onApply: () => void;
     onDismiss: () => void;
   }
-  let { hint, onApply, onDismiss }: Props = $props();
+  let { hint, notation, onApply, onDismiss }: Props = $props();
 
-  const description = $derived(hint.best === 0 ? "no move found" : formatAction(hint.best));
+  const description = $derived(hint.best === 0 ? "no move found" : (notation || String(hint.best)));
 </script>
 
 <div class="banner">

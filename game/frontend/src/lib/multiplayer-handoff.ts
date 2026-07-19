@@ -32,7 +32,7 @@
 //      Idempotent w.r.t. mpState.role/code (it re-writes the same values).
 //
 // If any step fails after (1), the carrier is partially mutated and the user
-// must either retry (which is idempotent for steps 2–4) or navigate to the
+// must either retry (which is idempotent for steps 2-4) or navigate to the
 // lobby and start a fresh session.
 
 import type { EngineClient } from "./engine";

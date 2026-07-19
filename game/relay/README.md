@@ -18,7 +18,7 @@ so no `.env` file is needed for local development.
 
 ## Deploy to Fly.io
 
-Costs ~$1–2/month with `auto_stop_machines` (machine stops when idle, you pay for runtime only).
+Costs ~$1-2/month with `auto_stop_machines` (machine stops when idle, you pay for runtime only).
 
 1. Create an account at https://fly.io (credit card required).
 2. Install the CLI: `brew install flyctl` (macOS) or see https://fly.io/docs/hands-on/install-flyctl/

@@ -349,6 +349,11 @@ fn legal_actions(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Vec
 }
 
 #[tauri::command]
+fn action_to_notation_cmd(raw: u32) -> String {
+    core_engine::action_to_notation(core_engine::game_logic::action::Action(raw), None)
+}
+
+#[tauri::command]
 fn try_apply(
     handle:     u64,
     raw_action: u32,
@@ -923,6 +928,7 @@ pub fn run() {
             phase_state,
             position_fen,
             legal_actions,
+            action_to_notation_cmd,
             try_apply,
             step_ai,
             heuristic_eval,

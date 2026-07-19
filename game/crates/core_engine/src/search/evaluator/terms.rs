@@ -302,7 +302,7 @@ impl EvalTerm for OffensiveRange {
 /// E10 (ns-43) - wasted Focus/Charge penalty.
 ///
 /// Symptom it fixes: the AI casts Focus/Charge and then ends its Skill phase
-/// without ever consuming the buff, burning 2–5 money/round. The `skills` term
+/// without ever consuming the buff, burning 2-5 money/round. The `skills` term
 /// rewards *owning* Focus/Charge but nothing reads `pos.pending_modifiers`, so a
 /// live buff bit with no skill left to spend it is invisible to eval.
 ///

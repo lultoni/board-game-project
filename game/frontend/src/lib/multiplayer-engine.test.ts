@@ -48,6 +48,7 @@ class FakeEngine implements EngineClient {
     };
   }
   async legalActions(): Promise<Uint32Array> { return new Uint32Array(); }
+  async actionToNotation(_raw: number): Promise<string> { return ""; }
   async tryApply(raw: number): Promise<StepResult> {
     if (this.illegalRaws.has(raw)) throw new Error("illegal");
     this.applied.push(raw);

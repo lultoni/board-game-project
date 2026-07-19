@@ -1789,7 +1789,7 @@
         <div class="status-block">
           <div class="stat-row">
             <span class="stat-label">Round</span>
-            <span class="stat-value">{match.position?.roundNumber ?? "–"}</span>
+            <span class="stat-value">{match.position?.roundNumber ?? "-"}</span>
           </div>
           <div class="stat-row">
             <span class="stat-label">Phase</span>
@@ -1799,7 +1799,7 @@
           </div>
           <div class="stat-row">
             <span class="stat-label">Actions</span>
-            <span class="stat-value">{match.position?.actionsRemaining ?? "–"}</span>
+            <span class="stat-value">{match.position?.actionsRemaining ?? "-"}</span>
           </div>
         </div>
 

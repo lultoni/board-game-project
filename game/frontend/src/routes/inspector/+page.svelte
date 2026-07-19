@@ -13,7 +13,6 @@
     validateSnapshot,
     decodeAction,
     ActionKind,
-    formatAction,
     formatSquare,
     runAiCall,
     AiCallError,
@@ -65,6 +64,17 @@
   let aiBusy = $state(false);
   let aiContinuous = $state(false);
   let aiCancelRequested = false;
+  let aiHintNotation = $state("");
+
+  $effect(() => {
+    const hint = inspector.lastAiHint;
+    if (!hint || hint.best === 0) { aiHintNotation = ""; return; }
+    const raw = hint.best >>> 0;
+    (async () => {
+      const eng = await getEngine();
+      aiHintNotation = await eng.actionToNotation(raw);
+    })();
+  });
 
   // PlyRenderer drives Board/EffectsLayer for this route. Stage 6a - replaces
   // the prior inline pieceIds bookkeeping + manual restoreFromSnapshot path.
@@ -80,6 +90,25 @@
   // POI label dialog state (replaces window.prompt in handleMarkPoi).
   let poiDialogOpen = $state(false);
   let poiDialogTargetId = $state<string | null>(null);
+
+  // Cache of raw action u32 → canonical notation string. Populated async
+  // whenever inspector.legal changes. groupedActions reads from here.
+  let legalNotations = $state(new Map<number, string>());
+
+  $effect(() => {
+    const legal = inspector.legal;
+    if (legal.length === 0) { legalNotations = new Map(); return; }
+    (async () => {
+      const eng = await getEngine();
+      const entries: [number, string][] = await Promise.all(
+        Array.from(legal).map(async (raw) => {
+          const r = raw >>> 0;
+          return [r, await eng.actionToNotation(r)] as [number, string];
+        }),
+      );
+      legalNotations = new Map(entries);
+    })();
+  });
 
   const tree = $derived(inspector.tree);
   const currentNode = $derived.by<InspectorNode | null>(() => {
@@ -224,7 +253,7 @@
         configObj = JSON.parse(defaultConfigJson());
       }
       const configJson = JSON.stringify(configObj);
-      const plies: Array<{ action: { raw: number }; notes?: string | null }> = log.plies ?? [];
+      const plies: Array<{ action: { raw: number; notation?: string }; notes?: string | null }> = log.plies ?? [];
 
       const eng = await getEngine();
       await eng.restoreFromSnapshot(
@@ -241,7 +270,8 @@
           const r = await eng.tryApply(raw);
           if (r.appliedAction === 0) break;
           const fen = await eng.positionFen();
-          const childId = addChild(t, curId, raw, fen);
+          const notation = ply.action.notation ?? await eng.actionToNotation(raw);
+          const childId = addChild(t, curId, raw, fen, notation);
           if (ply.notes) t.nodes[childId].label = String(ply.notes).slice(0, 80);
           curId = childId;
         } catch {
@@ -297,7 +327,8 @@
         const r = await eng.tryApply(raw);
         if (r.appliedAction === 0) break;
         const fen = await eng.positionFen();
-        curId = addChild(t, curId, raw, fen);
+        const notation = await eng.actionToNotation(raw);
+        curId = addChild(t, curId, raw, fen, notation);
       }
       t.currentId = curId;
       inspector.tree = t;
@@ -380,7 +411,8 @@
         return;
       }
       const fen = await eng.positionFen();
-      const newId = addChild(tree, currentNode.id, raw, fen);
+      const notation = await eng.actionToNotation(raw);
+      const newId = addChild(tree, currentNode.id, raw, fen, notation);
       selectNode(tree, newId);
       const pv = await eng.positionView();
       const la = await eng.legalActions();
@@ -620,7 +652,7 @@
       } else {
         key = formatSquare(d.src);
       }
-      const row: ActionRow = { raw, label: formatAction(raw) };
+      const row: ActionRow = { raw, label: legalNotations.get(raw) ?? String(raw) };
       if (!out.has(key)) out.set(key, []);
       out.get(key)!.push(row);
     }
@@ -788,7 +820,7 @@
         </div>
 
         {#if inspector.lastAiHint && currentNode && inspector.lastAiHint.forNodeId === currentNode.id}
-          <AiHintBanner hint={inspector.lastAiHint} onApply={applyAiHint} onDismiss={dismissHint} />
+          <AiHintBanner hint={inspector.lastAiHint} notation={aiHintNotation} onApply={applyAiHint} onDismiss={dismissHint} />
         {/if}
 
         <div class="board-wrap">

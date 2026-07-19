@@ -47,7 +47,7 @@ skill-phase-full-04      1008 ms     399 931 nodes   ebf  8.58
 
 Two independent problems fall straight out of these numbers, and both are large:
 
-### Problem 1 - eval is 10–40× too slow (throughput axis)
+### Problem 1 - eval is 10-40× too slow (throughput axis)
 
 `search_bench --eval-only` measures the static eval in isolation:
 
@@ -55,7 +55,7 @@ Two independent problems fall straight out of these numbers, and both are large:
 ns/eval: min 1242   mean 2304   geo 2224   max 3129
 ```
 
-A hand-written static eval of this complexity should be **50–200 ns**. We are at
+A hand-written static eval of this complexity should be **50-200 ns**. We are at
 **~2300 ns**. At eval/node = 0.58, that's ~1300 ns of eval per node - plausibly
 **>50 % of all node time is the evaluator**, which explains the 4× NPS collapse
 since the pre-ns-43 baseline.
@@ -83,7 +83,7 @@ This is by far the highest-leverage single fix available.
 
 ### Problem 2 - move ordering doesn't contain branching (tree-shape axis)
 
-EBF 8–12 on the slow positions with TT-hit rates as low as 33–36 %. For reference
+EBF 8-12 on the slow positions with TT-hit rates as low as 33-36 %. For reference
 a well-ordered alpha-beta gets EBF toward `sqrt(branching)`. The catalogue's
 **#1 highest-Elo remaining item - LMR + PVS as a pair - was never implemented**
 (grep confirms no LMR/PVS/aspiration in the tree). NMP is the only pruning we have
@@ -160,22 +160,22 @@ The search only needs `i32`. Add `evaluate_scalar(pos) -> i32` that runs the sha
 board pass accumulating a single total, with **no `DynBreakdown`, no `entries`
 Vec, no `to_legacy()` projection.** `HeuristicEvaluator::evaluate` calls that;
 `evaluate_breakdown` / `evaluate_dyn` stay for the frontend/telemetry/trainer and
-keep their golden coverage. Expected: removes allocations 3–5 above from every leaf.
+keep their golden coverage. Expected: removes allocations 3-5 above from every leaf.
 
 **1c. Kill remaining per-call allocations.** After 1a/1b, profile once more
 (`--eval-only`). Any residual `Vec::with_capacity` in the hot path becomes a
 stack array (term count is a small compile-time constant) or is removed. Target:
-**≤ 300 ns/eval**, ideally ≤ 150. That alone is a 7–15× eval speedup and roughly a
-2–3× search NPS improvement given eval is >50 % of node time.
+**≤ 300 ns/eval**, ideally ≤ 150. That alone is a 7-15× eval speedup and roughly a
+2-3× search NPS improvement given eval is >50 % of node time.
 
-**1d. (If needed) incremental eval.** Only if 1a–1c don't get the corpus under
+**1d. (If needed) incremental eval.** Only if 1a-1c don't get the corpus under
 budget when combined with Phase 2. Make/unmake already touch the affected squares;
 a delta-updated running eval on `make`/`unmake` turns per-node eval into O(changed
 squares) instead of O(board). High complexity, high payoff, but **deferred until
 measured necessary** - it also unblocks the shelved RFP (catalogue revisit
 condition explicitly names "after incremental eval lands"). Don't start here.
 
-*Rationale for ordering:* 1a–1c are a few hours, behaviour-preserving, golden-gated,
+*Rationale for ordering:* 1a-1c are a few hours, behaviour-preserving, golden-gated,
 and hit the single dominant cost. Doing eval first also makes Phase 2's LMR
 re-searches cheaper (every re-searched node pays the eval), so the two compound.
 
@@ -196,7 +196,7 @@ loud/King-threatening actions, `move_idx` below a small threshold. This is aimed
 squarely at the EBF-10-12 Skill-phase tails. Tune `base`/`divisor` on the sweep.
 
 Grade the pair on the full multi-budget sweep. Expected: the biggest single EBF
-reduction of anything remaining; this is what pulls the 3–5s positions under 1s
+reduction of anything remaining; this is what pulls the 3-5s positions under 1s
 once eval is fast.
 
 ### Phase 3 - Cheap follow-ons, re-graded atop fast-eval + LMR/PVS.
@@ -207,7 +207,7 @@ engine** - their revisit conditions ("after LMR/PVS", "after incremental eval",
 
 1. **Aspiration windows** (catalogue §5) - re-grade; LMR/PVS make the fail re-search
    cheaper, which is exactly why Session 36 rejected it standalone.
-2. **Check extension** (King-threat +1 ply) - simple, ~20–40 Elo, test alone.
+2. **Check extension** (King-threat +1 ply) - simple, ~20-40 Elo, test alone.
 3. **RFP** (catalogue §2, Session 36 reject) - its stated revisit condition is
    "after QS lands / after incremental eval"; QS is in, and if 1d lands the +6 %
    per-node eval cost that killed it drops. Re-grade only then.
@@ -218,7 +218,7 @@ engine** - their revisit conditions ("after LMR/PVS", "after incremental eval",
 **Lazy SMP** (catalogue §8). Native-only, straightforward given the TT. This is a
 throughput multiplier of last resort - a clean single-threaded d6 < 1s is the goal,
 and the trainer + in-browser WASM path have their own threading constraints. Don't
-reach for this until Phases 1–3 are exhausted and measured insufficient.
+reach for this until Phases 1-3 are exhausted and measured insufficient.
 
 ---
 
@@ -227,7 +227,7 @@ reach for this until Phases 1–3 are exhausted and measured insufficient.
 1. ~~Regenerate the stale baseline.~~ **Done this session** - all five
    `baseline-*.json` regenerated, determinism 30/30. (Uncommitted; commit alongside
    the first optimisation or as a standalone "refresh baseline post-ns-43" commit.)
-2. **Phase 1a–1c** (eval throughput). `--eval-only` before/after; `golden_eval_unchanged`
+2. **Phase 1a-1c** (eval throughput). `--eval-only` before/after; `golden_eval_unchanged`
    must stay green. Full sweep to confirm NPS win + net improvement. Land, move baseline.
 3. **Phase 2** (LMR + PVS paired). Full sweep, category breakdown, tune formula. Land.
 4. **Re-run `--depth 6`.** If all 30 < 1s → **done**, pivot back to eval-quality /

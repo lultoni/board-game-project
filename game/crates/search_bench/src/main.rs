@@ -21,7 +21,7 @@
 //! block). Field names are intentionally stable; downstream diff tooling
 //! reads them by name.
 
-use core_engine::game_logic::action::{Action, ActionKind};
+use core_engine::game_logic::action::Action;
 use core_engine::search::alpha_beta::{find_best_with_evaluator, SearchResult};
 use core_engine::search::counters::{self, Snapshot as CounterSnapshot, ATTACKER_LIST_HIST_BUCKETS};
 use core_engine::search::evaluator::{evaluate_breakdown, Evaluator, HeuristicEvaluator};
@@ -432,23 +432,8 @@ fn geometric_mean(values: &[f64]) -> f64 {
 
 fn action_brief(a: Option<Action>) -> String {
     match a {
-        None => "(none)".to_string(),
-        Some(act) => {
-            if act.is_draft_turn() {
-                return format!("Draft(raw=0x{:08x})", act.0);
-            }
-            if act.is_bodyguard_choice() {
-                return format!("BG(raw=0x{:08x})", act.0);
-            }
-            let kind = match act.kind() {
-                ActionKind::Move => "Move",
-                ActionKind::Skill => "Skill",
-                ActionKind::EndPhase => "EndPhase",
-                ActionKind::EndTurn => "EndTurn",
-            };
-            format!("{}({}->{}, skill={}, raw=0x{:08x})",
-                    kind, act.src(), act.target(), act.skill_id(), act.0)
-        }
+        None      => "(none)".to_string(),
+        Some(act) => core_engine::action_to_notation(act, None),
     }
 }
 

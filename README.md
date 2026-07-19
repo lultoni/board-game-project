@@ -10,7 +10,7 @@ Download a pre-built release from the [Releases page](../../releases) and run it
 
 | Platform | File | Notes |
 |---|---|---|
-| macOS (Apple Silicon) | `.dmg` | Right-click → Open on first launch (Gatekeeper) |
+| macOS (Apple Silicon) | `.dmg` | `xattr -cr "/Applications/(game-name).app"` after download |
 | Linux x86_64 | `.AppImage` | `chmod +x` after download |
 | Linux x86_64 + NVIDIA | `.AppImage` (CUDA build) | Needs CUDA 12.x |
 

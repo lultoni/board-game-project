@@ -67,7 +67,7 @@ export type MpStatus =
  *
  *  Thresholds (ADR-006):
  *    - 🟢 live:         fresh pong (<2s) and status is connected
- *    - 🟡 unstable:     pong stale 2s–10s but still connected
+ *    - 🟡 unstable:     pong stale 2s-10s but still connected
  *    - 🔴 disconnected: pong stale ≥10s, OR status is disconnected, within the
  *                       5-minute forfeit grace window
  *    - ⚫ forfeit:      grace window expired
@@ -76,7 +76,7 @@ export type PillState = "live" | "unstable" | "disconnected" | "forfeit";
 
 const PILL_UNSTABLE_MS = 6_000;
 // 30s (was 15s). JS timer throttling on backgrounded tabs and Tauri webview
-// suspension can stall the tick + queue pongs for 15–25s at a time; a shorter
+// suspension can stall the tick + queue pongs for 15-25s at a time; a shorter
 // window flags healthy connections as dead. See PROTOCOL_TRACE.md Part 1.
 export const PILL_DISCONNECTED_MS = 30_000;
 const PILL_FORFEIT_MS = 5 * 60_000;

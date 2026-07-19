@@ -14,6 +14,8 @@ export interface InspectorNode {
   actions: number[];
   /** The single action that produced this node from its parent. null at root. */
   edgeAction: number | null;
+  /** Canonical notation for edgeAction (e.g. "a1-b2"). Empty string at root. */
+  edgeNotation: string;
   /** Cached FEN for quick display / preview. May be empty until first visit. */
   fen: string;
   /** "Point of interest" label, or null. */
@@ -77,6 +79,7 @@ export function initTree(opts: {
     parent: null,
     actions: [],
     edgeAction: null,
+    edgeNotation: "",
     fen: opts.rootFen,
     label: "[start]",
     ply: 0,
@@ -98,6 +101,7 @@ export function addChild(
   parentId: string,
   edgeAction: number,
   childFen: string,
+  edgeNotation = "",
 ): string {
   const parent = tree.nodes[parentId];
   if (!parent) throw new Error(`inspector: unknown parent ${parentId}`);
@@ -107,6 +111,7 @@ export function addChild(
     parent: parentId,
     actions: [...parent.actions, edgeAction >>> 0],
     edgeAction: edgeAction >>> 0,
+    edgeNotation,
     fen: childFen,
     label: null,
     ply: parent.ply + 1,

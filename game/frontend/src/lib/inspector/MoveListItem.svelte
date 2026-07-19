@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { formatAction } from "$lib/engine";
   import type { InspectorNode } from "$lib/state/inspector-store.svelte";
 
   interface Props {
@@ -14,7 +13,7 @@
 
   function fmtEdge(): string {
     if (node.edgeAction === null) return "[start]";
-    return formatAction(node.edgeAction);
+    return node.edgeNotation || String(node.edgeAction);
   }
 </script>
 

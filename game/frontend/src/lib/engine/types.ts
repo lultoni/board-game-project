@@ -169,6 +169,9 @@ export interface EngineClient {
   draftState(): Promise<DraftStateView>;
   positionView(): Promise<PositionView>;
   legalActions(): Promise<Uint32Array>;
+  /** Encode a raw action u32 to canonical notation (e.g. "a1-b2", "b2*d4:Tempest").
+   *  Stateless — does not require an active engine handle. */
+  actionToNotation(raw: number): Promise<string>;
   tryApply(action: number): Promise<StepResult>;
   stepAi(onDepth?: (depth: number, score: number) => void): Promise<StepResult>;
   /** Compute the static heuristic evaluation of the current board position.

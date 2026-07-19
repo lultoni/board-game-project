@@ -47,6 +47,12 @@ export function squareToFileRank(sq: number): { file: number; rank: number } {
   return { file: sq & 7, rank: (sq >> 3) & 7 };
 }
 
+export function formatSquare(sq: number): string {
+  const file = String.fromCharCode("a".charCodeAt(0) + (sq % 8));
+  const rank = Math.floor(sq / 8) + 1;
+  return `${file}${rank}`;
+}
+
 export function bitboardHas(bb: bigint, sq: number): boolean {
   return ((bb >> BigInt(sq)) & 1n) === 1n;
 }

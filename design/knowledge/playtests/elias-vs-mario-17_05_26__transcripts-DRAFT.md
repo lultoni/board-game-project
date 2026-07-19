@@ -3,7 +3,7 @@
 **Variant tested**: L2G1 - Stack A, Game 1 (Standard Attack Nerf, 1 DMG instead of 2). No combo bonus.
 **Date**: 17.05.2026
 **Players**: Elias (P1) vs Mario (P2). **Winner**: Elias. Mario gave up at Round 24.
-**Session timing**: Rule explanation ~14:30–15:00 → Game start 15:35 → Game end 18:05 → Feedback complete 18:28. **~2h30 game time.**
+**Session timing**: Rule explanation ~14:30-15:00 → Game start 15:35 → Game end 18:05 → Feedback complete 18:28. **~2h30 game time.**
 
 > **Review instructions**: Items flagged `[unclear: ...]` are best guesses. Please correct or confirm them before I run the analysis. Anything you change here, I will use as ground truth for the final analysis doc.
 

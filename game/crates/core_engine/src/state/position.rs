@@ -35,6 +35,11 @@ pub enum GameResult { P1Wins, P2Wins }
 /// Champion within a player's army; mapping from index to current square is
 /// maintained by the session/match layer (Champions are stable identities
 /// across moves; squares change).
+///
+/// NOTE: this constant is *not* mechanically wired to the setup loops in
+/// `setup_stack_m` (`place_back_row`/`place_front_row`), which hard-code the
+/// `1..=6` file range. If you change this constant, also update those loop
+/// bounds and the `SideLoadout` array size in the draft system.
 pub const CHAMPIONS_PER_PLAYER: usize = 5;
 
 /// Maximum number of distinct enemy targets a player's Champions can have
@@ -128,15 +133,13 @@ pub struct Position {
     /// Income is disbursed at the start of each Player turn (per Stack M).
     pub round_number: u16,
 
-    /// Bitboard of squares whose piece has already been moved this Move Phase.
-    /// Stack M: "Each piece can only be moved once per Move Phase." Cleared
-    /// when the Move Phase ends. Skill Phase ignores this entirely.
-    /// Note: this tracks *origin* squares as they were *at the moment the
-    /// piece was moved*. Because each piece moves at most once per phase, and
-    /// nothing else relocates pieces during the Move Phase, the post-move
-    /// destination square is the relevant blocker the next time we generate.
-    /// Slice 1 will store *destination* squares here for that reason; this
-    /// stub leaves the exact semantics to the make/unmake implementation.
+    /// Bitboard of *destination* squares of pieces that have already been moved
+    /// this Move Phase. Stack M: "Each piece can only be moved once per Move
+    /// Phase." Cleared when the Move Phase ends. Skill Phase ignores this
+    /// entirely. The generator filters with `stm_bb & !pos.moved_this_phase`,
+    /// comparing against the piece's current square (== its destination after
+    /// moving), which is why destination squares — not origin squares — are
+    /// stored here.
     pub moved_this_phase: Bitboard,
 
     /// Turn-scoped modifier bits. See `modifier_bits` module.

@@ -104,7 +104,7 @@ pub const ACCUM_WIDTH: usize = 128;
 
 // --- Bucket helpers (single source of truth, shared with the accumulator) --
 
-/// Map a money value to one of 5 buckets: {0, 1–2, 3–5, 6–10, 11+}.
+/// Map a money value to one of 5 buckets: {0, 1-2, 3-5, 6-10, 11+}.
 #[inline]
 pub fn money_bucket(m: u16) -> usize {
     match m {
@@ -116,7 +116,7 @@ pub fn money_bucket(m: u16) -> usize {
     }
 }
 
-/// Map a round number to one of 5 buckets: {1–3, 4–8, 9–12, 13–20, 21+}.
+/// Map a round number to one of 5 buckets: {1-3, 4-8, 9-12, 13-20, 21+}.
 /// (round_number is 1-based; 0 is treated as bucket 0 defensively.)
 #[inline]
 pub fn round_bucket(r: u16) -> usize {

@@ -32,3 +32,5 @@ pub use telemetry::{
 };
 
 pub use search::evaluator::{evaluate, evaluate_breakdown, EvalBreakdown, MATE_SCORE};
+
+pub use state::action_notation::{action_to_notation, notation_to_action, NotationError};

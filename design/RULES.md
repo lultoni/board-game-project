@@ -171,9 +171,9 @@ Money income is collected at the **start of each player's own turn** and there i
 | Round | Income per player turn |
 |-------|------------------------|
 | 1 | 0 (starting Money only) |
-| 2–4 | +2 |
-| 5–9 | +3 |
-| 10–14 | +4 |
+| 2-4 | +2 |
+| 5-9 | +3 |
+| 10-14 | +4 |
 | 15+ | +5 (+1 every 5 rounds) |
 
 ---
@@ -182,9 +182,9 @@ Money income is collected at the **start of each player's own turn** and there i
 
 | Round | Actions per Skill Phase |
 |-------|-------------------------|
-| 1–10 | 2 |
-| 11–20 | 3 |
-| 21–30 | 4 |
+| 1-10 | 2 |
+| 11-20 | 3 |
+| 21-30 | 4 |
 | 31+ | 5 (+1 every 10 rounds) |
 
 As the game goes on, both Money income and Skill-Phase action count grow - late-game turns are more powerful because you can cast more skills.

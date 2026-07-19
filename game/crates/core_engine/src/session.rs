@@ -57,6 +57,7 @@ use crate::search::alpha_beta::{find_best_with_evaluator, SearchResult};
 use crate::search::evaluator::{Evaluator, HeuristicEvaluator};
 use crate::search::transposition::TranspositionTable;
 use crate::state::Position;
+use crate::state::action_notation::action_to_notation;
 use crate::state::position::{GameResult, Phase, Player};
 use crate::telemetry::{
     MatchLog, MatchResult, PlyRecord, SearchMeta, ActionDecoded,
@@ -338,8 +339,11 @@ impl Match {
                     Player::P2 => s.config.p2,
                 };
                 let legal_count = legal.len() as u32;
+                // pending_bodyguard context is gone for replayed history; BG
+                // redirects fall back to bg<N> notation, which is acceptable.
+                let notation = action_to_notation(action, None);
                 let (prev_zobrist, prev_fen, prev_eval, prev_breakdown) = snapshot_pre(&position);
-                Some((seat_player, seat_kind, legal_count, prev_zobrist, prev_fen, prev_eval, prev_breakdown))
+                Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval, prev_breakdown))
             } else {
                 None
             };
@@ -347,7 +351,7 @@ impl Match {
             let undo = make_unmake::make(&mut position, action);
             history.push((action, undo));
 
-            if let (Some((seat_player, seat_kind, legal_count, prev_zobrist, prev_fen, prev_eval, prev_breakdown)),
+            if let (Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval, prev_breakdown)),
                     Some(l)) = (pre, log.as_mut()) {
                 let (post_zobrist, post_fen, post_eval, post_breakdown,
                      post_game_result, post_phase, post_actions_remaining, post_round,
@@ -360,7 +364,7 @@ impl Match {
                     // Original timing/AI metadata isn't in the snapshot - zero it.
                     thought_ms: 0,
                     applied_at_unix_ms: now_unix_ms,
-                    action: ActionDecoded::from_action(action),
+                    action: ActionDecoded::from_action_with_notation(action, notation),
                     legal_count,
                     prev_zobrist, prev_fen, prev_static_eval: prev_eval, prev_breakdown,
                     post_zobrist, post_fen, post_static_eval: post_eval, post_breakdown,
@@ -440,8 +444,9 @@ impl Match {
             let seat_player = self.position.to_move;
             let seat_kind = self.to_move_kind();
             let legal_count = legal.len() as u32;
+            let notation = action_to_notation(action, self.position.pending_bodyguard.as_ref());
             let (prev_zobrist, prev_fen, prev_eval, prev_breakdown) = snapshot_pre(&self.position);
-            Some((seat_player, seat_kind, legal_count, prev_zobrist, prev_fen, prev_eval, prev_breakdown))
+            Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval, prev_breakdown))
         } else {
             None
         };
@@ -449,7 +454,7 @@ impl Match {
         let undo = make_unmake::make(&mut self.position, action);
         self.history.push((action, undo));
 
-        if let (Some((seat_player, seat_kind, legal_count, prev_zobrist, prev_fen, prev_eval, prev_breakdown)),
+        if let (Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval, prev_breakdown)),
                 Some(log)) = (pre, self.log.as_mut()) {
             let (post_zobrist, post_fen, post_eval, post_breakdown,
                  post_game_result, post_phase, post_actions_remaining, post_round,
@@ -460,7 +465,7 @@ impl Match {
             log.record(PlyRecord {
                 ply_no, seat_player, seat_kind,
                 thought_ms, applied_at_unix_ms,
-                action: ActionDecoded::from_action(action),
+                action: ActionDecoded::from_action_with_notation(action, notation),
                 legal_count,
                 prev_zobrist, prev_fen, prev_static_eval: prev_eval, prev_breakdown,
                 post_zobrist, post_fen, post_static_eval: post_eval, post_breakdown,

@@ -22,13 +22,13 @@
 //!   --step              wait for Enter between plies (overrides --step-delay-ms)
 //!   --step-delay-ms N   sleep N ms between plies
 
-use core_engine::game_logic::action::{Action, ActionKind};
+use core_engine::game_logic::action::Action;
 use core_engine::game_logic::skills::skill_from_id;
 use core_engine::state::Position;
 use core_engine::state::fen::to_fen;
 use core_engine::state::position::{Phase, Player, modifier_bits};
 use core_engine::telemetry::{notation, to_json, to_json_pretty, MatchResult};
-use core_engine::{AiBudget, Config, Match, SeatKind};
+use core_engine::{action_to_notation, AiBudget, Config, Match, SeatKind};
 
 use std::io::{BufRead, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -109,18 +109,7 @@ fn paint(s: &str, code: &str, color: bool) -> String {
 }
 
 fn fmt_action(a: Action, color: bool) -> String {
-    let body = match a.kind() {
-        ActionKind::Move     => format!("Move {}→{}",       sq_name(a.src()), sq_name(a.target())),
-        ActionKind::Skill    => {
-            let name = skill_from_id(a.skill_id())
-                .map(|s| format!("{:?}", s))
-                .unwrap_or_else(|| format!("Skill#{}", a.skill_id()));
-            format!("{} {}→{}", name, sq_name(a.src()), sq_name(a.target()))
-        }
-        ActionKind::EndPhase => "EndPhase".to_string(),
-        ActionKind::EndTurn  => "EndTurn".to_string(),
-    };
-    paint(&body, BOLD, color)
+    paint(&action_to_notation(a, None), BOLD, color)
 }
 
 fn sq_name(sq: u8) -> String {

@@ -46,7 +46,7 @@
     {#each rows as row}
       <span class="cell round" class:current={row.isCurrent}>{row.round}</span>
       <span class="cell" class:current={row.isCurrent} class:bump={row.incomeUp}>
-        {row.round <= 1 ? "–" : `$${row.income}`}
+        {row.round <= 1 ? "-" : `$${row.income}`}
         {#if row.incomeUp}<span class="up-arrow" aria-label="increase">↑</span>{/if}
       </span>
       <span class="cell" class:current={row.isCurrent} class:bump={row.actionsUp}>

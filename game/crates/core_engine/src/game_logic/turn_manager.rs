@@ -96,7 +96,9 @@ pub fn end_turn(pos: &mut Position, undo: &mut Undo) {
 /// Per-turn income for the given round (Stack M).
 ///
 /// Formula: `2 + round_number / 5`. Unbounded - +1 per 5 rounds, no cap.
-/// R1–4: 2, R5–9: 3, R10–14: 4, R15–19: 5, R20–24: 6, … and so on without
+/// R1: 2 (but income is *suppressed* by the `round_number >= 2` guard in the
+/// caller — no income is actually disbursed in R1).
+/// R2-4: 2, R5-9: 3, R10-14: 4, R15-19: 5, R20-24: 6, … and so on without
 /// limit. Saturates at u16::MAX defensively (games will never reach that,
 /// but we don't want to panic on overflow).
 #[inline]

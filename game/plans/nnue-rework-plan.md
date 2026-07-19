@@ -12,7 +12,7 @@ gauntlet, and observability UI* for a learned evaluator - but assumed a **dense
 MLP** and **parked** the NNUE-vs-dense architecture question. Session 48 measured
 that parked question decisively, and the answer changes the architecture:
 
-- **Hand-crafted `evaluate_scalar`: ~200–1000 ns/call** (varies with position +
+- **Hand-crafted `evaluate_scalar`: ~200-1000 ns/call** (varies with position +
   bench overhead; ~260 ns in isolation).
 - **Current `NnEvaluator` (burn `NdArray`, dense `2825→256→64→32→1`): ~394 µs/call
   - ~382× slower.** Batch-size-1 dense inference through a generic f32 tensor
@@ -32,7 +32,7 @@ ours because it never evaluates its first (huge) layer from scratch:
 1. **Sparse binary features.** Inputs are "piece of {type,color} on {square}
    (relative to king)". A position activates ~N_pieces of ~tens-of-thousands of
    features. All other features are 0.
-2. **The accumulator.** The first-layer output (a few hundred–thousand ints) is
+2. **The accumulator.** The first-layer output (a few hundred-thousand ints) is
    kept as running state. A move flips only a few input features, so the
    accumulator is updated by **adding/subtracting a handful of weight columns**
    on make, and reversing them on unmake - **O(features changed) ≈ O(1) per
