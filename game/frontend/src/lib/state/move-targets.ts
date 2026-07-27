@@ -161,3 +161,53 @@ export function actableSources(legal: Uint32Array): Set<number> {
   }
   return out;
 }
+
+const SQUARE_SIZE = 100; // board viewBox is 800, 8 tiles
+
+/** Given a target square and cursor position in SVG coords, pick the
+ *  approach square from `candidates` whose direction from the target center
+ *  best aligns with the cursor offset. Returns null when candidates is empty.
+ *
+ *  Used for both drag-and-drop and click-mode multi-approach Move-Attacks:
+ *  the player "aims where they're coming from" to resolve ambiguous paths
+ *  without a chooser dialog. */
+export function pickApproachByCursor<T>(
+  target: number,
+  cx: number,
+  cy: number,
+  candidates: Map<number, T>,
+): number | null {
+  if (candidates.size === 0) return null;
+  if (candidates.size === 1) {
+    return candidates.keys().next().value as number;
+  }
+  const tgtFile = target & 7;
+  const tgtRank = (target >> 3) & 7;
+  const tgtCX = tgtFile * SQUARE_SIZE + SQUARE_SIZE / 2;
+  const tgtCY = (7 - tgtRank) * SQUARE_SIZE + SQUARE_SIZE / 2;
+  const offX = cx - tgtCX;
+  const offY = cy - tgtCY;
+  const offLen2 = offX * offX + offY * offY;
+  if (offLen2 < 4) {
+    if (candidates.has(target)) return target;
+    return candidates.keys().next().value as number;
+  }
+  let best: number | null = null;
+  let bestScore = -Infinity;
+  for (const ap of candidates.keys()) {
+    const apFile = ap & 7;
+    const apRank = (ap >> 3) & 7;
+    const apCX = apFile * SQUARE_SIZE + SQUARE_SIZE / 2;
+    const apCY = (7 - apRank) * SQUARE_SIZE + SQUARE_SIZE / 2;
+    const dirX = apCX - tgtCX;
+    const dirY = apCY - tgtCY;
+    const dirLen2 = dirX * dirX + dirY * dirY;
+    if (dirLen2 === 0) continue;
+    const score = (offX * dirX + offY * dirY) / Math.sqrt(dirLen2);
+    if (score > bestScore) {
+      bestScore = score;
+      best = ap;
+    }
+  }
+  return best;
+}

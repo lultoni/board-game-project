@@ -14,3 +14,4 @@ The list:
 9. Cleverness = multi-turn positional setup rewarded with a payoff that exceeds what grinding (just running in with your pieces) achieves. If a 3-turn setup and a stumble-into-position produce the same result, the game doesn't reward cleverness.
 10. While the core game idea is not final we should perfer fundamental shits over tweaking variables as to not get stuck in a deep end instead of just making a holistic change.
 11. The player should always want to do more than they are actually able to (both in form of having more money to use skills or the actions for either movement or skills themselves)
+12. when we spend a lot of time doing certain actions that in their core do not directly support doing clever skill casting or clever skill combinations than those things are "chassis bloat" and "distrcting from the engine" and should be made more quiet or debloated

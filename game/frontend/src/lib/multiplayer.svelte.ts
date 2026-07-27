@@ -15,7 +15,7 @@ import {
   type MpStatus,
   type PillState,
   type WireMessage,
-} from "./multiplayer-protocol";
+} from "./multiplayer-protocol-v2";
 import { decodeMessageV2 } from "./multiplayer-protocol-v2";
 import { createWebSocketTransport, type RedialState, type TransportRole } from "./multiplayer/websocket-transport";
 import { createHeartbeat } from "./multiplayer/heartbeat";
@@ -107,7 +107,7 @@ export function getRouteOwnershipToken(): number {
 const dataHandlers = new Set<(msg: WireMessage) => void>();
 /** Raw-string subscribers. The role-aware wrapper (createMpEngine) reads
  *  these so it can decode v2 messages (committed, intent, snapshot, …) that
- *  the legacy WireMessage type in multiplayer-protocol.ts doesn't model.
+ *  the legacy WireMessage type doesn't model.
  *  Both raw and decoded paths fire for the same inbound payload - keeping
  *  legacy `onData` subscribers unaffected during the v1→v2 cutover. */
 const rawDataHandlers = new Set<(raw: string) => void>();

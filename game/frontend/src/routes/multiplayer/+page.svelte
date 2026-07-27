@@ -14,7 +14,7 @@
     probeHost,
     isWebRtcSupported,
   } from "$lib/multiplayer.svelte";
-  import { isValidCode } from "$lib/multiplayer-protocol";
+  import { isValidCode } from "$lib/multiplayer-protocol-v2";
   import { decodeMessageV2, type WireMessageV2 } from "$lib/multiplayer-protocol-v2";
   import { snapshotJsonFromMatchLog, logIsMidDraftCheap } from "$lib/multiplayer-resume";
   import { match, resetMatchState } from "$lib/state/match-store.svelte";

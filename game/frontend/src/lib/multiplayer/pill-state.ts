@@ -7,7 +7,7 @@
 // returns *what* the anchor should be (or null = leave as-is); the wrapper
 // is the one source that actually writes `mpState.disconnectedSince`.
 
-import { derivePillState, type MpStatus, type PillState } from "../multiplayer-protocol";
+import { derivePillState, type MpStatus, type PillState } from "../multiplayer-protocol-v2";
 
 export interface PillStateInput {
   status: MpStatus;

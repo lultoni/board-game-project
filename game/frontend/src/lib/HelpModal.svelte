@@ -5,33 +5,17 @@
   //               read from the SKILLS registry + existing i18n keys.
   //   - Rules:    the Stack M "Simple Overview" + Goal (help.rules.*).
   //   - Controls: how-to-play tips (help.controls.*).
-  // Structure and styling mirror SettingsModal.svelte (native <dialog>).
   // Deliberately does NOT reuse SkillInfoCard (coupled to the wheel's
-  // SliceKind prop) - the skill list here is rendered inline. Component
-  // unification is ns-35 part B, deferred.
+  // SliceKind prop) - the skill list here is rendered inline.
 
   import { SKILLS, CATEGORY_COLOR, type SkillCategory } from "$lib/engine";
   import { t } from "$lib/state/i18n";
   import { sfx } from "$lib/audio/sfx";
+  import Modal from "$lib/ui/Modal.svelte";
 
   let { open, onClose }: { open: boolean; onClose: () => void } = $props();
 
-  let dialogEl: HTMLDialogElement | null = $state(null);
   let tab = $state<"skills" | "rules" | "controls">("skills");
-
-  $effect(() => {
-    if (!dialogEl) return;
-    if (open && !dialogEl.open) {
-      dialogEl.showModal();
-    } else if (!open && dialogEl.open) {
-      dialogEl.close();
-    }
-  });
-
-  function onDialogCancel(ev: Event): void {
-    ev.preventDefault();
-    onClose();
-  }
 
   const TABS: ReadonlyArray<{ id: "skills" | "rules" | "controls"; key: string }> = [
     { id: "skills", key: "help.tabSkills" },
@@ -64,12 +48,7 @@
   ];
 </script>
 
-<dialog bind:this={dialogEl} oncancel={onDialogCancel}>
-  <div class="header">
-    <h2>{t("help.title")}</h2>
-    <button class="close" onclick={() => { sfx.play("click"); onClose(); }} aria-label={t("help.title")}>✕</button>
-  </div>
-
+<Modal {open} {onClose} title={t("help.title")}>
   <div class="tabs">
     <div class="segmented">
       {#each TABS as tb}
@@ -124,52 +103,9 @@
       </dl>
     </section>
   {/if}
-</dialog>
+</Modal>
 
 <style>
-  dialog {
-    border: 1.5px solid var(--paper-line-strong);
-    border-radius: 10px;
-    padding: 0;
-    background: var(--paper-bg);
-    color: inherit;
-    width: min(480px, 94vw);
-    max-height: min(85vh, 700px);
-    overflow-y: auto;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  }
-  dialog::backdrop {
-    background: rgba(0, 0, 0, 0.4);
-  }
-
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.9rem 1.1rem 0.6rem;
-    position: sticky;
-    top: 0;
-    background: var(--paper-bg);
-    border-bottom: 1px solid var(--paper-line);
-    z-index: 1;
-  }
-  .header h2 {
-    margin: 0;
-    font-size: 1.1rem;
-  }
-  .close {
-    background: none;
-    border: none;
-    padding: 0.2em 0.4em;
-    font-size: 1rem;
-    cursor: pointer;
-    color: var(--paper-ink-soft);
-    line-height: 1;
-  }
-  .close:hover {
-    color: var(--paper-ink);
-  }
-
   .tabs {
     padding: 0.7rem 1.1rem 0.2rem;
     position: sticky;

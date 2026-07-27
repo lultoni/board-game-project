@@ -11,7 +11,7 @@
 
   import { onDestroy } from "svelte";
   import { mpState, pillState } from "$lib/multiplayer.svelte";
-  import { GRACE_MS, TAKEOVER_MS } from "$lib/multiplayer-protocol";
+  import { GRACE_MS, TAKEOVER_MS } from "$lib/multiplayer-protocol-v2";
   import { t } from "$lib/state/i18n";
   import type { EngineClient } from "$lib/engine";
   import type { MpEngineHandle } from "$lib/multiplayer-engine";

@@ -48,3 +48,18 @@ Activation trigger does not mean it will be played next - just that it will be c
 
 - Unified APs: a 3-action unified action-point model instead of a move and then a skill phase.
     - opens new tactical patterns but branches the game out even more i would predict.
+- Forward Moving guards get skill immunity
+    - starting line (for now): middle line, but could be moved forward or further back if it does not work well
+- reduce the number of actions that can be perfomred with a single piece in one turn
+    - this feels like "forcing players to play a certain way"
+    - i would rather just make the turns shorter first then doing this directly
+- expanding the skills available
+    - this should be done so that more strategies can emerge and different play styles
+    - skill ideas:
+        - a skill that ignores armor (altho is very risky cause it could kill armor directly, hence it would have to be expensive (and it would then be countered by players not running armor at all))
+        - "lucky strike"/"meteor"/"star strike" that attacks and like ignores pieces on the skill path ("can shoot from above")
+        - a skill (or skills) that place "items" on the map that have 1 hp and give adjacent pieces (or pieces in skill path range x) certain buffs or something like that
+        - "ram" or "bulldoze" that bashes caster into opponent and then deals damage that way
+- having permanent/temporary items to draft/buy
+    - could like either replace an equipped skill for x turns (but would need to be kept track of (or we tie it to certain round numbers, so that you have to rotate those things around - eg: every 5 rounds you remove the old permanent buff put a new one on a different piece (but that creates more mental math again)))
+- colision damage for when a piece is moved into another one via movement skills

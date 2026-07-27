@@ -1,16 +1,12 @@
-// Authoritative-host wire protocol (v2). See `.claude/plans/twinkling-questing-quiche.md`.
+// Authoritative-host wire protocol. One peer is AUTH (host); the other is
+// MIRROR (joiner). Host owns the only engine that originates state. Joiner
+// runs a mirror engine for anti-cheat audit. Every committed action is
+// sequenced; out-of-order arrivals trigger a snapshot request rather than
+// partial application.
 //
-// One peer is AUTH (host); the other is MIRROR (joiner). Host owns the only
-// engine that originates state. Joiner runs a mirror engine for anti-cheat
-// audit. Every committed action is sequenced; out-of-order arrivals trigger
-// a snapshot request rather than partial application.
-//
-// Pure types + codec. No transport, no DOM, no runes. Sister module
-// `multiplayer-protocol.ts` still holds the legacy union while routes are
-// migrated; this file is the eventual replacement. Both files re-export
-// `derivePillState`, `generateCode`, `isValidCode`, `GRACE_MS` - those are
-// orthogonal to the wire layer and stay in the v1 file as the canonical
-// home.
+// Pure types + codec. No transport, no DOM, no runes.
+// Also owns the transport-layer heartbeat types, pill derivation, and
+// validation helpers (previously in multiplayer-protocol.ts).
 
 export type WirePhase = "draft" | "play";
 
@@ -354,4 +350,101 @@ function isSnapshotRequestReason(v: unknown): v is SnapshotRequestReason {
  *  random enough that two consecutive intents won't collide. */
 export function newIntentNonce(): string {
   return "i-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
+
+// ---------------------------------------------------------------------------
+// Transport-layer heartbeat types and pill derivation
+// (previously in multiplayer-protocol.ts)
+// ---------------------------------------------------------------------------
+
+/** Low-level wire messages handled by the transport layer (ping/pong/error).
+ *  These are decoded before any v2 message routing. */
+export type WireMessage =
+  | { kind: "ping"; t: number }
+  | { kind: "pong"; t: number }
+  | { kind: "error"; reason: string };
+
+/** 6-digit code in [100000, 999999]. Used as the relay session code so the
+ *  joiner can dial it without a discovery service. */
+export function generateCode(): string {
+  return String(100000 + Math.floor(Math.random() * 900000));
+}
+
+export function isValidCode(s: string): boolean {
+  return /^[1-9][0-9]{5}$/.test(s);
+}
+
+export function encodeMessage(m: WireMessage): string {
+  return JSON.stringify(m);
+}
+
+export function decodeMessage(s: string): WireMessage | null {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(s);
+  } catch {
+    return null;
+  }
+  if (typeof obj !== "object" || obj === null) return null;
+  const m = obj as { kind?: unknown };
+  switch (m.kind) {
+    case "ping":
+    case "pong":
+      return typeof (m as { t?: unknown }).t === "number"
+        ? (m as WireMessage)
+        : null;
+    case "error":
+      return typeof (m as { reason?: unknown }).reason === "string"
+        ? (m as WireMessage)
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** Network-status enum maintained by the side-effecting layer. */
+export type MpStatus =
+  | "idle"
+  | "hosting"
+  | "joining"
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "error";
+
+/** Display state of the connectivity pill - derived purely from `status`
+ *  and how recently we last heard back from the peer. */
+export type PillState = "live" | "unstable" | "disconnected" | "forfeit";
+
+const PILL_UNSTABLE_MS = 6_000;
+export const PILL_DISCONNECTED_MS = 30_000;
+const PILL_FORFEIT_MS = 5 * 60_000;
+
+/** How long the player has to wait before they can claim a win by opponent forfeit. */
+export const GRACE_MS = 5 * 60_000;
+
+/** How long the joiner waits after the host vanishes before the "Take over
+ *  as host" CTA becomes clickable. */
+export const TAKEOVER_MS = 30_000;
+
+export function derivePillState(
+  status: MpStatus,
+  lastPongAt: number | null,
+  now: number,
+): PillState {
+  if (status !== "connected" && status !== "disconnected") {
+    return "disconnected";
+  }
+  if (lastPongAt === null) {
+    return status === "connected" ? "unstable" : "disconnected";
+  }
+  const age = now - lastPongAt;
+  if (status === "connected") {
+    if (age < PILL_UNSTABLE_MS) return "live";
+    if (age < PILL_DISCONNECTED_MS) return "unstable";
+    if (age < PILL_FORFEIT_MS) return "disconnected";
+    return "forfeit";
+  }
+  if (age < PILL_FORFEIT_MS) return "disconnected";
+  return "forfeit";
 }

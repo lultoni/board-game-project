@@ -11,7 +11,7 @@ import {
   decodeMessage,
   derivePillState,
   type WireMessage,
-} from "./multiplayer-protocol";
+} from "./multiplayer-protocol-v2";
 
 describe("generateCode + isValidCode", () => {
   it("generateCode produces 6-digit codes that pass validation", () => {

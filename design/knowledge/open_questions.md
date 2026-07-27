@@ -46,3 +46,7 @@
 - is king still just a mystic skill slave?
     - if yes then we can think about the king not being allowed to hold mystic skills or not giving him skill slots at all
     - altho the solution above does not really fix the cause but rather the symptom.
+- would a third piece type add more variety and interesting positions into the game?
+    - could it also potentially solve some problems we currently have?
+- when does it happen that players do not really know what to do?
+    - like that they are missing like an overarching strategy

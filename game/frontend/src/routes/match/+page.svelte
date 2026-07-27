@@ -48,6 +48,7 @@
     actableSources,
     findActionByKind,
     approachChoicesFor,
+    pickApproachByCursor,
   } from "$lib/state/move-targets";
   import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, hasSelfAndRetargetChoice, variantIsSelfCast, allyMoverCandidates, allyMoverDestinations, rawForAllyMove, rawForSelfCast, type SkillVariant } from "$lib/state/skill-targets";
   import Board from "$lib/board/Board.svelte";
@@ -192,136 +193,40 @@
   // pushes updates here so we can render path trail + hover ring.
   let dragSrc = $state<number | null>(null);
   let dragTrail = $state<number[]>([]);
-  /** Square currently under the pointer (drag or hover). Used for click-mode
-   *  landing preview: shows where the attacker would land before clicking. */
+  /** Square currently under the pointer (drag or hover). */
   let hoverSq = $state<number | null>(null);
   let dragHover = $state<number | null>(null);
   /** Live cursor position in SVG coords (viewBox = 800), used to pick the
-   * sub-tile approach for multi-path Move-Attacks. (0,0) when idle. */
+   *  sub-tile approach for multi-path Move-Attacks. (0,0) when idle. */
   let cursorX = $state<number>(0);
   let cursorY = $state<number>(0);
 
-  // Approach-square chooser state: when the user clicks a Move-Attack target
-  // with multiple approach paths, we surface a chooser.
+  // Approach-square chooser state.
   let pendingApproach = $state<{ target: number; approaches: number[] } | null>(null);
 
-  // Bodyguard chooser state. The engine owns this - `Position.pending_bodyguard`
-  // is set on the attacker's tentative Move-Attack and cleared on the
-  // defender's `BodyguardChoice`. All four play modes converge here because
-  // the engine flips STM to the defender as part of the tentative apply.
-  // `legalActions` is then restricted to BodyguardChoice variants, so any
-  // click that maps to one is automatically valid on the host.
+  // Bodyguard chooser state. Engine-owned via Position.pending_bodyguard.
   const pendingBodyguard = $derived(match.position?.pendingBodyguard ?? null);
 
-  // Armed skill: when the player clicks a skill slice on the wheel, the
-  // skill is "armed" and the next click on a valid target tile fires it.
-  // Self-cast skills fire immediately on slice click and never enter armed
-  // state. Cleared on any non-target click, on selection change, or after
-  // firing.
+  // Armed skill state.
   let armedSkill = $state<{ square: number; skillId: number } | null>(null);
-  /** When the armed skill needs a direction (Shove), clicking a target opens
-   *  this picker instead of firing. Cleared on cancel / pick / disarm. */
   let pendingDirection = $state<{ target: number; variants: SkillVariant[] } | null>(null);
-  /** Focus-mode preference. Only consulted when Focus is staged AND the
-   *  armed skill is Blast or Shove (the two skills with two distinct Focus
-   *  interpretations). "activation" = +1 to range (broader target set);
-   *  "effect" = base range, but the effect itself is boosted (Blast pushes 2,
-   *  Shove pushes 2). Player toggles via SkillInfoCard while armed. */
   let focusModePref = $state<"activation" | "effect">("activation");
-  /** Focus-retarget preference. Only consulted when Focus is staged on a
-   *  skill that has both a self-cast branch and an ally-retarget branch
-   *  (Shield, Dash, Retreat). "self" = caster channels the skill;
-   *  "ally" = adjacent ally is the recipient/mover. Player toggles via the
-   *  Self / Ally picker that mirrors the focus-mode (Range/Effect) toggle. */
   let focusRetargetPref = $state<"self" | "ally">("self");
-  /** Two-stage Focus-retarget picker: in "ally" mode for movement skills
-   *  (Dash/Retreat - where the ally's destination differs from the ally
-   *  itself), the player first clicks WHICH adjacent ally moves, then clicks
-   *  the destination. Null = no ally picked yet (squares show the ally
-   *  candidates); set = ally chosen (squares show that ally's destinations).
-   *  Reset on arm change, mode switch back to self, or fire. Not used for
-   *  Shield retarget - there, target == aux_sq, so a single click suffices. */
   let focusAllyChosen = $state<number | null>(null);
-  /** Focus / Charge are derived from the engine's pendingModifiers bitfield.
-   *  Casting Focus / Charge (skills 14 / 15) stages the modifier; the wheel
-   *  reads these flags to render the slice as "active". */
+
   const focusActive = $derived(
     (match.position?.pendingModifiers ?? 0) & MODIFIER_FOCUS ? true : false,
   );
   const chargeActive = $derived(
     (match.position?.pendingModifiers ?? 0) & MODIFIER_CHARGE ? true : false,
   );
-  /** Slice currently hovered on the wheel. Drives the range overlay. */
   let hoveredSlice = $state<import("$lib/board/SkillWheel.svelte").SliceKind | null>(null);
 
-  // Compute whether the currently hovered drag square is a legal drop.
   const dragHoverLegal = $derived.by(() => {
     if (dragSrc === null || dragHover === null) return false;
     const targets = moveTargetsFor(match.legal, dragSrc);
     return targets.squares.has(dragHover);
   });
-
-  // Where the attacker would actually land if the player released the drag
-  // right now. For plain Move this equals the hovered square; for Move-Attack
-  // it equals the approach_sq (penultimate tile of the path). On multi-
-  // approach attacks we infer the approach from the most recent crossing
-  // in the drag trail; if none matches we leave it null and the parent
-  // shows no landing marker (chooser will open on drop).
-  // Live drag landing-marker square. For a plain Move (no approach choice)
-  // it equals the approach_sq (penultimate tile of the path). On multi-
-  // approach attacks we pick the approach by where the cursor sits within
-  // the hovered target tile: the candidate approach whose direction from
-  // the target best matches the cursor's offset from the target center wins.
-  // This makes diagonal 1-tile attacks easy ("aim where you're coming from")
-  // and lets click-attacks pick an intermediate without a chooser.
-  const SQUARE_SIZE = 100; // board viewBox is 800, 8 tiles.
-  function pickApproachByCursor<T>(
-    target: number,
-    cx: number,
-    cy: number,
-    candidates: Map<number, T>,
-  ): number | null {
-    if (candidates.size === 0) return null;
-    if (candidates.size === 1) {
-      return candidates.keys().next().value as number;
-    }
-    const tgtFile = target & 7;
-    const tgtRank = (target >> 3) & 7;
-    const tgtCX = tgtFile * SQUARE_SIZE + SQUARE_SIZE / 2;
-    const tgtCY = (7 - tgtRank) * SQUARE_SIZE + SQUARE_SIZE / 2;
-    let offX = cx - tgtCX;
-    let offY = cy - tgtCY;
-    // Cursor exactly at center → fall back to `approach == src` if available
-    // (the obvious "direct attack" default), else first candidate.
-    const offLen2 = offX * offX + offY * offY;
-    if (offLen2 < 4) {
-      if (candidates.has(target)) return target; // shouldn't happen - approach != target
-      // Default to direct (approach == src) if present.
-      // src isn't known here, but the caller can supply it via the map key.
-      // We just pick the first one as a fallback.
-      return candidates.keys().next().value as number;
-    }
-    let best: number | null = null;
-    let bestScore = -Infinity;
-    for (const ap of candidates.keys()) {
-      const apFile = ap & 7;
-      const apRank = (ap >> 3) & 7;
-      const apCX = apFile * SQUARE_SIZE + SQUARE_SIZE / 2;
-      const apCY = (7 - apRank) * SQUARE_SIZE + SQUARE_SIZE / 2;
-      let dirX = apCX - tgtCX;
-      let dirY = apCY - tgtCY;
-      const dirLen2 = dirX * dirX + dirY * dirY;
-      if (dirLen2 === 0) continue; // approach == target shouldn't occur for multi
-      // Normalised dot product = cosine of the angle between cursor-offset
-      // and approach-direction. Higher = better aligned.
-      const score = (offX * dirX + offY * dirY) / Math.sqrt(dirLen2);
-      if (score > bestScore) {
-        bestScore = score;
-        best = ap;
-      }
-    }
-    return best;
-  }
 
   const dragLanding = $derived.by(() => {
     if (dragSrc === null || dragHover === null) return null;
