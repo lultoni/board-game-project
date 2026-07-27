@@ -79,6 +79,11 @@ All work on `main`. No branches. Tag releases to trigger GitHub Actions:
 
 ```bash
 git push origin main
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.1
+git push origin v0.1.1
 ```
+
+**Release tagging rules (MUST follow):**
+- The canonical version lives in `game/Cargo.toml` (`version = "x.y.z"`). ALWAYS read that file to get the version — never invent or increment a version number yourself.
+- Use exactly `v{version}` from that file as the tag. No guessing, no bumping.
+- If a GitHub release or tag already exists for that version, ask before deleting it.
