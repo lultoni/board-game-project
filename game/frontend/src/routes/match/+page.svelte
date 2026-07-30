@@ -656,6 +656,7 @@
           getRole: () => (isMp ? ((mpState.role ?? "joiner") as Role) : "solo"),
           getCode: () => mpState.code,
           getTurnStartedMs: () => match.turnStartedMs,
+          getBackgroundEval: () => settings.showHeuristicEval || settings.showEvalPanel,
           ensureLiveEngine: ensureLiveEngineOnTrueLine,
           send: (m: WireMessageV2) => mpSendRaw(encodeMessageV2(m)),
           subscribe: (cb) => mpOnRawData((raw) => {

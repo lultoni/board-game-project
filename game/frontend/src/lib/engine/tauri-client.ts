@@ -182,11 +182,12 @@ export class TauriClient implements EngineClient {
     return invoke<GameConstantsWire>("game_constants_cmd");
   }
 
-  async tryApply(action: number, turnStartedMs = 0): Promise<StepResult> {
+  async tryApply(action: number, turnStartedMs = 0, backgroundEval = false): Promise<StepResult> {
     const dto = await invoke<StepResultDto>("try_apply", {
       handle: this.#requireHandle(),
       rawAction: action >>> 0,
       turnStartedMs,
+      backgroundEval,
     });
     return normaliseStepResult(dto);
   }

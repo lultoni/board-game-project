@@ -704,6 +704,31 @@ impl Match {
         }
     }
 
+    /// Clone the current position for a background eval that runs outside the
+    /// registry mutex. Returns `None` when there is nothing to annotate (no
+    /// log, no plies, game over, Draft phase) so the caller can skip the search
+    /// entirely. The evaluator is not cloned — the caller must supply one
+    /// (e.g. `HeuristicEvaluator`) for the off-lock search.
+    pub fn prepare_background_eval(&self) -> Option<Position> {
+        if self.log.as_ref().map(|l| l.plies.is_empty()).unwrap_or(true) {
+            return None;
+        }
+        if self.position.game_result.is_some() { return None; }
+        if self.position.current_phase == Phase::Draft { return None; }
+        Some(self.position.clone())
+    }
+
+    /// Write a completed background-eval result back into the last ply's log
+    /// entry. Call this after acquiring the registry mutex again, passing the
+    /// `SearchMeta` produced by the off-lock search.
+    pub fn write_background_eval(&mut self, meta: SearchMeta) {
+        if let Some(log) = self.log.as_mut() {
+            if let Some(last) = log.plies.last_mut() {
+                last.background_eval = Some(meta);
+            }
+        }
+    }
+
     // --- Snapshot ----------------------------------------------------------
 
     pub fn to_snapshot(&self) -> Snapshot {

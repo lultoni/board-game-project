@@ -212,7 +212,7 @@ export interface EngineClient {
    *  when the current turn/phase began) lets the engine record human decision
    *  time in telemetry; omit / pass 0 for non-live contexts (replay, inspector,
    *  snapshot rebuild) where think-time is meaningless. */
-  tryApply(action: number, turnStartedMs?: number): Promise<StepResult>;
+  tryApply(action: number, turnStartedMs?: number, backgroundEval?: boolean): Promise<StepResult>;
   stepAi(onDepth?: (depth: number, score: number) => void): Promise<StepResult>;
   /** Compute the static heuristic evaluation of the current board position.
    *  Returns the full per-component breakdown; `total` is P1-POV

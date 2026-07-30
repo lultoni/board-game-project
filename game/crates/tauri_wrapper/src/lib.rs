@@ -54,6 +54,14 @@ pub struct EngineRegistry {
     engines: Mutex<HashMap<u64, EngineEntry>>,
 }
 
+/// Recover a poisoned mutex rather than propagating the panic. A panic inside
+/// a `with` closure (e.g. a search bug in core_engine) poisons the Mutex;
+/// without recovery every subsequent IPC call crashes on `.unwrap()`. The
+/// data inside is still valid — only the poison flag is cleared.
+fn lock_unpoisoned<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 impl EngineRegistry {
     fn fresh_handle(&self) -> u64 {
         self.next.fetch_add(1, Ordering::Relaxed) + 1
@@ -61,7 +69,7 @@ impl EngineRegistry {
 
     fn insert(&self, m: Match) -> u64 {
         let h = self.fresh_handle();
-        self.engines.lock().unwrap().insert(h, EngineEntry {
+        lock_unpoisoned(&self.engines).insert(h, EngineEntry {
             m,
             legal_buf: Vec::with_capacity(256),
         });
@@ -69,14 +77,14 @@ impl EngineRegistry {
     }
 
     fn with<R>(&self, handle: u64, f: impl FnOnce(&mut EngineEntry) -> R) -> Result<R, String> {
-        let mut guard = self.engines.lock().unwrap();
+        let mut guard = lock_unpoisoned(&self.engines);
         let entry = guard.get_mut(&handle)
             .ok_or_else(|| format!("unknown engine handle {handle}"))?;
         Ok(f(entry))
     }
 
     fn drop_handle(&self, handle: u64) -> bool {
-        self.engines.lock().unwrap().remove(&handle).is_some()
+        lock_unpoisoned(&self.engines).remove(&handle).is_some()
     }
 }
 
@@ -428,11 +436,12 @@ fn game_constants_cmd() -> GameConstantsDto {
 
 #[tauri::command]
 async fn try_apply(
-    handle:          u64,
-    raw_action:      u32,
-    turn_started_ms: Option<u64>,
-    app:             tauri::AppHandle,
-    registry:        State<'_, EngineRegistry>,
+    handle:           u64,
+    raw_action:       u32,
+    turn_started_ms:  Option<u64>,
+    background_eval:  Option<bool>,
+    app:              tauri::AppHandle,
+    registry:         State<'_, EngineRegistry>,
 ) -> Result<StepResultDto, String> {
     let now = unix_ms_now();
     // Human decision time = now − start-of-turn. A missing / zero start means
@@ -449,25 +458,46 @@ async fn try_apply(
             .map_err(|err| format!("{err:?}"))
     })??;
 
-    // Part B (Change 5): fire a shallow background eval on the resulting
-    // position (the state the human just created) WITHOUT blocking this apply
-    // response. The registry mutex serialises this against the next apply, so
-    // it never races the engine. On completion, emit `background-eval-ready`
-    // so the frontend can refresh its eval display mid-game if it cares. The
-    // apply response has already returned by the time this runs.
-    //
-    // `app` is `'static + Send`; fetch the managed registry INSIDE the task so
-    // we don't try to send a lifetime-bound `State<'_>` across the thread.
-    let app_for_task = app.clone();
-    tokio::task::spawn_blocking(move || {
-        let registry = app_for_task.state::<EngineRegistry>();
-        let _ = registry.with(handle, |e| {
-            // Time-bounded: ~1s wall clock lets iterative deepening reach a
-            // useful depth in sharp positions without stalling quiet ones.
-            api::annotate_last_ply_background_eval(&mut e.m, /*budget_ms=*/ 1000);
-        });
-        let _ = app_for_task.emit("background-eval-ready", serde_json::json!({ "handle": handle }));
-    });
+    // Background eval: annotate the last ply with a shallow search result.
+    // The search must NOT hold the registry mutex — it takes ~1 s and would
+    // stall every subsequent IPC call on this handle for that duration.
+    // Instead: clone the position under a brief lock, do the search lock-free,
+    // then re-acquire the lock just to write the result back.
+    if background_eval.unwrap_or(false) {
+        // Step 1: clone the position while holding the lock (microseconds).
+        let pos_snapshot = registry.with(handle, |e| e.m.prepare_background_eval());
+        if let Ok(Some(mut pos)) = pos_snapshot {
+            let app_for_task = app.clone();
+            tokio::task::spawn_blocking(move || {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    // Step 2: run the search with NO registry lock held.
+                    use core_engine::search::evaluator::HeuristicEvaluator;
+                    use core_engine::search::alpha_beta::find_best_with_evaluator;
+                    use core_engine::search::transposition::TranspositionTable;
+                    use core_engine::telemetry::SearchMeta;
+                    use core_engine::search::evaluator::evaluate_breakdown;
+                    const BUDGET_MS: u64 = 1000;
+                    const MAX_DEPTH: u8 = 20;
+                    let mut tt = TranspositionTable::with_capacity_mb(4);
+                    let r = find_best_with_evaluator(
+                        &mut pos, &mut tt, BUDGET_MS, MAX_DEPTH,
+                        &HeuristicEvaluator, None,
+                    );
+                    let breakdown = evaluate_breakdown(&pos);
+                    let meta = SearchMeta::from_search_with_breakdown(
+                        r.depth, r.nodes, r.score, Some(breakdown),
+                    );
+                    // Step 3: re-acquire lock only to write the result (microseconds).
+                    let registry = app_for_task.state::<EngineRegistry>();
+                    let _ = registry.with(handle, |e| e.m.write_background_eval(meta));
+                }));
+                let _ = app_for_task.emit(
+                    "background-eval-ready",
+                    serde_json::json!({ "handle": handle }),
+                );
+            });
+        }
+    }
 
     Ok(dto)
 }

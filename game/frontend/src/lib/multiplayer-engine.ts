@@ -122,6 +122,11 @@ export interface MpEngineDeps {
    *  Optional - defaults to 0 (no timing) for tests / solo callers that
    *  don't wire it. */
   getTurnStartedMs?: () => number;
+  /** Live accessor for whether background eval annotation should run after a
+   *  local human move. Only true when the eval display is visible — the eval
+   *  holds the engine mutex for ~1 s and stalls all subsequent IPC if enabled
+   *  without a consumer. Defaults to false. */
+  getBackgroundEval?: () => boolean;
 }
 
 export interface MpEngineOpts {
@@ -660,7 +665,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       let prePositionView: PositionView;
       try {
         prePositionView = await deps.eng.positionView();
-        await deps.eng.tryApply(raw, deps.getTurnStartedMs?.() ?? 0);
+        await deps.eng.tryApply(raw, deps.getTurnStartedMs?.() ?? 0, deps.getBackgroundEval?.() ?? false);
       } catch (e) {
         return { accepted: false, reason: (e as Error)?.message ?? "illegal" };
       }
@@ -680,7 +685,7 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
       let postZobrist: bigint;
       try {
         prePositionView = await deps.eng.positionView();
-        await deps.eng.tryApply(raw, deps.getTurnStartedMs?.() ?? 0);
+        await deps.eng.tryApply(raw, deps.getTurnStartedMs?.() ?? 0, deps.getBackgroundEval?.() ?? false);
         const view = await deps.eng.positionView();
         postZobrist = view.zobrist;
       } catch (e) {

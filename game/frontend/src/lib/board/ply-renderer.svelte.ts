@@ -350,6 +350,7 @@ interface SkillDiff {
 }
 
 function diffSkillMailbox(pre: Uint16Array, post: Uint16Array): SkillDiff {
+  performance.mark("diffSkillMailbox-start");
   const stayed: number[] = [];
   const vacated: number[] = [];
   const arrived: number[] = [];
@@ -377,7 +378,9 @@ function diffSkillMailbox(pre: Uint16Array, post: Uint16Array): SkillDiff {
     }
   }
   const deaths: number[] = vacated.filter((v) => !usedV.has(v));
-  return { stayed, moves, deaths };
+  const result = { stayed, moves, deaths };
+  performance.measure("diffSkillMailbox", "diffSkillMailbox-start");
+  return result;
 }
 
 function hasRelocationOrDeath(diff: SkillDiff): boolean {
@@ -582,6 +585,7 @@ export function createPlyRenderer(
   // write lands on the reactive sink - preventing a Svelte flush from
   // observing an empty pieceIds map between setPosition and reconcile.
   function reconcilePieceIdsAgainst(pos: PositionView): void {
+    performance.mark("reconcilePieceIds-start");
     const occupied = new Set<number>();
     const p1 = pos.bitboards[0];
     const p2 = pos.bitboards[1];
@@ -596,6 +600,7 @@ export function createPlyRenderer(
       if (!pieceIds.has(sq)) pieceIds.set(sq, nextPieceId++);
     }
     pieceIds = new Map(pieceIds);
+    performance.measure("reconcilePieceIds", "reconcilePieceIds-start");
   }
 
   function triggerShake(sq: number): void {
@@ -949,6 +954,8 @@ export function createPlyRenderer(
   }
 
   async function renderApplied(raw: number, pre: PreStateSnapshot): Promise<void> {
+    performance.mark("renderApplied-start");
+    try {
     // Draft turns and bodyguard choices don't drive board animations. Draft
     // plies update piece skill assignments (visible via position but not by
     // motion). Bodyguard choices may swap the attacked piece; either way, the
@@ -1240,6 +1247,9 @@ export function createPlyRenderer(
       decoded.kind === ActionKind.Move || decoded.kind === ActionKind.Skill
         ? { src: decoded.src, target: decoded.target }
         : null;
+    } finally {
+      performance.measure("renderApplied", "renderApplied-start");
+    }
   }
 
   async function applyAndRender(
@@ -1247,9 +1257,12 @@ export function createPlyRenderer(
     applyFn: () => Promise<void>,
     opts?: ApplyAndRenderOpts,
   ): Promise<void> {
+    performance.mark("applyAndRender-start");
     drainPendingSkillRefresh();
     const pre = snapshotPreState(raw);
+    performance.mark("applyFn-start");
     await applyFn();
+    performance.measure("applyFn (IPC)", "applyFn-start");
     await renderApplied(raw, pre);
 
     // Opportunistic checkpoint capture. We log a checkpoint at the ply
@@ -1273,6 +1286,7 @@ export function createPlyRenderer(
         }
       }
     }
+    performance.measure("applyAndRender (total)", "applyAndRender-start");
   }
 
   // === Bulk operations =====================================================
