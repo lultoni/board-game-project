@@ -36,6 +36,9 @@ export interface PositionViewDto {
     targetSq: number;
     eligible: number[];
   } | null;
+  /** Optional (older backends omit it): u64 bitboard of already-moved squares,
+   *  serialized as a string. Absent → treated as 0n (nothing greyed). */
+  movedThisPhase?: string | number;
 }
 
 interface StepResultDto {
@@ -78,6 +81,7 @@ export function normalisePositionView(dto: PositionViewDto): PositionView {
     gameResult: dto.gameResult,
     zobrist: toBigInt(dto.zobrist),
     pendingBodyguard: dto.pendingBodyguard ?? null,
+    movedThisPhase: toBigInt(dto.movedThisPhase ?? 0),
   };
 }
 
@@ -299,6 +303,10 @@ export class TauriClient implements EngineClient {
 
   async finaliseLog(result: FinalResultByte): Promise<void> {
     await invoke<void>("finalise_log", { handle: this.#requireHandle(), resultByte: result });
+  }
+
+  async evaluateDrawOffer(aiSeat: 0 | 1): Promise<boolean> {
+    return await invoke<boolean>("evaluate_draw_offer", { handle: this.#requireHandle(), aiSeat });
   }
 
   async dispose(): Promise<void> {

@@ -47,6 +47,7 @@ class FakeEngine implements EngineClient {
       gameResult: 0,
       zobrist: this.zobristOverride ?? this.computeZobrist(),
       pendingBodyguard: null,
+      movedThisPhase: 0n,
     };
   }
   async legalActions(): Promise<Uint32Array> { return new Uint32Array(); }
@@ -104,6 +105,7 @@ class FakeEngine implements EngineClient {
   async stopAivaiProducer(): Promise<string | null> { return null; }
   async onAivaiProgress(): Promise<() => void> { return () => { /* no-op */ }; }
   async finaliseLog(): Promise<void> { /* noop */ }
+  async evaluateDrawOffer(): Promise<boolean> { return true; }
   async dispose(): Promise<void> { /* noop */ }
   async setAiEvaluator(): Promise<void> { /* noop */ }
 

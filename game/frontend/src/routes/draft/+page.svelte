@@ -15,7 +15,6 @@
   import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
   import SkillPicker from "$lib/board/SkillPicker.svelte";
   import LoadoutBoard from "$lib/board/LoadoutBoard.svelte";
-  import BackButton from "$lib/ui/BackButton.svelte";
   import { t } from "$lib/state/i18n";
   import {
     match,
@@ -83,6 +82,25 @@
   const P1_SQUARES = STACK_M_LOADOUT_SQUARES.p1;
   const P2_SQUARES = STACK_M_LOADOUT_SQUARES.p2;
 
+  // Board-order display: sort squares by file (sq & 7) so pieces appear
+  // left-to-right as they sit on the board, matching the visual position.
+  // The King is identified by SQUARE identity (the loadout lists it first,
+  // index 0), NOT by post-sort position — sorting by file moves the King out
+  // of index 0 (P1 King d1=sq3 → index 2 after sort), so `i === 0` would
+  // mislabel the leftmost Champion as the King. Champions are numbered 1..5 in
+  // board (left-to-right) order.
+  function boardOrder(squares: number[]): { sq: number; isKing: boolean; championIdx: number }[] {
+    const kingSq = squares[0]; // loadout is King-first
+    const sorted = [...squares].sort((a, b) => (a & 7) - (b & 7));
+    let champ = 0;
+    return sorted.map((sq) => {
+      const isKing = sq === kingSq;
+      return { sq, isKing, championIdx: isKing ? 0 : ++champ };
+    });
+  }
+  const P1_DISPLAY = boardOrder(P1_SQUARES);
+  const P2_DISPLAY = boardOrder(P2_SQUARES);
+
   const sideToMove = $derived(draftState?.sideToMove ?? 0);
   const isP1Turn = $derived(sideToMove === 0);
   const sideSquares = $derived(isP1Turn ? P1_SQUARES : P2_SQUARES);
@@ -129,7 +147,6 @@
   // as manual picks, so the wire protocol (and telemetry) is unchanged.
 
   let savedLoadouts = $state<SavedLoadout[]>([]);
-  let showCustomDropdown = $state(false);
   let autoDrafting = $state(false);
 
   onMount(async () => {
@@ -235,13 +252,7 @@
       bootError = (e as Error)?.message ?? String(e);
     } finally {
       autoDrafting = false;
-      showCustomDropdown = false;
     }
-  }
-
-  function toggleCustomDropdown(): void {
-    sfx.play("click");
-    showCustomDropdown = !showCustomDropdown;
   }
 
   // === Picker state ==========================================================
@@ -969,7 +980,6 @@
 
 <main>
   <header>
-    <BackButton />
     <h1>{t("draft.title")}</h1>
     <small class="mode-tag">{mode}</small>
     {#if isMultiplayer}
@@ -1062,15 +1072,37 @@
           </div>
         {/if}
 
-        {#if draftedSideLoadout}
-          <div class="drafted-preview" aria-label="drafted so far">
-            <LoadoutBoard
-              side="p1"
-              loadout={draftedSideLoadout}
-              interactive={false}
-              selectedPieceIdx={null}
-              ranks={3}
-            />
+        <!-- Premade loadouts: shown directly, no dropdown toggle -->
+        {#if !isMultiplayer && localCanDraft && savedLoadouts.length > 0}
+          <div class="premade-loadouts" aria-label="saved loadouts">
+            <p class="premade-heading">{t("draft.customLoadoutHeading")}</p>
+            {#if compatibleLoadouts.length === 0}
+              <p class="cl-empty">{t("draft.noCompatibleCustom")}</p>
+            {:else}
+              <ul class="cl-list">
+                {#each compatibleLoadouts as row (row.id)}
+                  <li>
+                    <button
+                      type="button"
+                      class="cl-row"
+                      disabled={autoDrafting || busy}
+                      onclick={() => autoDraftFromLoadout(row.loadout)}
+                    >
+                      <span class="cl-name">{row.name}</span>
+                      <span class="cl-icons">
+                        {#each row.loadout as pair}
+                          {#each pair as sid}
+                            <svg class="cl-glyph" viewBox="0 0 24 24" aria-hidden="true" style:--cat={skillColor(sid)}>
+                              <use href="#skill-glyph-{sid}" />
+                            </svg>
+                          {/each}
+                        {/each}
+                      </span>
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
           </div>
         {/if}
       </section>
@@ -1082,16 +1114,15 @@
         ondragover={(ev) => ev.preventDefault()}
         ondrop={dropOnPiecesCol}
       >
-        {#each [["p1", P1_SQUARES] as const, ["p2", P2_SQUARES] as const] as [side, squares]}
+        {#each [["p1", P1_DISPLAY] as const, ["p2", P2_DISPLAY] as const] as [side, squares]}
           {@const isActive = (side === "p1") === isP1Turn}
           <section class="side" class:p1={side === "p1"} class:p2={side === "p2"} class:active={isActive}>
             <h2>{side === "p1" ? t("setup.p1Label") : t("setup.p2Label")}</h2>
             <ul class="pieces">
-              {#each squares as sq, i (sq)}
-                {@const isKing = i === 0}
+              {#each squares as { sq, isKing, championIdx } (sq)}
                 <li class:king={isKing}>
                   <div class="piece-id">
-                    <span class="pname">{pieceLabel(sq, isKing, i)}</span>
+                    <span class="pname">{pieceLabel(sq, isKing, championIdx)}</span>
                     <span class="psq">{squareName(sq)}</span>
                   </div>
                   <div class="slots">
@@ -1118,7 +1149,7 @@
                         ondragover={(ev) => dragOverIfLegal(ev, sq, slot)}
                         ondrop={(ev) => dropOnSlot(ev, sq, slot)}
                         onclick={() => clickSlot(sq, slot)}
-                        aria-label={`${pieceLabel(sq, isKing, i)} slot ${slot + 1}`}
+                        aria-label={`${pieceLabel(sq, isKing, championIdx)} slot ${slot + 1}`}
                         title={showId === 0 ? "" : `${skillName(showId)} - ${categoryLabel(showId)}`}
                       >
                         {#if showId === 0}
@@ -1140,56 +1171,6 @@
       </section>
     </div>
 
-    {#if !isMultiplayer && localCanDraft}
-      <section class="custom-loadouts">
-        <button
-          type="button"
-          class="cl-toggle"
-          onclick={toggleCustomDropdown}
-          aria-expanded={showCustomDropdown}
-        >
-          <span class="cl-caret">{showCustomDropdown ? "▾" : "▸"}</span>
-          {t("draft.customLoadoutHeading")}
-        </button>
-        {#if showCustomDropdown}
-          <p class="cl-hint">{t("draft.customLoadoutHint")}</p>
-          {#if savedLoadouts.length === 0}
-            <p class="cl-empty">{t("draft.noSavedLoadouts")}</p>
-          {:else if compatibleLoadouts.length === 0}
-            <p class="cl-empty">{t("draft.noCompatibleCustom")}</p>
-          {:else}
-            <ul class="cl-list">
-              {#each compatibleLoadouts as row (row.id)}
-                <li>
-                  <button
-                    type="button"
-                    class="cl-row"
-                    disabled={autoDrafting || busy}
-                    onclick={() => autoDraftFromLoadout(row.loadout)}
-                  >
-                    <span class="cl-name">{row.name}</span>
-                    <span class="cl-icons">
-                      {#each row.loadout as pair}
-                        {#each pair as sid}
-                          <svg
-                            class="cl-glyph"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                            style:--cat={skillColor(sid)}
-                          >
-                            <use href="#skill-glyph-{sid}" />
-                          </svg>
-                        {/each}
-                      {/each}
-                    </span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        {/if}
-      </section>
-    {/if}
   {/if}
 </main>
 
@@ -1405,31 +1386,20 @@
     padding: 0.5em 0.8em;
     border-radius: 6px;
   }
-  .custom-loadouts {
-    margin-top: 1rem;
+  .premade-loadouts {
+    margin-top: 0.8rem;
     padding: 0.5em 0.8em;
     border: 1.5px solid var(--paper-line-strong);
     border-radius: 6px;
     background: var(--paper-bg);
   }
-  .cl-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4em;
-    background: none;
-    border: none;
-    font: inherit;
+  .premade-heading {
+    margin: 0 0 0.5em;
+    font-size: 0.78rem;
     font-weight: 600;
-    color: var(--paper-ink);
-    cursor: pointer;
-    padding: 0.2em 0;
-  }
-  .cl-caret { display: inline-block; width: 1em; text-align: center; }
-  .cl-hint {
-    margin: 0.4em 0 0.6em;
-    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--paper-ink-soft);
-    font-style: italic;
   }
   .cl-empty {
     margin: 0.4em 0 0.2em;
@@ -1468,10 +1438,5 @@
     height: 18px;
     color: var(--cat);
     fill: currentColor;
-  }
-  .drafted-preview {
-    margin-top: 0.8rem;
-    display: flex;
-    justify-content: center;
   }
 </style>

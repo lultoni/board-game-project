@@ -5,6 +5,8 @@
   import { getTelemetryStore } from "$lib/storage";
   import { sfx } from "$lib/audio/sfx";
   import { setPendingMatchLog } from "$lib/storage/library-handoff";
+  import { match } from "$lib/state/match-store.svelte";
+  import { seatsFromMode } from "$lib/state/match-store.svelte";
   import type { MatchMeta } from "$lib/storage/types";
   import type { MatchMode } from "$lib/state/match-store.svelte";
 
@@ -16,14 +18,20 @@
   let selected = $state<Set<string>>(new Set());
   let filterMode = $state<FilterMode>("all");
   let filterResult = $state<FilterResult>("all");
+  let hideIncomplete = $state(true);
   let confirmDelete = $state<string | null>(null);
+  let confirmBulkDelete = $state(false);
   let busy = $state(false);
-  /** Transient banner shown when an export skipped one or more matches due
-   *  to a missing/corrupt log. Cleared on the next export attempt. */
   let exportSkipNotice = $state<string | null>(null);
+  /** Set of matchIds whose single-export just completed — cleared after 2s. */
+  let exportedIds = $state<Set<string>>(new Set());
+  /** Whether the bulk export just completed successfully — cleared after 2s. */
+  let bundleExported = $state(false);
+  let bundleExportTimer: ReturnType<typeof setTimeout> | null = null;
 
   const filtered = $derived.by<MatchMeta[]>(() => {
     return rows.filter((m) => {
+      if (hideIncomplete && (m.status === "in-progress" || m.status === "abandoned" || m.status === "mid-match-network-lost")) return false;
       if (filterMode !== "all" && m.mode !== filterMode) return false;
       if (filterResult === "all") return true;
       if (filterResult === "in-progress") {
@@ -111,17 +119,11 @@
     selected = next;
   }
 
-  async function openInInspector(matchId: string): Promise<void> {
+  async function resumeGame(meta: MatchMeta): Promise<void> {
     sfx.play("click");
-    busy = true;
-    try {
-      const m = await getTelemetryStore().getMatch(matchId);
-      if (!m) return;
-      setPendingMatchLog(m.matchLogJson);
-      await goto("../inspector/");
-    } finally {
-      busy = false;
-    }
+    match.resumeMatchId = meta.matchId;
+    match.side = seatsFromMode(meta.mode);
+    await goto("../match/");
   }
 
   async function openInReplay(matchId: string): Promise<void> {
@@ -146,6 +148,11 @@
       download(`boardgame-match-${matchId}.json`, bundle);
       if (skipped.length > 0) {
         exportSkipNotice = `Could not export this match - its stored log is missing or corrupt.`;
+      } else {
+        exportedIds = new Set([...exportedIds, matchId]);
+        setTimeout(() => {
+          exportedIds = new Set([...exportedIds].filter((id) => id !== matchId));
+        }, 2000);
       }
     } finally {
       busy = false;
@@ -162,6 +169,10 @@
       download(bundleFilename(), bundle);
       if (skipped.length > 0) {
         exportSkipNotice = `Exported ${ids.length - skipped.length} of ${ids.length} matches - ${skipped.length} skipped due to missing or corrupt logs.`;
+      } else {
+        bundleExported = true;
+        if (bundleExportTimer !== null) clearTimeout(bundleExportTimer);
+        bundleExportTimer = setTimeout(() => { bundleExported = false; }, 2000);
       }
       selected = new Set();
     } finally {
@@ -185,11 +196,32 @@
       busy = false;
     }
   }
-</script>
+
+  async function bulkDelete(): Promise<void> {
+    if (selected.size === 0) return;
+    busy = true;
+    confirmBulkDelete = false;
+    try {
+      const store = getTelemetryStore();
+      for (const id of selected) {
+        await store.deleteMatch(id);
+      }
+      rows = rows.filter((r) => !selected.has(r.matchId));
+      selected = new Set();
+    } finally {
+      busy = false;
+    }
+  }
+
+  function selectAll(): void {
+    selected = new Set(filtered.map((m) => m.matchId));
+  }
+  function selectNone(): void {
+    selected = new Set();
+  }</script>
 
 <main>
   <header>
-    <p><a href="../" onclick={() => sfx.play("click")}>{t("library.back")}</a></p>
     <h1>{t("library.title")}</h1>
     <small>{countLabel(filtered.length)}</small>
   </header>
@@ -223,12 +255,32 @@
         <option value="abandoned">{t("library.resultAbandoned")}</option>
       </select>
     </label>
-    <button class="bundle" type="button" disabled={busy || selected.size === 0} onclick={sendBundle}>
-      {selected.size > 0
-        ? t("library.sendBundle", { n: selected.size })
-        : t("library.sendBundleNone")}
+    <label class="toggle-row">
+      <input type="checkbox" bind:checked={hideIncomplete} />
+      <span>Hide incomplete</span>
+    </label>
+  </section>
+
+  <section class="bulk-bar">
+    <span class="bulk-sel-info">{selected.size > 0 ? `${selected.size} selected` : "Select rows to act"}</span>
+    <button type="button" class="bulk-btn" onclick={selectAll}>All</button>
+    <button type="button" class="bulk-btn" onclick={selectNone} disabled={selected.size === 0}>None</button>
+    <button type="button" class="bundle bulk-btn" class:exported={bundleExported} disabled={busy || selected.size === 0} onclick={sendBundle}>
+      {bundleExported ? "Exported ✓" : `Export (${selected.size})`}
+    </button>
+    <button type="button" class="bulk-btn bulk-delete" disabled={busy || selected.size === 0}
+      onclick={() => { confirmBulkDelete = true; }}>
+      Delete ({selected.size})
     </button>
   </section>
+
+  {#if confirmBulkDelete}
+    <div class="confirm-bar">
+      <span>Delete {selected.size} game{selected.size === 1 ? '' : 's'}? This cannot be undone.</span>
+      <button type="button" class="del-confirm" onclick={() => void bulkDelete()}>Yes, delete</button>
+      <button type="button" onclick={() => { confirmBulkDelete = false; }}>Cancel</button>
+    </div>
+  {/if}
 
   {#if loading}
     <p class="hint">{t("library.loading")}</p>
@@ -250,26 +302,30 @@
           <div class="mode">{modeLabel(m.mode)}</div>
           <div class={`chip ${chip.cls}`}>{chip.label}</div>
           <div class="plies">
-            {m.status === "ended" && m.totalPlies !== undefined
+            {m.totalPlies !== undefined
               ? t("library.plies", { n: m.totalPlies })
               : t("library.ongoing")}
           </div>
           <div class="actions">
+            {#if m.status === "abandoned" || m.status === "in-progress"}
+              <button
+                type="button"
+                class="resume-btn"
+                disabled={busy}
+                onclick={() => void resumeGame(m)}
+              >Resume</button>
+            {/if}
             <button
               type="button"
               disabled={busy || !hasLog(m)}
-              onclick={() => openInReplay(m.matchId)}
+              onclick={() => void openInReplay(m.matchId)}
             >{t("library.actionReplay")}</button>
             <button
               type="button"
+              class:exported={exportedIds.has(m.matchId)}
               disabled={busy || !hasLog(m)}
-              onclick={() => openInInspector(m.matchId)}
-            >{t("library.actionInspector")}</button>
-            <button
-              type="button"
-              disabled={busy || !hasLog(m)}
-              onclick={() => exportSingle(m.matchId)}
-            >{t("library.actionExport")}</button>
+              onclick={() => void exportSingle(m.matchId)}
+            >{exportedIds.has(m.matchId) ? "Exported ✓" : t("library.actionExport")}</button>
             {#if confirmDelete === m.matchId}
               <button
                 class="danger"
@@ -323,12 +379,15 @@
     padding: 0 0.25rem;
   }
   header {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
     border-bottom: 1.5px solid var(--paper-line);
     padding-bottom: 0.5rem;
     margin-bottom: 1rem;
   }
   header h1 {
-    margin: 0.2rem 0 0;
+    margin: 0;
     font-size: 1.8rem;
   }
   header small {
@@ -339,7 +398,7 @@
     gap: 0.8rem;
     align-items: end;
     flex-wrap: wrap;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
   }
   .filters label {
     display: flex;
@@ -355,8 +414,61 @@
     border-radius: 5px;
     color: inherit;
   }
+  .toggle-row {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 0.4rem !important;
+    cursor: pointer;
+  }
+  .bulk-bar {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    margin-bottom: 0.8rem;
+    flex-wrap: wrap;
+  }
+  .bulk-sel-info {
+    font-size: 0.82rem;
+    color: var(--paper-ink-soft);
+    flex: 1;
+  }
+  .bulk-btn {
+    padding: 0.35em 0.7em;
+    border: 1.5px solid var(--paper-line-strong);
+    background: var(--paper-bg);
+    border-radius: 5px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.82rem;
+  }
+  .bulk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .bulk-delete { border-color: #c0392b44; color: #c0392b; }
+  .bulk-delete:not(:disabled):hover { border-color: #c0392b; }
+  .confirm-bar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.6em 0.8em;
+    border: 1.5px solid #c0392b;
+    border-radius: 6px;
+    background: #c0392b08;
+    margin-bottom: 0.8rem;
+    font-size: 0.88rem;
+    flex-wrap: wrap;
+  }
+  .confirm-bar span { flex: 1; }
+  .del-confirm {
+    padding: 0.3em 0.8em;
+    border: 1.5px solid #c0392b;
+    border-radius: 5px;
+    background: #c0392b;
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
   .bundle {
-    margin-left: auto;
     padding: 0.5em 0.9em;
     border: 1.5px solid var(--paper-line-strong);
     background: var(--paper-bg);
@@ -366,6 +478,10 @@
   .bundle:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  .bundle.exported {
+    color: #2e8a3a;
+    border-color: #2e8a3a;
   }
   .hint {
     color: var(--paper-ink-soft);
@@ -445,6 +561,15 @@
   .actions button.danger {
     color: #a94b3b;
     border-color: #a94b3b;
+  }
+  .actions button.resume-btn {
+    color: var(--accent, #c79b3a);
+    border-color: var(--accent, #c79b3a);
+    font-weight: 600;
+  }
+  .actions button.exported {
+    color: #2e8a3a;
+    border-color: #2e8a3a;
   }
   @media (max-width: 760px) {
     .row {

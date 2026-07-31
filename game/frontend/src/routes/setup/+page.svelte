@@ -3,7 +3,6 @@
   import { goto } from "$app/navigation";
   import { t } from "$lib/state/i18n";
   import { sfx } from "$lib/audio/sfx";
-  import BackButton from "$lib/ui/BackButton.svelte";
   import {
     match,
     modeFromSeats,
@@ -125,6 +124,22 @@
   let p1: SeatKind = $state(match.side.p1);
   let p2: SeatKind = $state(match.side.p2);
 
+  /** Mirror P1 seat config to P2 (or vice-versa). */
+  function mirrorSeats(from: "p1" | "p2"): void {
+    sfx.play("click");
+    if (from === "p1") {
+      p2 = p1;
+      settings.p2ThinkTimeMs = settings.p1ThinkTimeMs;
+      settings.p2MaxDepth = settings.p1MaxDepth;
+      p2Ref = { ...p1Ref };
+    } else {
+      p1 = p2;
+      settings.p1ThinkTimeMs = settings.p2ThinkTimeMs;
+      settings.p1MaxDepth = settings.p2MaxDepth;
+      p1Ref = { ...p2Ref };
+    }
+  }
+
   // L8/Task 8 - draft mode + per-side loadout selection. Custom is the
   // default; pre-made picks one of the three curated loadouts (or a saved
   // custom loadout, local play only).
@@ -134,7 +149,7 @@
   // control that only offers pre-mades - both sides get the same ref. The
   // fairness story for MP custom loadouts hasn't been designed yet
   // (deferred question), so custom picks are disallowed in MP.
-  let draftMode: DraftMode = $state(match.draftMode);
+  let draftMode: DraftMode = $state(match.draftMode !== "custom" ? match.draftMode : "preMade");
   // Initialize each side's ref from whatever match state currently holds, or
   // default to firstGame. Saved rows are loaded async in a separate onMount.
   const initialRef = (side: "p1" | "p2"): LoadoutRef => {
@@ -287,7 +302,6 @@
 
 <main>
   <header>
-    <BackButton />
     <h1>{t("setup.title")}</h1>
   </header>
 
@@ -323,6 +337,10 @@
           </label>
         </fieldset>
       {/each}
+      <div class="mirror-row">
+        <button type="button" class="mirror-btn" onclick={() => mirrorSeats("p1")} title="Copy P1 settings to P2">P1 → P2</button>
+        <button type="button" class="mirror-btn" onclick={() => mirrorSeats("p2")} title="Copy P2 settings to P1">P2 → P1</button>
+      </div>
     </section>
   {/if}
 
@@ -333,27 +351,13 @@
         {#if p1 === "ai"}
           <label class="row">
             <span class="rowLabel">P1 · {t("setup.thinkTime")}</span>
-            <input
-              type="range"
-              min="0"
-              max="5000"
-              step="50"
-              bind:value={settings.p1ThinkTimeMs}
-              oninput={() => sfx.play("tick")}
-            />
-            <output>{settings.p1ThinkTimeMs}</output>
+            <input type="range" min="0" max="5000" step="50" bind:value={settings.p1ThinkTimeMs} oninput={() => sfx.play("tick")} />
+            <input type="number" min="0" step="50" class="num-override" bind:value={settings.p1ThinkTimeMs} />
           </label>
           <label class="row">
             <span class="rowLabel">P1 · {t("setup.maxDepth")}</span>
-            <input
-              type="range"
-              min="1"
-              max="12"
-              step="1"
-              bind:value={settings.p1MaxDepth}
-              oninput={() => sfx.play("tick")}
-            />
-            <output>{settings.p1MaxDepth}</output>
+            <input type="range" min="1" max="12" step="1" bind:value={settings.p1MaxDepth} oninput={() => sfx.play("tick")} />
+            <input type="number" min="1" step="1" class="num-override" bind:value={settings.p1MaxDepth} />
           </label>
           <label class="row">
             <span class="rowLabel">P1 · {t("setup.evaluator")}</span>
@@ -374,27 +378,13 @@
         {#if p2 === "ai"}
           <label class="row">
             <span class="rowLabel">P2 · {t("setup.thinkTime")}</span>
-            <input
-              type="range"
-              min="0"
-              max="5000"
-              step="50"
-              bind:value={settings.p2ThinkTimeMs}
-              oninput={() => sfx.play("tick")}
-            />
-            <output>{settings.p2ThinkTimeMs}</output>
+            <input type="range" min="0" max="5000" step="50" bind:value={settings.p2ThinkTimeMs} oninput={() => sfx.play("tick")} />
+            <input type="number" min="0" step="50" class="num-override" bind:value={settings.p2ThinkTimeMs} />
           </label>
           <label class="row">
             <span class="rowLabel">P2 · {t("setup.maxDepth")}</span>
-            <input
-              type="range"
-              min="1"
-              max="12"
-              step="1"
-              bind:value={settings.p2MaxDepth}
-              oninput={() => sfx.play("tick")}
-            />
-            <output>{settings.p2MaxDepth}</output>
+            <input type="range" min="1" max="12" step="1" bind:value={settings.p2MaxDepth} oninput={() => sfx.play("tick")} />
+            <input type="number" min="1" step="1" class="num-override" bind:value={settings.p2MaxDepth} />
           </label>
           <label class="row">
             <span class="rowLabel">P2 · {t("setup.evaluator")}</span>
@@ -565,13 +555,16 @@
     padding: 1rem 1.5rem;
   }
   header {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
     margin-bottom: 1rem;
     border-bottom: 1.5px solid var(--paper-line);
     padding-bottom: 0.4rem;
   }
   h1 {
     font-size: 2rem;
-    margin: 0.2em 0 0;
+    margin: 0;
   }
   .seats {
     display: grid;
@@ -594,6 +587,25 @@
     padding: 0.6em 0.9em;
     background: var(--paper-bg);
   }
+  .mirror-row {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: center;
+    margin-top: 0.5rem;
+    grid-column: 1 / -1;
+  }
+  .mirror-btn {
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.3em 0.8em;
+    border: 1.5px solid var(--paper-line-strong);
+    border-radius: 5px;
+    background: var(--paper-bg);
+    cursor: pointer;
+    color: var(--paper-ink-soft);
+    transition: border-color 80ms, color 80ms;
+  }
+  .mirror-btn:hover { border-color: var(--accent, #c79b3a); color: var(--paper-ink); }
   .seat legend {
     padding: 0 0.3em;
     font-weight: 600;
@@ -628,9 +640,20 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 14em 1fr 4em;
+    grid-template-columns: 14em 1fr 5em;
     align-items: center;
     gap: 0.6em;
+  }
+  .num-override {
+    width: 5em;
+    text-align: right;
+    font: inherit;
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+    padding: 0.2em 0.4em;
+    border: 1px solid var(--paper-line-strong);
+    border-radius: 4px;
+    background: var(--paper-bg);
   }
   .rowLabel {
     color: var(--paper-ink-soft);

@@ -124,6 +124,13 @@ export function createTelemetrySession(): TelemetrySession {
         // Engine without auto_log on, or a transient failure - appendPly
         // already succeeded, so the per-ply log is preserved. Skip silently.
       }
+      // Save a resume snapshot so local in-progress games can be continued.
+      try {
+        const snap = await eng.snapshotJson();
+        if (snap) await store.saveResumeSnapshot(carrier.telemetryMatchId, snap);
+      } catch {
+        // Non-fatal: resume just won't be available for this ply.
+      }
     } catch (e) {
       logFail("recordPly", e);
     }

@@ -33,6 +33,10 @@
      *  to already equal the last waypoint (state has flipped by the time this
      *  arrives). */
     motion?: PieceMotion | null;
+    /** When true the whole board is CSS-rotated 180° (opponent-at-bottom view).
+     *  Counter-rotate the piece body about its own centre so glyphs/pips stay
+     *  upright. Purely visual — geometry and square math are unchanged. */
+    flipped?: boolean;
   }
 
   let {
@@ -45,6 +49,7 @@
     effectsActive = false,
     dormant = false,
     motion = null,
+    flipped = false,
   }: Props = $props();
 
   const file = $derived(piece.square & 7);
@@ -297,6 +302,7 @@
   <g
     class="body"
     style:transform-origin="{centerX}px {centerY}px"
+    style:transform={flipped ? "rotate(180deg)" : undefined}
   >
 
   {#if piece.kind === "king"}
@@ -478,26 +484,9 @@
   .piece.dragging {
     filter: drop-shadow(0 6px 4px rgba(0, 0, 0, 0.25));
   }
-  /* Subtle idle breathing: gentle scale pulse on the body group, around the
-     centre of the piece's local square coords (set via inline transform-origin).
-     Paused while a hit-shake is mid-flight, while dragging, while a piece is
-     "used", and while the parent has signalled that effects are mid-play. */
-  .piece .body {
-    animation: piece-breathe 3.6s ease-in-out infinite;
-    animation-delay: var(--breathe-delay, 0ms);
-  }
-  .piece.dragging .body,
-  .piece.used .body,
-  .piece.effects-active .body,
-  .piece.dormant .body {
-    animation: none;
-  }
+  /* Idle breathing removed — pieces are static when not acting. */
   .piece.shake .body {
     animation: piece-shake 320ms ease-out;
-  }
-  @keyframes piece-breathe {
-    0%, 100% { transform: scale(1) rotate(0deg); }
-    50%      { transform: scale(1.06) rotate(0.6deg); }
   }
   @keyframes piece-shake {
     0%   { transform: translate(0, 0) rotate(0deg); }

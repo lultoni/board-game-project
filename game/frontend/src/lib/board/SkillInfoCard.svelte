@@ -34,6 +34,24 @@
         cost: s.cost,
         range: s.defaultRange,
         staged: false,
+        focusVariant: null as null | "activation" | "effect" | "self" | "ally",
+      };
+    }
+    if (slice.kind === "focusBoost") {
+      // A focus-variant quarter of a split skill. Show the underlying skill's
+      // info plus which variant this quarter fires. focusMode skills:
+      // activation = +range window, effect = +effect range. retarget skills:
+      // self = cast on caster, ally = channel onto an adjacent ally.
+      const s = SKILLS[slice.skillId];
+      if (!s) return null;
+      return {
+        name: t(`skills.${s.key}.name`),
+        desc: t(`skills.${s.key}.desc`),
+        category: s.category as SkillCategory,
+        cost: s.cost,
+        range: s.defaultRange,
+        staged: false,
+        focusVariant: slice.variant,
       };
     }
     if (slice.kind === "modifierBadge") {
@@ -53,17 +71,11 @@
         cost: null,
         range: null,
         staged: true,
+        focusVariant: null as null | "activation" | "effect" | "self" | "ally",
       };
     }
-    // endphase
-    return {
-      name: t("wheel.endphase.name"),
-      desc: t("wheel.endphase.desc"),
-      category: null,
-      cost: null,
-      range: null,
-      staged: false,
-    };
+    // all cases covered
+    return null;
   });
 
   const categoryLabel = $derived.by(() => {
@@ -87,17 +99,29 @@
         <span class="category">{categoryLabel}</span>
       {/if}
     </header>
-    {#if slice.kind !== "endphase"}
-      <ul class="stats">
-        {#if info.cost != null}
-          <li>{t("wheel.cost", { n: info.cost })}</li>
-        {/if}
-        {#if info.range != null && info.range > 0}
-          <li>{t("wheel.range", { n: info.range })}</li>
-        {/if}
-      </ul>
+    {#if info}
+      {@const hasCost = info.cost != null}
+      {@const hasRange = 'range' in info && info.range != null && (info.range as number) > 0}
+      {#if hasCost || hasRange}
+        <ul class="stats">
+          {#if hasCost}
+            <li>{t("wheel.cost", { n: info.cost })}</li>
+          {/if}
+          {#if hasRange}
+            <li>{t("wheel.range", { n: (info as {range: number}).range })}</li>
+          {/if}
+        </ul>
+      {/if}
     {/if}
     <p class="desc">{info.desc}</p>
+    {#if info.focusVariant}
+      <p class="badge focus-variant">
+        {#if info.focusVariant === "activation"}{t("wheel.focusActivation")}
+        {:else if info.focusVariant === "effect"}{t("wheel.focusEffect")}
+        {:else if info.focusVariant === "self"}{t("wheel.focusSelf")}
+        {:else}{t("wheel.focusAlly")}{/if}
+      </p>
+    {/if}
     {#if info.staged}
       <p class="badge staged">● {t("wheel.staged")}</p>
     {/if}
@@ -174,6 +198,10 @@
   }
   .badge.staged {
     color: var(--accent);
+    background: rgba(138, 74, 189, 0.12);
+  }
+  .badge.focus-variant {
+    color: #8a4abd;
     background: rgba(138, 74, 189, 0.12);
   }
   .badge.armed {

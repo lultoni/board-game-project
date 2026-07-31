@@ -136,6 +136,7 @@ function makePositionView(
     gameResult: 0,
     zobrist,
     pendingBodyguard,
+    movedThisPhase: 0n,
   };
 }
 
@@ -732,6 +733,46 @@ describe("createPlyRenderer", () => {
     expect(renderer.pieceIds.get(0)).toBe(casterId);
     expect(renderer.effectQueue.some((e) => e.kind === "impact" && e.at === 8)).toBe(true);
     expect(renderer.effectQueue.some((e) => e.kind === "heal")).toBe(false);
+  });
+
+  it("Strike ranged KILL, caster steps to empty tile equidistant from origin+victim: no heal, death fx on victim (BUG-1 repro)", async () => {
+    // The equidistant-tie case. Caster p1 champ at h3 (sq 23) ranged-kills p2
+    // champ at f3 (sq 21, 1hp) with Tempest (range 2). Caster steps 23 → g3
+    // (sq 22, empty). Post: g3=caster, h3+f3 empty.
+    //
+    // diffSkillMailbox is identity-blind: g3's arrival is chebyshev-dist 1 from
+    // BOTH the caster's origin (h3) and the victim (f3), and the tie breaks
+    // toward the lower square index (f3=21 < h3=23). So it mispairs g3 with the
+    // VICTIM (move f3→g3, reading as a +1 HP heal) and lists the CASTER (h3) as
+    // a death. extractCasterMove must strip the arrival at g3 by its `to` (not
+    // its `from`) and restore f3 as the real death.
+    eng.setNextView(makePositionView({
+      23: { cell: cell({ hp: 2, armor: 2 }), owner: "p1", kind: "champion" }, // h3 caster
+      21: { cell: cell({ hp: 1 }), owner: "p2", kind: "champion" },           // f3 victim
+    }));
+    await renderer.resyncFromEngine();
+    const casterId = renderer.pieceIds.get(23);
+    expect(casterId).toBeDefined();
+    sfx.calls.length = 0;
+
+    const raw = encodeSkill({ src: 23, target: 21, skillId: 5 /* tempest */ });
+    eng.setNextView(makePositionView({
+      22: { cell: cell({ hp: 2, armor: 2 }), owner: "p1", kind: "champion" }, // g3 caster landed
+    }, 13n));
+    await renderer.applyAndRender(raw, async () => { await eng.tryApply(raw); });
+    scheduler.fireAll();
+
+    // No spurious heal anywhere (the mispaired f3→g3 "heal" must be gone).
+    expect(renderer.effectQueue.some((e) => e.kind === "heal")).toBe(false);
+    // Death visuals land on the victim's tile (f3=21), NOT the caster's origin.
+    expect(renderer.effectQueue.some((e) => e.kind === "impact" && e.at === 21)).toBe(true);
+    expect(renderer.effectQueue.some((e) => e.kind === "impact" && e.at === 23)).toBe(false);
+    expect(sfx.calls.map((c) => c.key)).toContain("death");
+    // Caster relocated h3 → g3 (dust + piece-id follow), no death on the caster.
+    expect(renderer.effectQueue.some((e) => e.kind === "dust")).toBe(true);
+    expect(renderer.pieceIds.get(22)).toBe(casterId);
+    expect(renderer.pieceIds.get(23)).toBeUndefined();
+    expect(renderer.pieceIds.get(21)).toBeUndefined();
   });
 
   it("EndPhase plays the phaseEnd sfx and yields lastApplied=null", async () => {

@@ -60,6 +60,11 @@ describe("encode/decode round-trip (v2)", () => {
     { kind: "handoff-announce", matchId: "newrow", seq: 18 },
     { kind: "paused" },
     { kind: "resumed" },
+    { kind: "draw-offer" },
+    { kind: "draw-response", accepted: true },
+    { kind: "draw-response", accepted: false },
+    { kind: "resign", seat: 0 },
+    { kind: "resign", seat: 1 },
     { kind: "error", reason: "session-full" },
   ];
 
@@ -175,6 +180,18 @@ describe("decodeMessageV2 rejects malformed payloads", () => {
   it("handoff-announce requires non-empty matchId and u32 seq", () => {
     expect(decodeMessageV2('{"kind":"handoff-announce","matchId":"","seq":0}')).toBeNull();
     expect(decodeMessageV2('{"kind":"handoff-announce","matchId":"x","seq":-1}')).toBeNull();
+  });
+
+  it("draw-response requires boolean accepted", () => {
+    expect(decodeMessageV2('{"kind":"draw-response"}')).toBeNull();
+    expect(decodeMessageV2('{"kind":"draw-response","accepted":"yes"}')).toBeNull();
+  });
+
+  it("resign requires seat 0 or 1", () => {
+    expect(decodeMessageV2('{"kind":"resign"}')).toBeNull();
+    expect(decodeMessageV2('{"kind":"resign","seat":2}')).toBeNull();
+    expect(decodeMessageV2('{"kind":"resign","seat":"0"}')).toBeNull();
+    expect(decodeMessageV2('{"kind":"resign","seat":0}')).toEqual({ kind: "resign", seat: 0 });
   });
 
   it("bodyguard-prompt is rejected as an unknown kind (removed in Phase 1e)", () => {

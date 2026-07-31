@@ -56,6 +56,9 @@ interface MatchRow extends MatchMeta {
   matchLogJson?: string;
   totalPlies?: number;
   totalWallMs?: number;
+  // Resume snapshot — engine state JSON written after every ply for local
+  // in-progress games. Cleared (set to undefined) on finalise.
+  resumeSnapshotJson?: string;
 }
 
 function openDb(factory: IDBFactory): Promise<IDBDatabase> {
@@ -381,6 +384,26 @@ export class IdbTelemetryStore implements TelemetryStore {
       }
     };
     await awaitTx(tx);
+  }
+
+  async saveResumeSnapshot(matchId: string, snapshotJson: string): Promise<void> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_MATCHES, "readwrite");
+    const store = tx.objectStore(STORE_MATCHES);
+    const existing = await awaitReq<MatchRow | undefined>(store.get(matchId));
+    if (!existing || existing.status === "ended") return;
+    store.put({ ...existing, resumeSnapshotJson: snapshotJson });
+    await awaitTx(tx);
+  }
+
+  async getResumeSnapshot(matchId: string): Promise<string | null> {
+    const db = await this.#dbPromise;
+    const tx = db.transaction(STORE_MATCHES, "readonly");
+    const row = await awaitReq<MatchRow | undefined>(
+      tx.objectStore(STORE_MATCHES).get(matchId),
+    );
+    if (!row || row.status === "ended") return null;
+    return row.resumeSnapshotJson ?? null;
   }
 
   async bundleMatches(matchIds: string[]): Promise<{ bundle: string; skipped: string[] }> {

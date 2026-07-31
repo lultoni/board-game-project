@@ -61,6 +61,14 @@
     /** Pointer pressed down on a selectable piece (before drag threshold). */
     onPressStart?: (src: number) => void;
     /**
+     * When true, a tap (no drag) on a *draggable* piece fires `onSquareClick`
+     * even if the piece wasn't already selected. The match board leaves this
+     * false because it selects on pointerdown and a click would immediately
+     * toggle the selection back off; the Position Builder sets it true so a
+     * tap opens the piece editor (pieces there are always draggable and never
+     * "selected"). */
+    clickPieceOnTap?: boolean;
+    /**
      * Live drag updates. `overSq` is the square under the cursor (or null
      * outside the board); `path` is the ordered list of distinct squares
      * the cursor has crossed since press. `(x, y)` is the live cursor
@@ -81,6 +89,14 @@
     /** Inferred attacker landing square for the current drag (approach_sq
      * on Move-Attack, target on plain Move). Null when ambiguous. */
     dragLanding?: number | null;
+    /** Click-to-move hover: the legal target square under the cursor while a
+     *  piece is SELECTED but NOT being dragged. When set, the board renders the
+     *  same hover ring + landing crosshair it shows during a drag, so hovering
+     *  an enemy previews exactly where the selected piece would land — "as if
+     *  you had dragged it there" but tracking the mouse. `dragLanding` supplies
+     *  the crosshair square in this mode too (parent feeds it the click-mode
+     *  landing). Null clears the preview. */
+    clickHover?: number | null;
     /** When non-null, render the radial skill wheel around this square.
      *  All other props in this group are read while the wheel is open. */
     wheelOpen?: {
@@ -98,8 +114,10 @@
     wheelLegality?: {
       skill1Legal: boolean;
       skill2Legal: boolean;
-      endPhaseLegal: boolean;
     };
+    /** Per-slot focus split descriptor (see SkillWheel.SplitDesc). */
+    split1?: import("./SkillWheel.svelte").SplitDesc | null;
+    split2?: import("./SkillWheel.svelte").SplitDesc | null;
     onWheelSliceClick?: (slice: SliceKind) => void;
     onWheelSliceHover?: (slice: SliceKind | null) => void;
     /** Direction picker (Shove). When non-null, render an arrow ring on
@@ -115,13 +133,18 @@
      *  along the waypoints (with a subtle bounce) instead of the CSS
      *  transition. Populated by the ply-renderer on Move actions. */
     pieceMotion?: Map<number, PieceMotion>;
+    /** When true, render board with rank 7 at the bottom (P2's perspective).
+     *  Default false = rank 0 at the bottom (P1's perspective). */
+    flipped?: boolean;
     /** Whose turn it is: 0 = P1, 1 = P2, null = game over / unknown.
      *  Renders a coloured accent strip on the active player's board edge. */
     toMove?: number | null;
     /** Diagnostic hover overlay. Fires with the square under the cursor
      *  (0..63) or null when the cursor leaves the board. `(clientX, clientY)`
-     *  are viewport-space coordinates so the parent can position a popup. */
-    onSquareHover?: (sq: number | null, clientX: number, clientY: number) => void;
+     *  are viewport-space coordinates so the parent can position a popup;
+     *  `(svgX, svgY)` are board-space (viewBox) coordinates so the parent can
+     *  resolve the sub-tile approach for a click-mode Move-Attack hover. */
+    onSquareHover?: (sq: number | null, clientX: number, clientY: number, svgX: number, svgY: number) => void;
   }
 
   let {
@@ -143,20 +166,24 @@
     onPieceDrop,
     onApproachChoice,
     onPressStart,
+    clickPieceOnTap = false,
     onDragMove,
     dragTrail = [],
     dragHover = null,
     dragHoverLegal = false,
     dragLanding = null,
+    clickHover = null,
     wheelOpen = null,
     armedSkillId = null,
     focusActive = false,
     chargeActive = false,
+    flipped = false,
     wheelLegality = {
       skill1Legal: false,
       skill2Legal: false,
-      endPhaseLegal: false,
     },
+    split1 = null,
+    split2 = null,
     onWheelSliceClick,
     onWheelSliceHover,
     directionPicker = null,
@@ -168,6 +195,13 @@
   }: Props = $props();
 
   const SIZE = $derived(viewBox / 8);
+  /** Convert a board rank (0–7) to SVG y-coordinate. Always P1-orientation
+   *  (rank 0 at the bottom); the `flipped` (opponent-at-bottom) view is a pure
+   *  CSS 180° rotation of the whole SVG, so square/piece/effect geometry stays
+   *  identical and only the final paint is rotated. */
+  function rankY(rank: number): number {
+    return (7 - rank) * SIZE;
+  }
   /** Pad around the 8x8 grid inside the SVG's viewBox so the radial
    *  skill wheel (which extends ~1.05 x SIZE beyond a piece's tile)
    *  can render AND receive pointer events without spilling outside
@@ -236,7 +270,7 @@
       const file = sq & 7;
       const rank = (sq >> 3) & 7;
       const x = file * SIZE;
-      const y = (7 - rank) * SIZE;
+      const y = rankY(rank);
       const light = (file + rank) % 2 === 1;
       return { sq, x, y, light };
     }),
@@ -292,6 +326,16 @@
 
   const isDragging = $derived(press !== null && press.dragging);
 
+  // Unified "square the cursor is previewing a move onto" — the drag hover while
+  // dragging, otherwise the click-mode hover (a selected piece hovering a legal
+  // target). Drives the hover ring + landing crosshair in BOTH modes so click-
+  // to-move gets the same preview as drag-and-drop (P2-C).
+  const activeHover = $derived(isDragging ? dragHover : clickHover);
+  // In click-mode the hover is always a legal target (parent only sets it for
+  // squares in the move set); in drag-mode it depends on the drop legality.
+  const activeHoverLegal = $derived(isDragging ? dragHoverLegal : true);
+  const showHoverPreview = $derived(activeHover !== null);
+
   function clientToSvg(clientX: number, clientY: number): { x: number; y: number } {
     const svg = svgEl;
     if (!svg) return { x: 0, y: 0 };
@@ -300,11 +344,22 @@
     pt.y = clientY;
     const ctm = svg.getScreenCTM();
     if (!ctm) return { x: 0, y: 0 };
+    // getScreenCTM() maps the SVG root user space → screen. The board content
+    // lives inside `.flip-layer`, an INNER <g> that (when flipped) is rotated
+    // 180° about the grid centre (viewBox/2, viewBox/2). So to express the
+    // cursor in the SAME frame as the pieces/squares/hit-rects, reflect the
+    // root-space point through that centre. This is the ONE coordinate frame
+    // everything downstream uses (square resolution, dragged-piece override,
+    // and the cursor coords handed to the parent's approach picker) — no split.
     const local = pt.matrixTransform(ctm.inverse());
+    if (flipped) {
+      return { x: viewBox - local.x, y: viewBox - local.y };
+    }
     return { x: local.x, y: local.y };
   }
 
   function svgToSquare(x: number, y: number): number | null {
+    // Coords are already in layer/grid space (clientToSvg handles the flip).
     if (x < 0 || y < 0 || x >= viewBox || y >= viewBox) return null;
     const file = Math.floor(x / SIZE);
     const rank = 7 - Math.floor(y / SIZE);
@@ -376,11 +431,15 @@
         press.path = [...press.path, overSq];
       }
     }
+    // x/y are already in layer/grid space (clientToSvg reflected them when
+    // flipped), which is exactly what overrideForPiece and the parent's
+    // approach picker expect.
     onDragMove?.(press.src, overSq, press.path, x, y);
   }
 
   function handlePointerUp(ev: PointerEvent) {
     if (!press || ev.pointerId !== press.pointerId) return;
+    // Already in layer/grid space (clientToSvg reflects when flipped).
     const { x, y } = clientToSvg(ev.clientX, ev.clientY);
     const dropSq = svgToSquare(x, y);
     const { src, dragging, path, draggable, wasSelected } = press;
@@ -390,9 +449,11 @@
     // Draggable tap (no drag crossed). If the piece was already selected
     // when pressed, toggle it off by firing the click (the parent's
     // `onSquareClick` does the toggle). If it's a fresh selection,
-    // `onPressStart` already set it at pointerdown - bail.
+    // `onPressStart` already set it at pointerdown - bail. Exception:
+    // `clickPieceOnTap` (Position Builder) wants every tap to fire a click so
+    // it can open the piece editor regardless of selection state.
     if (draggable && !dragging) {
-      if (wasSelected) handleSquareClickInternal(src, x, y);
+      if (wasSelected || clickPieceOnTap) handleSquareClickInternal(src, x, y);
       return;
     }
 
@@ -565,6 +626,15 @@
     </symbol>
   </defs>
 
+  <!-- Flip layer: opponent-at-bottom view rotates ALL board content 180° about
+       the GRID centre (viewBox/2, viewBox/2) as a single SVG transform. Doing
+       it here (not as a CSS transform on the <svg>) keeps getScreenCTM() a pure
+       viewBox→screen map, so pointer→coord math has ONE predictable frame: the
+       layer's local space, obtained by reflecting the root-space cursor through
+       the grid centre (see svgToLogical). Pieces, effects, hit-rects and the
+       dragged-piece override all live in this same layer frame. -->
+  <g class="flip-layer" transform={flipped ? `rotate(180 ${viewBox / 2} ${viewBox / 2})` : undefined}>
+
   <!-- Paper-tone square fills -->
   <g class="squares">
     {#each squares as { sq, x, y, light } (sq)}
@@ -606,20 +676,26 @@
     <g class="last-applied">
       <rect
         x={(src & 7) * SIZE}
-        y={(7 - ((src >> 3) & 7)) * SIZE}
+        y={rankY((src >> 3) & 7)}
         width={SIZE}
         height={SIZE}
         fill="var(--accent, #c79b3a)"
-        fill-opacity="0.16"
+        fill-opacity="0.32"
+        stroke="var(--accent, #c79b3a)"
+        stroke-width="2"
+        stroke-opacity="0.55"
         pointer-events="none"
       />
       <rect
         x={(tgt & 7) * SIZE}
-        y={(7 - ((tgt >> 3) & 7)) * SIZE}
+        y={rankY((tgt >> 3) & 7)}
         width={SIZE}
         height={SIZE}
         fill="var(--accent, #c79b3a)"
-        fill-opacity="0.28"
+        fill-opacity="0.50"
+        stroke="var(--accent, #c79b3a)"
+        stroke-width="2.5"
+        stroke-opacity="0.80"
         pointer-events="none"
       />
     </g>
@@ -632,7 +708,7 @@
         {@const file = tgt & 7}
         {@const rank = (tgt >> 3) & 7}
         {@const x = file * SIZE}
-        {@const y = (7 - rank) * SIZE}
+        {@const y = rankY(rank)}
         {@const isAttack = occupied.has(tgt)}
         {#if isAttack}
           <!-- Move-Attack: red ring -->
@@ -676,7 +752,7 @@
     {@const rank = (selection >> 3) & 7}
     <rect
       x={file * SIZE + 2}
-      y={(7 - rank) * SIZE + 2}
+      y={rankY(rank) + 2}
       width={SIZE - 4}
       height={SIZE - 4}
       fill="none"
@@ -695,7 +771,7 @@
         {@const rank = (sq >> 3) & 7}
         <rect
           x={file * SIZE + 4}
-          y={(7 - rank) * SIZE + 4}
+          y={rankY(rank) + 4}
           width={SIZE - 8}
           height={SIZE - 8}
           fill="var(--accent, #c79b3a)"
@@ -706,36 +782,39 @@
     </g>
   {/if}
 
-  <!-- Drag-hover ring - the square currently under the cursor, sized so it
-       stands above the move-target dots/rings. Green if legal drop, red if not. -->
-  {#if isDragging && dragHover !== null}
-    {@const file = dragHover & 7}
-    {@const rank = (dragHover >> 3) & 7}
+  <!-- Hover ring - the square currently being previewed for a move (drag hover
+       while dragging, or the click-mode hover of a selected piece over a legal
+       target). Sized so it stands above the move-target dots/rings. Green if a
+       legal drop, red if not. -->
+  {#if showHoverPreview && activeHover !== null}
+    {@const file = activeHover & 7}
+    {@const rank = (activeHover >> 3) & 7}
     <rect
       x={file * SIZE + 1}
-      y={(7 - rank) * SIZE + 1}
+      y={rankY(rank) + 1}
       width={SIZE - 2}
       height={SIZE - 2}
       fill="none"
-      stroke={dragHoverLegal ? "#3a6a4a" : "#a94b3b"}
+      stroke={activeHoverLegal ? "#3a6a4a" : "#a94b3b"}
       stroke-width="4"
       stroke-dasharray="6 4"
       pointer-events="none"
     />
   {/if}
 
-  <!-- Drag landing marker - the square the attacker would actually end up on
-       if the drag were released right now. Distinct from `dragHover` because
-       on Move-Attack the attacker stops one tile short of the defender. -->
-  {#if isDragging && dragLanding !== null && dragLanding !== dragHover}
+  <!-- Landing marker - the square the attacker would actually end up on if the
+       move were committed right now. Distinct from `activeHover` because on a
+       Move-Attack the attacker stops one tile short of the defender. Shown for
+       both drag and click-to-move hover. -->
+  {#if showHoverPreview && dragLanding !== null && dragLanding !== activeHover}
     {@const file = dragLanding & 7}
     {@const rank = (dragLanding >> 3) & 7}
     {@const cx = file * SIZE + SIZE / 2}
-    {@const cy = (7 - rank) * SIZE + SIZE / 2}
+    {@const cy = rankY(rank) + SIZE / 2}
     <g pointer-events="none">
       <rect
         x={file * SIZE + 1}
-        y={(7 - rank) * SIZE + 1}
+        y={rankY(rank) + 1}
         width={SIZE - 2}
         height={SIZE - 2}
         fill="none"
@@ -760,27 +839,42 @@
     </g>
   {/if}
 
-  <!-- File labels along the bottom edge -->
-  <g class="labels" font-size={SIZE * 0.22} fill="var(--paper-ink-soft, #6a6055)">
-    {#each fileLabels as letter, i}
+  <!-- Coordinate labels. They live inside `.flip-layer` (rotated 180° about the
+       grid centre when flipped); counter-rotating each label GROUP by 180° about
+       the SAME centre (viewBox/2, viewBox/2) exactly cancels it, so every glyph
+       returns to its original screen spot and stays upright. Only the VALUE
+       flips (files h..a, ranks 8..1) so it reads correctly for that seat. -->
+  <!-- File labels along the bottom edge. -->
+  <g
+    class="labels"
+    font-size={SIZE * 0.22}
+    fill="var(--paper-ink-soft, #6a6055)"
+    transform={flipped ? `rotate(180 ${viewBox / 2} ${viewBox / 2})` : undefined}
+  >
+    {#each fileLabels as _letter, i}
       <text
         x={i * SIZE + SIZE / 2}
         y={viewBox + 18}
         text-anchor="middle"
         dominant-baseline="alphabetic"
-      >{letter}</text>
+      >{fileLabels[flipped ? 7 - i : i]}</text>
     {/each}
   </g>
 
-  <!-- Rank labels inside the left edge of each row -->
-  <g class="labels" font-size={SIZE * 0.18} fill="var(--paper-ink-soft, #6a6055)">
+  <!-- Rank labels inside the left edge of each row. -->
+  <g
+    class="labels"
+    font-size={SIZE * 0.18}
+    fill="var(--paper-ink-soft, #6a6055)"
+    transform={flipped ? `rotate(180 ${viewBox / 2} ${viewBox / 2})` : undefined}
+  >
     {#each Array.from({ length: 8 }) as _, r}
       <text
         x={4}
-        y={(7 - r) * SIZE + SIZE * 0.22}
+        y={rankY(r) + SIZE * 0.22}
         text-anchor="start"
         dominant-baseline="hanging"
-      >{r + 1}</text>
+      >{flipped ? 8 - r : r + 1}</text>
     {/each}
   </g>
 
@@ -792,7 +886,7 @@
         {@const file = ap & 7}
         {@const rank = (ap >> 3) & 7}
         {@const x = file * SIZE}
-        {@const y = (7 - rank) * SIZE}
+        {@const y = rankY(rank)}
         {@const hovered = approachHovered === ap}
         <rect
           {x}
@@ -823,7 +917,7 @@
     <g class="bodyguard-choices">
       <rect
         x={(bodyguardChoice.defender & 7) * SIZE}
-        y={(7 - ((bodyguardChoice.defender >> 3) & 7)) * SIZE}
+        y={rankY((bodyguardChoice.defender >> 3) & 7)}
         width={SIZE}
         height={SIZE}
         fill="#cc3a2a"
@@ -842,7 +936,7 @@
       {#each bodyguardChoice.guards as gSq (gSq)}
         <rect
           x={(gSq & 7) * SIZE}
-          y={(7 - ((gSq >> 3) & 7)) * SIZE}
+          y={rankY((gSq >> 3) & 7)}
           width={SIZE}
           height={SIZE}
           fill="#3a7acc"
@@ -898,6 +992,7 @@
         dormant={position
           ? (piece.owner === "p1" ? 0 : 1) !== position.toMove
           : false}
+        {flipped}
       />
     {/each}
   </g>
@@ -905,7 +1000,7 @@
   <!-- Hit-test overlay - invisible rects on top to catch pointer events.
        Pointer-down on a selectable square begins a drag; up routes to drop
        (if the cursor crossed squares) or click (if it stayed put). -->
-  <g class="hits" role="presentation" onpointerleave={(e) => { approachHovered = null; onSquareHover?.(null, e.clientX, e.clientY); }}>
+  <g class="hits" role="presentation" onpointerleave={(e) => { approachHovered = null; onSquareHover?.(null, e.clientX, e.clientY, 0, 0); }}>
     {#each squares as { sq, x, y } (sq)}
       {@const isMoveTarget = moveTargets.has(sq)}
       {@const isSelectable = selectable.has(sq)}
@@ -923,14 +1018,19 @@
         aria-label={`square ${sq}`}
         class:hot={isHot}
         class:grab={interactive && draggable.has(sq) && !usedSquares.has(sq)}
-        onpointermove={(e) => { if (approachChoices.length > 0 && approachChoices.includes(sq)) approachHovered = sq; else if (approachChoices.length > 0) approachHovered = null; onSquareHover?.(sq, e.clientX, e.clientY); }}
+        onpointermove={(e) => {
+          if (approachChoices.length > 0 && approachChoices.includes(sq)) approachHovered = sq;
+          else if (approachChoices.length > 0) approachHovered = null;
+          const { x: sx, y: sy } = clientToSvg(e.clientX, e.clientY);
+          onSquareHover?.(sq, e.clientX, e.clientY, sx, sy);
+        }}
         onpointerdown={(e) => handleSquarePointerDown(sq, e)}
         onkeydown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             const file = sq & 7;
             const rank = (sq >> 3) & 7;
             const cx = file * SIZE + SIZE / 2;
-            const cy = (7 - rank) * SIZE + SIZE / 2;
+            const cy = rankY(rank) + SIZE / 2;
             handleSquareClickInternal(sq, cx, cy);
           }
         }}
@@ -946,7 +1046,10 @@
     {@const wRank = (wheelOpen.square >> 3) & 7}
     {@const wX = wFile * SIZE}
     {@const wY = (7 - wRank) * SIZE}
-    <g transform="translate({wX}, {wY})">
+    <!-- Counter-rotate the wheel about its piece centre when the board is
+         flipped so its glyphs/labels read upright and slices sit under the
+         cursor. -->
+    <g transform="translate({wX}, {wY}){flipped ? ` rotate(180 ${SIZE / 2} ${SIZE / 2})` : ''}">
       <SkillWheel
         size={SIZE}
         skill1={wheelOpen.skill1}
@@ -956,7 +1059,8 @@
         {chargeActive}
         skill1Legal={wheelLegality.skill1Legal}
         skill2Legal={wheelLegality.skill2Legal}
-        endPhaseLegal={wheelLegality.endPhaseLegal}
+        {split1}
+        {split2}
         onSliceClick={(s) => onWheelSliceClick?.(s)}
         onSliceHover={(s) => onWheelSliceHover?.(s)}
       />
@@ -974,6 +1078,7 @@
       onCancel={() => onDirectionCancel?.()}
     />
   {/if}
+  </g><!-- /flip-layer -->
 </svg>
 
 <style>
@@ -985,6 +1090,9 @@
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
   }
+  /* Flip is done as an SVG transform on `.flip-layer` (see markup), NOT a CSS
+     transform on the <svg>, so getScreenCTM() stays a clean viewBox map and the
+     pointer coordinate frame is predictable. */
   .board :global(*) {
     -webkit-tap-highlight-color: transparent;
   }

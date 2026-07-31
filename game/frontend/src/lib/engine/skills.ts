@@ -48,6 +48,29 @@ export function skillById(id: number): SkillInfo | undefined {
   return SKILLS[id];
 }
 
+/** How a skill's wheel half splits into two quarters when Focus is staged.
+ *  - "focusMode": Blast/Shove — the +1 Range applies to activation-range
+ *    (quarter A) OR effect-range (quarter B). Driven by `hasFocusModeChoice`.
+ *  - "retarget": Shield/Dash/Retreat — Focus's +1 Range lets the caster
+ *    channel the skill onto an adjacent ALLY (quarter B) instead of SELF
+ *    (quarter A). These are self/movement skills whose reach grows to an ally.
+ *  - null: no focus split (single half as before).
+ *
+ *  Type-driven (independent of whether both quarters are currently legal) so
+ *  the wheel always advertises the choice; per-quarter legality greys the
+ *  unavailable side. Mirrors the engine's generator: only Shield (SelfOnly) and
+ *  Dash/Retreat (Empty) emit focus-retarget branches. */
+export type FocusSplitKind = "focusMode" | "retarget";
+const FOCUS_RETARGET_SKILL_KEYS = new Set(["shield", "dash", "retreat"]);
+
+export function focusSplitKind(id: number): FocusSplitKind | null {
+  const s = SKILLS[id];
+  if (!s) return null;
+  if (s.hasFocusModeChoice) return "focusMode";
+  if (FOCUS_RETARGET_SKILL_KEYS.has(s.key)) return "retarget";
+  return null;
+}
+
 /** Named skill ids derived from the table by key, so no magic integers leak
  *  into behavioural checks. Kept in sync by the contract test. */
 export const SKILL_BLAST = Object.values(SKILLS).find((s) => s.key === "blast")!.id;

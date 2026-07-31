@@ -24,10 +24,26 @@
 
   import { skillColor, SKILLS } from "$lib/engine";
 
+  /** A quarter of a split skill. "focusMode" skills (Blast/Shove) split into
+   *  activation(+rng) / effect(+eff); "retarget" skills (Shield/Dash/Retreat)
+   *  split into self / ally. The `variant` string is the quarter's identity. */
+  export type FocusVariant = "activation" | "effect" | "self" | "ally";
+
   export type SliceKind =
     | { kind: "skill"; skillId: number; slot: 1 | 2 }
-    | { kind: "endphase" }
+    | { kind: "focusBoost"; slot: 1 | 2; skillId: number; variant: FocusVariant }
     | { kind: "modifierBadge"; modifier: "focus" | "charge" };
+
+  /** Describes how one slot's half splits into two focus quarters. The two
+   *  quarters are (a, b): focusMode → (activation, effect); retarget → (self, ally). */
+  export interface SplitDesc {
+    kind: "focusMode" | "retarget";
+    /** Legality of quarter A (activation | self) and B (effect | ally). */
+    aLegal: boolean;
+    bLegal: boolean;
+    /** Which quarter is currently armed, or null. */
+    armed: FocusVariant | null;
+  }
 
   interface Props {
     /** Tile size in SVG units (matches Board's SIZE). */
@@ -37,18 +53,21 @@
     skill2: number;
     /** Which skill (if any) is currently armed. Drives the "armed" glow. */
     armedSkillId: number | null;
-    /** Modifier flags from position.pendingModifiers. Drive whether the
-     *  Focus / Charge badge inside the wheel renders. */
+    /** Modifier flags from position.pendingModifiers. */
     focusActive: boolean;
     chargeActive: boolean;
-    /** Whether each skill sector's action is currently legal (greyed out
-     *  if not). */
+    /** Whether each skill sector's action is currently legal. */
     skill1Legal: boolean;
     skill2Legal: boolean;
-    endPhaseLegal: boolean;
-    /** Click handler - single sink for every interactive region. */
+    /** Per-slot focus split descriptor. When non-null, that slot's half-ring
+     *  divides into two quarters. `kind` picks the labels (focusMode → +rng/+eff,
+     *  retarget → self/ally). `aLegal`/`bLegal` grey the unavailable quarter.
+     *  `armed` marks which quarter is the armed variant (null = neither). */
+    split1?: SplitDesc | null;
+    split2?: SplitDesc | null;
+    /** Click handler. */
     onSliceClick: (slice: SliceKind) => void;
-    /** Hover handler. Called with `null` on mouse-leave of all regions. */
+    /** Hover handler. Called with null on mouse-leave of all regions. */
     onSliceHover: (slice: SliceKind | null) => void;
   }
 
@@ -61,7 +80,8 @@
     chargeActive,
     skill1Legal,
     skill2Legal,
-    endPhaseLegal,
+    split1 = null,
+    split2 = null,
     onSliceClick,
     onSliceHover,
   }: Props = $props();
@@ -76,25 +96,14 @@
   /** Mid-radius where glyphs / labels sit. */
   const rMid = $derived((size * 0.62 + size * 1.05) / 2);
 
-  // Sector angles in degrees. SVG y-axis is flipped (down=positive), so we
-  // compute with the convention 0°=right, 90°=down (matches Math.cos/sin
-  // for SVG). Angles are measured clockwise from the +x axis.
-  //
-  // End-Phase = thin slice centred on the right (angle 0):
-  //   from -15° to +15°  (30° wide)
-  // Skill 1 = top half-ring centred upward (angle -90°):
-  //   from -165° to -15° (150° wide), i.e. left of End-Phase, going up & around.
-  // Skill 2 = bottom half-ring centred downward (angle +90°):
-  //   from +15° to +165° (150° wide), i.e. right of nothing, going down & around.
-  // Small ~0° gaps between sectors are introduced via slight inset (+1° each
-  // side) so the slices read as separate.
-  const GAP_DEG = 1;
-  const endStart = -15 + GAP_DEG;
-  const endEnd = 15 - GAP_DEG;
-  const skill1Start = -165 + GAP_DEG;
-  const skill1End = -15 - GAP_DEG;
-  const skill2Start = 15 + GAP_DEG;
-  const skill2End = 165 - GAP_DEG;
+  // Sector angles. Two half-rings with a small gap between them.
+  // Skill 1 = top half (180° centred upward): -180°+GAP to -GAP
+  // Skill 2 = bottom half (180° centred downward): +GAP to +180°-GAP
+  const GAP_DEG = 2;
+  const skill1Start = -180 + GAP_DEG;
+  const skill1End   =  -GAP_DEG;
+  const skill2Start =   GAP_DEG;
+  const skill2End   =  180 - GAP_DEG;
 
   function deg2rad(d: number): number {
     return (d * Math.PI) / 180;
@@ -136,11 +145,9 @@
   // Pre-computed slice paths + glyph anchors.
   const skill1Path = $derived(sectorPath(skill1Start, skill1End, rInner, rOuter));
   const skill2Path = $derived(sectorPath(skill2Start, skill2End, rInner, rOuter));
-  const endPath = $derived(sectorPath(endStart, endEnd, rInner, rOuter));
 
   const skill1Glyph = $derived(midPoint((skill1Start + skill1End) / 2));
   const skill2Glyph = $derived(midPoint((skill2Start + skill2End) / 2));
-  const endGlyph = $derived(midPoint((endStart + endEnd) / 2));
 
   // Glyph icon size - fits comfortably inside the sector's mid-arc band.
   const glyphSize = $derived((rOuter - rInner) * 0.55);
@@ -159,12 +166,76 @@
       armed ? "armed" : "",
     ].filter(Boolean).join(" ");
   }
+
+  // Split-sector helpers for the focus picker.
+  // When a slot has a SplitDesc, that slot's half-ring is divided into two
+  // equal quarter-rings: quarter A (activation | self) and quarter B
+  // (effect | ally). The labels/variants are chosen by the split kind below.
+  function splitPaths(isSlot1: boolean): { activationPath: string; effectPath: string } {
+    const [start, end] = isSlot1
+      ? [skill1Start, skill1End]
+      : [skill2Start, skill2End];
+    const mid = (start + end) / 2;
+    return {
+      activationPath: sectorPath(start, mid - GAP_DEG / 2, rInner, rOuter),
+      effectPath: sectorPath(mid + GAP_DEG / 2, end, rInner, rOuter),
+    };
+  }
+  const slot1Split = $derived(split1 && skill1 > 0 ? splitPaths(true) : null);
+  const slot2Split = $derived(split2 && skill2 > 0 ? splitPaths(false) : null);
+
+  /** Labels for a split's two quarters, by kind. A = activation|self, B = effect|ally. */
+  function quarterLabels(kind: "focusMode" | "retarget"): { a: string; b: string } {
+    return kind === "focusMode" ? { a: "+rng", b: "+eff" } : { a: "self", b: "ally" };
+  }
+  /** The FocusVariant identity of each quarter, by kind. */
+  function quarterVariants(kind: "focusMode" | "retarget"): { a: FocusVariant; b: FocusVariant } {
+    return kind === "focusMode"
+      ? { a: "activation", b: "effect" }
+      : { a: "self", b: "ally" };
+  }
 </script>
 
 <g class="skill-wheel" pointer-events="auto">
   <!-- Skill 1 sector (top half-ring) -->
   {#if skill1 > 0}
     {@const armed = armedSkillId === skill1}
+    {#if slot1Split && split1}
+      <!-- Split into two focus quarters (A / B). Clicking a quarter arms this
+           skill with that variant. Labels/variants depend on split kind. -->
+      {@const lbl = quarterLabels(split1.kind)}
+      {@const va = quarterVariants(split1.kind)}
+      {@const aArmed = split1.armed === va.a}
+      {@const bArmed = split1.armed === va.b}
+      <g
+        class="sector {aArmed ? 'armed' : ''} {split1.aLegal ? '' : 'disabled'}"
+        onpointerdown={(e) => { e.stopPropagation(); if (split1.aLegal) onSliceClick({ kind: "focusBoost", slot: 1, skillId: skill1, variant: va.a }); }}
+        onpointerenter={() => onSliceHover({ kind: "focusBoost", slot: 1, skillId: skill1, variant: va.a })}
+        onpointerleave={() => onSliceHover(null)}
+        role="button" tabindex="0" aria-label={lbl.a}
+      >
+        <path d={slot1Split.activationPath} fill={aArmed ? skillColor(skill1) : "#fefcf3"}
+          stroke={skillColor(skill1)} stroke-width="2.4" stroke-linejoin="round" />
+        <text x={midPoint((skill1Start + (skill1Start + skill1End) / 2) / 2).x}
+              y={midPoint((skill1Start + (skill1Start + skill1End) / 2) / 2).y + 4}
+              text-anchor="middle" font-size={glyphSize * 0.55} font-weight="700"
+              fill={aArmed ? "#fefcf3" : skillColor(skill1)} pointer-events="none">{lbl.a}</text>
+      </g>
+      <g
+        class="sector {bArmed ? 'armed' : ''} {split1.bLegal ? '' : 'disabled'}"
+        onpointerdown={(e) => { e.stopPropagation(); if (split1.bLegal) onSliceClick({ kind: "focusBoost", slot: 1, skillId: skill1, variant: va.b }); }}
+        onpointerenter={() => onSliceHover({ kind: "focusBoost", slot: 1, skillId: skill1, variant: va.b })}
+        onpointerleave={() => onSliceHover(null)}
+        role="button" tabindex="0" aria-label={lbl.b}
+      >
+        <path d={slot1Split.effectPath} fill={bArmed ? skillColor(skill1) : "#fefcf3"}
+          stroke={skillColor(skill1)} stroke-width="2.4" stroke-linejoin="round" />
+        <text x={midPoint(((skill1Start + skill1End) / 2 + skill1End) / 2).x}
+              y={midPoint(((skill1Start + skill1End) / 2 + skill1End) / 2).y + 4}
+              text-anchor="middle" font-size={glyphSize * 0.55} font-weight="700"
+              fill={bArmed ? "#fefcf3" : skillColor(skill1)} pointer-events="none">{lbl.b}</text>
+      </g>
+    {:else}
     <g
       class={sectorClasses(skill1Legal, armed)}
       onpointerdown={(e) => { e.stopPropagation(); if (skill1Legal) onSliceClick({ kind: "skill", skillId: skill1, slot: 1 }); }}
@@ -203,6 +274,7 @@
         pointer-events="none"
       />
     </g>
+    {/if}
   {:else}
     <!-- Empty slot 1 - render placeholder so the wheel reads as full. -->
     <path
@@ -220,6 +292,40 @@
   <!-- Skill 2 sector (bottom half-ring) -->
   {#if skill2 > 0}
     {@const armed = armedSkillId === skill2}
+    {#if slot2Split && split2}
+      {@const lbl = quarterLabels(split2.kind)}
+      {@const va = quarterVariants(split2.kind)}
+      {@const aArmed = split2.armed === va.a}
+      {@const bArmed = split2.armed === va.b}
+      <g
+        class="sector {aArmed ? 'armed' : ''} {split2.aLegal ? '' : 'disabled'}"
+        onpointerdown={(e) => { e.stopPropagation(); if (split2.aLegal) onSliceClick({ kind: "focusBoost", slot: 2, skillId: skill2, variant: va.a }); }}
+        onpointerenter={() => onSliceHover({ kind: "focusBoost", slot: 2, skillId: skill2, variant: va.a })}
+        onpointerleave={() => onSliceHover(null)}
+        role="button" tabindex="0" aria-label={lbl.a}
+      >
+        <path d={slot2Split.activationPath} fill={aArmed ? skillColor(skill2) : "#fefcf3"}
+          stroke={skillColor(skill2)} stroke-width="2.4" stroke-linejoin="round" />
+        <text x={midPoint((skill2Start + (skill2Start + skill2End) / 2) / 2).x}
+              y={midPoint((skill2Start + (skill2Start + skill2End) / 2) / 2).y + 4}
+              text-anchor="middle" font-size={glyphSize * 0.55} font-weight="700"
+              fill={aArmed ? "#fefcf3" : skillColor(skill2)} pointer-events="none">{lbl.a}</text>
+      </g>
+      <g
+        class="sector {bArmed ? 'armed' : ''} {split2.bLegal ? '' : 'disabled'}"
+        onpointerdown={(e) => { e.stopPropagation(); if (split2.bLegal) onSliceClick({ kind: "focusBoost", slot: 2, skillId: skill2, variant: va.b }); }}
+        onpointerenter={() => onSliceHover({ kind: "focusBoost", slot: 2, skillId: skill2, variant: va.b })}
+        onpointerleave={() => onSliceHover(null)}
+        role="button" tabindex="0" aria-label={lbl.b}
+      >
+        <path d={slot2Split.effectPath} fill={bArmed ? skillColor(skill2) : "#fefcf3"}
+          stroke={skillColor(skill2)} stroke-width="2.4" stroke-linejoin="round" />
+        <text x={midPoint(((skill2Start + skill2End) / 2 + skill2End) / 2).x}
+              y={midPoint(((skill2Start + skill2End) / 2 + skill2End) / 2).y + 4}
+              text-anchor="middle" font-size={glyphSize * 0.55} font-weight="700"
+              fill={bArmed ? "#fefcf3" : skillColor(skill2)} pointer-events="none">{lbl.b}</text>
+      </g>
+    {:else}
     <g
       class={sectorClasses(skill2Legal, armed)}
       onpointerdown={(e) => { e.stopPropagation(); if (skill2Legal) onSliceClick({ kind: "skill", skillId: skill2, slot: 2 }); }}
@@ -258,6 +364,7 @@
         pointer-events="none"
       />
     </g>
+    {/if}
   {:else}
     <path
       d={skill2Path}
@@ -270,34 +377,6 @@
       pointer-events="none"
     />
   {/if}
-
-  <!-- End-Phase sector (thin right slice) -->
-  <g
-    class={sectorClasses(endPhaseLegal, false)}
-    onpointerdown={(e) => { e.stopPropagation(); if (endPhaseLegal) onSliceClick({ kind: "endphase" }); }}
-    onpointerenter={() => onSliceHover({ kind: "endphase" })}
-    onpointerleave={() => onSliceHover(null)}
-    role="button"
-    tabindex="0"
-    aria-label="end phase"
-  >
-    <path
-      d={endPath}
-      fill="#fefcf3"
-      stroke="#5a4a3a"
-      stroke-width="2.4"
-      stroke-linejoin="round"
-    />
-    <text
-      x={endGlyph.x}
-      y={endGlyph.y + glyphSize * 0.18}
-      text-anchor="middle"
-      font-size={glyphSize * 0.9}
-      font-weight="700"
-      fill="#5a4a3a"
-      pointer-events="none"
-    >⏵</text>
-  </g>
 
   <!-- Modifier badges. Rendered only when staged. Sit inside the ring near
        the piece. Hoverable so the info card explains what's about to fire. -->

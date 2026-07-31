@@ -20,6 +20,11 @@ export interface PositionView {
    *  legal-actions buffer, which is restricted to BodyguardChoice variants
    *  while this is non-null. */
   pendingBodyguard: PendingBodyguardView | null;
+  /** Bitboard of squares whose piece has already used its Move action this
+   *  Move-Phase (final square). Zero outside the Move-Phase. Lets the board
+   *  grey out already-moved pieces on LOAD (resume/snapshot/preview), not just
+   *  incrementally as they move in-session. */
+  movedThisPhase: bigint;
 }
 
 export interface PendingBodyguardView {
@@ -271,6 +276,10 @@ export interface EngineClient {
    *  unlisten fn. No-op returning a no-op unlisten on non-Tauri clients. */
   onAivaiProgress(cb: (plies: number, done: boolean) => void): Promise<() => void>;
   finaliseLog(result: FinalResultByte): Promise<void>;
+  /** Ask the engine whether the AI at `aiSeat` (0=P1, 1=P2) should accept
+   *  a draw offer. Returns true when the AI is not clearly winning (seat-relative
+   *  score ≤ 50 centipawns). Uses heuristic eval — no search. */
+  evaluateDrawOffer(aiSeat: 0 | 1): Promise<boolean>;
   /** Free engine resources (Tauri only; no-op on WASM). */
   dispose(): Promise<void>;
   /** Install a position evaluator on an AI seat. `source = "heuristic"` is

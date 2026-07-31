@@ -11,7 +11,6 @@
   import { SKILLS, CATEGORY_COLOR, type SkillCategory } from "$lib/engine";
   import { t } from "$lib/state/i18n";
   import { sfx } from "$lib/audio/sfx";
-  import Modal from "$lib/ui/Modal.svelte";
 
   let { open, onClose }: { open: boolean; onClose: () => void } = $props();
 
@@ -48,7 +47,12 @@
   ];
 </script>
 
-<Modal {open} {onClose} title={t("help.title")}>
+{#if open}
+<aside class="side-drawer" aria-label={t("help.title")}>
+  <div class="drawer-header">
+    <span class="drawer-title">{t("help.title")}</span>
+    <button class="drawer-close" onclick={onClose} aria-label="Close">✕</button>
+  </div>
   <div class="tabs">
     <div class="segmented">
       {#each TABS as tb}
@@ -60,6 +64,7 @@
     </div>
   </div>
 
+  <div class="drawer-body">
   {#if tab === "skills"}
     <section>
       <ul class="skill-list">
@@ -103,13 +108,60 @@
       </dl>
     </section>
   {/if}
-</Modal>
+  </div>
+</aside>
+{/if}
 
 <style>
+  .side-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100dvh;
+    width: min(380px, 90vw);
+    background: var(--paper-bg, #f3ecd9);
+    border-left: 1.5px solid var(--paper-line-strong);
+    box-shadow: -4px 0 16px rgba(0,0,0,0.12);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    animation: drawer-in 180ms ease-out both;
+  }
+  @keyframes drawer-in {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+  }
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--paper-line, rgba(58,47,31,0.15));
+    flex-shrink: 0;
+  }
+  .drawer-title {
+    font-weight: 700;
+    font-size: 1rem;
+  }
+  .drawer-close {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: var(--paper-ink-soft);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+  }
+  .drawer-close:hover { background: var(--paper-square-light); }
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 0 1rem;
+  }
   .tabs {
     padding: 0.7rem 1.1rem 0.2rem;
     position: sticky;
-    top: 2.9rem;
+    top: 0;
     background: var(--paper-bg);
     z-index: 1;
   }

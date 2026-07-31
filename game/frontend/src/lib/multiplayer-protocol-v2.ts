@@ -111,6 +111,16 @@ export type WireMessageV2 =
   | { kind: "paused" }
   | { kind: "resumed" }
 
+  // Draw negotiation. Either peer can send draw-offer; the other replies with
+  // draw-response. accepted=true triggers game finalisation on both sides.
+  | { kind: "draw-offer" }
+  | { kind: "draw-response"; accepted: boolean }
+
+  // Resignation. The resigning peer sends its own seat (0=P1, 1=P2); the
+  // receiving peer terminates the game immediately with the *other* seat as
+  // the winner. Unlike a draw, there is no negotiation — resign is unilateral.
+  | { kind: "resign"; seat: 0 | 1 }
+
   // Reserved for the broker's third-peer kick path (kept compatible with v1
   // so the host can still send `session-full` to a fourth tab dialling in).
   | { kind: "error"; reason: string }
@@ -294,6 +304,19 @@ export function decodeMessageV2(s: string): WireMessageV2 | null {
 
     case "resumed":
       return { kind: "resumed" };
+
+    case "draw-offer":
+      return { kind: "draw-offer" };
+
+    case "draw-response": {
+      const r = m as { accepted?: unknown };
+      return typeof r.accepted === "boolean" ? (m as WireMessageV2) : null;
+    }
+
+    case "resign": {
+      const r = m as { seat?: unknown };
+      return r.seat === 0 || r.seat === 1 ? (m as WireMessageV2) : null;
+    }
 
     case "error":
       return typeof (m as { reason?: unknown }).reason === "string"

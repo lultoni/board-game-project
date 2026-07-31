@@ -108,6 +108,46 @@ export function producerRawsFromLog(matchLogJson: string | null): number[] {
   }
 }
 
+/** Per-ply search readout pulled from a producer MatchLog, positionally aligned
+ *  with `producerRawsFromLog` (same index = same ply). `depth`/`scoreCp` come
+ *  from the ply's `ai` SearchMeta (the search that CHOSE that move). `scoreCp`
+ *  is P1-POV (positive = P1 ahead), matching the log's convention; the caller
+ *  flips sign per seat for display. Entries are `null` when a ply carries no
+ *  `ai` meta (legacy log, or a not-yet-flushed tail) — the AIvAI pill then still
+ *  shows via the `thinking` flag, just without a depth badge. Truncates at the
+ *  same point `producerRawsFromLog` does so the two arrays stay index-aligned. */
+export interface ProducerPlyMeta {
+  depth: number;
+  scoreCp: number | null;
+}
+
+export function producerMetaFromLog(matchLogJson: string | null): (ProducerPlyMeta | null)[] {
+  if (!matchLogJson) return [];
+  try {
+    const log = JSON.parse(matchLogJson) as {
+      plies?: Array<{
+        action?: { raw?: number };
+        ai?: { depth?: number; score_cp?: number | null } | null;
+      }>;
+    };
+    const metas: (ProducerPlyMeta | null)[] = [];
+    for (const ply of log.plies ?? []) {
+      const raw = ply.action?.raw;
+      // Mirror producerRawsFromLog's truncation so indices stay aligned.
+      if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) break;
+      const ai = ply.ai;
+      if (ai && typeof ai.depth === "number") {
+        metas.push({ depth: ai.depth, scoreCp: ai.score_cp ?? null });
+      } else {
+        metas.push(null);
+      }
+    }
+    return metas;
+  } catch {
+    return [];
+  }
+}
+
 /** Count the actions baked into an engine SNAPSHOT JSON (`{ start_fen, actions,
  *  config }`). This is the number of plies already applied to an engine
  *  restored from that snapshot — the AIvAI log-player uses it as the starting

@@ -54,10 +54,13 @@ h1, h2, h3 {
   font-weight: 600;
 }
 
-.gear-btn {
+/* Global fixed pills: back (top-left), help + gear (top-right). Same visual
+   language so the three chrome controls read as one system. */
+.back-btn,
+.gear-btn,
+.help-btn {
   position: fixed;
   top: 10px;
-  right: 12px;
   z-index: 100;
   padding: 0.35em 0.8em;
   border: 1.5px solid var(--paper-line-strong);
@@ -67,36 +70,34 @@ h1, h2, h3 {
   font: inherit;
   font-size: 0.85rem;
   line-height: 1;
+  text-decoration: none;
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 150ms ease, box-shadow 150ms ease, transform 80ms ease;
 }
-.gear-btn:hover {
+.back-btn:hover,
+.gear-btn:hover,
+.help-btn:hover {
   opacity: 1;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   transform: translateY(-1px);
 }
 
-/* Help button - sits immediately left of the gear, same pill style. */
-.help-btn {
-  position: fixed;
-  top: 10px;
-  right: 92px;
-  z-index: 100;
-  padding: 0.35em 0.8em;
-  border: 1.5px solid var(--paper-line-strong);
-  border-radius: 999px;
-  background: var(--paper-bg);
-  color: var(--paper-ink);
-  font: inherit;
-  font-size: 0.85rem;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 150ms ease, box-shadow 150ms ease, transform 80ms ease;
-}
-.help-btn:hover {
-  opacity: 1;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
+/* Back sits top-left, mirroring the Settings/Help pills on the right. */
+.back-btn { left: 12px; }
+/* Gear (settings) is the rightmost; help sits immediately to its left. */
+.gear-btn { right: 12px; }
+.help-btn { right: 92px; }
+
+/* The back/help/gear pills are position:fixed and float over the top row of
+   every route. Reserve horizontal space at the top of route content so the
+   first header row (title, counts, back-context) never tucks under a pill.
+   Only on routes that show the back button (.has-back); the hub lays itself
+   out around the right-side pills already. ~92px clears the back pill + gap. */
+.app-body.has-back > main > header,
+.app-body.has-back > main > .header-row {
+  padding-left: 92px;
+  padding-right: 172px; /* clear the help + gear pills on the right */
+  min-height: 34px;
+  box-sizing: border-box;
 }

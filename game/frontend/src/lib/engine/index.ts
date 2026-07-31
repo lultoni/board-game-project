@@ -44,9 +44,10 @@ export {
   aivaiProducerLog,
   onAivaiProgress,
   producerRawsFromLog,
+  producerMetaFromLog,
   snapshotActionCount,
 } from "./ai-service";
-export type { AivaiEvaluatorChoice } from "./ai-service";
+export type { AivaiEvaluatorChoice, ProducerPlyMeta } from "./ai-service";
 export { plyEvalOf, formatPlyEval } from "./ply-eval";
 export type { PlyEval, SearchMetaLog, PlyRecordEvalView } from "./ply-eval";
 

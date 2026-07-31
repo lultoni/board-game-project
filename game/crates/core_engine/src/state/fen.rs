@@ -1256,6 +1256,28 @@ mod tests {
     }
 
     #[test]
+    fn position_builder_moved_bit_roundtrip() {
+        // Regression for P9-A: the Position Builder edits static positions.
+        // A FEN whose moved_this_phase flags a piece that then moves/is removed
+        // strands the bit (no longer a subset of the side-to-move pieces), and
+        // the parser must reject it. The frontend fix zeroes field 8 so the
+        // canonicalised FEN parses cleanly. Both halves are asserted here.
+        //
+        // moved_this_phase = 0x1 flags a1 (the P1 king). Move the king a1->b1:
+        // the board no longer has a P1 piece on a1, so the stranded bit is
+        // rejected...
+        let stranded = "7k/8/8/8/8/8/8/1K6 P1 M 2 6 6 0 1 0x1";
+        match from_fen(stranded) {
+            Err(FenError::BadDecimal { field: "moved_this_phase" }) => {}
+            other => panic!("expected BadDecimal(moved_this_phase), got {:?}", other),
+        }
+        // ...and the canonicalised form the builder now emits (field 8 = 0x0)
+        // parses successfully.
+        let fixed = "7k/8/8/8/8/8/8/1K6 P1 M 2 6 6 0 1 0x0";
+        assert!(from_fen(fixed).is_ok(), "canonicalised static FEN must parse");
+    }
+
+    #[test]
     fn pending_bg_changes_zobrist() {
         // Two positions identical except for pending_bodyguard hash differently.
         let p1 = Position::setup_stack_m();

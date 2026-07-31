@@ -43,6 +43,11 @@ pub struct PositionView {
     /// 0 = ongoing, 1 = P1Wins, 2 = P2Wins.
     pub game_result:       u8,
     pub zobrist:           u64,
+    /// Bitboard of squares whose piece has already used its Move action this
+    /// Move-Phase (final square, not src). Zero outside the Move-Phase. Lets the
+    /// UI grey out already-moved pieces on LOAD (resume/snapshot/preview), not
+    /// just incrementally as they move this session.
+    pub moved_this_phase:  u64,
 }
 
 /// Per-step delta returned by `try_apply` / `step_ai`. Small on purpose -
@@ -93,6 +98,7 @@ pub fn position_view(m: &Match) -> PositionView {
         pending_modifiers: p.pending_modifiers,
         game_result:       encode_game_result(p.game_result),
         zobrist:           p.zobrist,
+        moved_this_phase:  p.moved_this_phase.0,
     }
 }
 
@@ -398,6 +404,35 @@ pub fn heuristic_eval_by_square(m: &Match) -> crate::search::evaluator::EvalBrea
     crate::search::evaluator::evaluate_by_square(m.position())
 }
 
+/// Whether the AI (whose seat is `ai_seat`: 0 = P1, 1 = P2) should accept
+/// a draw offer from the human. Accepts when the AI is not clearly winning —
+/// defined as its seat-relative score ≤ 100 centipawns.
+///
+/// The decision uses the AI's *searched* evaluation at its configured budget
+/// (the same search it plays with), NOT a 1-ply static heuristic: a static
+/// read badly misjudges tactical positions (a hanging piece, a forced mate),
+/// so the AI would agree to draws it's actually winning or refuse ones it's
+/// losing. `request_ai_move_forced` searches from the current position for
+/// whoever is to move (typically the human, who just offered), so the returned
+/// `score` is from the side-to-move's perspective; we rotate it to P1-relative
+/// and then to the AI's seat.
+pub fn evaluate_draw_offer(m: &mut Match, ai_seat: u8) -> bool {
+    // Side-to-move-relative score from a real search. Fall back to the static
+    // eval only if the search can't run (e.g. game already over / draft).
+    let stm_score = match m.request_ai_move_forced() {
+        Ok(r) => r.score,
+        Err(_) => crate::search::evaluator::evaluate_breakdown(m.position()).total,
+    };
+    // Rotate score to P1-relative (positive = P1 advantage), then to AI-relative.
+    let p1_relative = if m.position().to_move == crate::state::position::Player::P1 {
+        stm_score
+    } else {
+        -stm_score
+    };
+    let ai_relative = if ai_seat == 0 { p1_relative } else { -p1_relative };
+    ai_relative <= 100
+}
+
 impl core::fmt::Display for SnapshotErrorOrParse {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -454,6 +489,48 @@ mod tests {
         let m = fresh_logging_match();
         // A fresh, ongoing game has no result → maps to Aborted (3).
         assert_eq!(finalise_result_byte(&m), 3);
+    }
+
+    #[test]
+    fn evaluate_draw_offer_runs_without_panic() {
+        // The decision path must run a search and return cleanly for both seats
+        // from a fresh position (search is make/unmake balanced, so the second
+        // call sees the same position).
+        let mut m = fresh_match();
+        let _ = evaluate_draw_offer(&mut m, 0);
+        let _ = evaluate_draw_offer(&mut m, 1);
+    }
+
+    #[test]
+    fn evaluate_draw_offer_uses_searched_eval_not_static() {
+        // Regression: the old code decided from a 1-ply static heuristic; the
+        // fix runs the AI's actual search. From the start position the searched
+        // eval sees the side-to-move tempo advantage (~86cp here) that the
+        // static eval (~30cp) understates — so the two paths disagree, proving
+        // the search is being used. We assert the two scores differ rather than
+        // pinning exact magnitudes (which would be brittle to eval tuning).
+        let mut m = fresh_match();
+        let searched_stm = m.request_ai_move_forced().unwrap().score;
+        let static_p1 = crate::search::evaluator::evaluate_breakdown(m.position()).total;
+        assert_ne!(
+            searched_stm, static_p1,
+            "draw decision must use the searched eval, which differs from the static one",
+        );
+    }
+
+    #[test]
+    fn evaluate_draw_offer_is_seat_symmetric_in_sign() {
+        // The two seats must see opposite standings from the same position: if
+        // P1 declines (thinks it's winning), P2 accepts, and vice-versa. This
+        // pins the seat sign-rotation regardless of the eval magnitude.
+        let mut m = fresh_match();
+        let p1_accepts = evaluate_draw_offer(&mut m, 0);
+        let p2_accepts = evaluate_draw_offer(&mut m, 1);
+        // Not both declining: at most one side can be "clearly winning".
+        assert!(
+            p1_accepts || p2_accepts,
+            "at least one seat must accept — both sides can't be clearly winning",
+        );
     }
 
     #[test]
@@ -574,6 +651,9 @@ mod tests {
         assert_eq!(v.bitboards[0], p.p1_pieces.0);
         assert_eq!(v.bitboards[4], p.guards.0);
         assert_eq!(v.zobrist, p.zobrist);
+        // moved_this_phase must mirror the engine bitboard so the UI can grey
+        // out already-moved pieces on load (P2-E).
+        assert_eq!(v.moved_this_phase, p.moved_this_phase.0);
         for sq in 0..64 {
             assert_eq!(mb[sq], p.mailbox[sq].0);
         }

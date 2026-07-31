@@ -10,7 +10,6 @@
   import LineageTree from "$lib/training/LineageTree.svelte";
   import NetworkInspector from "$lib/training/NetworkInspector.svelte";
   import GauntletMatrix from "$lib/training/GauntletMatrix.svelte";
-  import BackButton from "$lib/ui/BackButton.svelte";
 
   type Tab = "live" | "standings" | "lineage" | "matrix";
   type Preset = "smoke" | "medium" | "long";
@@ -190,7 +189,6 @@
 
 <main>
   <header>
-    <BackButton />
     <h1>Training Observatory</h1>
   </header>
 

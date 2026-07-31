@@ -1,7 +1,6 @@
 <script lang="ts">
   import { settings, type AnimationSpeed } from "$lib/state/settings.svelte";
   import { sfx } from "$lib/audio/sfx";
-  import Modal from "$lib/ui/Modal.svelte";
 
   let { open, onClose }: { open: boolean; onClose: () => void } = $props();
 
@@ -22,7 +21,13 @@
   }
 </script>
 
-<Modal {open} {onClose} title="Settings">
+{#if open}
+<aside class="side-drawer" aria-label="Settings">
+  <div class="drawer-header">
+    <span class="drawer-title">Settings</span>
+    <button class="drawer-close" onclick={onClose} aria-label="Close">✕</button>
+  </div>
+  <div class="drawer-body">
   <section>
     <h3>Visual</h3>
     <label class="row">
@@ -224,9 +229,44 @@
       </select>
     </label>
   </section>
-</Modal>
+  </div>
+</aside>
+{/if}
 
 <style>
+  .side-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100dvh;
+    width: min(340px, 90vw);
+    background: var(--paper-bg, #f3ecd9);
+    border-left: 1.5px solid var(--paper-line-strong);
+    box-shadow: -4px 0 16px rgba(0,0,0,0.12);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    animation: drawer-in 180ms ease-out both;
+  }
+  @keyframes drawer-in {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+  }
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--paper-line, rgba(58,47,31,0.15));
+    flex-shrink: 0;
+  }
+  .drawer-title { font-weight: 700; font-size: 1rem; }
+  .drawer-close {
+    background: none; border: none; font-size: 1.1rem; cursor: pointer;
+    color: var(--paper-ink-soft); padding: 0.2em 0.4em; border-radius: 4px;
+  }
+  .drawer-close:hover { background: var(--paper-square-light); }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 0 0 1rem; }
   section {
     padding: 0.7rem 1.1rem 0.4rem;
   }

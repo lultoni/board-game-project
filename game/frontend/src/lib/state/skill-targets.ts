@@ -58,6 +58,17 @@ function filterSkillActions(
   return out;
 }
 
+/** All decoded skill variants for (src, skillId) — the full set the engine
+ *  emitted as legal, including every focus_mode / retarget / direction branch.
+ *  Used by the wheel to decide per-quarter legality of a focus split. */
+export function skillVariantsFor(
+  legal: Uint32Array,
+  src: number,
+  skillId: number,
+): SkillVariant[] {
+  return filterSkillActions(legal, src, skillId);
+}
+
 export function skillTargetsFor(
   legal: Uint32Array,
   src: number,

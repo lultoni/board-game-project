@@ -74,6 +74,16 @@ export interface MatchState {
   trueSnapshotJson: string | null;
   /** Count of player/AI applications since sandbox-mode was entered. */
   sandboxMovesApplied: number;
+  /** Frontend-owned terminal state for resign / agreed draw. The engine
+   *  position never reaches a natural game_result in these cases, so the
+   *  match screen reads this instead of position.gameResult to trigger the
+   *  end-of-game UI. Cleared on resetMatchState.
+   *  resultByte: 0=P1Win, 1=P2Win, 2=Draw (mirrors engine finalise_log). */
+  forcedResult: { resultByte: 0 | 1 | 2; reason: "resign" | "draw" } | null;
+  /** Match ID of a local in-progress game to resume. Set by the hub's
+   *  "Continue" action before navigating to /match/; consumed and cleared
+   *  during match boot. */
+  resumeMatchId: string | null;
   /** Mode the match was in immediately before sandbox was entered. Restored
    *  by `exitSandbox()`. Necessary because `modeFromSeats()` cannot recover
    *  `"multiplayer"` from the seat pair (both seats are `"human"` in MP too).
@@ -113,6 +123,8 @@ export const match = $state<MatchState>({
   pendingSnapshotJson: null,
   trueSnapshotJson: null,
   sandboxMovesApplied: 0,
+  forcedResult: null,
+  resumeMatchId: null,
   preSandboxMode: null,
   telemetryMatchId: null,
   localSeat: null,
@@ -150,6 +162,8 @@ export function resetMatchState(): void {
   match.pendingSnapshotJson = null;
   match.trueSnapshotJson = null;
   match.sandboxMovesApplied = 0;
+  match.forcedResult = null;
+  match.resumeMatchId = null;
   match.preSandboxMode = null;
   match.telemetryMatchId = null;
   match.telemetryFinalised = false;
@@ -165,6 +179,32 @@ export function modeFromSeats(side: { p1: SeatKind; p2: SeatKind }): MatchMode {
   if (side.p1 === "human" && side.p2 === "human") return "hvh";
   if (side.p1 === "ai"    && side.p2 === "ai")    return "aivai";
   return "hvai";
+}
+
+/** Inverse of `modeFromSeats` for resuming a stored game: recover the seat
+ *  kinds from the persisted mode label. `hvai` can't recover which side was
+ *  the AI from the mode alone, so it defaults to P2=AI (the common case); the
+ *  restored snapshot carries the real position regardless. `multiplayer`
+ *  resumes go through the lobby, so it maps to human/human here. */
+export function seatsFromMode(mode: MatchMode): { p1: SeatKind; p2: SeatKind } {
+  switch (mode) {
+    case "hvh":
+    case "multiplayer": return { p1: "human", p2: "human" };
+    case "aivai":       return { p1: "ai", p2: "ai" };
+    default:            return { p1: "human", p2: "ai" }; // hvai
+  }
+}
+
+/** Human-readable label for a match mode, used by resume banners / library
+ *  rows so the copy reflects the actual seat configuration (e.g. an AIvAI
+ *  game reads "AI vs AI", not "vs AI"). */
+export function matchModeLabel(mode: MatchMode): string {
+  switch (mode) {
+    case "hvh":         return "Human vs Human";
+    case "aivai":       return "AI vs AI";
+    case "multiplayer": return "Multiplayer";
+    default:            return "vs AI"; // hvai
+  }
 }
 
 function seatTag(s: SeatKind): SeatTag {
@@ -301,4 +341,30 @@ export async function claimWinByOpponentForfeit(eng: EngineClient): Promise<void
   try {
     match.position = await eng.positionView();
   } catch { /* noop */ }
+}
+
+/** Resign the current match. The resigning seat loses.
+ *  resultByte: 0 = P1 wins (P2 resigned), 1 = P2 wins (P1 resigned).
+ *  resigningSeat: 0 = P1, 1 = P2. */
+export async function resignGame(
+  eng: EngineClient,
+  resigningSeat: 0 | 1,
+): Promise<void> {
+  if (match.telemetryFinalised) return;
+  // The opponent wins when a player resigns.
+  const resultByte: 0 | 1 = resigningSeat === 0 ? 1 : 0;
+  try { await eng.finaliseLog(resultByte); } catch { /* noop */ }
+  await telemetry.finalizeTelemetrySession(match, eng, "resign", resultByte);
+  match.telemetryFinalised = true;
+  match.forcedResult = { resultByte, reason: "resign" };
+}
+
+/** Finalise an agreed draw. */
+export async function agreeDrawGame(eng: EngineClient): Promise<void> {
+  if (match.telemetryFinalised) return;
+  const resultByte = 2 as const;
+  try { await eng.finaliseLog(resultByte); } catch { /* noop */ }
+  await telemetry.finalizeTelemetrySession(match, eng, "draw", resultByte);
+  match.telemetryFinalised = true;
+  match.forcedResult = { resultByte, reason: "draw" };
 }

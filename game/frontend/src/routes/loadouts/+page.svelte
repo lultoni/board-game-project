@@ -18,7 +18,6 @@
   import LoadoutBoard from "$lib/board/LoadoutBoard.svelte";
   import SkillPicker from "$lib/board/SkillPicker.svelte";
   import SkillGlyphDefs from "$lib/board/SkillGlyphDefs.svelte";
-  import BackButton from "$lib/ui/BackButton.svelte";
   import { findDuplicate, loadoutKey } from "$lib/storage/loadout-dedupe";
   import {
     encodeJson,
@@ -363,7 +362,6 @@
 
 <main class="loadouts">
   <header>
-    <BackButton />
     <h1>{t("loadouts.title")}</h1>
   </header>
 

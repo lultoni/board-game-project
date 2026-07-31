@@ -184,7 +184,11 @@
     "armed": "bereit - Ziel anklicken",
     "staged": "vorgemerkt",
     "focusStaged": "Fokus ist vorgemerkt - ein nicht-mystischer Skill diese Runde erhält +1 Reichweite (bei Bewegungs-Skills wählst du Aktivierungs- oder Effektreichweite).",
-    "chargeStaged": "Ladung ist vorgemerkt - ein Angriffs-Skill einer deiner Figuren diese Runde verursacht +1 Schaden."
+    "chargeStaged": "Ladung ist vorgemerkt - ein Angriffs-Skill einer deiner Figuren diese Runde verursacht +1 Schaden.",
+    "focusActivation": "Fokus → +1 Aktivierungsreichweite",
+    "focusEffect": "Fokus → +1 Effektreichweite",
+    "focusSelf": "Auf sich selbst wirken",
+    "focusAlly": "Fokus → auf angrenzenden Verbündeten lenken"
   },
   "controls": {
     "endPhase": "Phase beenden",

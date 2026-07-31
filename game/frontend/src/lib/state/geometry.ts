@@ -32,3 +32,54 @@ export function ringWithin(centre: number, r: number): number[] {
   }
   return out;
 }
+
+const SQUARE_SIZE = 100; // viewBox 800 / 8
+
+/** Engine direction indices: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW.
+ *  SVG y-axis points down, so rank+1 → y decreases (dy = -1). */
+const DIR_VECTORS: Array<{ dx: number; dy: number }> = [
+  { dx:  0, dy: -1 }, // 0 N
+  { dx:  1, dy: -1 }, // 1 NE
+  { dx:  1, dy:  0 }, // 2 E
+  { dx:  1, dy:  1 }, // 3 SE
+  { dx:  0, dy:  1 }, // 4 S
+  { dx: -1, dy:  1 }, // 5 SW
+  { dx: -1, dy:  0 }, // 6 W
+  { dx: -1, dy: -1 }, // 7 NW
+];
+
+/**
+ * Given the SVG cursor position and the origin square (where the skill caster
+ * stands), return the direction index (0–7) whose vector best aligns with the
+ * angle from the origin to the cursor. Used to auto-resolve Shove direction
+ * from mouse position so the arrow overlay is only needed when truly ambiguous.
+ *
+ * `flipped` must match the Board's current orientation so the coordinate
+ * conversion is correct.
+ */
+export function pickDirectionByCursor(
+  originSq: number,
+  cursorX: number,
+  cursorY: number,
+  legalDirs: number[],
+  flipped = false,
+): number | null {
+  if (legalDirs.length === 0) return null;
+  if (legalDirs.length === 1) return legalDirs[0];
+  const oFile = fileOf(originSq);
+  const oRank = rankOf(originSq);
+  const oCX = oFile * SQUARE_SIZE + SQUARE_SIZE / 2;
+  const oCY = (flipped ? oRank : 7 - oRank) * SQUARE_SIZE + SQUARE_SIZE / 2;
+  const offX = cursorX - oCX;
+  const offY = cursorY - oCY;
+  const len2 = offX * offX + offY * offY;
+  if (len2 < 4) return legalDirs[0]; // cursor on origin — pick first legal
+  let best = legalDirs[0];
+  let bestScore = -Infinity;
+  for (const dir of legalDirs) {
+    const v = DIR_VECTORS[dir];
+    const score = (offX * v.dx + offY * v.dy) / Math.sqrt(v.dx * v.dx + v.dy * v.dy);
+    if (score > bestScore) { bestScore = score; best = dir; }
+  }
+  return best;
+}

@@ -30,7 +30,8 @@ export type MatchMode =
 /** End-of-match reason. Authoritative on finalised matches. */
 export type EndReason =
   | "checkmate"        // Engine reported gameResult != 0 from the rules.
-  | "resign"           // Player surrendered via the resign UI (not yet built).
+  | "resign"           // Player surrendered via the resign UI.
+  | "draw"             // Both players agreed to a draw.
   | "opponent_forfeit" // Multiplayer: present player claimed win after grace.
   | "abandoned";       // Match was closed/navigated-away without natural end.
 
@@ -169,6 +170,13 @@ export interface TelemetryStore {
   /** List match metas matching the filter, sorted by startedAt descending. */
   listMatches(filter?: MatchFilter): Promise<MatchMeta[]>;
   deleteMatch(matchId: string): Promise<void>;
+  /** Save the engine snapshot JSON so a local in-progress match can be
+   *  resumed. Called after every ply. Silently no-ops if the row is missing
+   *  or already ended. */
+  saveResumeSnapshot(matchId: string, snapshotJson: string): Promise<void>;
+  /** Read back the most recently saved snapshot for a local resumable match.
+   *  Returns null if not found or already finalised. */
+  getResumeSnapshot(matchId: string): Promise<string | null>;
   /** Returns a JSON bundle of the given matches for "Send to Designer" export.
    *  Returns the JSON string and a list of match IDs that were skipped because
    *  their stored matchLogJson was missing or unparseable. Callers surface the

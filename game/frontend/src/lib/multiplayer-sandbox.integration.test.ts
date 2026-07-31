@@ -47,6 +47,7 @@ class SharedFakeEngine implements EngineClient {
       gameResult: 0,
       zobrist: this.computeZobrist(),
       pendingBodyguard: null,
+      movedThisPhase: 0n,
     };
   }
   async legalActions(): Promise<Uint32Array> { return new Uint32Array(); }
@@ -93,6 +94,7 @@ class SharedFakeEngine implements EngineClient {
   async stopAivaiProducer(): Promise<string | null> { return null; }
   async onAivaiProgress(): Promise<() => void> { return () => { /* no-op */ }; }
   async finaliseLog(): Promise<void> {}
+  async evaluateDrawOffer(): Promise<boolean> { return true; }
   async dispose(): Promise<void> {}
   async setAiEvaluator(): Promise<void> {}
 

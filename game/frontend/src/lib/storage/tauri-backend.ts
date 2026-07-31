@@ -89,6 +89,12 @@ export class TauriTelemetryStore implements TelemetryStore {
   async updateLoadoutName(): Promise<void> {
     throw new Error("TauriTelemetryStore not implemented");
   }
+  async saveResumeSnapshot(): Promise<void> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
+  async getResumeSnapshot(): Promise<string | null> {
+    throw new Error("TauriTelemetryStore not implemented");
+  }
   // Silence unused warnings on the placeholder fields.
   _endReason?: EndReason;
 }

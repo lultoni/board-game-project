@@ -33,6 +33,9 @@ function makeMpEngine(): MpEngineHandle & { promoteCalls: Array<{ matchId: strin
     setMatchId: () => {},
     promoteToHost: (opts) => { promoteCalls.push(opts); },
     getSeq: () => 0,
+    sendDrawOffer: () => {},
+    sendDrawResponse: () => {},
+    sendResign: () => {},
     dispose: () => {},
     promoteCalls,
   } as MpEngineHandle & { promoteCalls: Array<{ matchId: string }> };

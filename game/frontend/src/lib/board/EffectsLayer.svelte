@@ -17,9 +17,14 @@
      *  never mutate the caller's `$state` array (which would trigger
      *  `ownership_invalid_mutation`). */
     queue: Effect[];
+    /** When true the board is CSS-rotated 180° (opponent-at-bottom). The canvas
+     *  is rotated to match so pulses land on the right squares; text glyphs
+     *  (damage / heal numbers) are counter-rotated per-draw so they read
+     *  upright. */
+    flipped?: boolean;
   }
 
-  let { viewBox, wheelPad = 0, queue }: Props = $props();
+  let { viewBox, wheelPad = 0, queue, flipped = false }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let raf: number | null = null;
@@ -200,8 +205,7 @@
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const text = `-${eff.amount}`;
-      ctx.strokeText(text, c.x, y);
-      ctx.fillText(text, c.x, y);
+      drawText(ctx, text, c.x, y);
     } else if (eff.kind === "heal") {
       // Soft green ring + + glyph rising. Lifetime 720ms.
       const t = age / ttl;
@@ -234,8 +238,7 @@
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const text = eff.amount > 1 ? `+${eff.amount}` : "+";
-      ctx.strokeText(text, c.x, y);
-      ctx.fillText(text, c.x, y);
+      drawText(ctx, text, c.x, y);
     } else if (eff.kind === "armor") {
       // Steel-blue shield rune that pulses then fades. Negative amount =
       // armor stripped (Break) → coppery flash instead of blue.
@@ -305,6 +308,23 @@
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 
+  /** Draw stroked+filled text at (x,y), counter-rotating 180° about that point
+   *  when the board is flipped so the glyph reads upright over the rotated
+   *  canvas. Callers set fillStyle/strokeStyle/font/align/baseline first. */
+  function drawText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
+    if (flipped) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI);
+      ctx.strokeText(text, 0, 0);
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    } else {
+      ctx.strokeText(text, x, y);
+      ctx.fillText(text, x, y);
+    }
+  }
+
   onMount(() => {
     // Initial RAF kick only if there's already content. The $effect below
     // handles the common case (queue receives push → loop starts).
@@ -324,7 +344,7 @@
   });
 </script>
 
-<canvas bind:this={canvas} class="fx" aria-hidden="true"></canvas>
+<canvas bind:this={canvas} class="fx" class:flipped aria-hidden="true"></canvas>
 
 <style>
   .fx {
@@ -333,5 +353,10 @@
     width: 100%;
     height: 100%;
     pointer-events: none;
+  }
+  /* Match the board's 180° rotation so effect positions stay aligned; text
+     glyphs are counter-rotated per-draw in renderEffect. */
+  .fx.flipped {
+    transform: rotate(180deg);
   }
 </style>

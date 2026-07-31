@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { producerRawsFromLog, snapshotActionCount } from "./ai-service";
+import { producerRawsFromLog, producerMetaFromLog, snapshotActionCount } from "./ai-service";
 
 describe("producerRawsFromLog", () => {
   it("returns [] for null / empty", () => {
@@ -44,6 +44,62 @@ describe("producerRawsFromLog", () => {
   it("handles an empty plies array (producer just started)", () => {
     expect(producerRawsFromLog(JSON.stringify({ plies: [] }))).toEqual([]);
     expect(producerRawsFromLog(JSON.stringify({}))).toEqual([]);
+  });
+});
+
+describe("producerMetaFromLog (BUG-2 AIvAI pills)", () => {
+  it("returns [] for null / empty / malformed", () => {
+    expect(producerMetaFromLog(null)).toEqual([]);
+    expect(producerMetaFromLog("")).toEqual([]);
+    expect(producerMetaFromLog("{not json")).toEqual([]);
+  });
+
+  it("extracts depth + P1-POV score aligned with the raw list", () => {
+    const log = JSON.stringify({
+      plies: [
+        { action: { raw: 10 }, ai: { depth: 6, score_cp: 120 } },
+        { action: { raw: 20 }, ai: { depth: 8, score_cp: -45 } },
+      ],
+    });
+    expect(producerMetaFromLog(log)).toEqual([
+      { depth: 6, scoreCp: 120 },
+      { depth: 8, scoreCp: -45 },
+    ]);
+  });
+
+  it("stays index-aligned with producerRawsFromLog by truncating at the same ply", () => {
+    // A partial-tail log: last ply has no raw yet. Both extractors must stop
+    // at the same index so producerMetas[i] describes producerRaws[i].
+    const log = JSON.stringify({
+      plies: [
+        { action: { raw: 5 }, ai: { depth: 4, score_cp: 0 } },
+        { action: {}, ai: { depth: 9, score_cp: 99 } },
+      ],
+    });
+    expect(producerRawsFromLog(log)).toEqual([5]);
+    expect(producerMetaFromLog(log)).toEqual([{ depth: 4, scoreCp: 0 }]);
+  });
+
+  it("emits null for a ply that carries no ai meta (legacy / not-yet-flushed)", () => {
+    const log = JSON.stringify({
+      plies: [
+        { action: { raw: 1 } },                              // no ai
+        { action: { raw: 2 }, ai: null },                    // explicit null
+        { action: { raw: 3 }, ai: { depth: 7, score_cp: 10 } },
+      ],
+    });
+    expect(producerMetaFromLog(log)).toEqual([
+      null,
+      null,
+      { depth: 7, scoreCp: 10 },
+    ]);
+  });
+
+  it("maps a missing score_cp (mate) to null score, keeping depth", () => {
+    const log = JSON.stringify({
+      plies: [{ action: { raw: 1 }, ai: { depth: 12 } }],
+    });
+    expect(producerMetaFromLog(log)).toEqual([{ depth: 12, scoreCp: null }]);
   });
 });
 

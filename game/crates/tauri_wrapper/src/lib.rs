@@ -117,6 +117,9 @@ pub struct PositionViewDto {
     pub game_result:       u8,
     pub zobrist:           String,
     pub pending_bodyguard: Option<PendingBodyguardDto>,
+    /// u64 bitboard (as string) of squares whose piece already used its Move
+    /// this phase — drives the UI's greyed-out already-moved rendering on load.
+    pub moved_this_phase:  String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -305,6 +308,7 @@ fn position_view(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Pos
             game_result:       v.game_result,
             zobrist:           v.zobrist.to_string(),
             pending_bodyguard: pbg,
+            moved_this_phase:  v.moved_this_phase.to_string(),
         }
     })
 }
@@ -330,6 +334,15 @@ fn phase_state(handle: u64, registry: State<'_, EngineRegistry>) -> Result<Phase
 #[tauri::command]
 fn position_fen(handle: u64, registry: State<'_, EngineRegistry>) -> Result<String, String> {
     registry.with(handle, |e| api::position_fen(&e.m))
+}
+
+#[tauri::command]
+fn evaluate_draw_offer(
+    handle:   u64,
+    ai_seat:  u8,
+    registry: State<'_, EngineRegistry>,
+) -> Result<bool, String> {
+    registry.with(handle, |e| api::evaluate_draw_offer(&mut e.m, ai_seat))
 }
 
 #[tauri::command]
@@ -677,6 +690,7 @@ fn fen_to_position_view(fen: String) -> Result<PositionViewDto, String> {
         game_result,
         zobrist: pos.zobrist.to_string(),
         pending_bodyguard: None,
+        moved_this_phase: pos.moved_this_phase.0.to_string(),
     })
 }
 
@@ -1279,6 +1293,7 @@ pub fn run() {
             stop_aivai_producer,
             heuristic_eval,
             heuristic_eval_by_square,
+            evaluate_draw_offer,
             request_ai_move_forced,
             request_ai_move_at_depth,
             match_log_json,

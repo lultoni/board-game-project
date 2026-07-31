@@ -12,12 +12,32 @@
     isAiSeat: boolean;
     /** Configured think-time budget for this seat (ms). */
     aiThinkBudgetMs?: number;
+    /** Whether it is currently this player's turn (gates income preview). */
+    isActive?: boolean;
+    /** Current round number (1-based), for income preview calculation. */
+    roundNumber?: number;
+    /** Pending skill cost to preview on money display (negative delta).
+     *  Only shown for the active player. */
+    pendingCost?: number | null;
+    /** Starting army size. Defaults to standard 1K+5C+6G. Override for
+     *  custom positions detected at match boot. */
+    baselinePieces?: { kings: number; champs: number; guards: number };
   }
 
   let {
     player, position, aiMaxDepth, isAiSeat,
     aiThinkBudgetMs = 1000,
+    isActive = false,
+    roundNumber = 1,
+    baselinePieces = { kings: 1, champs: 5, guards: 6 },
+    pendingCost = null,
   }: Props = $props();
+
+  function incomeForRound(r: number): number {
+    if (r <= 1) return 0;
+    return 2 + Math.floor(r / 5);
+  }
+  const nextIncome = $derived(incomeForRound(roundNumber + 1));
 
   // Per-seat thinking flag: reads the seat's own slot in the store, no need
   // to gate on position?.toMove - the store already splits by side, and a
@@ -44,23 +64,33 @@
   const oppIdx = $derived(player === "p1" ? 1 : 0);
 
   // Remaining pieces of each type belonging to the opponent.
-  const oppKingsAlive = $derived(!position ? 1 : popcount(position.bitboards[2] & position.bitboards[oppIdx]));
-  const oppGuardsAlive = $derived(!position ? 0 : popcount(position.bitboards[4] & position.bitboards[oppIdx]));
-  const oppChampsAlive = $derived(!position ? 5 : popcount(position.bitboards[oppIdx]) - oppKingsAlive - oppGuardsAlive);
+  const oppKingsAlive = $derived(!position ? baselinePieces.kings : popcount(position.bitboards[2] & position.bitboards[oppIdx]));
+  const oppGuardsAlive = $derived(!position ? baselinePieces.guards : popcount(position.bitboards[4] & position.bitboards[oppIdx]));
+  const oppChampsAlive = $derived(!position ? baselinePieces.champs : popcount(position.bitboards[oppIdx]) - oppKingsAlive - oppGuardsAlive);
 
-  // Track maximum ever-seen counts so we know starting army size.
-  // maxGuards stays at 0 for Stack M (no guards in default armies).
-  let maxGuardsSeen = $state(0);
-  $effect(() => { if (oppGuardsAlive > maxGuardsSeen) maxGuardsSeen = oppGuardsAlive; });
-
-  // Captures = starting count minus alive. Kings always start at 1. Champs default 5.
-  const capturedKings = $derived(Math.max(0, 1 - oppKingsAlive));
-  const capturedChamps = $derived(!position ? 0 : Math.max(0, 5 - oppChampsAlive));
-  const capturedGuards = $derived(Math.max(0, maxGuardsSeen - oppGuardsAlive));
+  // Captures = baseline minus alive. Use baseline counts, never grow beyond them.
+  const capturedKings = $derived(Math.max(0, baselinePieces.kings - oppKingsAlive));
+  const capturedChamps = $derived(!position ? 0 : Math.max(0, baselinePieces.champs - oppChampsAlive));
+  // Guards: use baseline directly (no maxGuardsSeen needed when we have the baseline).
+  const capturedGuards = $derived(Math.max(0, baselinePieces.guards - oppGuardsAlive));
 
   const money = $derived(
     position ? (player === "p1" ? position.p1Money : position.p2Money) : 0,
   );
+
+  // Flash animation when money changes.
+  let moneyFlash = $state<"gain" | "spend" | null>(null);
+  let prevMoney = $state(0);
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    const m = money;
+    if (m !== prevMoney) {
+      moneyFlash = m > prevMoney ? "gain" : "spend";
+      if (flashTimer) clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => { moneyFlash = null; }, 600);
+      prevMoney = m;
+    }
+  });
 
   const color = $derived(player === "p1" ? "var(--p1, #4b6b8a)" : "var(--p2, #a94b3b)");
   const label = $derived(player === "p1" ? "Player 1" : "Player 2");
@@ -149,8 +179,8 @@
         style:--pip-color={color}
         title="King"
       ></span>
-      <!-- Champion pips (diamonds) - 5 slots for Stack M default -->
-      {#each { length: 5 } as _, i}
+      <!-- Champion pips (diamonds) -->
+      {#each { length: baselinePieces.champs } as _, i}
         <span
           class="cap-pip champ"
           class:taken={i < capturedChamps}
@@ -158,8 +188,8 @@
           title="Champion"
         ></span>
       {/each}
-      <!-- Guard pips (squares) - only shown when guards present in army -->
-      {#each { length: maxGuardsSeen } as _, i}
+      <!-- Guard pips (squares) - only shown when guards in baseline army -->
+      {#each { length: baselinePieces.guards } as _, i}
         <span
           class="cap-pip guard"
           class:taken={i < capturedGuards}
@@ -168,7 +198,17 @@
         ></span>
       {/each}
     </div>
-    <span class="money">${money}</span>
+    <div class="money-block">
+      <span
+        class="money"
+        class:flash-gain={moneyFlash === "gain"}
+        class:flash-spend={moneyFlash === "spend"}
+        style:--player-color={color}
+      >${money}{#if pendingCost && isActive}<span class="pending-cost"> −{pendingCost}</span>{/if}</span>
+      {#if !isActive && nextIncome > 0}
+        <span class="income-preview" title="Income next round">+{nextIncome}</span>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -298,12 +338,47 @@
   }
 
   .money {
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 1.15rem;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
-    color: var(--paper-ink-soft, #6a6055);
-    min-width: 2.5ch;
+    color: var(--player-color, var(--paper-ink, #3a2f1f));
+    min-width: 2.8ch;
     text-align: right;
+    transition: color 200ms;
+  }
+  .money.flash-gain {
+    animation: money-gain 600ms ease-out;
+  }
+  .money.flash-spend {
+    animation: money-spend 600ms ease-out;
+  }
+  @keyframes money-gain {
+    0%   { transform: scale(1.25); color: #2e8a3a; }
+    100% { transform: scale(1);    color: var(--player-color, var(--paper-ink)); }
+  }
+  @keyframes money-spend {
+    0%   { transform: scale(0.9); color: #b03030; }
+    100% { transform: scale(1);   color: var(--player-color, var(--paper-ink)); }
+  }
+
+  .money-block {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.35rem;
+  }
+  .income-preview {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #2e8a3a;
+    opacity: 0.75;
+    line-height: 1;
+  }
+  .pending-cost {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #b03030;
+    opacity: 0.85;
   }
 
   /* Spinner */

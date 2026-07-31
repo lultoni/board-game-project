@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import { t } from "$lib/state/i18n";
+  import { setBackNav, clearBackNav } from "$lib/state/back-nav.svelte";
   import { sfx } from "$lib/audio/sfx";
   import {
     host as mpHost,
@@ -19,7 +20,6 @@
   import { snapshotJsonFromMatchLog, logIsMidDraftCheap } from "$lib/multiplayer-resume";
   import { match, resetMatchState } from "$lib/state/match-store.svelte";
   import { getTelemetryStore, type MatchMeta, type JoinedCodeEntry } from "$lib/storage";
-  import BackButton from "$lib/ui/BackButton.svelte";
 
   type LobbyView = "choose" | "hosting" | "joining";
 
@@ -358,13 +358,12 @@
    *  `multiplayerRole` / `match.mode = "multiplayer"` set if the user had
    *  hosted or joined - /setup/ then forced HvH and /draft/ booted in MP
    *  mode and reported "disconnected". */
-  async function leaveLobby(ev: MouseEvent): Promise<void> {
-    ev.preventDefault();
+  function leaveLobby(): void {
     cancel();
     // Reset mode too - cancel() leaves match.mode alone because it's still
-    // owned by the lobby flow until the user actually leaves.
+    // owned by the lobby flow until the user actually leaves. The global back
+    // button performs the navigation to the hub after this teardown runs.
     if (match.mode === "multiplayer") match.mode = "idle";
-    await goto("../");
   }
 
   // Host: once a joiner connects (transport onOpen fires with `peer-connected`
@@ -408,6 +407,9 @@
   }
 
   onMount(async () => {
+    // Leaving the lobby must tear down the relay connection first; register it
+    // as the global back button's click handler (it navigates to the hub).
+    setBackNav({ onclick: () => leaveLobby() });
     // Load both recent lists in parallel.
     await Promise.all([loadRecentLost(), loadRecentJoinedCodes()]);
 
@@ -446,12 +448,12 @@
     }
     // Don't disconnect on unmount - the host/joiner navigates onward and the
     // connection must persist for the match.
+    clearBackNav();
   });
 </script>
 
 <main>
   <header>
-    <BackButton onclick={leaveLobby} />
     <h1>{t("multiplayer.title")}</h1>
   </header>
 

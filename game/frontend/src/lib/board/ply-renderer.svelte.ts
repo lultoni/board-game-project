@@ -412,9 +412,15 @@ function stepToward(from: number, to: number): number | null {
  *
  *  Caster moved iff, in the FRESH post mailbox, `src` is now empty AND the
  *  computed `dest` is occupied. Mutates `diff` in place: drops `src` from
- *  `deaths`, any `move` whose `from === src`, and `dest` from `stayed` (the
- *  point-blank-kill collision where the caster stepped onto the victim's tile).
- *  Returns the extracted caster move, or null when the caster didn't step. */
+ *  `deaths`, and drops the arrival at `dest` from `moves` — keyed on the move's
+ *  `to === dest`, NOT its `from`. The nearest-vacated pairing in
+ *  `diffSkillMailbox` is identity-blind and breaks ties toward the lower square
+ *  index, so the caster's arrival at `dest` can be mispaired with a *different*
+ *  vacated square (e.g. a victim that just died equidistant from `dest`). When
+ *  the stripped move's `from` is such a victim (occupied pre-skill, now empty,
+ *  and ≠ `src`), re-register it as a death so its kill visuals fire on the right
+ *  tile instead of a phantom heal on `dest`. Returns the extracted caster move,
+ *  or null when the caster didn't step. */
 function extractCasterMove(
   decoded: ReturnType<typeof decodeAction>,
   post: Uint16Array,
@@ -428,7 +434,14 @@ function extractCasterMove(
   if (!decodeMailbox(post[src]).empty) return null;   // caster didn't leave src
   if (decodeMailbox(post[dest]).empty) return null;    // dest empty → no step
   diff.deaths = diff.deaths.filter((v) => v !== src);
-  diff.moves = diff.moves.filter((m) => m.from !== src);
+  // Pull the arrival at `dest` out of `moves`, whatever square the identity-
+  // blind pairing chose as its `from`. If that `from` is a stranded victim
+  // (not the caster's own src), it died in place — restore it to `deaths`.
+  const stolen = diff.moves.find((m) => m.to === dest);
+  if (stolen && stolen.from !== src && !diff.deaths.includes(stolen.from)) {
+    diff.deaths.push(stolen.from);
+  }
+  diff.moves = diff.moves.filter((m) => m.to !== dest);
   diff.stayed = diff.stayed.filter((s) => s !== dest);
   return { from: src, to: dest, dist: chebyshev(src, dest) };
 }
@@ -1243,10 +1256,10 @@ export function createPlyRenderer(
       }
     }
 
-    lastApplied =
-      decoded.kind === ActionKind.Move || decoded.kind === ActionKind.Skill
-        ? { src: decoded.src, target: decoded.target }
-        : null;
+    if (decoded.kind === ActionKind.Move || decoded.kind === ActionKind.Skill) {
+      lastApplied = { src: decoded.src, target: decoded.target };
+    }
+    // EndPhase / EndTurn: preserve the existing lastApplied highlight.
     } finally {
       performance.measure("renderApplied", "renderApplied-start");
     }

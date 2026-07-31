@@ -193,7 +193,11 @@
     "armed": "armed - click a target",
     "staged": "staged",
     "focusStaged": "Focus is staged - one non-mystic skill of yours this turn gains +1 Range (for Move skills, you pick activation- or effect-range).",
-    "chargeStaged": "Charge is staged - one Strike skill used by any of your pieces this turn deals +1 damage."
+    "chargeStaged": "Charge is staged - one Strike skill used by any of your pieces this turn deals +1 damage.",
+    "focusActivation": "Focus → +1 activation range",
+    "focusEffect": "Focus → +1 effect range",
+    "focusSelf": "Cast on self",
+    "focusAlly": "Focus → channel onto an adjacent ally"
   },
   "result": {
     "p1Wins": "Player 1 wins",

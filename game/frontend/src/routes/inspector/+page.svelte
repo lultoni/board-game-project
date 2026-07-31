@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
-  import BackButton from "$lib/ui/BackButton.svelte";
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import { createPlyRenderer, type PlyRenderer } from "$lib/board/ply-renderer.svelte";
@@ -711,7 +710,6 @@
 
 <main>
   <header>
-    <BackButton />
     <h1>Inspector</h1>
     {#if tree}
       <button

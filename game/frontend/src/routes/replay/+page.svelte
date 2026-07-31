@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { goto } from "$app/navigation";
   import { t } from "$lib/state/i18n";
+  import { setBackNav, clearBackNav } from "$lib/state/back-nav.svelte";
   import { settings } from "$lib/state/settings.svelte";
   import { sfx } from "$lib/audio/sfx";
   import {
@@ -18,6 +20,7 @@
     type EngineClient,
   } from "$lib/engine";
   import { consumePendingMatchLog } from "$lib/storage/library-handoff";
+  import { setPendingPositionFen } from "$lib/storage/position-handoff";
   import { snapshotJsonFromMatchLog } from "$lib/multiplayer-resume";
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
@@ -25,7 +28,7 @@
   import PlayerPanel from "$lib/match/PlayerPanel.svelte";
   import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
   import EvalBreakdownPanel from "$lib/eval/EvalBreakdownPanel.svelte";
-  import BackButton from "$lib/ui/BackButton.svelte";
+
   import {
     aiSearch,
     setHeuristic,
@@ -45,6 +48,7 @@
   let plies = $state<number[]>([]);
   let notations = $state<string[]>([]);
   let plyEvalLabels = $state<Array<string | null>>([]);
+  let finalResult = $state<string | null>(null);
   let currentPly = $state(0);
   let playing = $state(false);
   let busy = $state(false);
@@ -83,6 +87,8 @@
   });
 
   onMount(async () => {
+    // Replays are opened from the library, so send "back" there (not the hub).
+    setBackNav({ href: "/library/", label: t("app.back") });
     // Wipe leftover heuristic breakdown from a prior route session so the
     // eval panel doesn't briefly show stale numbers before the first poll
     // returns.
@@ -102,6 +108,7 @@
     renderer?.dispose();
     renderer = null;
     resetAiSearch();
+    clearBackNav();
   });
 
   async function loadFromJson(json: string): Promise<void> {
@@ -130,6 +137,7 @@
           ai?: SearchMetaLog | null;
           background_eval?: SearchMetaLog | null;
         }>;
+        final_result?: string | null;
       };
       const rawPlies: number[] = (log.plies ?? []).map((p) => p.action.raw >>> 0);
       const plyNotations: string[] = (log.plies ?? []).map((p) => p.action.notation ?? "");
@@ -137,6 +145,17 @@
       // plies carry `background_eval` (the time-bounded post-move read). Both
       // reduce to a compact label shown in the ply-info line.
       const plyEvals: Array<string | null> = (log.plies ?? []).map((p) => formatPlyEval(plyEvalOf(p)));
+
+      // Derive human-readable end label from final_result.
+      finalResult = (() => {
+        switch (log.final_result) {
+          case "P1Win": return "P1 wins";
+          case "P2Win": return "P2 wins";
+          case "Draw":  return "Draw";
+          case "Aborted": return "Aborted";
+          default: return null;
+        }
+      })();
 
       const fullSnap = snapshotJsonFromMatchLog(json);
       if (fullSnap === null) {
@@ -214,6 +233,16 @@
     }
   }
 
+  async function forkFromHere(): Promise<void> {
+    if (!eng || busy) return;
+    sfx.play("click");
+    try {
+      const fen = await eng.positionFen();
+      setPendingPositionFen(fen);
+      await goto("../position-builder/");
+    } catch { /* noop */ }
+  }
+
   function togglePlay(): void {
     if (plies.length === 0) return;
     if (currentPly >= plies.length) return;
@@ -234,12 +263,13 @@
   }
 
   // Poll heuristic eval breakdown on each ply change so the analysis panel
-  // stays in sync with the current-position display. Gated on the setting;
-  // no work performed when the panel is hidden.
+  // stays in sync with the current-position display. Gated on the panel
+  // being open (either the eval panel setting or the insights toggle).
   $effect(() => {
     void currentPly;
     void loaded;
-    if (!settings.showEvalPanel || !eng || !loaded) {
+    void showInsights;
+    if ((!settings.showEvalPanel && !showInsights) || !eng || !loaded) {
       setHeuristic(null);
       setPrevRoundBreakdown(null);
       setLastRoundSeen(null);
@@ -303,6 +333,44 @@
 
   let fenCopyState = $state<"idle" | "copied" | "failed">("idle");
   let fenCopyTimer: ReturnType<typeof setTimeout> | null = null;
+  let showInsights = $state(false);
+  let insightsBestMove = $state<string | null>(null);
+  let insightsSearching = $state(false);
+  let insightsSearchPly = $state<number>(-1);
+
+  // Run a shallow search for the insights panel whenever it's open and the ply changes.
+  // Cancelled if the ply changes while searching (stale result is discarded).
+  $effect(() => {
+    void currentPly;
+    if (!showInsights || !eng || !loaded || busy) return;
+    const plyAtStart = currentPly;
+    const e = eng;
+    insightsSearching = true;
+    insightsBestMove = null;
+    insightsSearchPly = plyAtStart;
+    e.requestAiMoveAtDepth(4).then(async (result) => {
+      if (currentPly !== plyAtStart) return; // stale
+      // StepResult carries the chosen move as a raw u32 (`appliedAction`), not
+      // a notation string — convert it via the engine's notation API.
+      let label: string | null = null;
+      try {
+        if (result.appliedAction) label = await e.actionToNotation(result.appliedAction);
+      } catch { /* leave label null */ }
+      if (currentPly !== plyAtStart) return; // ply moved during the async convert
+      insightsSearching = false;
+      insightsBestMove = label;
+    }).catch(() => {
+      insightsSearching = false;
+    });
+  });
+
+  // Clear insight results when panel closes or ply changes away.
+  $effect(() => {
+    if (!showInsights) {
+      insightsBestMove = null;
+      insightsSearching = false;
+    }
+  });
   async function copyFen(): Promise<void> {
     if (!eng) return;
     sfx.play("click");
@@ -320,7 +388,6 @@
 
 <main>
   <header>
-    <BackButton />
     <h1>{t("replay.title")}</h1>
   </header>
 
@@ -396,6 +463,32 @@
             {#if renderer.position}
               <ProgressionPanel roundNumber={renderer.position.roundNumber} />
             {/if}
+
+            <div class="panel-divider"></div>
+
+            <!-- Inspector Insights toggle -->
+            <button
+              type="button"
+              class="insights-toggle"
+              onclick={() => { showInsights = !showInsights; }}
+            >
+              {showInsights ? "▾" : "▸"} Inspector Insights
+            </button>
+            {#if showInsights}
+              <div class="insights-panel">
+                <div class="insights-best-move">
+                  <span class="insights-label">Best move</span>
+                  {#if insightsSearching}
+                    <span class="insights-thinking">searching…</span>
+                  {:else if insightsBestMove}
+                    <span class="insights-move">{insightsBestMove}</span>
+                  {:else}
+                    <span class="insights-empty">—</span>
+                  {/if}
+                </div>
+                <EvalBreakdownPanel />
+              </div>
+            {/if}
           </aside>
 
           {#if settings.showEvalPanel}
@@ -414,7 +507,7 @@
           {#if currentPly === 0}
             <em>{t("replay.atStart")}</em>
           {:else if currentPly >= plies.length}
-            <em>{t("replay.atEnd")}</em>
+            <em>{t("replay.atEnd")}{finalResult ? ` — ${finalResult}` : ""}</em>
             <span class="last-action">- {actionLabel}</span>
           {:else}
             <span class="last-action">{actionLabel}</span>
@@ -464,6 +557,15 @@
         >
           {t("replay.stepForward")}
         </button>
+        <button
+          type="button"
+          class="fork-btn"
+          disabled={busy || plies.length === 0}
+          onclick={() => void forkFromHere()}
+          title="Open this position in the Position Builder"
+        >
+          ⑂ Fork
+        </button>
       </div>
 
       <div class="scrub">
@@ -497,12 +599,15 @@
     padding: 1rem 1.5rem;
   }
   header {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
     border-bottom: 1.5px solid var(--paper-line);
     padding-bottom: 0.5rem;
     margin-bottom: 1rem;
   }
   header h1 {
-    margin: 0.2rem 0 0;
+    margin: 0;
     font-size: 1.8rem;
   }
   .paste {
@@ -603,6 +708,51 @@
     background: var(--paper-line);
     margin: 0.1rem 0;
   }
+  .insights-toggle {
+    background: none;
+    border: none;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--paper-ink-soft);
+    cursor: pointer;
+    padding: 0.2em 0;
+    text-align: left;
+  }
+  .insights-toggle:hover { color: var(--paper-ink); }
+  .insights-panel {
+    margin-top: 0.4rem;
+    /* The eval breakdown inside is wider than the 200px right-column; break out
+       to the column's right edge and grow leftward (same trick as .eval-below)
+       so component-name rows aren't clipped. Capped so it never eats the board. */
+    width: min(360px, calc(100vw - 2rem));
+    align-self: flex-end;
+    box-sizing: border-box;
+  }
+  .insights-panel :global(.eval-panel) {
+    width: 100%;
+  }
+  .insights-best-move {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.3em 0;
+    margin-bottom: 0.4rem;
+    font-size: 0.85rem;
+  }
+  .insights-label {
+    color: var(--paper-ink-soft);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .insights-move { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .insights-thinking { color: var(--paper-ink-soft); font-style: italic; }
+  .insights-empty { color: var(--paper-ink-soft); }
   .status-block {
     display: flex;
     flex-direction: column;
@@ -712,6 +862,13 @@
     opacity: 0.45;
     cursor: not-allowed;
   }
+  .fork-btn {
+    margin-left: auto;
+    border-color: var(--accent, #c79b3a);
+    color: var(--accent, #c79b3a);
+    font-weight: 600;
+  }
+  .fork-btn:not(:disabled):hover { background: color-mix(in srgb, var(--accent, #c79b3a) 12%, var(--paper-bg)); }
   .scrub {
     display: flex;
     align-items: center;

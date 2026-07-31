@@ -92,6 +92,15 @@ export interface MpEngineDeps {
    *  `paused`/`resumed` messages; host triggers them on disconnect/reconnect
    *  events delivered by the runtime). UI surfaces a "paused" indicator. */
   onPausedChange: (paused: boolean) => void;
+  /** Called when the peer sends a draw offer. The route shows a prompt;
+   *  calling the returned `reply(accepted)` sends the draw-response. */
+  onDrawOffer?: () => void;
+  /** Called when the peer responds to our draw offer. accepted=true means
+   *  both sides agreed; the route should call agreeDrawGame. */
+  onDrawResponse?: (accepted: boolean) => void;
+  /** Called when the peer resigns (their seat is passed). The route should
+   *  terminate the game with the OTHER seat as the winner. */
+  onResign?: (seat: 0 | 1) => void;
   /** Called by the wrapper after every committed action ON THE HOST so the
    *  caller can write to the host's IDB row. Joiner never writes its own
    *  row - caller's implementation should no-op when `role === "joiner"`. */
@@ -181,6 +190,15 @@ export interface MpEngineHandle {
 
   /** The latest committed seq we know about. */
   getSeq(): number;
+
+  /** Send a draw offer to the peer. No-op in solo mode. */
+  sendDrawOffer(): void;
+  /** Reply to a draw offer from the peer. No-op in solo mode. */
+  sendDrawResponse(accepted: boolean): void;
+
+  /** Notify the peer that `seat` has resigned. The peer terminates the game
+   *  with the other seat as the winner. No-op in solo mode. */
+  sendResign(seat: 0 | 1): void;
 
   /** Tear down: unsubscribe, reject any in-flight intents. Idempotent. */
   dispose(): void;
@@ -595,6 +613,18 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
           deps.onPausedChange(false);
         }
         return;
+
+      case "draw-offer":
+        deps.onDrawOffer?.();
+        return;
+
+      case "draw-response":
+        deps.onDrawResponse?.(m.accepted);
+        return;
+
+      case "resign":
+        deps.onResign?.(m.seat);
+        return;
     }
   }
 
@@ -814,6 +844,21 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     return seq;
   }
 
+  function sendDrawOffer(): void {
+    if (disposed) return;
+    deps.send({ kind: "draw-offer" });
+  }
+
+  function sendDrawResponse(accepted: boolean): void {
+    if (disposed) return;
+    deps.send({ kind: "draw-response", accepted });
+  }
+
+  function sendResign(seat: 0 | 1): void {
+    if (disposed) return;
+    deps.send({ kind: "resign", seat });
+  }
+
   function dispose(): void {
     if (disposed) return;
     disposed = true;
@@ -830,6 +875,9 @@ export function createMpEngine(opts: MpEngineOpts, deps: MpEngineDeps): MpEngine
     setMatchId,
     promoteToHost,
     getSeq,
+    sendDrawOffer,
+    sendDrawResponse,
+    sendResign,
     dispose,
   };
 }

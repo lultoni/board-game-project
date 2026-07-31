@@ -4,9 +4,11 @@
     roundNumber: number;
     /** How many rounds ahead to show (default 5). */
     lookahead?: number;
+    /** How many past rounds to show above current (default 2). */
+    lookback?: number;
   }
 
-  let { roundNumber, lookahead = 5 }: Props = $props();
+  let { roundNumber, lookahead = 5, lookback = 2 }: Props = $props();
 
   function incomeForRound(r: number): number {
     if (r <= 1) return 0;
@@ -17,41 +19,44 @@
     return 2 + Math.floor((r - 1) / 10);
   }
 
-  // Build the rows: current round + next `lookahead` rounds.
-  const rows = $derived(
-    Array.from({ length: lookahead + 1 }, (_, i) => {
-      const r = roundNumber + i;
+  // Past rounds (dimmed history) + current + future
+  const rows = $derived.by(() => {
+    const result = [];
+    const start = Math.max(1, roundNumber - lookback);
+    for (let r = start; r <= roundNumber + lookahead; r++) {
       const income = incomeForRound(r);
       const actions = skillActionsForRound(r);
       const prevIncome = incomeForRound(r - 1);
       const prevActions = skillActionsForRound(r - 1);
-      return {
+      result.push({
         round: r,
         income,
         actions,
         incomeUp: income > prevIncome,
         actionsUp: actions > prevActions,
-        isCurrent: i === 0,
-      };
-    }),
-  );
+        isCurrent: r === roundNumber,
+        isPast: r < roundNumber,
+      });
+    }
+    return result;
+  });
 </script>
 
 <div class="progression-panel">
-  <div class="panel-header">Upcoming rounds</div>
+  <div class="panel-header">Rounds</div>
   <div class="grid">
     <span class="col-head">Rnd</span>
     <span class="col-head">Income</span>
     <span class="col-head">Skill act.</span>
     {#each rows as row}
-      <span class="cell round" class:current={row.isCurrent}>{row.round}</span>
-      <span class="cell" class:current={row.isCurrent} class:bump={row.incomeUp}>
+      <span class="cell round" class:current={row.isCurrent} class:past={row.isPast}>{row.round}</span>
+      <span class="cell" class:current={row.isCurrent} class:past={row.isPast} class:bump={row.incomeUp && !row.isPast}>
         {row.round <= 1 ? "-" : `$${row.income}`}
-        {#if row.incomeUp}<span class="up-arrow" aria-label="increase">↑</span>{/if}
+        {#if row.incomeUp && !row.isPast}<span class="up-arrow" aria-label="increase">↑</span>{/if}
       </span>
-      <span class="cell" class:current={row.isCurrent} class:bump={row.actionsUp}>
+      <span class="cell" class:current={row.isCurrent} class:past={row.isPast} class:bump={row.actionsUp && !row.isPast}>
         {row.actions}
-        {#if row.actionsUp}<span class="up-arrow" aria-label="increase">↑</span>{/if}
+        {#if row.actionsUp && !row.isPast}<span class="up-arrow" aria-label="increase">↑</span>{/if}
       </span>
     {/each}
   </div>
@@ -99,6 +104,11 @@
   }
 
   .cell.round {
+    color: var(--paper-ink-soft, #6a6055);
+  }
+
+  .cell.past {
+    opacity: 0.42;
     color: var(--paper-ink-soft, #6a6055);
   }
 

@@ -40,6 +40,7 @@ function makeView(
     gameResult: 0,
     zobrist: 0n,
     pendingBodyguard: null,
+    movedThisPhase: 0n,
   };
 }
 

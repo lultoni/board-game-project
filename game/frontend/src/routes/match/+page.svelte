@@ -6,12 +6,14 @@
     decodeAction,
     encodeBodyguardChoice,
     decodeMailbox,
+    bitsOf,
     SNAPSHOT_BUDGETS,
     SnapshotValidationError,
     validateSnapshot,
     isSelfCast,
     SKILLS,
     skillById,
+    focusSplitKind,
     MODIFIER_FOCUS,
     MODIFIER_CHARGE,
     runAiCall,
@@ -21,12 +23,13 @@
     aivaiProducerLog,
     onAivaiProgress,
     producerRawsFromLog,
+    producerMetaFromLog,
     snapshotActionCount,
     type SearchMetaLog,
+    type ProducerPlyMeta,
   } from "$lib/engine";
   import { resolveLoadout, mirrorLoadout } from "$lib/state/draft";
   import { t } from "$lib/state/i18n";
-  import BackButton from "$lib/ui/BackButton.svelte";
   import {
     match,
     modeFromSeats,
@@ -40,6 +43,8 @@
     multiplayerRole,
     multiplayerCode,
     claimWinByOpponentForfeit,
+    resignGame,
+    agreeDrawGame,
   } from "$lib/state/match-store.svelte";
   import { settings, slideDurationMs } from "$lib/state/settings.svelte";
   import {
@@ -50,7 +55,7 @@
     approachChoicesFor,
     pickApproachByCursor,
   } from "$lib/state/move-targets";
-  import { skillTargetsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, hasSelfAndRetargetChoice, variantIsSelfCast, allyMoverCandidates, allyMoverDestinations, rawForAllyMove, rawForSelfCast, type SkillVariant } from "$lib/state/skill-targets";
+  import { skillTargetsFor, skillVariantsFor, skillIsCastable, hasFocusModeChoice, hasRetargetVariants, hasSelfAndRetargetChoice, variantIsSelfCast, allyMoverCandidates, allyMoverDestinations, rawForAllyMove, rawForSelfCast, type SkillVariant } from "$lib/state/skill-targets";
   import Board from "$lib/board/Board.svelte";
   import EffectsLayer from "$lib/board/EffectsLayer.svelte";
   import SkillInfoCard from "$lib/board/SkillInfoCard.svelte";
@@ -73,8 +78,12 @@
   import { sfx } from "$lib/audio/sfx";
   import { getTelemetryStore } from "$lib/storage";
   import { createPlyRenderer, type PlyRenderer } from "$lib/board/ply-renderer.svelte";
+  import { TauriClient } from "$lib/engine/tauri-client";
+  import { snapshotJsonFromMatchLog } from "$lib/multiplayer-resume";
+  import type { PositionView, EngineClient } from "$lib/engine/types";
   import PlayerPanel from "$lib/match/PlayerPanel.svelte";
   import ProgressionPanel from "$lib/match/ProgressionPanel.svelte";
+  import ActionLogPanel from "$lib/match/ActionLogPanel.svelte";
   import EvalBreakdownPanel from "$lib/eval/EvalBreakdownPanel.svelte";
   import SquareEvalCard from "$lib/eval/SquareEvalCard.svelte";
   import {
@@ -127,6 +136,12 @@
    *  the view advances toward; refreshed from the producer log on each
    *  `aivai-progress` event. */
   let producerRaws = $state<number[]>([]);
+  /** Per-ply search readout (depth + P1-POV score) aligned index-for-index with
+   *  `producerRaws`. Drives the AIvAI thinking/linger pills in both PlayerPanels
+   *  — `advanceView` replays the depth/score into the `aiSearch` store so the
+   *  spectator sees the same depth badge HvAI shows. Entries can be null for a
+   *  ply that carried no `ai` meta (still shows a pill, just no depth). */
+  let producerMetas = $state<(ProducerPlyMeta | null)[]>([]);
   /** How many plies the view engine has rendered. Never exceeds
    *  `producerRaws.length`. */
   let viewPly = $state(0);
@@ -143,7 +158,22 @@
   /** Confirmation dialog state for sandbox discard. */
   let sandboxConfirmMsg = $state<string | null>(null);
   let sandboxConfirmResolve: ((ok: boolean) => void) | null = null;
+  /** Resign / draw dialog state. */
+  let showResignConfirm = $state(false);
+  let showDrawOfferConfirm = $state(false);   // local HvH or HvAI: offer-draw confirm
+  let showIncomingDrawOffer = $state(false);  // MP: peer offered draw, waiting for our response
   let sandboxUndoStack = $state<string[]>([]);
+  let sandboxRedoStack = $state<string[]>([]);
+  /** "Play My Moves" confirm dialog: list of notation strings to commit. */
+  let playMyMovesConfirm = $state<string[] | null>(null);
+  let playMyMovesPlaying = $state(false);
+  /** Queue of staged sandbox plies waiting to be committed to the real line.
+   *  Drained one at a time through the NORMAL apply path (applyRaw), so each
+   *  ply respects the same seat/turn/bodyguard gating a live player would.
+   *  Cleared on completion, bodyguard interruption, or any player action. */
+  let playMyMovesQueue = $state<number[]>([]);
+  /** Non-error notice shown when playback halts for a Bodyguard choice. */
+  let playMyMovesNotice = $state<string | null>(null);
   function sandboxConfirm(msg: string): Promise<boolean> {
     sandboxConfirmMsg = msg;
     return new Promise((resolve) => {
@@ -183,11 +213,52 @@
   const p1IsAi = $derived(match.side.p1 === "ai");
   const p2IsAi = $derived(match.side.p2 === "ai");
 
-  // Track which squares used their Move action this phase. Stored as the
-  // attacker's final square (target for plain Move, approach_sq for
-  // Move-Attack). Cleared whenever phase or to-move flips.
-  let usedThisPhase = $state<Set<number>>(new Set());
+  // Flip the board so the local human always sits at the bottom.
+  // HvAI: flip when the human is P2 (seat 1). MP: flip when localSeat is 1.
+  // HvH local: no flip (both players share the screen). AIvAI: no flip.
+  const boardFlipped = $derived.by(() => {
+    if (match.mode === "multiplayer") return match.localSeat === 1;
+    if (match.mode === "hvai") return match.side.p1 === "ai"; // human is P2
+    return false;
+  });
+
+  // Which squares used their Move action this phase — read straight from the
+  // engine's authoritative `moved_this_phase` bitboard (projected into
+  // PositionView). Deriving it (rather than tracking incrementally) means the
+  // greyed-out rendering is correct on LOAD too: resume, snapshot restore, and
+  // the time-travel preview all show the right already-moved set immediately,
+  // not just for pieces that moved during this session.
+  const movedSquares = $derived.by(() => {
+    const bb = match.position?.movedThisPhase ?? 0n;
+    return new Set<number>(bitsOf(bb));
+  });
+  /** Preview equivalent of `movedSquares`, read from the frozen preview view. */
+  const previewMoved = $derived.by(() => {
+    const bb = previewPosition?.movedThisPhase ?? 0n;
+    return new Set<number>(bitsOf(bb));
+  });
   let lastPhaseKey = $state<string>(""); // `${toMove}:${phase}` - phase boundary detector
+  /** Baseline piece counts detected at match boot. Override for custom positions. */
+  let baselinePieces = $state<{ kings: number; champs: number; guards: number }>({ kings: 1, champs: 5, guards: 6 });
+  /** In-game action log entries for the ActionLogPanel. */
+  let actionLogEntries = $state<Array<{ index: number; notation: string; isP1: boolean }>>([]);
+  /** Time travel: index of the ply currently being previewed (1-based), or null = present. */
+  let previewPly = $state<number | null>(null);
+  /** Read-only time-travel preview (P3-E). The preview runs on a SEPARATE,
+   *  isolated engine handle (its own `TauriClient` → its own registry entry) so
+   *  the live game keeps running untouched — the AI keeps moving, MP peer moves
+   *  keep landing, telemetry keeps recording — while the player inspects the
+   *  past on a frozen board. Nothing here ever calls into the live `eng`. */
+  let previewEng = $state<EngineClient | null>(null);
+  let previewRenderer = $state<PlyRenderer | null>(null);
+  let previewPosition = $state<PositionView | null>(null);
+  /** The live-head ply index captured at the moment preview was ENTERED (the
+   *  "you left the present here" marker). Pinned — it does NOT follow the live
+   *  head as new moves append while you inspect the past. Null when at present. */
+  let leftAtPly = $state<number | null>(null);
+  /** True while a past ply is being previewed (board shows the frozen preview
+   *  source instead of the live one). Live loops are NOT gated on this. */
+  const previewing = $derived(previewPly !== null);
 
   // Live drag state for the parent - Board owns the pointer mechanics and
   // pushes updates here so we can render path trail + hover ring.
@@ -206,6 +277,14 @@
 
   // Bodyguard chooser state. Engine-owned via Position.pending_bodyguard.
   const pendingBodyguard = $derived(match.position?.pendingBodyguard ?? null);
+  // Clear the "playback paused for Bodyguard" notice once the choice is resolved
+  // (the engine drops pending_bodyguard). Playback is not auto-resumed — the
+  // user drove the choice, so remaining staged plies stay dropped by design.
+  $effect(() => {
+    if (pendingBodyguard === null && playMyMovesNotice !== null) {
+      playMyMovesNotice = null;
+    }
+  });
 
   // Armed skill state.
   let armedSkill = $state<{ square: number; skillId: number } | null>(null);
@@ -221,6 +300,20 @@
     (match.position?.pendingModifiers ?? 0) & MODIFIER_CHARGE ? true : false,
   );
   let hoveredSlice = $state<import("$lib/board/SkillWheel.svelte").SliceKind | null>(null);
+  // Delayed visibility for the skill tooltip — shows after 1s of continuous hover.
+  let hoveredSliceVisible = $state(false);
+  let hoveredSliceTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    if (hoveredSlice === null) {
+      if (hoveredSliceTimer) { clearTimeout(hoveredSliceTimer); hoveredSliceTimer = null; }
+      hoveredSliceVisible = false;
+    } else {
+      if (!hoveredSliceVisible) {
+        if (hoveredSliceTimer) clearTimeout(hoveredSliceTimer);
+        hoveredSliceTimer = setTimeout(() => { hoveredSliceVisible = true; }, 1000);
+      }
+    }
+  });
 
   const dragHoverLegal = $derived.by(() => {
     if (dragSrc === null || dragHover === null) return false;
@@ -254,7 +347,37 @@
 
   const effectiveLanding = $derived(dragSrc !== null ? dragLanding : clickLanding);
 
+  // Money delta preview: show pending cost when a skill is hovered or armed.
+  const pendingSkillCost = $derived.by((): number | null => {
+    const skillId = hoveredSlice?.kind === "skill" ? hoveredSlice.skillId
+      : armedSkill?.skillId ?? null;
+    if (skillId === null) return null;
+    const s = SKILLS[skillId];
+    return s ? s.cost : null;
+  });
+  // (piece selected, no drag, no pending chooser), show available approach squares
+  // so the player can see where they'll land before clicking.
+  const hoverApproachChoices = $derived.by((): number[] => {
+    if (dragSrc !== null) return [];              // dragging: board handles it
+    if (match.selection === null) return [];
+    if (pendingApproach !== null) return [];       // chooser already open
+    if (hoverSq === null) return [];
+    if (!moveTargets.squares.has(hoverSq)) return [];
+    const approaches = moveTargets.byTarget.get(hoverSq);
+    if (!approaches) return [];
+    // Multiple approaches → always show chooser.
+    // Single approach that differs from target → speed-2 intermediate square,
+    // show it even without ambiguity so the player sees the path.
+    const keys = [...approaches.keys()].sort((a, b) => a - b);
+    if (approaches.size > 1 || (approaches.size === 1 && keys[0] !== hoverSq)) {
+      return keys;
+    }
+    return [];
+  });
+
   function handlePressStart(src: number) {
+    // Player intervention cancels any in-flight Play-My-Moves drain.
+    if (playMyMovesQueue.length > 0) playMyMovesQueue = [];
     sfx.unlock();
     sfx.play("pickup");
     match.selection = src;
@@ -289,6 +412,32 @@
   let eng = $state<Awaited<ReturnType<typeof getEngine>> | null>(null);
 
   const moveTargets = $derived(moveTargetsFor(match.legal, match.selection));
+
+  // P2-B: the drag trail's intermediate squares should only show when THIS
+  // approach is genuinely speed-2 (the attacker lands one tile short of the
+  // hovered square). A piece that CAN move speed-2 elsewhere but is being
+  // dragged onto a speed-1 target must not show a trail — so gate on the live
+  // hover/landing, not on whether any target is speed-2. When landing === hover
+  // it's a plain move / speed-1 attack → no intermediate squares.
+  const dragTrailShown = $derived(
+    dragLanding !== null && dragHover !== null && dragLanding !== dragHover
+      ? dragTrail
+      : dragTrail.slice(0, 1),
+  );
+
+  // P2-C: the legal target square the cursor is over while a piece is SELECTED
+  // and NOT dragging. Drives the click-mode hover ring + landing crosshair in
+  // the Board (same preview as a drag). Null unless previewing a real move.
+  const clickHoverTarget = $derived(
+    match.selection !== null
+      && !previewing
+      && dragSrc === null
+      && pendingApproach === null
+      && hoverSq !== null
+      && moveTargets.squares.has(hoverSq)
+      ? hoverSq
+      : null,
+  );
   // `selectable` gates piece-pickup interactivity (draggable, click-to-select,
   // cursors). In Move Phase: pieces with at least one Move action. In Skill
   // Phase: pieces with at least one Skill action (movable=empty there anyway).
@@ -300,6 +449,13 @@
   const movable = $derived(movableSources(match.legal));
   const endPhaseAction = $derived(findActionByKind(match.legal, ActionKind.EndPhase));
   const inMovePhase = $derived(match.position?.currentPhase === 0);
+  // Phase action-budgets derived from the ruleset so the *inactive* phase box
+  // still shows its real count (greyed) rather than a dash. Move is always 2
+  // actions; Skill grows with Progression: 2 + floor((round-1)/10).
+  const movePhaseBudget = 2;
+  const skillPhaseBudget = $derived(
+    2 + Math.floor(((match.position?.roundNumber ?? 1) - 1) / 10),
+  );
   // Standard interactivity: it's the local seat's turn and we're not busy.
   // Bodyguard no longer needs a special-case override - when the engine sets
   // `pending_bodyguard` it also flips STM to the defender, so the defender's
@@ -309,7 +465,9 @@
   const interactive = $derived(
     ready
     && !busy
+    && !previewing
     && match.position?.gameResult === 0
+    && !match.forcedResult
     && (match.mode === "sandbox" || (!currentSeatIsAi && currentSeatIsLocal))
   );
 
@@ -326,7 +484,10 @@
     if (pendingBodyguard !== null) return null;
     if (pendingDirection !== null) return null;
     // Hide the wheel once a skill is armed - the player is now choosing a
-    // target, so the wheel chrome would just obscure the board.
+    // target, so the wheel chrome would just obscure the board and could
+    // intercept clicks meant for target tiles. This applies to focus-split
+    // quarters too (picking a quarter arms + closes, exactly like a normal
+    // skill half); the armed skill stays cancelable via ✕ Cancel / Escape.
     if (armedSkill !== null) return null;
     const pos = match.position;
     if (!pos) return null;
@@ -343,23 +504,60 @@
   // one Skill action with that (caster, skill_id) is in `legal`. End-Phase
   // is enabled iff `endPhaseAction !== null`. Focus / Charge are themselves
   // skills (ids 14/15) - if the piece has one equipped they show up as the
-  // corresponding skill sector; they have NO dedicated sector of their own.
   const wheelLegality = $derived.by(() => {
     if (!wheelOpen) {
-      return {
-        skill1Legal: false,
-        skill2Legal: false,
-        endPhaseLegal: false,
-      };
+      return { skill1Legal: false, skill2Legal: false };
     }
     const src = wheelOpen.square;
     const skill1Legal = wheelOpen.skill1 > 0 && skillIsCastable(match.legal, src, wheelOpen.skill1);
     const skill2Legal = wheelOpen.skill2 > 0 && skillIsCastable(match.legal, src, wheelOpen.skill2);
-    return {
-      skill1Legal,
-      skill2Legal,
-      endPhaseLegal: endPhaseAction !== null,
+    return { skill1Legal, skill2Legal };
+  });
+
+  // Per-slot focus split descriptors for the wheel. A slot's half splits into
+  // two quarters when Focus is staged AND the slot's skill is focus-eligible by
+  // TYPE (focusSplitKind): Blast/Shove → activation(+rng)/effect(+eff); Shield/
+  // Dash/Retreat → self/ally. Split is advertised on skill type (not gated on a
+  // live legal target); each quarter's legality greys the unavailable side.
+  const wheelSplits = $derived.by((): {
+    split1: import("$lib/board/SkillWheel.svelte").SplitDesc | null;
+    split2: import("$lib/board/SkillWheel.svelte").SplitDesc | null;
+  } => {
+    if (!wheelOpen || !focusActive) return { split1: null, split2: null };
+    const src = wheelOpen.square;
+    const build = (
+      skillId: number,
+    ): import("$lib/board/SkillWheel.svelte").SplitDesc | null => {
+      if (skillId <= 0) return null;
+      const kind = focusSplitKind(skillId);
+      if (kind === null) return null;
+      const variants = skillVariantsFor(match.legal, src, skillId);
+      const armedHere = armedSkill?.skillId === skillId;
+      if (kind === "focusMode") {
+        const aLegal = variants.some((v) => !v.focusMode);
+        const bLegal = variants.some((v) => v.focusMode);
+        // Show the split only if at least one quarter is castable — otherwise
+        // the skill isn't legal at all under Focus and its slice is disabled.
+        if (!aLegal && !bLegal) return null;
+        return {
+          kind,
+          aLegal,
+          bLegal,
+          armed: armedHere ? focusModePref : null,
+        };
+      }
+      // retarget: self vs ally
+      const aLegal = variants.some((v) => variantIsSelfCast(v, src));
+      const bLegal = variants.some((v) => v.hasAux && v.auxSq !== src);
+      if (!aLegal && !bLegal) return null;
+      return {
+        kind,
+        aLegal,
+        bLegal,
+        armed: armedHere ? focusRetargetPref : null,
+      };
     };
+    return { split1: build(wheelOpen.skill1), split2: build(wheelOpen.skill2) };
   });
 
   // Whether the currently-armed skill has a Focus-mode choice for the player
@@ -475,6 +673,7 @@
     if (!ready) return;
     if (match.mode === "sandbox") return;
     if (match.mode === "aivai") return; // AIvAI is the producer/view loop, not stepAi
+    if (playMyMovesQueue.length > 0) return; // Play-My-Moves owns the engine while draining
     if (!currentSeatIsAi) return;
     if (busy) return;
     // Small fixed beat so the board repaints between the human's move and the
@@ -521,10 +720,11 @@
           match.position = pos;
           match.legal = legal;
         },
-        sfxEnabled: true,
-        onMoveLanding: (finalSq) => {
-          usedThisPhase = new Set([...usedThisPhase, finalSq]);
-        },
+        // Live moves keep rendering while the player inspects history (the game
+        // never pauses), but they render OFF-SCREEN — so mute their SFX while
+        // previewing. Evaluated per-play, so audio returns the moment you jump
+        // back to the present.
+        sfxEnabled: () => !previewing,
       });
       // B3: after a human ply, the engine runs a time-bounded background eval
       // and emits `background-eval-ready`. Pick up the freshly-annotated
@@ -559,9 +759,31 @@
       // `/setup/` writes the field on commit; we read it here once and
       // consume via `resolveLoadout()`.
       const sideLoadouts = match.sideLoadouts;
+      const resumeMatchId = match.resumeMatchId;
       resetMatchState();
       match.side = sideAtBoot;
-      if (sideLoadouts) {
+      if (resumeMatchId) {
+        match.resumeMatchId = null; // consume
+        let resumed = false;
+        try {
+          const snap = await getTelemetryStore().getResumeSnapshot(resumeMatchId);
+          if (snap) {
+            validateSnapshot(snap, {
+              maxActions: SNAPSHOT_BUDGETS.RESUME_MAX_ACTIONS,
+              maxJsonBytes: SNAPSHOT_BUDGETS.MAX_JSON_BYTES,
+              requireConfig: true,
+              source: "idb-resume",
+            });
+            await eng.restoreFromSnapshot(snap);
+            // Re-use the existing telemetry row instead of starting a new one.
+            match.telemetryMatchId = resumeMatchId;
+            resumed = true;
+          }
+        } catch (e) {
+          console.warn("[resume] failed to restore local game:", e);
+        }
+        if (!resumed) await eng.createEngine();
+      } else if (sideLoadouts) {
         const p1Loadout = await resolveLoadout(sideLoadouts.p1);
         let p2Loadout = await resolveLoadout(sideLoadouts.p2);
         // Mirror match: when both sides use the SAME pre-made loadout, P2's
@@ -613,6 +835,33 @@
       await applyEvaluatorSettings(eng);
       await renderer.resyncFromEngine();
       lastPhaseKey = phaseKey();
+      // Detect non-standard piece counts for custom positions.
+      if (match.position) {
+        const pos = match.position;
+        function popcount(bb: bigint): number {
+          let n = 0; let b = bb;
+          while (b !== 0n) { b &= b - 1n; n++; }
+          return n;
+        }
+        const [p1bb, p2bb, kings, , guards] = pos.bitboards;
+        const p1Kings = popcount(kings & p1bb);
+        const p1Guards = popcount(guards & p1bb);
+        const p1Champs = popcount(p1bb) - p1Kings - p1Guards;
+        const p2Kings = popcount(kings & p2bb);
+        const p2Guards = popcount(guards & p2bb);
+        const p2Champs = popcount(p2bb) - p2Kings - p2Guards;
+        // Box count per type = max(standard army, actual on either side). A
+        // custom position with fewer pieces still shows the standard number of
+        // boxes (with the extras pre-filled as "captured"); a position with
+        // MORE pieces grows the row. Symmetric across sides so both panels use
+        // the same box count.
+        const STD = { kings: 1, champs: 5, guards: 6 };
+        baselinePieces = {
+          kings: Math.max(STD.kings, p1Kings, p2Kings),
+          champs: Math.max(STD.champs, p1Champs, p2Champs),
+          guards: Math.max(STD.guards, p1Guards, p2Guards),
+        };
+      }
       // Stamp the decision clock for the opening action window; afterApplied()
       // only sees transitions AFTER the first apply, so seed it here.
       match.turnStartedMs = Date.now();
@@ -702,6 +951,24 @@
           onPausedChange: (p) => {
             mpPaused = p;
           },
+          onDrawOffer: () => {
+            showIncomingDrawOffer = true;
+          },
+          onDrawResponse: (accepted) => {
+            if (accepted && eng) {
+              void agreeDrawGame(eng);
+            } else {
+              toast = "Draw offer declined.";
+              if (toastTimer) clearTimeout(toastTimer);
+              toastTimer = setTimeout(() => { toast = ""; }, 3000);
+            }
+          },
+          onResign: (seat) => {
+            // Peer resigned. resignGame(seat) sets the winner to the OTHER
+            // seat and finalises our local telemetry/log the same way our own
+            // resign does, so both peers converge on the same result.
+            if (eng) void resignGame(eng, seat);
+          },
           onHostCommitted: async () => { /* recordPly fires via onApplied */ },
         },
       );
@@ -752,6 +1019,7 @@
             try {
               const log = await aivaiProducerLog(eng!);
               producerRaws = producerRawsFromLog(log);
+              producerMetas = producerMetaFromLog(log);
             } catch {
               // A transient read failure just leaves the prior ceiling; the
               // next event refreshes it.
@@ -764,7 +1032,9 @@
           // we pick up any plies already computed; every subsequent event
           // refreshes the full list, so no ceiling bump is ever lost.
           try {
-            producerRaws = producerRawsFromLog(await aivaiProducerLog(eng));
+            const log0 = await aivaiProducerLog(eng);
+            producerRaws = producerRawsFromLog(log0);
+            producerMetas = producerMetaFromLog(log0);
           } catch { /* first event will populate it */ }
         } catch (e) {
           console.warn("[aivai] producer start failed; falling back to idle:", e);
@@ -875,6 +1145,7 @@
           await eng!.tryApply(raw);
         });
         sandboxUndoStack = [...sandboxUndoStack.slice(-49), snap];
+        sandboxRedoStack = []; // new action clears redo history
         match.sandboxMovesApplied += 1;
         match.lastApplied = raw;
         afterApplied();
@@ -923,20 +1194,50 @@
   /** Phase-boundary bookkeeping that used to live inside renderApplied. */
   function afterApplied(): void {
     plyCount += 1;
-    // A successful apply means whatever transient error the user was looking
-    // at (move-refused, illegal-target, etc.) is no longer relevant.
-    // Anti-cheat / engine-boot errors set bootError too, but those branches
-    // never reach here - afterApplied only fires after a committed action.
     if (bootError !== null) bootError = null;
     const k = phaseKey();
     if (k !== lastPhaseKey) {
-      usedThisPhase = new Set();
+      // `movedSquares` is derived from the engine's moved_this_phase bitboard,
+      // which the engine itself clears on the phase flip — no manual reset here.
       lastPhaseKey = k;
-      // A new action window opened for whoever is now to move. Stamp the
-      // decision-clock start so the next human apply records think-time.
       match.turnStartedMs = Date.now();
+      // Clear skill hover/armed state so money preview doesn't persist across phase.
+      hoveredSlice = null;
+      armedSkill = null;
+    }
+    // Append to action log (async notation fetch — fire-and-forget).
+    if (match.lastApplied !== null && match.mode !== "sandbox") {
+      const raw = match.lastApplied;
+      const idx = actionLogEntries.length + 1;
+      const isP1 = (match.position?.toMove ?? 0) === 1; // toMove already flipped after apply
+      const localEng = eng;
+      if (localEng) {
+        localEng.actionToNotation(raw).then((n) => {
+          actionLogEntries = [...actionLogEntries, { index: idx, notation: n, isP1 }];
+        }).catch(() => {
+          actionLogEntries = [...actionLogEntries, { index: idx, notation: String(raw), isP1 }];
+        });
+      }
     }
   }
+
+  // Auto-end phase: when the only legal action is EndPhase, fire it without
+  // requiring the player to click the button. Skipped in sandbox (exploratory),
+  // when busy (mid-apply), and on AI turns (AI handles its own phase endings).
+  $effect(() => {
+    if (!ready) return;
+    if (busy) return;
+    if (match.mode === "sandbox") return;
+    if (playMyMovesQueue.length > 0) return; // Play-My-Moves owns the engine while draining
+    if (match.forcedResult) return;
+    if (currentSeatIsAi) return;
+    if (!currentSeatIsLocal) return;
+    if (match.position?.gameResult !== 0) return;
+    const legal = match.legal;
+    if (legal.length === 1 && endPhaseAction !== null) {
+      void applyRaw(endPhaseAction);
+    }
+  });
 
   // Poll the heuristic eval whenever the position advances (including the
   // initial one after engine boot, which afterApplied() never sees) or the
@@ -1076,7 +1377,26 @@
     if (match.mode !== "aivai") return;
     if (viewPly >= producerRaws.length) return;
     const raw = producerRaws[viewPly];
+    // Which seat computed this ply — captured BEFORE apply flips to-move, so the
+    // depth/score pill and its post-render linger attribute to the right panel.
+    const side: "p1" | "p2" = (match.position?.toMove ?? 0) === 0 ? "p1" : "p2";
+    // Per-ply search readout the producer recorded when it chose this move.
+    const meta = producerMetas[viewPly] ?? null;
     busy = true;
+    // Drive the AIvAI thinking pill: HvAI does this via runAiStep's
+    // beginSearch/updateDepth/endSearch; the producer/view split never did, so
+    // both panels stayed blank (BUG-2). We replay the producer's recorded
+    // depth/score into the same store the panels read. `beginSearch` shows the
+    // spinner during this ply's (near-instant) view apply; the linger badge
+    // then keeps the last depth visible until the next ply advances.
+    beginSearch(side);
+    if (meta) {
+      // Score in the log is P1-POV; PlayerPanel shows it raw and HvAI feeds it
+      // seat-relative, so flip sign for P2 to match that convention.
+      const seatScore = meta.scoreCp === null ? 0 : (side === "p1" ? meta.scoreCp : -meta.scoreCp);
+      updateDepth(side, meta.depth, seatScore);
+      setFinalDepth(side, meta.depth);
+    }
     try {
       renderer.drainPendingSkillRefresh();
       const delayP = minDelayMs > 0
@@ -1099,6 +1419,16 @@
       }
       match.lastApplied = raw;
       afterApplied();
+      // Persist a resume snapshot from the VIEW engine so an interrupted AIvAI
+      // game can be resumed from the library. advanceView deliberately skips
+      // recordPly (the producer owns the authoritative log), so this is the
+      // only place an AIvAI resume snapshot gets written. Non-fatal on failure.
+      if (match.telemetryMatchId) {
+        try {
+          const snap = await eng.snapshotJson();
+          if (snap) await getTelemetryStore().saveResumeSnapshot(match.telemetryMatchId, snap);
+        } catch { /* resume just won't be available for this ply */ }
+      }
       // Honour a deferred pause requested mid-render.
       if (pendingPause) {
         pendingPause = false;
@@ -1107,6 +1437,11 @@
     } catch (e) {
       bootError = (e as Error)?.message ?? String(e);
     } finally {
+      // End this seat's search so the pill flips from spinner → linger badge.
+      // afterApplied() already bumped plyCount for the applied ply, so this
+      // records "AI just moved" — the linger lasts until viewPly advances past
+      // it, exactly like runAiStep's HvAI path.
+      endSearch(side, plyCount);
       busy = false;
     }
   }
@@ -1146,6 +1481,10 @@
 
   function handleSquareClick(sq: number, cx: number, cy: number) {
     if (!interactive) return;
+    // Player intervention cancels any in-flight Play-My-Moves drain (a
+    // bodyguard-choice click is itself the intended interaction, so clearing
+    // here is correct — the drain has already stopped and left the chooser up).
+    if (playMyMovesQueue.length > 0) playMyMovesQueue = [];
     sfx.unlock();
 
     // Bodyguard chooser is active (engine has pending_bodyguard set): clicks
@@ -1288,6 +1627,60 @@
     if (endPhaseAction !== null) applyRaw(endPhaseAction);
   }
 
+  // --- Resign / Draw ----------------------------------------------------------
+
+  /** Which seat (0=P1, 1=P2) is currently moving a piece locally.
+   *  In HvAI the human could be either seat; in MP it's localSeat. */
+  function localHumanSeat(): 0 | 1 {
+    if (match.mode === "multiplayer") return match.localSeat ?? 0;
+    // HvH: the side currently to move is the "active" human.
+    return (match.position?.toMove ?? 0) as 0 | 1;
+  }
+
+  async function confirmResign(): Promise<void> {
+    if (!eng) return;
+    showResignConfirm = false;
+    const seat = localHumanSeat();
+    // In MP, tell the peer first so their game terminates too (resign is
+    // unilateral — no ack needed). Then finalise locally.
+    if (match.mode === "multiplayer") mpEngine?.sendResign(seat);
+    await resignGame(eng, seat);
+  }
+
+  async function offerDraw(): Promise<void> {
+    if (!eng) return;
+    if (match.mode === "multiplayer") {
+      // In MP: send the offer to the peer; wait for their draw-response callback.
+      mpEngine?.sendDrawOffer();
+      showDrawOfferConfirm = false;
+      return;
+    }
+    if (match.mode === "hvai") {
+      showDrawOfferConfirm = false;
+      const aiSeat: 0 | 1 = match.side.p1 === "ai" ? 0 : 1;
+      const aiAccepts = await eng.evaluateDrawOffer(aiSeat);
+      if (aiAccepts) {
+        await agreeDrawGame(eng);
+      } else {
+        toast = "The AI declines the draw offer.";
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { toast = ""; }, 3000);
+      }
+      return;
+    }
+    // HvH: both players present — confirm dialog is sufficient, treat confirm as both agreeing.
+    showDrawOfferConfirm = false;
+    await agreeDrawGame(eng);
+  }
+
+  async function respondToDrawOffer(accepted: boolean): Promise<void> {
+    showIncomingDrawOffer = false;
+    mpEngine?.sendDrawResponse(accepted);
+    if (accepted && eng) {
+      await agreeDrawGame(eng);
+    }
+  }
+
   function handleWheelSliceClick(slice: import("$lib/board/SkillWheel.svelte").SliceKind) {
     if (!interactive) return;
     if (!wheelOpen) return;
@@ -1332,12 +1725,27 @@
       return;
     }
 
-    if (slice.kind === "endphase") {
-      if (endPhaseAction !== null) {
-        armedSkill = null;
-        match.selection = null;
-        applyRaw(endPhaseAction);
+    if (slice.kind === "focusBoost") {
+      // A quarter of a split (focus-eligible) skill. Set the chosen variant AND
+      // arm that slot's skill so the next click is the target (per user: "arm
+      // the skill with that mode"). focusMode skills (Blast/Shove) set
+      // focusModePref; retarget skills (Shield/Dash/Retreat) set focusRetargetPref.
+      const skillId = slice.skillId;
+      if (skillId <= 0) return;
+      if (slice.variant === "activation" || slice.variant === "effect") {
+        focusModePref = slice.variant;
+      } else {
+        focusRetargetPref = slice.variant; // "self" | "ally"
       }
+      // Self-cast quarter of a retargetable self-skill with no ambiguity fires
+      // immediately (mirrors the plain-skill self-cast path); otherwise arm.
+      if (slice.variant === "self" && isSelfCast(skillId)
+          && !hasRetargetVariants(match.legal, src, skillId)) {
+        const raw = rawForSelfCast(match.legal, src, skillId);
+        if (raw !== null) { armedSkill = null; applyRaw(raw); return; }
+      }
+      armedSkill = { square: src, skillId };
+      focusAllyChosen = null;
       return;
     }
   }
@@ -1377,7 +1785,11 @@
 
   /** Build a variant list for the Shove (or generally direction-skill) target
    *  square and open the direction picker. Filters by focus-mode preference
-   *  when the (src, skill) has a Focus-mode choice. */
+   *  when the (src, skill) has a Focus-mode choice. Fires immediately when only
+   *  one direction is legal; otherwise the player MUST pick the push direction
+   *  explicitly via the arrow overlay — we never auto-resolve from the resting
+   *  cursor position here, because this is a click-to-fire path (not a drag
+   *  gesture), so the cursor does not express an intended direction. */
   function openDirectionPicker(src: number, skillId: number, target: number) {
     const ts = skillTargetsFor(match.legal, src, skillId);
     let variants = ts.variantsByTarget.get(target) ?? [];
@@ -1390,6 +1802,12 @@
       variants = variants.filter((v) => variantIsSelfCast(v, src) === wantSelf);
     }
     if (variants.length === 0) return;
+    // Only one legal push direction — no choice to make, fire it.
+    if (variants.length === 1) {
+      applyRaw(variants[0].raw);
+      return;
+    }
+    // Ambiguous: always surface the arrow overlay so the player chooses.
     pendingDirection = { target, variants };
   }
 
@@ -1532,6 +1950,7 @@
       match.trueSnapshotJson = snap;
       match.sandboxMovesApplied = 0;
       sandboxUndoStack = [];
+    sandboxRedoStack = [];
       match.preSandboxMode = match.mode;
       match.mode = "sandbox";
     } finally {
@@ -1543,14 +1962,230 @@
     if (!eng || busy || sandboxUndoStack.length === 0) return;
     busy = true;
     try {
+      const currentSnap = await eng.snapshotJson();
       const snap = sandboxUndoStack[sandboxUndoStack.length - 1];
       sandboxUndoStack = sandboxUndoStack.slice(0, -1);
+      sandboxRedoStack = [...sandboxRedoStack, currentSnap];
       await eng.restoreFromSnapshot(snap);
       match.sandboxMovesApplied = Math.max(0, match.sandboxMovesApplied - 1);
       clearAllPickers();
       await syncFromEngine();
     } finally {
       busy = false;
+    }
+  }
+
+  async function redoSandbox(): Promise<void> {
+    if (!eng || busy || sandboxRedoStack.length === 0) return;
+    busy = true;
+    try {
+      const currentSnap = await eng.snapshotJson();
+      const snap = sandboxRedoStack[sandboxRedoStack.length - 1];
+      sandboxRedoStack = sandboxRedoStack.slice(0, -1);
+      sandboxUndoStack = [...sandboxUndoStack, currentSnap];
+      await eng.restoreFromSnapshot(snap);
+      match.sandboxMovesApplied += 1;
+      clearAllPickers();
+      await syncFromEngine();
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** "Play My Moves": collect notation for sandbox actions, show confirm dialog. */
+  async function openPlayMyMoves(): Promise<void> {
+    if (!eng || match.sandboxMovesApplied === 0) return;
+    // Gather notation from the undo stack snapshots — use action log entries
+    // added during sandbox (they're already there from afterApplied, but we
+    // blocked sandbox mode earlier). Instead, just show the count as confirmation.
+    const count = match.sandboxMovesApplied;
+    playMyMovesConfirm = Array.from({ length: count }, (_, i) => `Move ${i + 1}`);
+  }
+
+  /** Tear down the preview sibling engine + renderer and return to the live
+   *  (free-running) board. Idempotent. Never mutates the live engine — but it
+   *  DOES resync the live RENDERER to the true current engine state, which
+   *  clears the effect queue that accumulated (undrained) while its EffectsLayer
+   *  was unmounted during preview. Without that, returning to present would
+   *  replay a burst of stale hit/heal pulses from every move made while you were
+   *  looking at the past. */
+  async function teardownPreview(): Promise<void> {
+    const wasPreviewing = previewPly !== null;
+    previewPly = null;
+    previewPosition = null;
+    leftAtPly = null;
+    const r = previewRenderer;
+    const pe = previewEng;
+    previewRenderer = null;
+    previewEng = null;
+    try { r?.dispose(); } catch { /* best effort */ }
+    // dispose() drops the Rust registry handle so the preview engine doesn't leak.
+    try { await pe?.dispose(); } catch { /* best effort */ }
+    // Repaint the live board from the true present, dropping the stale effect
+    // backlog. resyncFromEngine reads (never writes) the live engine.
+    if (wasPreviewing && renderer) {
+      try { await renderer.resyncFromEngine(); } catch { /* best effort */ }
+    }
+  }
+
+  /** Enter/refresh/exit read-only time-travel preview (P3-E).
+   *
+   *  CORRECTNESS: this runs entirely on a SEPARATE engine handle. It never calls
+   *  the live `eng` except for a read-only `matchLogJson()` to source the line.
+   *  The live game therefore keeps running underneath — AI keeps moving, MP peer
+   *  moves keep arriving, telemetry keeps recording — and the preview stays
+   *  FROZEN on the chosen ply (we only re-read the log when the user explicitly
+   *  clicks a ply, so a live move landing does not move the preview). The board
+   *  simply renders the preview source while `previewing`, so new live moves
+   *  advance off-screen. Deliberately NOT gated on `busy`. */
+  async function selectPreviewPly(plyIndex: number | null): Promise<void> {
+    if (!eng) return;
+    if (match.mode === "sandbox") return;
+    if (plyIndex === null) {
+      await teardownPreview();
+      return;
+    }
+    try {
+      // Source the true line from the live engine's match log (read-only).
+      const logJson = await eng.matchLogJson();
+      if (!logJson) return;
+      const fullSnap = snapshotJsonFromMatchLog(logJson);
+      if (fullSnap === null) return;
+      // Zero the actions so the base is the START position; fastForwardTo then
+      // silently replays plies 0..target-1 on the preview engine (replay pattern).
+      const parsed = JSON.parse(fullSnap);
+      const rawPlies: number[] = Array.isArray(parsed.actions)
+        ? parsed.actions.map((a: number) => a >>> 0)
+        : [];
+      parsed.actions = [];
+      const startSnap = JSON.stringify(parsed);
+      const target = Math.max(0, Math.min(rawPlies.length, plyIndex | 0));
+
+      // Lazily create the isolated preview engine + silent renderer.
+      if (!previewEng) {
+        previewEng = new TauriClient();
+        previewRenderer = createPlyRenderer(previewEng, {
+          sfxEnabled: false,
+          onStateUpdate: (pos) => { previewPosition = pos; },
+        });
+      }
+      // Capture the live head at the moment we FIRST enter preview, pinned so
+      // the "left here" marker stays put as new live moves append. Re-clicking a
+      // different past ply while already previewing must NOT move it.
+      if (previewPly === null) {
+        leftAtPly = actionLogEntries.length;
+      }
+      await previewEng.restoreFromSnapshot(startSnap);
+      await previewRenderer!.fastForwardTo(startSnap, rawPlies, target);
+      previewPly = plyIndex;
+    } catch {
+      // A malformed log or engine hiccup: bail out of preview cleanly rather
+      // than leaving a half-built frozen board.
+      await teardownPreview();
+    }
+  }
+
+
+  async function confirmPlayMyMoves(): Promise<void> {
+    if (!eng || !match.trueSnapshotJson) return;
+    playMyMovesConfirm = null;
+    playMyMovesNotice = null;
+    // Gather the staged sandbox actions from the sandbox match log, restore the
+    // real line, then load them into a queue drained through the normal apply
+    // path. Draining (not a blind loop) means each ply obeys the same
+    // seat/turn/bodyguard gating a live player would — so we never force an
+    // AI-owned ply into the engine (the old NotAiTurn bug).
+    try {
+      const trueSnap = match.trueSnapshotJson;
+      const logJson = await eng.matchLogJson();
+      if (!logJson) return;
+      const log = JSON.parse(logJson) as { plies?: Array<{ action?: { raw?: number } }> };
+      // The match-log ply's `action` is an ActionDecoded object; the raw u32 we
+      // re-apply lives at `action.raw`.
+      const raws = (log.plies ?? [])
+        .slice(-(match.sandboxMovesApplied))
+        .map((p) => p.action?.raw)
+        .filter((a): a is number => typeof a === "number");
+      // Load the queue BEFORE any mode flip / await below. Setting mode out of
+      // sandbox re-enables the auto-end-phase and HvAI scheduler effects; both
+      // are gated on `playMyMovesQueue.length > 0`, so the queue must already be
+      // non-empty when those effects flush (during the awaits) or they would
+      // race the drain — the auto-ender would fire an EndPhase and consume the
+      // turn before a single staged ply is applied (the observed bug).
+      playMyMovesQueue = raws;
+      // Restore to true line + leave sandbox mode.
+      await eng.restoreFromSnapshot(trueSnap);
+      const restoreMode = match.preSandboxMode ?? modeFromSeats(match.side);
+      match.trueSnapshotJson = null;
+      match.preSandboxMode = null;
+      match.mode = restoreMode;
+      sandboxUndoStack = [];
+      sandboxRedoStack = [];
+      match.sandboxMovesApplied = 0;
+      clearAllPickers();
+      await syncFromEngine();
+      // Kick the driver.
+      void drainPlayMyMoves();
+    } catch (e) {
+      bootError = (e as Error)?.message ?? String(e);
+      playMyMovesQueue = [];
+    }
+  }
+
+  /** Drain `playMyMovesQueue` one ply at a time through the normal apply path.
+   *  Stops (leaving the remaining queue cleared) when:
+   *   - the queue is emptied (all committed),
+   *   - the next ply's turn belongs to a non-local / AI seat — we hand off to
+   *     the live flow (the AI scheduler resumes once the queue is empty) rather
+   *     than force-applying the sandbox's guess for that seat,
+   *   - a Bodyguard choice is pending — the decision belongs to the user,
+   *   - the user intervened (queue cleared elsewhere) or an apply failed. */
+  async function drainPlayMyMoves(): Promise<void> {
+    if (playMyMovesPlaying) return; // already draining
+    playMyMovesPlaying = true;
+    const delayMs = Math.max(0, settings.aivaiStepDelayMs);
+    let busyWaits = 0;
+    try {
+      while (playMyMovesQueue.length > 0) {
+        // Wait out any transient in-flight apply rather than giving up (an
+        // effect firing on the mode flip could momentarily hold `busy`). Bounded
+        // so a stuck `busy` can't spin forever.
+        if (busy) {
+          if (busyWaits++ > 100) break;
+          await new Promise<void>((r) => setTimeout(r, 20));
+          continue;
+        }
+        busyWaits = 0;
+        // A pending bodyguard means the previous ply triggered an intercept
+        // choice; that decision is the user's. Stop and surface a notice.
+        if (match.position?.pendingBodyguard != null) {
+          playMyMovesNotice = "Playback paused: a Bodyguard choice is required. Resolve it to continue.";
+          break;
+        }
+        // Only commit plies for the local human's own turn. When the turn has
+        // handed to the AI (or, in MP, the peer), stop: the staged guess for
+        // that seat is not authoritative, and force-applying it would desync /
+        // error. Clearing the queue lets the AI scheduler take over naturally.
+        const toMove = match.position?.toMove ?? 0;
+        const seat = toMove === 0 ? match.side.p1 : match.side.p2;
+        const isLocalHumanTurn =
+          seat === "human" && (match.mode !== "multiplayer" || currentSeatIsLocal);
+        if (!isLocalHumanTurn) break;
+
+        const raw = playMyMovesQueue[0];
+        await applyRaw(raw);
+        // applyRaw refused / the queue was mutated by user intervention → stop.
+        if (playMyMovesQueue[0] !== raw) break;
+        playMyMovesQueue = playMyMovesQueue.slice(1);
+        if (playMyMovesQueue.length > 0 && delayMs > 0) {
+          await new Promise<void>((r) => setTimeout(r, delayMs));
+        }
+      }
+    } catch (e) {
+      bootError = (e as Error)?.message ?? String(e);
+    } finally {
+      playMyMovesQueue = [];
+      playMyMovesPlaying = false;
     }
   }
 
@@ -1576,6 +2211,7 @@
     match.trueSnapshotJson = null;
     match.sandboxMovesApplied = 0;
     sandboxUndoStack = [];
+    sandboxRedoStack = [];
     // Restore the mode we entered sandbox from. `modeFromSeats()` can't
     // round-trip "multiplayer" (both seats are "human" in MP too), so we
     // rely on the stashed value; fall back to seat-derivation only if
@@ -1764,6 +2400,9 @@
     // long AIvAI sessions don't leak PlyRenderer instances across route churn.
     renderer?.dispose();
     renderer = null;
+    // Preview sibling engine + renderer (P3-E time-travel): dispose so the
+    // extra Rust registry handle doesn't outlive the route.
+    void teardownPreview();
     // Clear AI-search transients so the next match doesn't inherit stale depth
     // / breakdown / linger state from a previous session.
     resetAiSearch();
@@ -1774,7 +2413,6 @@
 
 <main>
   <header>
-    <BackButton />
     <h1>{t("match.title", { mode })}</h1>
     {#if match.mode === "multiplayer"}
       <ConnectivityPill />
@@ -1808,40 +2446,49 @@
   {:else}
     <div class="game-area">
       <!-- Left column: P2 panel + board + P1 panel -->
-      <div class="board-column">
+      <div class="board-column" class:flipped={boardFlipped}>
         <PlayerPanel
           player="p2"
           position={match.position}
           aiMaxDepth={settings.p2MaxDepth}
           isAiSeat={p2IsAi}
           aiThinkBudgetMs={settings.p2ThinkTimeMs}
+          isActive={match.position?.toMove === 1}
+          roundNumber={match.position?.roundNumber ?? 1}
+          {baselinePieces}
+          pendingCost={match.position?.toMove === 1 ? pendingSkillCost : null}
         />
 
         <div class="board-stack" class:sandbox-mode={match.mode === "sandbox"}>
           <Board
-            position={match.position}
-            pieceIds={renderer?.pieceIds ?? new Map()}
-            selection={match.selection}
-            moveTargets={armedSkill ? armedSkillTargets : moveTargets.squares}
+            position={previewing ? previewPosition : match.position}
+            pieceIds={previewing ? (previewRenderer?.pieceIds ?? new Map()) : (renderer?.pieceIds ?? new Map())}
+            selection={previewing ? null : match.selection}
+            moveTargets={previewing ? new Set() : (armedSkill ? armedSkillTargets : moveTargets.squares)}
             {selectable}
             draggable={movable}
-            usedSquares={usedThisPhase}
-            shakingSquares={renderer?.shakingSquares ?? new Set()}
-            pieceMotion={renderer?.pieceMotion ?? new Map()}
-            toMove={match.position?.gameResult === 0 ? (match.position?.toMove ?? null) : null}
-            effectsActive={(renderer?.effectQueue.length ?? 0) > 0}
-            approachChoices={pendingApproach?.approaches ?? []}
+            usedSquares={previewing ? previewMoved : movedSquares}
+            shakingSquares={previewing ? (previewRenderer?.shakingSquares ?? new Set()) : (renderer?.shakingSquares ?? new Set())}
+            pieceMotion={previewing ? (previewRenderer?.pieceMotion ?? new Map()) : (renderer?.pieceMotion ?? new Map())}
+            toMove={previewing
+              ? (previewPosition?.gameResult === 0 ? (previewPosition?.toMove ?? null) : null)
+              : (match.position?.gameResult === 0 ? (match.position?.toMove ?? null) : null)}
+            effectsActive={previewing ? false : (renderer?.effectQueue.length ?? 0) > 0}
+            approachChoices={pendingApproach?.approaches ?? hoverApproachChoices}
             bodyguardChoice={pendingBodyguard ? {
               defender: pendingBodyguard.targetSq,
               guards: pendingBodyguard.eligible.slice(),
             } : null}
-            lastApplied={renderer?.lastApplied ?? null}
+            lastApplied={previewing ? (previewRenderer?.lastApplied ?? null) : (renderer?.lastApplied ?? null)}
             {interactive}
+            flipped={boardFlipped}
             wheelOpen={wheelOpen}
             armedSkillId={armedSkill?.skillId ?? null}
             {focusActive}
             {chargeActive}
             {wheelLegality}
+            split1={wheelSplits.split1}
+            split2={wheelSplits.split2}
             onWheelSliceClick={handleWheelSliceClick}
             onWheelSliceHover={handleWheelSliceHover}
             directionPicker={pendingDirection}
@@ -1851,10 +2498,11 @@
             onPieceDrop={handlePieceDrop}
             onPressStart={handlePressStart}
             onDragMove={handleDragMove}
-            {dragTrail}
+            dragTrail={dragTrailShown}
             {dragHover}
             {dragHoverLegal}
             dragLanding={effectiveLanding}
+            clickHover={clickHoverTarget}
             onApproachChoice={(ap) => {
               if (pendingApproach) {
                 const target = pendingApproach.target;
@@ -1862,17 +2510,42 @@
                 commitMoveTargetApproach(target, ap);
               }
             }}
-            onSquareHover={(sq, x, y) => {
+            onSquareHover={(sq, x, y, sx, sy) => {
               hoveredSq = sq;
               hoverX = x;
               hoverY = y;
+              // Click-mode hover (no drag): mirror the pointer into hoverSq +
+              // the SVG cursor coords so clickLanding / hoverApproachChoices /
+              // clickHoverTarget resolve the approach exactly like a drag would.
+              // While dragging, handleDragMove owns these — don't stomp them.
+              if (dragSrc === null) {
+                hoverSq = sq;
+                if (sq !== null) { cursorX = sx; cursorY = sy; }
+              }
             }}
           />
-          {#if renderer}
-            <EffectsLayer viewBox={800} wheelPad={60} queue={renderer.effectQueue} />
+          {#if previewing && previewRenderer}
+            <EffectsLayer viewBox={800} wheelPad={60} queue={previewRenderer.effectQueue} flipped={boardFlipped} />
+          {:else if renderer}
+            <EffectsLayer viewBox={800} wheelPad={60} queue={renderer.effectQueue} flipped={boardFlipped} />
           {/if}
-          {#if hoveredSlice && wheelOpen}
-            <div class="info-anchor">
+          {#if hoveredSlice && hoveredSliceVisible && wheelOpen}
+            {@const wFile = wheelOpen.square & 7}
+            {@const wRank = (wheelOpen.square >> 3) & 7}
+            {@const colFrac = boardFlipped ? (7 - wFile + 0.5) / 8 : (wFile + 0.5) / 8}
+            {@const rowFrac = boardFlipped ? (wRank + 0.5) / 8 : (7 - wRank + 0.5) / 8}
+            {@const onLeftHalf = colFrac < 0.5}
+            <!-- Anchor the tooltip beside the hovered piece: to its right when
+                 the piece is on the left half of the board, to its left
+                 otherwise, so the card never runs off-screen. Vertically
+                 centred on the piece's row. -->
+            <div
+              class="info-anchor skill-info-fade"
+              class:to-right={onLeftHalf}
+              class:to-left={!onLeftHalf}
+              style:left="{colFrac * 100}%"
+              style:top="{rowFrac * 100}%"
+            >
               <SkillInfoCard
                 slice={hoveredSlice}
                 {focusActive}
@@ -1882,6 +2555,15 @@
               />
             </div>
           {/if}
+          <!-- Contextual cancel button: visible whenever a skill is mid-activation -->
+          {#if armedSkill !== null && interactive}
+            <button
+              type="button"
+              class="cancel-skill-btn"
+              onclick={() => { armedSkill = null; pendingDirection = null; focusAllyChosen = null; }}
+              aria-label="Cancel skill"
+            >✕ Cancel</button>
+          {/if}
         </div>
 
         <PlayerPanel
@@ -1890,6 +2572,10 @@
           aiMaxDepth={settings.p1MaxDepth}
           isAiSeat={p1IsAi}
           aiThinkBudgetMs={settings.p1ThinkTimeMs}
+          isActive={match.position?.toMove === 0}
+          roundNumber={match.position?.roundNumber ?? 1}
+          {baselinePieces}
+          pendingCost={match.position?.toMove === 0 ? pendingSkillCost : null}
         />
       </div>
 
@@ -1902,15 +2588,24 @@
             <span class="stat-label">Round</span>
             <span class="stat-value">{match.position?.roundNumber ?? "-"}</span>
           </div>
-          <div class="stat-row">
-            <span class="stat-label">Phase</span>
-            <span class="phase-pill" class:move={inMovePhase} class:skill={!inMovePhase}>
-              {inMovePhase ? "Move" : "Skill"}
-            </span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Actions</span>
-            <span class="stat-value">{match.position?.actionsRemaining ?? "-"}</span>
+          <!-- Phase indicator: two boxes, active one coloured -->
+          <div class="phase-boxes">
+            <div class="phase-box" class:active={inMovePhase} class:inactive={!inMovePhase}>
+              <span class="phase-box-label">Move</span>
+              <span class="phase-box-count" class:greyed={!inMovePhase}>
+                {#if inMovePhase}
+                  {match.position?.actionsRemaining ?? "-"}
+                {:else}
+                  {movePhaseBudget}
+                {/if}
+              </span>
+            </div>
+            <div class="phase-box" class:active={!inMovePhase} class:inactive={inMovePhase}>
+              <span class="phase-box-label">Skill</span>
+              <span class="phase-box-count" class:greyed={inMovePhase}>
+                {inMovePhase ? skillPhaseBudget : (match.position?.actionsRemaining ?? "-")}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -1918,13 +2613,24 @@
 
         <!-- Primary action -->
         <div class="primary-actions">
-          {#if match.position?.gameResult !== 0}
+          {#if match.position?.gameResult !== 0 || match.forcedResult}
             <p class="result">
-              {match.position?.gameResult === 1
-                ? t("result.p1Wins")
-                : match.position?.gameResult === 2
-                  ? t("result.p2Wins")
-                  : t("result.draw")}
+              {#if match.forcedResult}
+                {match.forcedResult.reason === "draw"
+                  ? t("result.draw")
+                  : match.forcedResult.resultByte === 0
+                    ? t("result.p1Wins")
+                    : t("result.p2Wins")}
+                <span class="result-reason">
+                  ({match.forcedResult.reason === "draw" ? "agreed draw" : "resignation"})
+                </span>
+              {:else}
+                {match.position?.gameResult === 1
+                  ? t("result.p1Wins")
+                  : match.position?.gameResult === 2
+                    ? t("result.p2Wins")
+                    : t("result.draw")}
+              {/if}
             </p>
           {:else if match.mode === "aivai"}
             <!-- AIvAI is a log player over the background producer (Change 6):
@@ -1961,6 +2667,55 @@
           {/if}
         </div>
 
+        <!-- Resign / Draw — shown during live human play only -->
+        {#if interactive && !match.forcedResult && match.position?.gameResult === 0 && match.mode !== "aivai"}
+          <div class="resign-draw-row">
+            <button
+              type="button"
+              class="btn-danger-ghost"
+              onclick={() => { showResignConfirm = true; }}
+            >Resign</button>
+            <button
+              type="button"
+              class="btn-ghost"
+              onclick={() => { showDrawOfferConfirm = true; }}
+            >Offer Draw</button>
+          </div>
+        {/if}
+
+        <!-- Resign confirm dialog -->
+        {#if showResignConfirm}
+          <div class="inline-dialog">
+            <p>Resign this game?</p>
+            <div class="inline-dialog-btns">
+              <button type="button" class="btn-danger" onclick={() => void confirmResign()}>Yes, resign</button>
+              <button type="button" class="btn-ghost" onclick={() => { showResignConfirm = false; }}>Cancel</button>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Draw offer confirm (local HvH / HvAI) -->
+        {#if showDrawOfferConfirm}
+          <div class="inline-dialog">
+            <p>{match.mode === "hvh" ? "Both players agree to a draw?" : "Offer draw to AI?"}</p>
+            <div class="inline-dialog-btns">
+              <button type="button" class="btn-primary" onclick={() => void offerDraw()}>Confirm</button>
+              <button type="button" class="btn-ghost" onclick={() => { showDrawOfferConfirm = false; }}>Cancel</button>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Incoming draw offer (MP only) -->
+        {#if showIncomingDrawOffer}
+          <div class="inline-dialog">
+            <p>Opponent offers a draw. Accept?</p>
+            <div class="inline-dialog-btns">
+              <button type="button" class="btn-primary" onclick={() => void respondToDrawOffer(true)}>Accept</button>
+              <button type="button" class="btn-ghost" onclick={() => void respondToDrawOffer(false)}>Decline</button>
+            </div>
+          </div>
+        {/if}
+
         <!-- Contextual hints + skill toggles -->
         {#if pendingApproach}
           <p class="hint">Choose the path the attacker takes - click a highlighted square, or press Esc to cancel</p>
@@ -1977,68 +2732,11 @@
         {#if pendingDirection}
           <p class="hint">Choose a push direction - click an arrow, or press Esc to cancel</p>
         {/if}
-        {#if armedHasFocusModeChoice && !pendingDirection}
-          <div class="focus-mode">
-            <span class="focus-mode-label">Focus boosts:</span>
-            <div class="focus-mode-toggle" role="radiogroup" aria-label="focus mode">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={focusModePref === "activation"}
-                class:active={focusModePref === "activation"}
-                onclick={() => (focusModePref = "activation")}
-              >Range (+1)</button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={focusModePref === "effect"}
-                class:active={focusModePref === "effect"}
-                onclick={() => (focusModePref = "effect")}
-              >Effect</button>
-            </div>
-          </div>
-        {/if}
-        {#if armedHasRetargetChoice && !pendingDirection}
-          <div class="focus-mode">
-            <span class="focus-mode-label">Focus onto:</span>
-            <div class="focus-mode-toggle" role="radiogroup" aria-label="focus recipient">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={focusRetargetPref === "self"}
-                class:active={focusRetargetPref === "self"}
-                onclick={() => { focusRetargetPref = "self"; focusAllyChosen = null; }}
-              >Self</button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={focusRetargetPref === "ally"}
-                class:active={focusRetargetPref === "ally"}
-                onclick={() => { focusRetargetPref = "ally"; focusAllyChosen = null; }}
-              >Ally</button>
-            </div>
-          </div>
-        {/if}
 
         <div class="panel-divider"></div>
 
-        <!-- Export + sandbox -->
+        <!-- Sandbox / Play My Moves controls -->
         <div class="export-group">
-          <button
-            type="button"
-            disabled={busy}
-            onclick={() => void copyFen()}
-          >{t("controls.copyFen")}</button>
-          <button
-            type="button"
-            disabled={busy || !matchLogAvailable}
-            onclick={() => void copyMatchLog()}
-          >{t("controls.copyMatchLog")}</button>
-          <button
-            type="button"
-            disabled={busy || !matchLogAvailable}
-            onclick={() => void downloadMatchLog()}
-          >{t("controls.downloadMatchLog")}</button>
           <button
             type="button"
             class="sandbox-toggle"
@@ -2051,8 +2749,42 @@
               disabled={busy || sandboxUndoStack.length === 0}
               onclick={() => void undoSandbox()}
             >{t("controls.undo")}</button>
+            <button
+              type="button"
+              disabled={busy || sandboxRedoStack.length === 0}
+              onclick={() => void redoSandbox()}
+            >Redo</button>
+            {#if match.sandboxMovesApplied > 0 && !playMyMovesPlaying}
+              <button
+                type="button"
+                class="play-moves-btn"
+                disabled={busy}
+                onclick={() => void openPlayMyMoves()}
+              >▶ Play moves</button>
+            {/if}
+            {#if playMyMovesPlaying}
+              <button
+                type="button"
+                onclick={() => { playMyMovesQueue = []; }}
+              >■ Stop</button>
+            {/if}
           {/if}
         </div>
+
+        {#if playMyMovesNotice !== null}
+          <p class="play-moves-notice" role="status">{playMyMovesNotice}</p>
+        {/if}
+
+        <!-- Play My Moves confirm dialog -->
+        {#if playMyMovesConfirm !== null}
+          <div class="inline-dialog">
+            <p>Commit {playMyMovesConfirm.length} sandbox move{playMyMovesConfirm.length === 1 ? '' : 's'} to the real game?</p>
+            <div class="inline-dialog-btns">
+              <button type="button" class="btn-primary" onclick={() => void confirmPlayMyMoves()}>Confirm</button>
+              <button type="button" class="btn-ghost" onclick={() => { playMyMovesConfirm = null; }}>Cancel</button>
+            </div>
+          </div>
+        {/if}
         {#if settings.showHeuristicEval && aiSearch.heuristicEvalBreakdown !== null && match.mode !== "multiplayer"}
           {@const evalScore = aiSearch.heuristicEvalBreakdown.total}
           <div class="eval-bar-row">
@@ -2078,10 +2810,23 @@
         {/if}
       </aside>
 
-      <!-- Progression panel: income + skill actions over upcoming rounds -->
+      <!-- Progression panel: income + skill actions over rounds -->
       {#if match.position}
         <ProgressionPanel roundNumber={match.position.roundNumber} />
       {/if}
+
+      <!-- Action log: move history + copy/download buttons -->
+      <ActionLogPanel
+        entries={actionLogEntries}
+        {busy}
+        {matchLogAvailable}
+        selectedPly={previewPly}
+        leftAtPly={leftAtPly}
+        onCopyFen={() => void copyFen()}
+        onCopyLog={() => void copyMatchLog()}
+        onDownloadLog={() => void downloadMatchLog()}
+        onSelectPly={(i) => void selectPreviewPly(i)}
+      />
       </div>
 
       {#if settings.showEvalPanel && match.mode !== "multiplayer"}
@@ -2153,6 +2898,12 @@
     width: min(calc(100vw - 240px - 2rem), calc(100dvh - 170px));
     min-width: 280px;
   }
+  /* Opponent-at-bottom view: swap the two PlayerPanels (P2 top / P1 bottom
+     becomes P1 top / P2 bottom) so the local player's banner sits under the
+     board, matching the 180°-rotated board. Pure visual reorder. */
+  .board-column.flipped {
+    flex-direction: column-reverse;
+  }
 
   .board-stack {
     position: relative;
@@ -2182,10 +2933,61 @@
 
   .info-anchor {
     position: absolute;
-    top: 0;
-    left: calc(100% + 0.6rem);
     z-index: 5;
     pointer-events: none;
+    /* left/top are set inline to the hovered piece's centre (% of board-stack).
+       The transform places the card beside the piece, vertically centred, with
+       a gap of ~9% of a tile (0.075 * 12.5%) so it clears the wheel ring. */
+  }
+  .info-anchor.to-right {
+    /* piece on the left half → card to the right of the piece */
+    transform: translate(calc(6.25% + 0.9rem), -50%);
+  }
+  .info-anchor.to-left {
+    /* piece on the right half → card to the left of the piece */
+    transform: translate(calc(-100% - 6.25% - 0.9rem), -50%);
+  }
+  .cancel-skill-btn {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: var(--paper-bg, #f3ecd9);
+    border: 1.5px solid #c0392b;
+    color: #c0392b;
+    border-radius: 6px;
+    padding: 0.3em 0.8em;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background 80ms;
+  }
+  .cancel-skill-btn:hover { background: #c0392b0f; }
+  .play-moves-btn {
+    background: color-mix(in srgb, var(--accent, #c79b3a) 15%, var(--paper-bg));
+    border-color: var(--accent, #c79b3a);
+    color: var(--accent, #c79b3a);
+    font-weight: 600;
+  }
+  .play-moves-notice {
+    margin: 0.4rem 0 0;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--paper-ink, #3a2f1f);
+    background: color-mix(in srgb, var(--accent, #c79b3a) 12%, var(--paper-bg));
+    border: 1px solid var(--accent, #c79b3a);
+    border-radius: 5px;
+  }
+  .skill-info-fade {
+    animation: skill-info-fadein 180ms ease-out both;
+  }
+  @keyframes skill-info-fadein {
+    from { opacity: 0; transform: translateX(-4px); }
+    to   { opacity: 1; transform: translateX(0); }
   }
 
   /* ── Right panel ─────────────────────────────────────────────────────────── */
@@ -2253,21 +3055,47 @@
     font-size: 0.95rem;
     font-variant-numeric: tabular-nums;
   }
-  .phase-pill {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+  /* Phase indicator boxes */
+  .phase-boxes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+  }
+  .phase-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    padding: 0.35em 0.4em;
+    border-radius: 6px;
+    border: 1.5px solid var(--paper-line, rgba(58,47,31,0.15));
+    background: var(--paper-bg);
+    transition: border-color 120ms, background 120ms;
+  }
+  .phase-box.active {
+    border-color: var(--accent, #c79b3a);
+    background: color-mix(in srgb, var(--accent, #c79b3a) 10%, var(--paper-bg));
+  }
+  .phase-box-label {
+    font-size: 0.65rem;
     text-transform: uppercase;
-    padding: 0.1em 0.5em;
-    border-radius: 3px;
+    letter-spacing: 0.06em;
+    color: var(--paper-ink-soft, #6a6055);
+    font-weight: 600;
   }
-  .phase-pill.move {
-    background: rgba(75, 107, 138, 0.15);
-    color: var(--p1, #4b6b8a);
+  .phase-box.active .phase-box-label {
+    color: var(--accent, #c79b3a);
   }
-  .phase-pill.skill {
-    background: rgba(138, 74, 189, 0.15);
-    color: #7a3aad;
+  .phase-box-count {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--paper-ink, #3a2f1f);
+  }
+  .phase-box-count.greyed {
+    color: var(--paper-ink-soft, #6a6055);
+    opacity: 0.55;
   }
 
   /* Primary action buttons */
@@ -2322,6 +3150,69 @@
     padding: 0.4em 0;
     color: var(--accent, #c79b3a);
   }
+  .result-reason {
+    font-weight: 400;
+    font-size: 0.8rem;
+    color: var(--paper-ink-soft, #6a6055);
+  }
+
+  /* Resign / Draw row */
+  .resign-draw-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .btn-ghost {
+    flex: 1;
+    padding: 0.4em 0.7em;
+    border: 1.5px solid var(--paper-line, #ccc);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--paper-ink-soft, #6a6055);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: border-color 80ms, color 80ms;
+  }
+  .btn-ghost:hover { border-color: var(--paper-line-strong); color: var(--paper-ink); }
+  .btn-danger-ghost {
+    flex: 1;
+    padding: 0.4em 0.7em;
+    border: 1.5px solid #c0392b44;
+    border-radius: 6px;
+    background: transparent;
+    color: #c0392b;
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: border-color 80ms, background 80ms;
+  }
+  .btn-danger-ghost:hover { border-color: #c0392b; background: #c0392b0f; }
+  .btn-danger {
+    padding: 0.45em 0.9em;
+    border: 1.5px solid #c0392b;
+    border-radius: 6px;
+    background: #c0392b;
+    color: #fff;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-danger:hover { background: #a93226; }
+
+  /* Inline confirm dialogs */
+  .inline-dialog {
+    margin-top: 0.6rem;
+    padding: 0.7em 0.8em;
+    border: 1.5px solid var(--paper-line-strong);
+    border-radius: 8px;
+    background: var(--paper-bg);
+    font-size: 0.85rem;
+  }
+  .inline-dialog p { margin: 0 0 0.5em; font-weight: 600; }
+  .inline-dialog-btns { display: flex; gap: 0.4rem; }
+  .inline-dialog-btns button { flex: 1; }
 
   /* Hints */
   .hint {
@@ -2329,47 +3220,6 @@
     font-size: 0.8rem;
     color: var(--paper-ink-soft, #6a6055);
     line-height: 1.4;
-  }
-
-  /* Focus mode toggles */
-  .focus-mode {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    font-size: 0.82rem;
-  }
-  .focus-mode-label {
-    color: var(--paper-ink-soft, #6a6055);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 0.68rem;
-  }
-  .focus-mode-toggle {
-    display: inline-flex;
-    border: 1.5px solid #8a4abd;
-    border-radius: 4px;
-    overflow: hidden;
-    width: 100%;
-  }
-  .focus-mode-toggle button {
-    font: inherit;
-    flex: 1;
-    padding: 0.22em 0.4em;
-    border: none;
-    background: var(--paper-bg, #f3ecd9);
-    color: inherit;
-    cursor: pointer;
-    border-right: 1px solid #8a4abd;
-    font-size: 0.82rem;
-  }
-  .focus-mode-toggle button:last-child { border-right: none; }
-  .focus-mode-toggle button.active {
-    background: #8a4abd;
-    color: #f8f1de;
-    font-weight: 600;
-  }
-  .focus-mode-toggle button:not(.active):hover {
-    background: rgba(138, 74, 189, 0.15);
   }
 
   /* Export group */

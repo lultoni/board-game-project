@@ -12,6 +12,7 @@ import {
   SKILL_COUNT,
   SKILL_BLAST,
   SKILL_SHOVE,
+  focusSplitKind,
   MODIFIER_FOCUS,
   MODIFIER_CHARGE,
   MODIFIER_MOVE_ATTACK_USED,
@@ -71,5 +72,20 @@ describe("skills contract (TS mirror ↔ engine)", () => {
     expect(GAME_P1_WINS).toBe(c.gameP1Wins);
     expect(GAME_P2_WINS).toBe(c.gameP2Wins);
     expect(SKILL_COUNT).toBe(c.skillCount);
+  });
+
+  it("focusSplitKind classifies wheel focus-splits by skill type", () => {
+    // Blast/Shove split into activation(+rng)/effect(+eff).
+    expect(focusSplitKind(SKILLS[10].id)).toBe("focusMode"); // blast
+    expect(focusSplitKind(SKILLS[11].id)).toBe("focusMode"); // shove
+    // Shield/Dash/Retreat split into self/ally under Focus.
+    expect(focusSplitKind(SKILLS[6].id)).toBe("retarget");  // shield
+    expect(focusSplitKind(SKILLS[9].id)).toBe("retarget");  // dash
+    expect(focusSplitKind(SKILLS[13].id)).toBe("retarget"); // retreat
+    // Everything else has no wheel split.
+    for (const id of [1, 2, 3, 4, 5, 7, 8, 12, 14, 15]) {
+      expect(focusSplitKind(id), `skill ${id} (${SKILLS[id].key})`).toBeNull();
+    }
+    expect(focusSplitKind(999)).toBeNull();
   });
 });
