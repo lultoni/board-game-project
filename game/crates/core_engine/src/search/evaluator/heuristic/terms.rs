@@ -1,9 +1,12 @@
 //! Ported eval terms (ns-43). Each is a zero-size struct implementing
-//! [`EvalTerm`](super::term::EvalTerm). Math is verbatim from the pre-ns-43
-//! flat evaluator; the `golden_eval_unchanged` test enforces this.
+//! [`EvalTerm`](super::term::EvalTerm), returning a positive magnitude; signs
+//! and the fold live in the parent module's `PIECE_TERMS` table. Math is
+//! verbatim from the pre-ns-43 flat evaluator; `golden_eval_unchanged` pins it.
 //!
-//! Per-piece terms: material, hp, armor, skills, mobility, exposure, coverage.
-//! Side-level terms: money, tempo, offensive_range, wasted_modifier.
+//! Per-piece terms: material, hp, armor, skills, mobility, exposure, coverage,
+//! guard_isolation, champion_threat, hanging_piece.
+//! Side-level terms: money, tempo, offensive_range, wasted_modifier,
+//! endgame_closing, king_tempo.
 
 use crate::state::position::Player;
 use crate::state::magic;
@@ -19,9 +22,8 @@ fn softcap(x: i32, k: i32) -> i32 {
     ((x as i64 * k as i64) / (x as i64 + k as i64)) as i32
 }
 
-/// Champion-threat score for one champion. Shared by [`ChampionThreat`] and the
-/// diagnostic `evaluate_by_square` so both stay byte-identical. `is_p1` selects
-/// the champion's side; `atk` is the shared attackers table.
+/// Champion-threat score for one champion. `is_p1` selects the champion's side;
+/// `atk` is the shared attackers table.
 ///
 /// Returns the champion's total threat contribution (offensive + defensive,
 /// each soft-capped and weighted). All integer / bitboard math → deterministic.
@@ -120,8 +122,6 @@ pub(crate) fn champion_threat_score(
 
 pub struct Material;
 impl EvalTerm for Material {
-    fn name(&self) -> &'static str { "material" }
-    fn is_per_piece(&self) -> bool { true }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         let p = ctx.params;
         if pc.is_king { p.king_material }
@@ -132,8 +132,6 @@ impl EvalTerm for Material {
 
 pub struct Hp;
 impl EvalTerm for Hp {
-    fn name(&self) -> &'static str { "hp" }
-    fn is_per_piece(&self) -> bool { true }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         ctx.params.hp_per_point * pc.mailbox.hp() as i32
     }
@@ -141,8 +139,6 @@ impl EvalTerm for Hp {
 
 pub struct Armor;
 impl EvalTerm for Armor {
-    fn name(&self) -> &'static str { "armor" }
-    fn is_per_piece(&self) -> bool { true }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         ctx.params.armor_per_point * pc.mailbox.armor() as i32
     }
@@ -150,8 +146,6 @@ impl EvalTerm for Armor {
 
 pub struct Skills;
 impl EvalTerm for Skills {
-    fn name(&self) -> &'static str { "skills" }
-    fn is_per_piece(&self) -> bool { true }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         let p = ctx.params;
         let avail = if pc.is_p1 { &ctx.p1_avail } else { &ctx.p2_avail };
@@ -167,8 +161,6 @@ impl EvalTerm for Skills {
 
 pub struct Mobility;
 impl EvalTerm for Mobility {
-    fn name(&self) -> &'static str { "mobility" }
-    fn is_per_piece(&self) -> bool { true }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         let p = ctx.params;
         let own_bb = if pc.is_p1 { ctx.p1_bb } else { ctx.p2_bb };
@@ -191,10 +183,6 @@ impl EvalTerm for Mobility {
 
 pub struct Exposure;
 impl EvalTerm for Exposure {
-    fn name(&self) -> &'static str { "exposure" }
-    fn is_per_piece(&self) -> bool { true }
-    /// Penalty: stored as positive magnitudes, subtracts in the total.
-    fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         let p = ctx.params;
         let opp_attackers_bb = if pc.is_p1 { ctx.atk.any_attackers_of(Player::P2, pc.sq) }
@@ -215,8 +203,6 @@ impl EvalTerm for Exposure {
 
 pub struct Coverage;
 impl EvalTerm for Coverage {
-    fn name(&self) -> &'static str { "coverage" }
-    fn is_per_piece(&self) -> bool { true }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         if pc.is_guard { return 0; }
         let p = ctx.params;
@@ -261,7 +247,6 @@ impl EvalTerm for Coverage {
 
 pub struct Money;
 impl EvalTerm for Money {
-    fn name(&self) -> &'static str { "money" }
     fn score_side(&self, ctx: &EvalContext) -> (i32, i32) {
         (
             useful_money(ctx.pos.p1_money, ctx.p1_money_cap, ctx.params),
@@ -272,7 +257,6 @@ impl EvalTerm for Money {
 
 pub struct Tempo;
 impl EvalTerm for Tempo {
-    fn name(&self) -> &'static str { "tempo" }
     fn score_side(&self, ctx: &EvalContext) -> (i32, i32) {
         use crate::state::position::Phase;
         if ctx.phase == Phase::Draft { return (0, 0); }
@@ -286,11 +270,6 @@ impl EvalTerm for Tempo {
 
 pub struct OffensiveRange;
 impl EvalTerm for OffensiveRange {
-    fn name(&self) -> &'static str { "offensive_range" }
-    /// Raw range differential scaled by the tunable weight.
-    fn signed_total(&self, p1: i32, p2: i32, params: &super::params::EvalParams) -> i32 {
-        (p1 - p2) * params.offensive_range_weight
-    }
     fn score_side(&self, ctx: &EvalContext) -> (i32, i32) {
         (
             max_offensive_range(ctx.pos, ctx.p1_bb, ctx.pos.p1_money) as i32,
@@ -313,23 +292,14 @@ impl EvalTerm for OffensiveRange {
 ///   - Focus (+1 range) is consumed by any castable offensive skill - a Strike
 ///     or a Shove.
 ///   - Charge (+1 dmg) is consumed by a castable Strike only.
+///
 /// "Castable" = `actions_remaining >= 1` AND the side owns a piece equipping such
 /// a skill it can afford right now.
 ///
-/// Stored as a positive magnitude on the holding side; `signed_total` negates it
-/// (it is a penalty, like `exposure`).
+/// Stored as a positive magnitude on the holding side; the `PIECE_TERMS` /
+/// side-fold sign negates it (it is a penalty, like `exposure`).
 pub struct WastedModifier;
 impl EvalTerm for WastedModifier {
-    fn name(&self) -> &'static str { "wasted_modifier" }
-
-    fn is_active(&self, ctx: &EvalContext) -> bool {
-        use crate::state::position::Phase;
-        ctx.phase == Phase::Skill
-    }
-
-    /// Penalty: stored as positive magnitude, subtracts in the total.
-    fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
-
     fn score_side(&self, ctx: &EvalContext) -> (i32, i32) {
         use crate::state::position::modifier_bits;
         use crate::game_logic::skills::{Skill, SkillCategory, skill_category, skill_cost};
@@ -398,20 +368,13 @@ impl EvalTerm for WastedModifier {
 /// a hanging piece. Location-agnostic - a guard alone among enemies is bad
 /// anywhere (per designer: the bad guard was deep + surrounded, not in space).
 ///
-/// Penalty (positive magnitude; `signed_total` negates it, like `exposure`):
+/// Penalty (positive magnitude; folded with sign `-1`, like `exposure`):
 ///   `guard_iso_per_step x outnumber`, where
 ///   `outnumber = max(0, enemies_near - friendlies_near)`,
 /// optionally amplified by `guard_iso_depth_pct` when the guard stands on the
 /// enemy's half (P1 guard on rank ≥ 4, P2 guard on rank ≤ 3).
 pub struct GuardIsolation;
 impl EvalTerm for GuardIsolation {
-    fn name(&self) -> &'static str { "guard_isolation" }
-    fn is_per_piece(&self) -> bool { true }
-    /// Behavior-preserving skip: scores only guards, so with no guards on the
-    /// board it is uniformly 0. Golden byte-identical.
-    fn is_active(&self, ctx: &EvalContext) -> bool { ctx.pos.guards.0 != 0 }
-    /// Penalty: stored as positive magnitude, subtracts in the total.
-    fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         if !pc.is_guard { return 0; }
         let p = ctx.params;
@@ -456,17 +419,10 @@ impl EvalTerm for GuardIsolation {
 ///   - DEFENSIVE: ally pieces the champion's Heal/Plate/Swap skills can reach,
 ///     weighted by the ally's value AND vulnerability (a wounded/exposed ally in
 ///     reach is worth more to be able to cover).
-/// Folds into `total` only (no legacy field). All integer / bitboard math →
-/// deterministic.
+///
+/// All integer / bitboard math → deterministic.
 pub struct ChampionThreat;
 impl EvalTerm for ChampionThreat {
-    fn name(&self) -> &'static str { "champion_threat" }
-    fn is_per_piece(&self) -> bool { true }
-    /// Behavior-preserving skip: the term scores only champions, so if there are
-    /// no champions on the board it is uniformly 0. Skipping avoids the per-
-    /// champion skill-ray tracing entirely in stripped positions (the term's
-    /// dominant cost). Golden byte-identical - skipped ⇔ would-be-0.
-    fn is_active(&self, ctx: &EvalContext) -> bool { ctx.pos.champions.0 != 0 }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         if !pc.is_champion { return 0; }
         champion_threat_score(
@@ -476,8 +432,7 @@ impl EvalTerm for ChampionThreat {
     }
 }
 
-/// Asymmetric endgame-closing score `(p1, p2)`. Shared by [`EndgameClosing`]
-/// and the diagnostic `evaluate_by_square`. Returns `(0, 0)` unless
+/// Asymmetric endgame-closing score `(p1, p2)`. Returns `(0, 0)` unless
 /// `stage == End`, the lead exceeds `close_lead_min`, and both kings exist.
 /// The leader's side gets a closing score, the trailer's a stalling score.
 pub(crate) fn endgame_closing_score(
@@ -534,19 +489,15 @@ pub(crate) fn endgame_closing_score(
 
 /// E13 (ns-43 Term 4) - asymmetric endgame closing.
 ///
-/// Active only when `ctx.stage == End` (via `is_active`). The side that is
+/// Active only in the End stage (gated in `score_side_all`). The side that is
 /// AHEAD (`advantage` beyond `close_lead_min`) is rewarded for *closing the
 /// game out*; the side BEHIND is rewarded for *stretching it out* - the
-/// asymmetry the designer asked for. Side-level; folds into `total` via the
-/// default `p1 - p2`, so a leader closing well pushes toward the leader and a
-/// trailer defending well pushes back toward the trailer. Delegates to the
-/// shared [`endgame_closing_score`] so `evaluate_by_square` stays consistent.
+/// asymmetry the designer asked for. Side-level; folds with sign `+1`, so a
+/// leader closing well pushes toward the leader and a trailer defending well
+/// pushes back toward the trailer. Delegates to the shared
+/// [`endgame_closing_score`] helper.
 pub struct EndgameClosing;
 impl EvalTerm for EndgameClosing {
-    fn name(&self) -> &'static str { "endgame_closing" }
-    fn is_active(&self, ctx: &EvalContext) -> bool {
-        matches!(ctx.stage, super::context::GameStage::End)
-    }
     fn score_side(&self, ctx: &EvalContext) -> (i32, i32) {
         endgame_closing_score(ctx.pos, ctx.params, ctx.stage, ctx.advantage, ctx.p1_bb, ctx.p2_bb)
     }
@@ -567,10 +518,6 @@ impl EvalTerm for EndgameClosing {
 /// would engage.
 pub struct HangingPiece;
 impl EvalTerm for HangingPiece {
-    fn name(&self) -> &'static str { "hanging_piece" }
-    fn is_per_piece(&self) -> bool { true }
-    /// Penalty: positive magnitude, subtracts in the total.
-    fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
     fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
         // King captures are the MATE branch / king_exposure / king_tempo, not this.
         if pc.is_king { return 0; }
@@ -602,9 +549,6 @@ impl EvalTerm for HangingPiece {
 /// scan, NOT an exchange rollout — so it is always affordable.
 pub struct KingTempo;
 impl EvalTerm for KingTempo {
-    fn name(&self) -> &'static str { "king_tempo" }
-    /// Penalty: positive magnitude, subtracts in the total.
-    fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
     fn score_side(&self, ctx: &EvalContext) -> (i32, i32) {
         let pen = ctx.params.king_tempo_penalty;
         let p1 = if crate::search::quiescence::is_king_threatened(ctx.pos, Player::P1) { pen } else { 0 };

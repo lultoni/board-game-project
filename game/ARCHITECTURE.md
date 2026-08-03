@@ -345,9 +345,27 @@ A preallocated, single-slot-per-index transposition table (TT). Entries are 24 b
 
 Thread-local diagnostic counters that compile to zero-cost no-ops unless the `bench_counters` feature is active. `Snapshot` holds ~20 `u64` fields covering eval calls, phase-gate fires, SEE calls, attacker-list histogram, alpha-beta node counts, and QS node counts. `snapshot()` / `reset()` are the only public read/write operations. The `search_bench` crate activates this feature unconditionally; the Tauri and nn_trainer builds never pay for it.
 
-### 5.7 `src/search/evaluator/mod.rs`
+### 5.7 `src/search/evaluator/mod.rs` — the seam
 
-The public façade for the evaluator subsystem. Defines the `Evaluator` trait, `HeuristicEvaluator`, `AccHandle`, and the free-function entry points `evaluate` and `evaluate_report`.
+The `evaluator/` module is laid out by role, so "where is the evaluator?" has one answer:
+
+```
+evaluator/
+  mod.rs        the seam: Evaluator trait + AccHandle + MATE_SCORE + free
+                evaluate()/evaluate_report() + the builtin::BUILTINS registry
+                + the HeuristicEvaluator / ParamHeuristicEvaluator shells
+  report.rs     EvalReport / TermEntry / PieceTermBreakdown / BreakdownDetail —
+                the shared wire type sent to the frontend. Any evaluator may build one.
+  custom.rs     the hand-rolled CustomEvaluator, one self-contained file
+  heuristic/    THE default evaluator, fully self-contained:
+    mod.rs      Heuristic/ParamHeuristic structs + term loop + fold + PIECE_TERMS table
+    context.rs  EvalContext + GameStage + per-call shared state
+    term.rs     the EvalTerm trait + PieceContext
+    terms.rs    the concrete term structs
+    params.rs   EvalParams weights
+```
+
+`mod.rs` is the public façade. It defines the `Evaluator` trait, `HeuristicEvaluator`, `AccHandle`, `MATE_SCORE`, and the free-function entry points `evaluate` / `evaluate_report` (which delegate to the `heuristic` submodule). It contains no term math — the term machinery is the heuristic's private business, under `heuristic/`. A new evaluator (`custom.rs`, or a fresh file beside it) implements the trait directly and need not touch `heuristic/` at all.
 
 `Evaluator` is the seam between the search and any concrete evaluation function:
 
@@ -355,7 +373,7 @@ The public façade for the evaluator subsystem. Defines the `Evaluator` trait, `
 pub trait Evaluator: Send {
     fn evaluate(&self, pos: &Position) -> i32;
     fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport;
-    // Accumulator hooks — default to no-ops:
+    // Accumulator hooks — default to no-ops (override only for NNUE):
     fn uses_accumulator(&self) -> bool { false }
     fn fresh_acc(&self, pos: &Position) -> AccHandle { AccHandle::none() }
     fn clone_acc(&self, h: &AccHandle) -> AccHandle { AccHandle::none() }
@@ -364,50 +382,66 @@ pub trait Evaluator: Send {
 }
 ```
 
-`evaluate_report(pos, detail)` (ns-53) is the single dynamic-breakdown entry point, replacing the former fixed-struct `evaluate_breakdown`. `BreakdownDetail::{Aggregate, PerPiece}` selects whether the returned `EvalReport` also carries a per-piece decomposition. The default heuristic decomposes into its terms; an NN evaluator returns a single synthetic term (it has no term structure). `AccHandle(Option<Box<dyn Any + Send>>)` is a type-erased accumulator slot. The search threads it through make/unmake without knowing the concrete type inside. `HeuristicEvaluator` is a zero-size struct that returns `false` from `uses_accumulator()`, so the entire accumulator seam is dead code for the standard heuristic path.
+**Two required methods.** Writing a new evaluator means implementing `evaluate` (the scalar the search calls) and `evaluate_report` (the UI breakdown — return `EvalReport::single(name, total)` if you have no term structure). The five `*_acc` methods are optional no-ops; a hand-rolled evaluator ignores them.
 
-`MATE_SCORE: i32 = 1_000_000` is defined here as the canonical sentinel.
+`evaluate_report(pos, detail)` (ns-53) is the single dynamic-breakdown entry point. `BreakdownDetail::{Aggregate, PerPiece}` selects whether the returned `EvalReport` also carries a per-piece decomposition. The default heuristic decomposes into its terms; an NN evaluator returns a single synthetic term. `AccHandle(Option<Box<dyn Any + Send>>)` is a type-erased accumulator slot the search threads through make/unmake without knowing the concrete type. `HeuristicEvaluator` returns `false` from `uses_accumulator()`, so the accumulator seam is dead code on the standard heuristic path.
 
-**Selectable evaluators (ns-54).** Besides `HeuristicEvaluator`, this module defines `ParamHeuristicEvaluator { params: EvalParams }` — same term math, custom weights (the "same terms, different balance" shape) — and a `builtin` registry submodule. `builtin::BUILTINS: &[BuiltinEvaluator]` maps a stable `id` + display `label` to a constructor `fn() -> Box<dyn Evaluator + Send>`; `builtin::make(id)` resolves one. This is the single place `core_engine`'s own concrete evaluators are enumerated for UI selection — adding a new evaluator (a fresh struct with its own term registry, a tuned `ParamHeuristicEvaluator`, whatever) is "write the struct + one entry here." NN raters are NOT in this registry (they live in `nn_trainer`, which depends on this crate); the wrapper layer unions them in. A ready-to-edit scaffold ships as `custom.rs` / `CustomEvaluator` (registry id `"custom-stub"`, label "Custom (stub)") — it delegates to the heuristic out of the box and is the intended starting point for hand-rolled experimental evaluators.
+`MATE_SCORE: i32 = 1_000_000` is defined here as the canonical sentinel. The free `evaluate(pos)` / `evaluate_report(pos, detail)` functions here are convenience shortcuts meaning "score with the default evaluator" (they delegate to `heuristic`) — used by callers like telemetry and the eval bar that don't hold an `Evaluator` handle. They are NOT the heuristic's definition, which lives entirely under `heuristic/`.
 
-### 5.8 `src/search/evaluator/params.rs`
+**No evaluator-specific structs live in this file.** `HeuristicEvaluator` and `ParamHeuristicEvaluator` are defined in `heuristic/mod.rs` (their implementation) and merely `pub use`-re-exported here so callers name them at the seam (`evaluator::HeuristicEvaluator`). `CustomEvaluator` lives in `custom.rs`. The invariant: the root holds only the trait, the registry, `MATE_SCORE`, and the default-evaluator shortcuts; every concrete evaluator's struct + `impl Evaluator` lives in its own module.
 
-All tunable evaluation weights in a single `EvalParams` struct (`Copy + Clone + Serialize + Deserialize`). `EvalParams::DEFAULT` reproduces the pre-ns-43 constants exactly and is enforced by a `golden_eval_unchanged` test. It carries the full weight set for every term — not just base material. Representative defaults: `champion_value = 1000`, `guard_value = 600`, `hp_per_point = 150`, `armor_per_point = 120`, `king_material = 0` (presence/absence is captured by the MATE branch, not material), `tempo_per_action = 15`, `money_per_unit = 25`, `offensive_range_weight = 500`, `wasted_modifier_per_cost = 25`. Beyond these it also holds the mobility block (per-square weights for guards/champions/king plus the champion skill-coverage cap), the exposure/king-exposure multiplier curves, the coverage weight, the guard-isolation and champion-threat blocks, the stage-classification thresholds, the endgame-closing block, the skill-availability sigmoid parameters, the ns-53 SEE-term weights (`hanging_penalty_pct`, `king_tempo_penalty`), and a 16-entry `skill_value` table indexed by skill ID. The struct is serialisable so an offline weight-tuner can perturb and reload candidates without recompiling.
+**Selectable evaluators (ns-54) — the registry.** `builtin::BUILTINS: &[BuiltinEvaluator]` maps a stable `id` + display `label` to a constructor `fn() -> Box<dyn Evaluator + Send>`; `builtin::make(id)` resolves one. This is the single place `core_engine`'s own concrete evaluators are enumerated for UI selection. Registering a new evaluator is TWO edits: (1) write your struct + `impl Evaluator` in its own module (a folder like `heuristic/`, or a single file like `custom.rs`), and (2) add ONE `BUILTINS` line here naming its constructor. Rust has no auto-registration — the struct does not announce itself; the registry names it, which is exactly why the full list is visible in one place. NN raters are NOT in this registry (they live in `nn_trainer`, which depends on this crate); the wrapper layer unions them in. A ready-to-edit scaffold ships as `custom.rs` / `CustomEvaluator` (registry id `"custom-stub"`, label "Custom (stub)").
 
-### 5.9 `src/search/evaluator/context.rs`
+### 5.8 `src/search/evaluator/report.rs`
 
-`EvalContext` is built once per `evaluate()` call and then borrowed by every term in the evaluation, preventing each term from redundantly recomputing occupancy, attacker tables, or availability tables.
+Defines the dynamic breakdown types (ns-53) — the shared wire format, at the evaluator top level because any evaluator (not just the heuristic) may produce one.
 
-It holds: precomputed bitboards (`all_occ`, `p1_bb`, `p2_bb`, `p1_guards`, `p2_guards`), skill-availability fixed-point tables (`p1_avail / p2_avail: [i32; 16]`), the physical-only `AttackersTable` (`atk`), a lazily-built full `AttackersTable` (`atk_full`, a `OnceCell` — see below), the `GameStage` classification (`Opening | Mid | End`), actions-per-round, money caps, the current material advantage, and a reference to `EvalParams`.
+`EvalReport` is `Clone + Serialize + Deserialize` — the wire format sent to the frontend eval panel. It carries `terms: Vec<TermEntry>` (aggregate per-piece terms, active only), `side_terms: Vec<TermEntry>` (money/tempo/offensive-range/…), `pieces: Option<Vec<PieceTermBreakdown>>` (present only when `PerPiece` was requested — one row per occupied square), a P1-POV `total`, and a `terminal` flag. `TermEntry` is `{ name: String, p1, p2, signed }` where `signed` already carries the term's sign/weight (a penalty reads negative; offensive-range is pre-multiplied). `PieceTermBreakdown` carries the square, owner, kind, HP/armor/skill IDs, its per-term rows (owner-signed), and the piece's owner-signed `piece_total`. Constructors: `EvalReport::terminal(total)` and `EvalReport::single(name, total)` (the one-term report NN evaluators return).
 
-`EvalContext::new(pos, params)` deliberately calls `build_attackers_table_phys` (physical scatter only) to avoid skill-ray tracing overhead on the ~3.37M calls-per-sweep eval hot path. The full table (physical + skill scatter, needed by `see_capture`) is built lazily by `atk_full()` — a `OnceCell` populated on first use. The ns-53 SEE terms consult `atk_full()` only after the cheap physical `atk` table confirms a piece is actually attacked, so a quiet leaf position never triggers the full-table build.
+`EvalReport` is deliberately NOT persisted in match logs — the per-ply breakdown fields were removed as redundant (a log stores each position's FEN + scalar eval, so any term decomposition is recomputable live). For non-terminal positions the invariant `Σ pieces[*].piece_total + Σ side_terms[*].signed == total` holds and is pinned by a test.
 
-`skill_availability_fp(money, cost, params) -> i32` implements the piecewise-linear sigmoid used by the Skills term. `classify_stage(total_material, round_number, params) -> GameStage` applies a round-number bias so games that drag on are treated as later-stage even if material is still high.
+### 5.9 `src/search/evaluator/custom.rs`
 
-### 5.10 `src/search/evaluator/registry.rs`
+`CustomEvaluator` — a ready-to-edit scaffold for a hand-rolled evaluator, registered in `builtin::BUILTINS` as `"custom-stub"` so it appears in the setup / settings dropdowns immediately. It is a standalone struct implementing the `Evaluator` trait directly — NOT bound to the `heuristic/` term registry — the intended home for genuinely different evaluation logic.
 
-The term registry and the two evaluation drivers.
+Its architecture is **compute-once, then fold or explain**: all scoring math lives in one private method, `parts(pos) -> Parts`, returning a struct of named, P1-POV-signed components (one field per term). `evaluate()` sums the `Parts`; `evaluate_report()` labels them into an `EvalReport`. Both views consume the same computed numbers, so a term is never calculated twice and its exact value is available to the panel. The scaffold ships a per-piece example (`material`, via bitboard counts + a per-square `PieceTermBreakdown` walk) and a side-level example (`money`), so both term shapes are demonstrated; adding a term is one field + one `parts()` line + one report line. Ship more variants by copying the file, renaming the struct, and adding a `BUILTINS` entry.
+
+### 5.10 `src/search/evaluator/heuristic/mod.rs`
+
+The default evaluator's driving loop — the term registry and the two evaluation drivers. This module and its children (`context`, `term`, `terms`, `params`) are the `HeuristicEvaluator`'s private implementation; nothing outside `heuristic/` routes through them.
+
+The two concrete structs live here (re-exported at the seam): `HeuristicEvaluator` (zero-config, `EvalParams::DEFAULT` weights) and `ParamHeuristicEvaluator { params: EvalParams }` (same term math, custom weights — the "same terms, different balance" shape). Their `impl Evaluator` bodies call the local `evaluate_scalar` / `evaluate_report` drivers directly.
 
 `evaluate_scalar(pos, params) -> i32` is the search leaf hot path: no heap allocation, no `dyn` dispatch, static dispatch throughout. It calls `EvalContext::new`, then `accumulate_terms` (a single shared board pass via `score_piece_all` and `score_side_all`), then `TermSums::fold_total`.
 
-`evaluate_report(pos, params, detail) -> EvalReport` (ns-53) is the allocation-heavy variant used by the frontend eval panel and any tuning. It reuses the SAME term math: the aggregate per-side sums come from `score_piece_all` / `score_side_all`, and — when `detail == PerPiece` — the per-piece rows are built from the *same* `score_piece_all` call in the same board pass. This is what let the old hand-duplicated `evaluate_by_square` be deleted: there is now exactly one implementation of the term math, so the per-piece view is definitionally consistent with the scalar total rather than test-enforced. `PIECE_TERM_NAMES` and `PIECE_TERM_SIGN` (parallel to the `pt::*` indices) give the report stable term names and the signs that must stay in lockstep with `fold_total`.
+`evaluate_report(pos, params, detail) -> EvalReport` (ns-53) is the allocation-heavy variant used by the frontend eval panel and any tuning. It reuses the SAME term math: the aggregate per-side sums come from `score_piece_all` / `score_side_all`, and — when `detail == PerPiece` — the per-piece rows are built from the *same* `score_piece_all` call in the same board pass. So the per-piece view is definitionally consistent with the scalar total rather than test-enforced.
 
-`default_terms` / `default_terms_static()` (the boxed term set, cached via `OnceLock`) are retained for a future weight-tuner / preset path but are no longer on the scalar or report hot paths — both accumulate through the monomorphic `score_piece_all` / `score_side_all` helpers.
+**The per-piece term set is declared once**, in `PIECE_TERMS: &[PieceTermDef]` — each entry is `{ name, sign }` (`sign` is `+1` bonus / `-1` penalty). `N_PIECE_TERMS`, the `pt::*` index aliases, `fold_total`, and the report all derive from this single table, so a term is described in one place (no parallel name/sign arrays). `score_piece_all` dispatches each term's scorer concretely (static, inlined — the hot path) at the matching `pt::*` index; a unit test (`pt_indices_match_piece_terms_table`) pins that the dispatch order matches the table. `score_side_all` returns a named `SideSums` struct (money/tempo/offensive-range/wasted/closing/king-tempo), applying the phase/stage gates. `TermSums::fold_total` is the single point where all magnitudes are signed and summed — per-piece terms via `PIECE_TERMS[i].sign`, offensive-range weighted, wasted/king-tempo subtracted.
 
-`TermSums` accumulates per-piece scores (9 terms, indexed by `pt::*` constants) and side-level scores (5 terms). `fold_total` is the single point where all magnitudes are signed and summed — exposure and guard-isolation are subtracted as penalties; offensive range is weighted.
+### 5.11 `src/search/evaluator/heuristic/params.rs`
 
-### 5.11 `src/search/evaluator/term.rs`
+All tunable evaluation weights in a single `EvalParams` struct (`Copy + Clone + Serialize + Deserialize`). `EvalParams::DEFAULT` reproduces the pre-ns-43 constants exactly and is enforced by a `golden_eval_unchanged` test. It carries the full weight set for every term — not just base material. Representative defaults: `champion_value = 1000`, `guard_value = 600`, `hp_per_point = 150`, `armor_per_point = 120`, `king_material = 0` (presence/absence is captured by the MATE branch, not material), `tempo_per_action = 15`, `money_per_unit = 25`, `offensive_range_weight = 500`, `wasted_modifier_per_cost = 25`. Beyond these it also holds the mobility block, the exposure/king-exposure multiplier curves, the coverage weight, the guard-isolation and champion-threat blocks, the stage-classification thresholds, the endgame-closing block, the skill-availability sigmoid parameters, the ns-53 SEE-term weights (`hanging_penalty_pct`, `king_tempo_penalty`), and a 16-entry `skill_value` table. The struct is serialisable so an offline weight-tuner can perturb and reload candidates without recompiling.
 
-Defines the `EvalTerm` trait — the unit interface every evaluation term implements. Each term is a zero-size struct that implements exactly one of two shapes:
+### 5.12 `src/search/evaluator/heuristic/context.rs`
 
-- **Per-piece** (`is_per_piece() -> true`): `score_piece(ctx, pc) -> i32`, called once per occupied square.
-- **Side-level** (`is_per_piece() -> false`): `score_side(ctx) -> (i32, i32)`, returning `(p1_score, p2_score)` in one pass.
+`EvalContext` is built once per `evaluate()` call and then borrowed by every term, preventing each term from redundantly recomputing occupancy, attacker tables, or availability tables. It is heuristic-specific — a different evaluator builds its own per-call state (or none).
 
-`signed_total(p1, p2, params) -> i32` is overridable — terms that are penalties override it to return `-(p1 - p2)`, while the offensive-range term multiplies by a weight. This keeps the registry term-agnostic.
+It holds: precomputed bitboards (`all_occ`, `p1_bb`, `p2_bb`, `p1_guards`, `p2_guards`), skill-availability fixed-point tables (`p1_avail / p2_avail: [i32; 16]`), the physical-only `AttackersTable` (`atk`), a lazily-built full `AttackersTable` (`atk_full`, a `OnceCell`), the `GameStage` classification (`Opening | Mid | End`), actions-per-round, money caps, the current material advantage, and a reference to `EvalParams`.
 
-`PieceContext` delivers precomputed per-square inputs to per-piece terms: square index, owner, kind flags, and the `MailboxEntry`.
+`EvalContext::new(pos, params)` deliberately calls `build_attackers_table_phys` (physical scatter only) to avoid skill-ray tracing overhead on the eval hot path. The full table (physical + skill scatter, needed by `see_capture`) is built lazily by `atk_full()` — a `OnceCell` populated on first use. The ns-53 SEE terms consult `atk_full()` only after the cheap physical `atk` table confirms a piece is actually attacked, so a quiet leaf position never triggers the full-table build.
 
-### 5.12 `src/search/evaluator/terms.rs`
+`skill_availability_fp(money, cost, params) -> i32` implements the piecewise-linear sigmoid used by the Skills term. `classify_stage(total_material, round_number, params) -> GameStage` applies a round-number bias so games that drag on are treated as later-stage even if material is still high.
+
+### 5.13 `src/search/evaluator/heuristic/term.rs`
+
+Defines the `EvalTerm` trait — the unit interface every heuristic term implements. The trait has exactly two methods, and each term implements one:
+
+- **Per-piece** terms: `score_piece(ctx, pc) -> i32`, called once per occupied square.
+- **Side-level** terms: `score_side(ctx) -> (i32, i32)`, returning `(p1_score, p2_score)` in one pass.
+
+Each term returns a **positive magnitude**; the sign that folds it into the P1-POV total lives with the term set in `PIECE_TERMS` (per-piece) or `fold_total` (side-level), not on the term — so the driver and the fold stay in one place. `PieceContext` delivers precomputed per-square inputs to per-piece terms: square index, owner, kind flags, and the `MailboxEntry`.
+
+### 5.14 `src/search/evaluator/heuristic/terms.rs`
 
 All 16 evaluation term implementations.
 
@@ -438,22 +472,6 @@ All 16 evaluation term implementations.
 | `KingTempo` | Penalty (ns-53): a side whose king is one loud enemy action from capture, via the cheap `is_king_threatened` bitboard scan (no exchange rollout) |
 
 `Coverage` gained a threat gate during ns-43 to prevent rewarding guards that shield directions with no approaching enemy. `EndgameClosing` is intentionally asymmetric: the leading side plays to close; the trailing side plays to stall. `HangingPiece` and `KingTempo` (ns-53) are the "eval may look at forced tactics of the current moment" terms — both are gated so the eval hot path only pays for SEE where a real threat exists (the `see_tables` bench counter is ~0 on quiet positions and rises with tactical density).
-
-### 5.13 `src/search/evaluator/breakdown.rs`
-
-Defines the dynamic breakdown types (ns-53). `EvalReport` replaced both the old fixed 25-field `EvalBreakdown` struct AND the hand-duplicated `evaluate_by_square` per-square view.
-
-`EvalReport` is `Clone + Serialize + Deserialize` — the wire format sent to the frontend eval panel. It carries `terms: Vec<TermEntry>` (aggregate per-piece terms, active only), `side_terms: Vec<TermEntry>` (money/tempo/offensive-range/…), `pieces: Option<Vec<PieceTermBreakdown>>` (present only when `PerPiece` was requested — one row per occupied square), a P1-POV `total`, and a `terminal` flag. `TermEntry` is `{ name: String, p1, p2, signed }` where `signed` already carries the term's sign/weight (a penalty reads negative; offensive-range is pre-multiplied). `PieceTermBreakdown` carries the square, owner, kind, HP/armor/skill IDs, its per-term rows (owner-signed), and the piece's owner-signed `piece_total`. Constructors: `EvalReport::terminal(total)` and `EvalReport::single(name, total)` (the one-term report NN evaluators return).
-
-`EvalReport` is deliberately NOT persisted in match logs — the per-ply breakdown fields were removed as redundant (a log stores each position's FEN + scalar eval, so any term decomposition is recomputable live). For non-terminal positions the invariant `Σ pieces[*].piece_total + Σ side_terms[*].signed == total` holds and is pinned by a test.
-
-### 5.14 `src/search/evaluator/incremental.rs`
-
-`IncrementalEvaluator` is a stateful `Evaluator` that caches the per-square term decomposition, intended to diff only the changed squares on incremental updates rather than re-scoring the full board. The Phase-1 implementation (current) always does a full rebuild via `EvalCache::rebuild` — the cache scaffold is in place but the diff path is not yet activated (`ENABLE_INCREMENTAL_EVAL: AtomicBool` defaults to false). The cache stores per-square term magnitudes, all position scalars, and the last Zobrist hash so stale entries are detectable. Phase 2/3 will activate the `subtract old square / add new square` path. (Caveat noted in-file: the ns-53 `hanging_piece` term is not square-local, so activating the diff path must recompute it — and `king_tempo` — per changed neighbourhood rather than treating them as square-local.)
-
-### 5.15 `src/search/evaluator/custom.rs`
-
-`CustomEvaluator` — a ready-to-edit scaffold for a hand-rolled evaluator, registered in `builtin::BUILTINS` as `"custom-stub"` so it appears in the setup / settings dropdowns immediately. Out of the box its private `score(pos)` delegates to `HeuristicEvaluator`, so selecting it plays normally; the file's doc comment walks through the two edit points — swap `score` for your own P1-POV math, and (optionally) build a richer `EvalReport` in `evaluate_report` (pushing your own `TermEntry` / `PieceTermBreakdown` rows) so the dynamic eval panel renders your components. It is a standalone struct, not bound to the shared term registry — the intended home for genuinely different evaluation logic. Ship more variants by adding more structs + `BUILTINS` entries.
 
 ---
 

@@ -1,22 +1,44 @@
-//! Heuristic evaluation for terminal / time-out search nodes.
+//! Evaluation seam: the [`Evaluator`] trait, the [`builtin`] registry, and the
+//! score conventions every evaluator shares.
 //!
 //! Score convention: positive = P1 advantage, negative = P2 advantage.
 //! Win/loss are represented as ±(MATE_SCORE - depth_to_mate) so shorter wins
 //! score higher and the search prefers fast mates.
 //!
-//! ## ns-43 - term-registry architecture
+//! ## Entry point — read this first
 //!
-//! The evaluator is a **registry of independent, parameterised terms**
-//! ([`term::EvalTerm`]). [`registry::evaluate_dyn`] builds one
-//! [`context::EvalContext`], runs a single shared board pass for per-piece
-//! terms + side-level terms once, and returns a [`breakdown::DynBreakdown`]
-//! (only the *active* terms). The legacy fixed-field [`EvalBreakdown`] is a
-//! projection of that ([`breakdown::DynBreakdown::to_legacy`]) - kept because
-//! it is serialised to the frontend / telemetry / nn_trainer / search_bench.
+//! A caller (the search, the UI eval bar) hands a `Position` to an `Evaluator`
+//! and gets back a P1-POV `i32`. That is the whole contract. To write a new
+//! evaluator you implement **one trait with two required methods**:
 //!
-//! All tunable weights live in [`params::EvalParams`]; `EvalParams::DEFAULT`
-//! reproduces the pre-ns-43 constants exactly. The `golden_eval_unchanged`
-//! test enforces byte-identical output across the refactor.
+//! - [`Evaluator::evaluate`] — the scalar score (this is what the search calls).
+//! - [`Evaluator::evaluate_report`] — a breakdown for the UI panel; return
+//!   [`EvalReport::single`] if you have no term structure.
+//!
+//! The other five `*_acc` methods are OPTIONAL (default no-ops) — override them
+//! only for an NNUE-style incremental accumulator. A hand-rolled evaluator
+//! ignores them entirely (see [`custom::CustomEvaluator`] for the minimal shape).
+//!
+//! ## The registry — how an evaluator becomes selectable
+//!
+//! [`builtin::BUILTINS`] is a flat list mapping a stable `id` + display `label`
+//! to a constructor. Registering a new evaluator is TWO edits, both here at the
+//! top level: write your struct (a file next to `custom.rs`) and add ONE
+//! `BUILTINS` line. The struct does not self-register; the registry names it.
+//!
+//! ## Where the code lives
+//!
+//! - `mod.rs` (this file) — the seam: the trait, `MATE_SCORE`, the free
+//!   `evaluate`/`evaluate_report` shortcuts to the default heuristic, and the
+//!   `builtin` registry. The `HeuristicEvaluator`/`ParamHeuristicEvaluator`
+//!   shells live here too (they delegate into `heuristic`).
+//! - [`report`] — `EvalReport`/`TermEntry`/`BreakdownDetail`: the shared wire
+//!   type sent to the frontend. Any evaluator may build one.
+//! - [`heuristic`] — the DEFAULT evaluator, fully self-contained. Its
+//!   term-registry machinery (`params`, `context`, `term`, `terms`) is its
+//!   private business; nothing else routes through it.
+//! - [`custom`] — the designer's hand-rolled evaluator, one file, implements the
+//!   trait directly.
 //!
 //! ============================================================
 //! Design philosophy (load-bearing - read before changing eval)
@@ -34,29 +56,23 @@
 //!    money, equipped skills). Must beat random play before anything fancier.
 //! 4. TWO ANGLES ON EVERY ADVANTAGE - TEMPO AND MONEY.
 //! 5. EVAL COST IS A FIRST-CLASS BUDGET. A cheap eval at depth 6 beats an
-//!    expensive one at depth 1. `is_active` gating (later pass) skips terms
-//!    that don't matter for the phase.
+//!    expensive one at depth 1. Phase/stage gating (in the heuristic's
+//!    `score_*_all`) skips terms that can't matter for the current position.
 //! 6. START STUPID. Material-only first; every later term proves itself against
 //!    that baseline.
 
-pub mod params;
-pub mod context;
-pub mod term;
-pub mod terms;
-pub mod registry;
-pub mod breakdown;
-pub mod incremental;
+pub mod report;
+pub mod heuristic;
 pub mod custom;
 
 use crate::game_logic::action::Undo;
 use crate::state::Position;
 
-pub use params::EvalParams;
-pub use term::{EvalTerm, PieceContext};
-pub use context::EvalContext;
-pub use context::GameStage;
-pub use breakdown::{BreakdownDetail, EvalReport, PieceTermBreakdown, TermEntry};
-pub use incremental::IncrementalEvaluator;
+pub use heuristic::params::EvalParams;
+pub use heuristic::term::{EvalTerm, PieceContext};
+pub use heuristic::context::EvalContext;
+pub use heuristic::context::GameStage;
+pub use report::{BreakdownDetail, EvalReport, PieceTermBreakdown, TermEntry};
 
 pub const MATE_SCORE: i32 = 1_000_000;
 
@@ -69,18 +85,17 @@ pub const MATE_SCORE: i32 = 1_000_000;
 #[cfg(test)] pub(crate) const ARMOR_PER_POINT: i32 = EvalParams::DEFAULT.armor_per_point;
 #[cfg(test)] pub(crate) const TEMPO_PER_ACTION: i32 = EvalParams::DEFAULT.tempo_per_action;
 
-/// Scalar P1-POV static eval. `+`=P1, `±MATE_SCORE` for terminals.
-///
-/// Search-leaf fast path (Phase 1b, Session 48): a monomorphic accumulation of
-/// the term set into a single `i32`, with no breakdown Vecs / allocation.
+/// Scalar P1-POV static eval with the default weights. `+`=P1, `±MATE_SCORE`
+/// for terminals. Convenience shortcut for callers that don't hold an
+/// `Evaluator`; delegates to the heuristic's monomorphic search-leaf path.
 pub fn evaluate(pos: &Position) -> i32 {
-    registry::evaluate_scalar(pos, &EvalParams::DEFAULT)
+    heuristic::evaluate_scalar(pos, &EvalParams::DEFAULT)
 }
 
 /// Dynamic breakdown for the default heuristic. `detail` selects aggregate-only
 /// or full per-piece decomposition. Used by the UI eval panel + telemetry.
-pub fn evaluate_report(pos: &Position, detail: breakdown::BreakdownDetail) -> EvalReport {
-    registry::evaluate_report(pos, &EvalParams::DEFAULT, detail)
+pub fn evaluate_report(pos: &Position, detail: report::BreakdownDetail) -> EvalReport {
+    heuristic::evaluate_report(pos, &EvalParams::DEFAULT, detail)
 }
 
 /// Opaque, evaluator-owned incremental-eval state for one search node.
@@ -176,44 +191,14 @@ pub trait Evaluator: Send {
     fn eval_acc(&self, _h: &AccHandle, pos: &Position) -> i32 { self.evaluate(pos) }
 }
 
-/// Zero-size wrapper around the free eval functions. Default evaluator.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct HeuristicEvaluator;
-
-impl Evaluator for HeuristicEvaluator {
-    #[inline]
-    fn evaluate(&self, pos: &Position) -> i32 { evaluate(pos) }
-    #[inline]
-    fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport {
-        evaluate_report(pos, detail)
-    }
-}
-
-/// A heuristic evaluator parameterised by a custom [`EvalParams`] weight set.
-/// The term math is identical to [`HeuristicEvaluator`]; only the weights differ.
-/// This is the "same terms, different balance" variant shape — a builtin
-/// evaluator entry can hand out one of these with tuned weights. For genuinely
-/// different *logic*, write a separate struct that impls [`Evaluator`] (its own
-/// term registry / hand-rolled math) and register that instead.
-#[derive(Clone, Debug)]
-pub struct ParamHeuristicEvaluator {
-    params: EvalParams,
-}
-
-impl ParamHeuristicEvaluator {
-    pub fn new(params: EvalParams) -> Self { Self { params } }
-}
-
-impl Evaluator for ParamHeuristicEvaluator {
-    #[inline]
-    fn evaluate(&self, pos: &Position) -> i32 {
-        registry::evaluate_scalar(pos, &self.params)
-    }
-    #[inline]
-    fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport {
-        registry::evaluate_report(pos, &self.params, detail)
-    }
-}
+/// The concrete heuristic evaluators live with their implementation, in
+/// [`heuristic`] — re-exported here so callers name them at the seam
+/// (`evaluator::HeuristicEvaluator`) without reaching into the submodule.
+/// `HeuristicEvaluator` is the zero-config default; `ParamHeuristicEvaluator`
+/// is the same term math with a custom [`EvalParams`] weight set. For a
+/// genuinely different evaluator, add a sibling module to [`heuristic`] /
+/// [`custom`] and register it in [`builtin::BUILTINS`].
+pub use heuristic::{HeuristicEvaluator, ParamHeuristicEvaluator};
 
 /// Builtin evaluator registry (ns-54). The single place where `core_engine`'s
 /// own concrete evaluators are enumerated for UI selection. Each entry maps a
@@ -799,9 +784,9 @@ mod tests {
         let params = EvalParams::DEFAULT;
         // classify_stage directly: same material, higher round → not-earlier.
         let mat = params.stage_mid_threshold + 100; // just into Opening at round 0
-        assert_eq!(context::classify_stage(mat, 0, &params), GameStage::Opening);
+        assert_eq!(heuristic::context::classify_stage(mat, 0, &params), GameStage::Opening);
         // A high round biases the same material toward Mid/End.
-        let late = context::classify_stage(mat, 30, &params);
+        let late = heuristic::context::classify_stage(mat, 30, &params);
         assert_ne!(late, GameStage::Opening, "30 rounds elapsed pushes past Opening");
     }
 

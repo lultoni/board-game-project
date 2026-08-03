@@ -1,11 +1,11 @@
-//! Breakdown types (ns-53 rework).
+//! Breakdown types (ns-53) — the shared eval wire format.
 //!
-//! [`EvalReport`] is the single dynamic breakdown the evaluator produces on
-//! demand — a flat list of active aggregate terms, the side-level terms, and
-//! (optionally) a per-piece decomposition. It replaces both the old fixed-field
-//! `EvalBreakdown` struct AND the hand-duplicated `evaluate_by_square` per-square
-//! view: the per-piece rows come from the SAME registry term pass that produces
-//! the scalar total, so consistency is definitional rather than test-enforced.
+//! [`EvalReport`] is the dynamic breakdown an evaluator produces on demand: a
+//! flat list of aggregate terms, the side-level terms, and (optionally) a
+//! per-piece decomposition. It lives at the evaluator top level because any
+//! evaluator may produce one — the heuristic builds its per-piece rows from the
+//! SAME term pass that produces its scalar total, so for it consistency is
+//! definitional; an evaluator with no term structure returns [`EvalReport::single`].
 //!
 //! The report is `Serialize`/`Deserialize` — it is the wire format sent to the
 //! frontend eval panel. It is NOT persisted in match logs (per-ply breakdowns

@@ -16,9 +16,8 @@ use std::cell::OnceCell;
 
 /// Coarse game stage (ns-43 stage infra). Derived from total material on the
 /// board with a round-number bias (rounds drive income + skill budget in this
-/// game, so a long game is "later" even at high material). Consumed by phase-
-/// gated terms via [`EvalTerm::is_active`](super::term::EvalTerm::is_active) -
-/// notably the asymmetric `endgame_closing` term.
+/// game, so a long game is "later" even at high material). Consumed by the
+/// stage-gated `endgame_closing` term (gated in `score_side_all`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GameStage {
     Opening,
@@ -67,8 +66,7 @@ pub struct EvalContext<'a> {
 }
 
 impl<'a> EvalContext<'a> {
-    /// Build the shared state. Mirrors the setup block of the old
-    /// `evaluate_breakdown` exactly.
+    /// Build the shared state used by every term for one `evaluate` call.
     pub fn new(pos: &'a Position, params: &'a EvalParams) -> Self {
         let all_occ = (pos.p1_pieces | pos.p2_pieces).0;
         let p1_bb = pos.p1_pieces.0;
