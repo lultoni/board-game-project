@@ -30,6 +30,15 @@
 //!   call does a full `accumulate_terms`, populates the cache, returns the
 //!   identical total. No speedup yet - this is the correctness foundation and
 //!   the A/B scaffold. Opt-in (`ENABLE_INCREMENTAL_EVAL`, default off).
+//!
+//! CAVEAT for a future diff path: the ns-53 `hanging_piece` per-piece term is
+//! NOT square-local — a piece's hanging magnitude depends on the enemy
+//! attackers on its square, so moving/removing a piece elsewhere changes its
+//! neighbours' hanging values. A naive "recompute only the changed squares"
+//! diff would leave stale hanging magnitudes on adjacent squares. The diff path
+//! must either recompute hanging for the neighbourhood of every changed square
+//! or exclude hanging (and king_tempo) from the incremental set and always
+//! recompute them. The current full-rebuild path is unaffected.
 //! - **Phase 2/3:** per-piece diff + local-radius term recompute.
 
 use std::cell::RefCell;
@@ -39,7 +48,7 @@ use crate::state::position::{GameResult, Phase};
 use super::params::EvalParams;
 use super::context::{EvalContext, GameStage};
 use super::registry::{self, TermSums, N_PIECE_TERMS};
-use super::{Evaluator, EvalBreakdown, MATE_SCORE};
+use super::{Evaluator, BreakdownDetail, EvalReport, MATE_SCORE};
 
 /// Cached per-square term decomposition of one position, so a changed piece can
 /// have its contribution subtracted and re-added without re-scoring the board.
@@ -132,9 +141,9 @@ impl EvalCache {
             }
         }
 
-        let (money, tempo, off, wasted, close) = registry::score_side_all(ctx);
+        let (money, tempo, off, wasted, close, king_tempo) = registry::score_side_all(ctx);
         sums.money = money; sums.tempo = tempo; sums.off = off;
-        sums.wasted = wasted; sums.close = close;
+        sums.wasted = wasted; sums.close = close; sums.king_tempo = king_tempo;
 
         // Snapshot diff sources.
         for i in 0..64 { self.mailbox[i] = pos.mailbox[i].0; }
@@ -212,9 +221,9 @@ impl Evaluator for IncrementalEvaluator {
     #[inline]
     fn evaluate(&self, pos: &Position) -> i32 { self.eval_scalar(pos) }
     #[inline]
-    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown {
+    fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport {
         // Breakdown is a frontend/telemetry path, not hot - always full.
-        super::evaluate_breakdown(pos)
+        super::evaluate_report(pos, detail)
     }
 }
 

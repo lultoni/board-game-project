@@ -608,8 +608,14 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
     // Forced-move short-circuit. When the position has exactly one legal
     // action (common: EndPhase-only when actions_remaining==0 and no skills
     // are castable), skip the whole tree - the caller will just apply it.
-    // Score is the static eval so telemetry / UI show something meaningful.
-    // nodes=1: we did examine one node (the root) to determine it was forced.
+    //
+    // We still want a MEANINGFUL score/depth for telemetry + the UI: a bare
+    // static eval here breaks the mate-line continuity the surrounding real
+    // searches show (the forced phase-end ply would report a ~0 static score
+    // between "mate in 2" plies). So probe the TT first — if a prior search
+    // (this move's own earlier iteration, or the opponent's) already scored
+    // THIS position, reuse its de-adjusted score + depth. Only on a TT miss do
+    // we fall back to the static eval (depth 0 = "not searched").
     //
     // `fallback_move` also seeds `best` below: it guarantees `find_best` returns
     // a LEGAL move on any non-terminal position even if the search is aborted by
@@ -620,10 +626,16 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
     if pos.game_result.is_none() {
         let root_moves = generator::generate(pos);
         if root_moves.len() == 1 {
+            // TT probe at ply 0: score_from_tt de-adjusts a stored mate score to
+            // be root-relative. P1-POV throughout, so no sign flip.
+            let (score, depth) = match tt.probe(pos.zobrist) {
+                Some(e) => (score_from_tt(e.score, 0), e.depth),
+                None    => (evaluator.evaluate(pos), 0),
+            };
             return SearchResult {
                 best:  Some(root_moves[0]),
-                score: evaluator.evaluate(pos),
-                depth: max_depth.max(1),
+                score,
+                depth,
                 nodes: 1,
             };
         }
@@ -691,6 +703,27 @@ mod tests {
     use crate::game_logic::skills::Skill;
     use crate::state::{Bitboard, MailboxEntry, Position};
     use crate::state::position::{GameResult, Phase, Player};
+
+    /// Regression (ns-55): a forced single-action position (the mandatory
+    /// phase-end EndPhase when actions_remaining==0) must NOT report the
+    /// configured `max_depth` as its reached depth. It did no tree search
+    /// (nodes==1); on a cold TT it reports depth 0 + static eval, and on a warm
+    /// TT it reuses the stored (de-adjusted) score/depth. Previously it returned
+    /// `depth: max_depth` → a bogus "d64" flash in the UI on every phase-end ply.
+    #[test]
+    fn forced_move_does_not_report_max_depth() {
+        // Move phase, actions_remaining==0 → only legal action is EndPhase.
+        let fen = "1c[2/2/0/2/6]4c[2/2/0/5/6]1/2c[2/2/0/3/6]1k[2/0/0/14/15]2g[2/1/0/0/0]/c[2/2/0/5/6]gg1gggc[2/1/0/4/6]/2C[2/2/0/2/6]5/8/C[2/2/0/5/6]GG[2/1/0/0/0]1GGGC[2/1/0/5/6]/2GC[2/2/0/3/6]4/1K[2/0/0/14/15]3C[2/2/0/4/6]2 P1 M 0 9 5 0 10 0x400000002";
+        let mut pos = Position::from_fen(fen).expect("fen parses");
+        assert_eq!(generator::generate(&pos).len(), 1, "position must be forced");
+        let mut tt = TranspositionTable::with_capacity_mb(16);
+        // Cold TT, unlimited-depth mode (UI maxDepth 0 → 64). Must NOT be 64.
+        let r = find_best(&mut pos, &mut tt, 1000, 64);
+        assert_eq!(r.nodes, 1, "forced move searches no tree");
+        assert_eq!(r.depth, 0, "forced move on a cold TT reports depth 0, not max_depth (64)");
+        assert!(r.best.is_some());
+    }
+
 
     /// Local copy of the place helper used in `evaluator.rs::tests` -
     /// `make_unmake::tests::place` is `pub(super)`-scoped and not reachable.

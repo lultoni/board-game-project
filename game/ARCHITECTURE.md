@@ -25,12 +25,13 @@ This document describes every file in the `game/` directory: what it does, what 
     - [12.5 Audio](#125-audio-srclibaudiosftsts)
     - [12.6 State Stores](#126-state-stores-srclibstate)
     - [12.7 The /match/ Fat Controller](#127-the-match-fat-controller)
-    - [12.8 Multiplayer](#128-multiplayer-srclibmultiplayer)
+    - [12.8 Multiplayer](#128-multiplayer-srclibmultiplayer--srclibmultiplayer)
     - [12.9 Storage / Telemetry](#129-storage--telemetry-srclibstorage)
-    - [12.10 Replay / Inspector Data Flow](#1210-replay--inspector-data-flow)
-    - [12.11 Key Seams](#1211-key-seams)
-    - [12.12 Testing](#1212-testing)
-    - [12.13 Observed Extraction Opportunities](#1213-observed-extraction-opportunities)
+    - [12.10 Extracted Component Directories](#1210-extracted-component-directories)
+    - [12.11 Replay / Inspector Data Flow](#1211-replay--inspector-data-flow)
+    - [12.12 Key Seams](#1212-key-seams)
+    - [12.13 Testing](#1213-testing)
+    - [12.14 Observed Extraction Opportunities](#1214-observed-extraction-opportunities)
 13. [relay](#13-relay)
 14. [bench](#14-bench)
 15. [tools](#15-tools)
@@ -92,7 +93,7 @@ game/
 └── runs/                       training run artefacts (gitignored)
 ```
 
-The workspace `Cargo.toml` defines `default-members = ["crates/tauri_wrapper"]` so `cargo build` builds the desktop app. `search_bench` and `nn_trainer` are opt-in via `-p`.
+The workspace `Cargo.toml` lists all four crates as `members` with no `default-members` key, so `cargo build` builds the whole workspace; individual crates are targeted with `-p`. Shared metadata (`version`, `edition`, `authors`) lives in `[workspace.package]`, and the release profile pins `lto = true` / `codegen-units = 1` / `opt-level = 3`.
 
 ---
 
@@ -120,12 +121,12 @@ The `Position` struct is the complete game state. It holds:
 - **Per-square data** — `mailbox: [MailboxEntry; 64]` (entries on unoccupied squares are undefined, matching Stockfish convention).
 - **Resources** — `p1_money: u16`, `p2_money: u16`, `round_number: u16`, `to_move: Player`, `current_phase: Phase`, `actions_remaining: u8`.
 - **Turn tracking** — `moved_this_phase: Bitboard`, `pending_modifiers: u8` (three flags: `FOCUS = 1<<0`, `CHARGE = 1<<1`, `MOVE_ATTACK_USED = 1<<2`).
-- **Combo tracking** — `tracked_enemies: [u8; 16]`, `tracked_casters: [u8; 8]`, `champion_credit: u128` (a compact 8x16 cross-product bitmap).
+- **Combo tracking** — `tracked_enemies: [u8; 16]` + `tracked_enemies_len: u8`, `tracked_casters: [u8; 8]` + `tracked_casters_len: u8` (each buffer paired with its own length), `champion_credit: u128` (a compact 8x16 cross-product bitmap).
 - **Bodyguard** — `pending_bodyguard: Option<PendingBodyguard>` (mid-resolution state between a tentative Move-Attack and the defender's interception choice).
 - **Hash** — `zobrist: u64` (always in sync with the above fields).
 - **Terminal** — `game_result: Option<GameResult>`.
 
-Key constructors: `setup_stack_m()` (canonical start position), `setup_stack_m_for_draft()` (opens in `Phase::Draft`), `setup_stack_m_with_loadouts()` (skips draft by pre-assigning skill IDs), `from_snapshot` (replay-validated from a `Snapshot`). `Position` derives `Clone` but not `Copy` — at ~376 bytes it is too large for implicit copies on the search stack.
+Key constructors: `setup_stack_m()` (canonical start position), `setup_stack_m_for_draft()` (opens in `Phase::Draft`), and `setup_stack_m_with_loadouts()` (skips draft by pre-assigning skill IDs). Replay-validated construction from a `Snapshot` is `Match::from_snapshot` (Layer 4), not a `Position` method — `Position` itself reconstructs from a string via `from_fen`. `Position` derives `Clone` but not `Copy` — it is too large for implicit copies on the search stack, so it is always moved or borrowed explicitly.
 
 Also defined here: `Player { P1, P2 }`, `Phase { Draft, Move, Skill }`, `GameResult { P1Wins, P2Wins }` (no draw by design), and `PendingBodyguard { attacker_src, attacker_now, target_sq, eligible: [u8; 4], eligible_len }`.
 
@@ -298,7 +299,9 @@ Implements iterative-deepening alpha-beta with a full complement of pruning heur
 
 **Public entry points:**
 - `find_best(pos, tt, time_limit_ms, max_depth) -> SearchResult` — calls `find_best_with_evaluator` with `HeuristicEvaluator`.
-- `find_best_with_evaluator(pos, tt, time_limit_ms, max_depth, evaluator, on_depth) -> SearchResult` — the main loop. Handles forced-move short-circuit, seeds a fallback move before depth-1 in case of clock abort, runs iterative deepening from depth 1 to `max_depth`, discards aborted iterations, and exits early on a mate score.
+- `find_best_with_evaluator(pos, tt, time_limit_ms, max_depth, evaluator, on_depth) -> SearchResult` — the main loop. Handles the forced-move short-circuit, seeds a fallback move before depth-1 in case of clock abort, runs iterative deepening from depth 1 to `max_depth`, discards aborted iterations, and exits early on a mate score.
+
+**Forced-move short-circuit.** When `generate(pos)` yields exactly one legal action — overwhelmingly the mandatory phase-end `EndPhase` once `actions_remaining == 0` — the whole tree is skipped and that action is returned with `nodes: 1`. For a meaningful score/depth it first probes the TT at ply 0 (`score_from_tt(entry.score, 0)`, P1-POV so no sign flip) and reuses the stored score + depth; on a TT miss it falls back to the static eval with `depth: 0`. (ns-55 fix: it previously returned `depth: max_depth`, which surfaced as a bogus "d64" in the UI on every phase-end ply — since the UI maps an "unlimited depth" setting to `max_depth = 64` — and reported a bare static eval that broke the surrounding mate line. Pinned by `forced_move_does_not_report_max_depth`.)
 
 **`SearchCtx`** is the per-search shared context: references to the `TranspositionTable`, `OrderingTables` (killers and history), the `Evaluator`, an optional deadline, a node counter, an abort flag, and the `acc_stack` (an incremental-eval accumulator stack for NNUE evaluators, zero-cost for the heuristic evaluator).
 
@@ -344,14 +347,14 @@ Thread-local diagnostic counters that compile to zero-cost no-ops unless the `be
 
 ### 5.7 `src/search/evaluator/mod.rs`
 
-The public façade for the evaluator subsystem. Defines the `Evaluator` trait, `HeuristicEvaluator`, `AccHandle`, and the free-function entry points `evaluate`, `evaluate_breakdown`, and `evaluate_dyn`.
+The public façade for the evaluator subsystem. Defines the `Evaluator` trait, `HeuristicEvaluator`, `AccHandle`, and the free-function entry points `evaluate` and `evaluate_report`.
 
 `Evaluator` is the seam between the search and any concrete evaluation function:
 
 ```rust
 pub trait Evaluator: Send {
     fn evaluate(&self, pos: &Position) -> i32;
-    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown;
+    fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport;
     // Accumulator hooks — default to no-ops:
     fn uses_accumulator(&self) -> bool { false }
     fn fresh_acc(&self, pos: &Position) -> AccHandle { AccHandle::none() }
@@ -361,21 +364,23 @@ pub trait Evaluator: Send {
 }
 ```
 
-`AccHandle(Option<Box<dyn Any + Send>>)` is a type-erased accumulator slot. The search threads it through make/unmake without knowing the concrete type inside. `HeuristicEvaluator` is a zero-size struct that returns `false` from `uses_accumulator()`, so the entire accumulator seam is dead code for the standard heuristic path.
+`evaluate_report(pos, detail)` (ns-53) is the single dynamic-breakdown entry point, replacing the former fixed-struct `evaluate_breakdown`. `BreakdownDetail::{Aggregate, PerPiece}` selects whether the returned `EvalReport` also carries a per-piece decomposition. The default heuristic decomposes into its terms; an NN evaluator returns a single synthetic term (it has no term structure). `AccHandle(Option<Box<dyn Any + Send>>)` is a type-erased accumulator slot. The search threads it through make/unmake without knowing the concrete type inside. `HeuristicEvaluator` is a zero-size struct that returns `false` from `uses_accumulator()`, so the entire accumulator seam is dead code for the standard heuristic path.
 
 `MATE_SCORE: i32 = 1_000_000` is defined here as the canonical sentinel.
 
+**Selectable evaluators (ns-54).** Besides `HeuristicEvaluator`, this module defines `ParamHeuristicEvaluator { params: EvalParams }` — same term math, custom weights (the "same terms, different balance" shape) — and a `builtin` registry submodule. `builtin::BUILTINS: &[BuiltinEvaluator]` maps a stable `id` + display `label` to a constructor `fn() -> Box<dyn Evaluator + Send>`; `builtin::make(id)` resolves one. This is the single place `core_engine`'s own concrete evaluators are enumerated for UI selection — adding a new evaluator (a fresh struct with its own term registry, a tuned `ParamHeuristicEvaluator`, whatever) is "write the struct + one entry here." NN raters are NOT in this registry (they live in `nn_trainer`, which depends on this crate); the wrapper layer unions them in. A ready-to-edit scaffold ships as `custom.rs` / `CustomEvaluator` (registry id `"custom-stub"`, label "Custom (stub)") — it delegates to the heuristic out of the box and is the intended starting point for hand-rolled experimental evaluators.
+
 ### 5.8 `src/search/evaluator/params.rs`
 
-All tunable evaluation weights in a single `EvalParams` struct (`Copy + Clone + Serialize + Deserialize`). `EvalParams::DEFAULT` reproduces the pre-ns-43 constants exactly and is enforced by a `golden_eval_unchanged` test. Key default values: `champion_value = 1000`, `guard_value = 600`, `hp_per_point = 150`, `armor_per_point = 120`, `king_material = 0` (presence/absence is captured by the MATE branch, not material), `tempo_per_action = 15`. The struct is serialisable so an offline weight-tuner can perturb and reload candidates without recompiling.
+All tunable evaluation weights in a single `EvalParams` struct (`Copy + Clone + Serialize + Deserialize`). `EvalParams::DEFAULT` reproduces the pre-ns-43 constants exactly and is enforced by a `golden_eval_unchanged` test. It carries the full weight set for every term — not just base material. Representative defaults: `champion_value = 1000`, `guard_value = 600`, `hp_per_point = 150`, `armor_per_point = 120`, `king_material = 0` (presence/absence is captured by the MATE branch, not material), `tempo_per_action = 15`, `money_per_unit = 25`, `offensive_range_weight = 500`, `wasted_modifier_per_cost = 25`. Beyond these it also holds the mobility block (per-square weights for guards/champions/king plus the champion skill-coverage cap), the exposure/king-exposure multiplier curves, the coverage weight, the guard-isolation and champion-threat blocks, the stage-classification thresholds, the endgame-closing block, the skill-availability sigmoid parameters, the ns-53 SEE-term weights (`hanging_penalty_pct`, `king_tempo_penalty`), and a 16-entry `skill_value` table indexed by skill ID. The struct is serialisable so an offline weight-tuner can perturb and reload candidates without recompiling.
 
 ### 5.9 `src/search/evaluator/context.rs`
 
 `EvalContext` is built once per `evaluate()` call and then borrowed by every term in the evaluation, preventing each term from redundantly recomputing occupancy, attacker tables, or availability tables.
 
-It holds: precomputed bitboards (`all_occ`, `p1_bb`, `p2_bb`, `p1_guards`, `p2_guards`), skill-availability fixed-point tables (`p1_avail / p2_avail: [i32; 16]`), the physical-only `AttackersTable`, the `GameStage` classification (`Opening | Mid | End`), actions-per-round, money caps, the current material advantage, and a reference to `EvalParams`.
+It holds: precomputed bitboards (`all_occ`, `p1_bb`, `p2_bb`, `p1_guards`, `p2_guards`), skill-availability fixed-point tables (`p1_avail / p2_avail: [i32; 16]`), the physical-only `AttackersTable` (`atk`), a lazily-built full `AttackersTable` (`atk_full`, a `OnceCell` — see below), the `GameStage` classification (`Opening | Mid | End`), actions-per-round, money caps, the current material advantage, and a reference to `EvalParams`.
 
-`EvalContext::new(pos, params)` deliberately calls `build_attackers_table_phys` rather than the full build to avoid skill-ray tracing overhead on the ~3.37M calls-per-sweep eval hot path.
+`EvalContext::new(pos, params)` deliberately calls `build_attackers_table_phys` (physical scatter only) to avoid skill-ray tracing overhead on the ~3.37M calls-per-sweep eval hot path. The full table (physical + skill scatter, needed by `see_capture`) is built lazily by `atk_full()` — a `OnceCell` populated on first use. The ns-53 SEE terms consult `atk_full()` only after the cheap physical `atk` table confirms a piece is actually attacked, so a quiet leaf position never triggers the full-table build.
 
 `skill_availability_fp(money, cost, params) -> i32` implements the piecewise-linear sigmoid used by the Skills term. `classify_stage(total_material, round_number, params) -> GameStage` applies a round-number bias so games that drag on are treated as later-stage even if material is still high.
 
@@ -385,9 +390,9 @@ The term registry and the two evaluation drivers.
 
 `evaluate_scalar(pos, params) -> i32` is the search leaf hot path: no heap allocation, no `dyn` dispatch, static dispatch throughout. It calls `EvalContext::new`, then `accumulate_terms` (a single shared board pass via `score_piece_all` and `score_side_all`), then `TermSums::fold_total`.
 
-`evaluate_dyn(pos, terms, params) -> DynBreakdown` is the allocation-heavy variant used for tuning, the frontend eval panel, and telemetry. It produces a `Vec<TermEntry>` breakdown.
+`evaluate_report(pos, params, detail) -> EvalReport` (ns-53) is the allocation-heavy variant used by the frontend eval panel and any tuning. It reuses the SAME term math: the aggregate per-side sums come from `score_piece_all` / `score_side_all`, and — when `detail == PerPiece` — the per-piece rows are built from the *same* `score_piece_all` call in the same board pass. This is what let the old hand-duplicated `evaluate_by_square` be deleted: there is now exactly one implementation of the term math, so the per-piece view is definitionally consistent with the scalar total rather than test-enforced. `PIECE_TERM_NAMES` and `PIECE_TERM_SIGN` (parallel to the `pt::*` indices) give the report stable term names and the signs that must stay in lockstep with `fold_total`.
 
-`default_terms_static()` uses `OnceLock` to cache the 14 boxed term instances across calls, eliminating 14 heap allocations per search leaf (a Session-48 optimisation).
+`default_terms` / `default_terms_static()` (the boxed term set, cached via `OnceLock`) are retained for a future weight-tuner / preset path but are no longer on the scalar or report hot paths — both accumulate through the monomorphic `score_piece_all` / `score_side_all` helpers.
 
 `TermSums` accumulates per-piece scores (9 terms, indexed by `pt::*` constants) and side-level scores (5 terms). `fold_total` is the single point where all magnitudes are signed and summed — exposure and guard-isolation are subtracted as penalties; offensive range is weighted.
 
@@ -404,9 +409,9 @@ Defines the `EvalTerm` trait — the unit interface every evaluation term implem
 
 ### 5.12 `src/search/evaluator/terms.rs`
 
-All 14 evaluation term implementations.
+All 16 evaluation term implementations.
 
-**Per-piece terms (9):**
+**Per-piece terms (10):**
 
 | Term | What it measures |
 |---|---|
@@ -419,8 +424,9 @@ All 14 evaluation term implementations.
 | `Coverage` | Guards shielding a champion/king in directions where an enemy is approaching |
 | `GuardIsolation` | Penalty: a Guard with more enemies than friendlies within radius 2 |
 | `ChampionThreat` | Offensive: strike/movement skills pointing at enemy targets; defensive: support skills pointing at ally targets — both soft-capped |
+| `HangingPiece` | Penalty (ns-53): a non-king piece that is *currently attacked* and SEE-losing where it stands. **SEE-gated** — only pieces with an enemy in the cheap physical-attacker table run the exchange rollout; quiet pieces cost nothing |
 
-**Side-level terms (5):**
+**Side-level terms (6):**
 
 | Term | What it measures |
 |---|---|
@@ -429,22 +435,25 @@ All 14 evaluation term implementations.
 | `OffensiveRange` | Max strike/Shove range including optional Focus +1, weighted by `offensive_range_weight` |
 | `WastedModifier` | Penalty when Focus or Charge is pending but no castable consumer exists this phase |
 | `EndgameClosing` | Active only in End stage with a material lead: leader drives king pressure and escape denial; trailer maximises king safety and compactness |
+| `KingTempo` | Penalty (ns-53): a side whose king is one loud enemy action from capture, via the cheap `is_king_threatened` bitboard scan (no exchange rollout) |
 
-`Coverage` gained a threat gate during ns-43 to prevent rewarding guards that shield directions with no approaching enemy. `EndgameClosing` is intentionally asymmetric: the leading side plays to close; the trailing side plays to stall.
+`Coverage` gained a threat gate during ns-43 to prevent rewarding guards that shield directions with no approaching enemy. `EndgameClosing` is intentionally asymmetric: the leading side plays to close; the trailing side plays to stall. `HangingPiece` and `KingTempo` (ns-53) are the "eval may look at forced tactics of the current moment" terms — both are gated so the eval hot path only pays for SEE where a real threat exists (the `see_tables` bench counter is ~0 on quiet positions and rises with tactical density).
 
 ### 5.13 `src/search/evaluator/breakdown.rs`
 
-Defines the two breakdown types and the per-square diagnostic view.
+Defines the dynamic breakdown types (ns-53). `EvalReport` replaced both the old fixed 25-field `EvalBreakdown` struct AND the hand-duplicated `evaluate_by_square` per-square view.
 
-`EvalBreakdown` is a 25-field `Copy + Serialize + Deserialize` struct — the stable wire format sent to the frontend, stored in telemetry, and consumed by `nn_trainer`. Fields removed from the live eval (e.g. `threat_p1/p2`) are retained as always-zero to preserve schema compatibility.
+`EvalReport` is `Clone + Serialize + Deserialize` — the wire format sent to the frontend eval panel. It carries `terms: Vec<TermEntry>` (aggregate per-piece terms, active only), `side_terms: Vec<TermEntry>` (money/tempo/offensive-range/…), `pieces: Option<Vec<PieceTermBreakdown>>` (present only when `PerPiece` was requested — one row per occupied square), a P1-POV `total`, and a `terminal` flag. `TermEntry` is `{ name: String, p1, p2, signed }` where `signed` already carries the term's sign/weight (a penalty reads negative; offensive-range is pre-multiplied). `PieceTermBreakdown` carries the square, owner, kind, HP/armor/skill IDs, its per-term rows (owner-signed), and the piece's owner-signed `piece_total`. Constructors: `EvalReport::terminal(total)` and `EvalReport::single(name, total)` (the one-term report NN evaluators return).
 
-`DynBreakdown` is the registry-native output (`Vec<TermEntry>` + `total` + `terminal` flag) produced by `evaluate_dyn`. `to_legacy()` projects it onto `EvalBreakdown`.
-
-`evaluate_by_square(pos) -> EvalBreakdownBySquare` is an intentionally independent second implementation of the full eval math, used by the frontend hover popup. Cross-checked against `evaluate_breakdown` by two tests to ensure it does not drift from the canonical implementation.
+`EvalReport` is deliberately NOT persisted in match logs — the per-ply breakdown fields were removed as redundant (a log stores each position's FEN + scalar eval, so any term decomposition is recomputable live). For non-terminal positions the invariant `Σ pieces[*].piece_total + Σ side_terms[*].signed == total` holds and is pinned by a test.
 
 ### 5.14 `src/search/evaluator/incremental.rs`
 
-`IncrementalEvaluator` is a stateful `Evaluator` that caches the per-square term decomposition, intended to diff only the changed squares on incremental updates rather than re-scoring the full board. The Phase-1 implementation (current) always does a full rebuild via `EvalCache::rebuild` — the cache scaffold is in place but the diff path is not yet activated (`ENABLE_INCREMENTAL_EVAL: AtomicBool` defaults to false). The cache stores per-square term magnitudes, all position scalars, and the last Zobrist hash so stale entries are detectable. Phase 2/3 will activate the `subtract old square / add new square` path.
+`IncrementalEvaluator` is a stateful `Evaluator` that caches the per-square term decomposition, intended to diff only the changed squares on incremental updates rather than re-scoring the full board. The Phase-1 implementation (current) always does a full rebuild via `EvalCache::rebuild` — the cache scaffold is in place but the diff path is not yet activated (`ENABLE_INCREMENTAL_EVAL: AtomicBool` defaults to false). The cache stores per-square term magnitudes, all position scalars, and the last Zobrist hash so stale entries are detectable. Phase 2/3 will activate the `subtract old square / add new square` path. (Caveat noted in-file: the ns-53 `hanging_piece` term is not square-local, so activating the diff path must recompute it — and `king_tempo` — per changed neighbourhood rather than treating them as square-local.)
+
+### 5.15 `src/search/evaluator/custom.rs`
+
+`CustomEvaluator` — a ready-to-edit scaffold for a hand-rolled evaluator, registered in `builtin::BUILTINS` as `"custom-stub"` so it appears in the setup / settings dropdowns immediately. Out of the box its private `score(pos)` delegates to `HeuristicEvaluator`, so selecting it plays normally; the file's doc comment walks through the two edit points — swap `score` for your own P1-POV math, and (optionally) build a richer `EvalReport` in `evaluate_report` (pushing your own `TermEntry` / `PieceTermBreakdown` rows) so the dynamic eval panel renders your components. It is a standalone struct, not bound to the shared term registry — the intended home for genuinely different evaluation logic. Ship more variants by adding more structs + `BUILTINS` entries.
 
 ---
 
@@ -472,7 +481,7 @@ Defines the two breakdown types and the per-square diagnostic view.
 
 Pure data-shaping for per-ply telemetry. The engine never writes files; it only populates in-memory structures that the wrapper layers serialise.
 
-`PlyRecord` is a ~600-byte-serialised record per action: ply number, seat, timing, `ActionDecoded` (action unpacked to human-readable fields), legal-action count, pre/post Zobrist, pre/post FEN, pre/post static eval with full `EvalBreakdown`, post-position state (phase, round, money, modifiers, combo tracking), and an optional `SearchMeta` (depth, nodes, score, mate distance).
+`PlyRecord` is a per-action record: ply number, seat, timing, `ActionDecoded` (action unpacked to human-readable fields), legal-action count, pre/post Zobrist, pre/post FEN, pre/post **scalar** static eval, post-position state (phase, round, money, modifiers, combo tracking), and an optional `SearchMeta` (depth, nodes, score, mate distance). As of ns-53 it no longer stores a per-term breakdown: the former `prev_breakdown`/`post_breakdown` fields (and `SearchMeta.post_move_breakdown`) were removed as redundant — a consumer that wants the term decomposition recomputes it live from the stored FEN via `evaluate_report`.
 
 `ActionDecoded` carries a `notation: String` field — the canonical action notation string (e.g. `"a1-b2"`, `"b2*d4:Tempest"`) populated by `session.rs::try_apply_timed` **before** `make()` is called, while `pending_bodyguard` is still live. This is the only point where `BodyguardChoice` redirects can be resolved to a guard square rather than a numeric index fallback. `#[serde(default)]` keeps legacy log JSON (no `notation` field) loading cleanly. The `notation::to_text` function uses this field directly; there is no second independent action renderer in the telemetry layer.
 
@@ -502,7 +511,7 @@ Hot-path functions return flat, allocation-minimising types: `PositionView` (`#[
 
 Cold-path functions (snapshot, log, eval breakdown) return owned `String`. The pattern throughout is: the caller owns allocation, the wrapper borrows.
 
-Key functions beyond the hot path: `new_match_with_draft`, `new_match_with_loadouts`, `from_snapshot_json`, `snapshot_json`, `match_log_json`, `latest_ply_json` (incremental — returns only the last ply to avoid O(n²) re-serialisation), `finalise_log`, `heuristic_eval`, `heuristic_eval_by_square`, `current_draft_state`, `step_ai_with_cb` (with per-depth callback).
+Key functions beyond the hot path: `new_match_with_draft`, `new_match_with_loadouts`, `from_snapshot_json`, `snapshot_json`, `match_log_json`, `latest_ply_json` (incremental — returns only the last ply to avoid O(n²) re-serialisation), `finalise_log`, `eval_report` (dynamic `EvalReport`; `per_piece` flag; uses the Match's installed evaluator), `current_draft_state`, `step_ai_with_cb` (with per-depth callback).
 
 ### 8.3 `src/time.rs`
 
@@ -524,7 +533,7 @@ Binary entry point. Sets two Linux-specific WebKit environment variables before 
 
 The entire command surface lives here. Engine state is held in `EngineRegistry` — a process-global `AtomicU64` handle counter and a `Mutex<HashMap<u64, EngineEntry>>`. Each `EngineEntry` holds a `Match` and a reusable `legal_buf: Vec<u32>`. Handles are opaque `u64` IDs issued on `create_engine` and freed on `drop_engine`.
 
-All CPU-bound AI commands (`step_ai`, `request_ai_move_forced`, `request_ai_move_at_depth`) run inside `tokio::task::block_in_place` to avoid pinning the async executor. `step_ai` emits `"ai-depth-update"` Tauri events per iterative-deepening depth so the frontend can show live depth progress.
+All CPU-bound AI commands (`step_ai`, `request_ai_move_forced`, `request_ai_move_at_depth`) run inside `tokio::task::block_in_place` to avoid pinning the async executor. `step_ai` emits `"ai-depth-update"` Tauri events per iterative-deepening depth (via `step_ai_with_cb`) so the frontend can show live depth progress; `request_ai_move_at_depth` is the inspector's forced fixed-depth variant. A separate `AivaiProducerState` drives the background AI-vs-AI producer (`start_aivai_producer` / `aivai_producer_log` / `stop_aivai_producer`), which streams a self-play game to the UI (throttled `"aivai-progress"` events) without blocking the engine registry.
 
 Training state is held in `TrainingState` — a `Mutex<TrainingInner>` with an optional stop-flag `Arc<AtomicBool>` and `JoinHandle`. `start_training_run` spawns a background thread; `stop_training_run` signals the flag; `RunEvent::ExitRequested` calls `signal_stop` for a clean final snapshot on app exit.
 
@@ -534,20 +543,28 @@ Training state is held in `TrainingState` — a `Mutex<TrainingInner>` with an o
 |---|---|
 | `create_engine` / `create_engine_with_draft` / `create_engine_with_loadouts` / `create_engine_from_snapshot` | Instantiate or restore a `Match`; returns a `u64` handle |
 | `drop_engine` | Free the handle |
-| `position_view` / `legal_actions` | Read current state |
+| `position_view` / `legal_actions` / `position_fen` / `phase_state` | Read current state |
+| `fen_to_position_view` | Stateless: decode a FEN string to a `PositionView` (Position Builder) |
 | `action_to_notation_cmd` | Stateless: encode a raw `u32` action to canonical notation string; no handle required |
+| `skill_metadata` / `game_constants_cmd` | Stateless: engine-canonical skill and rule constants for the frontend contract mirror |
 | `try_apply` | Apply one action |
-| `step_ai` | AI search + apply; streams depth via events |
+| `step_ai` / `request_ai_move_forced` / `request_ai_move_at_depth` | AI search + apply; `request_ai_move_at_depth` streams depth via events |
+| `evaluate_draw_offer` | Engine assessment of a proposed draw |
 | `snapshot_json` / `match_log_json` / `latest_ply_json` / `finalise_log` | Snapshot and log serialisation |
-| `heuristic_eval` / `heuristic_eval_by_square` | Eval panel data |
+| `eval_report` | Eval panel data — dynamic `EvalReport` (`per_piece` flag). Uses the Match's installed evaluator, OR a transient one built from an optional `source`/`id` (the UI-eval pick, `settings.uiEvaluator`) without disturbing the AI seats |
 | `draft_state` | Draft-phase view |
-| `set_ai_evaluator` | Install a trained rater as the AI for one match |
+| `engine_version` | Engine version string for the menu |
+| `start_aivai_producer` / `aivai_producer_log` / `stop_aivai_producer` | Background AI-vs-AI self-play producer lifecycle |
+| `set_ai_evaluator` | Install an evaluator (builtin or trained rater) as the AI for one match |
 
 **Training Observatory commands (selected):**
 
 | Command | Purpose |
 |---|---|
-| `list_available_raters` | Unions the active run directory and `game/raters/blessed/` |
+| `list_available_raters` | Unions the active run directory and `game/raters/blessed/` (NN raters only) |
+| `list_evaluators` | Unified evaluator list feeding all UI dropdowns: `core_engine`'s builtin evaluators first, then `list_available_raters`'s NN raters |
+| `list_backends` | Enumerate available training backends (Cpu / feature-gated GPU) |
+| `default_run_dir` | Default training-run output directory |
 | `set_ai_evaluator` | Dispatches to `NnueEvaluator` or `NnEvaluator` based on `model_config.input_dim` |
 | `start_training_run` / `stop_training_run` | Background thread lifecycle |
 | `read_training_status` / `read_training_live` | Poll snapshot and per-ply live files |
@@ -555,7 +572,7 @@ Training state is held in `TrainingState` — a `Mutex<TrainingInner>` with an o
 | `inspect_rater` | Load + forward pass + weight stats for the Observatory inspector |
 | `read_rater_index` / `read_gauntlet_matrix` | Read training artefacts |
 
-`set_ai_evaluator` discriminates between dense and NNUE topology by checking `metadata.model_config.input_dim == NUM_FEATURES` (3352) versus `INPUT_DIM` (2825). This avoids matmul dimension panics when a rater trained on the old dense encoder is loaded.
+Both `set_ai_evaluator` and `eval_report` route through the shared `build_evaluator(source, id, run_dir)` dispatch: `"builtin"` (and legacy `"heuristic"`) resolve against `core_engine::search::evaluator::builtin::make`; `"run"` / `"blessed"` load a trained rater and discriminate dense vs NNUE topology by checking `metadata.model_config.input_dim == NUM_FEATURES` (3352) versus `INPUT_DIM` (2825). This avoids matmul dimension panics when a rater trained on the old dense encoder is loaded. `build_evaluator` is also reused by the background AIvAI producer (which re-installs seat evaluators after `from_snapshot` resets them to the default heuristic).
 
 ### 9.3 `build.rs`
 
@@ -569,16 +586,18 @@ Calls `tauri_build::build()` to generate the Tauri context — resource embeddin
 
 ### 10.1 `src/main.rs`
 
-A CLI benchmark harness that calls `find_best_with_evaluator` directly against raw `Position` values, bypassing `Match` and `wrapper_api` entirely. Three modes:
+A CLI benchmark harness that calls `find_best_with_evaluator` directly against raw `Position` values, bypassing `Match` and `wrapper_api` entirely. Four modes:
 
 - **`--depth N`** (fixed depth): runs N times per position, reports the median.
 - **`--time-ms T`** (time-budgeted): runs once per position with a T-millisecond budget.
 - **`--determinism`**: asserts node counts and best moves are identical across N runs; exits with code 3 on failure.
 - **`--eval-only`**: pure evaluator throughput benchmark (ns/eval, geometric mean).
 
+Supporting flags tune the run without changing mode: `--corpus <path>`, `--runs N` (repetitions per position), `--out <file>`, `--eval-iterations N` and `--determinism-runs N`, and `--eval heuristic|nnue` (selects the search-leaf evaluator for the ns-50 NNUE A/B comparison).
+
 Each run gets a fresh 64 MB `TranspositionTable`. Median (not mean) is used for per-position timing to reject OS-scheduling outliers. `action_brief(a: Option<Action>) -> String` formats the best move in output records using `core_engine::action_to_notation(act, None)` — the same canonical notation as the engine's telemetry layer.
 
-The corpus is loaded from `bench/corpus/corpus.txt` via `from_fen`. `bench_counters` is activated unconditionally in the `search_bench` Cargo manifest, so `counters::snapshot()` is available after every timed run. Structured JSON output includes aggregate blocks (geometric mean NPS, TT hit rate, EBF, counter snapshots) and per-position records.
+The corpus is loaded from `bench/corpus/corpus.txt` via `from_fen`. The `bench_counters` feature is activated unconditionally in the `search_bench` Cargo manifest, so `counters::snapshot()` is available after every timed run. Structured JSON output includes aggregate blocks (geometric mean NPS, TT hit rate, EBF, counter snapshots) and per-position records.
 
 The `--eval-only` mode optionally builds an `NnueEvaluator` from `nn_trainer` to compare NPS against the heuristic evaluator. Correctness regressions (score drift or best-move disagreement at fixed depth) exit with code 4.
 
@@ -653,13 +672,13 @@ The inner column update loop (`add_col_i16` / `sub_col_i16`) is a plain scalar w
 
 Integer forward pass for the NNUE tail layers. Bypasses all Burn/autograd overhead during search — a Burn forward pass was measured at ~382x the hand-crafted integer path.
 
-Weights are quantised to i16 in output-major layout padded to a multiple of `LANES = 8` for lane-aligned SIMD via `wide::i16x8`. The quantisation scales are `QA = 1024.0` for the feature-transform layer and `QW = 64.0` for the tail layers. Clipped-ReLU ceiling is `CR_MAX = 8192`.
+Weights are quantised to i16 in output-major layout, padded for lane-aligned SIMD via `wide::i16x8`. The quantisation scales are `QA = 1024.0` for the feature-transform layer (fixed-point shift `QA_SHIFT = 10`) and `QW = 64.0` for the tail layers. Clipped-ReLU ceiling is `CR_MAX = 8192`.
 
 `QuantizedNet::from_mlp(model, scales)` quantises a trained float model once into integer tables. `QuantizedNet::forward_int(acc)` is the hot path: reads the accumulator, applies clipped-ReLU dequantisation, passes through `l1 → l2 → out` with SIMD dot products, scales to centipawns, and clamps to `±MAX_NN_SCORE`.
 
 ### 11.8 `src/model.rs`
 
-Defines `MlpConfig` and `Mlp<B: Backend>` — the configurable Burn MLP. Default topology after ns-50: `NUM_FEATURES → 128 → 32 → 32 → 1`. `hidden_sizes[0]` must equal `ACCUM_WIDTH = 128`. `Mlp::layer_params()` extracts raw `(weight, bias, in_dim, out_dim)` tuples for quantisation. `Mlp::weight_stats()` returns per-layer `LayerStats` for the Training Observatory network inspector.
+Defines `MlpConfig` and `Mlp<B: Backend>` — the configurable Burn MLP. Default hidden topology after ns-50: `→ 128 → 32 → 32 → 1`. The `input_dim` is config-driven, not fixed: the dense path defaults to `INPUT_DIM = 2825`, while the sparse/NNUE path is built with `NUM_FEATURES = 3352` — do not conflate the two. `hidden_sizes[0]` must equal `ACCUM_WIDTH = 128`. `Mlp::layer_params()` extracts raw `(weight, bias, in_dim, out_dim)` tuples for quantisation. `Mlp::weight_stats()` returns per-layer `LayerStats` for the Training Observatory network inspector.
 
 ### 11.9 `src/nn_evaluator.rs`
 
@@ -745,47 +764,54 @@ Gauntlet match-matrix persistence. `GauntletMatrix` stores a flat `Vec<MatrixEnt
 
 ## 12. frontend
 
-The UI is a SvelteKit 5 application rendered inside the Tauri webview. SSR is disabled; all routing is client-side file-based. State is managed with Svelte 5 runes (`$state`) plus `localStorage` for settings and IndexedDB for match history and saved loadouts.
+The UI is a SvelteKit 5 application rendered inside the Tauri webview. SSR is disabled; all routing is client-side file-based. State is managed with Svelte 5 runes (`$state`) plus `localStorage` for settings and IndexedDB for match history and saved loadouts. Since this doc was last written, a large amount of presentational surface has been extracted out of the routes into shared component directories (`$lib/match/`, `$lib/eval/`, `$lib/multiplayer/`, `$lib/ui/`), and a new Position Builder route was added.
 
 ### 12.1 Routing Structure
 
-| Route | ~LOC | Purpose |
+| Route | LOC | Purpose |
 |---|---:|---|
-| `/` | 142 | Main menu — navigation cards, engine version, resume banner |
-| `/setup/` | 430 | Seat kinds, draft mode, loadout selection, AI rater picker. Writes `match` store, hands off to `/draft/` |
-| `/draft/` | 1,146 | 12-ply alternating skill draft with drag-and-drop. MP coordination, AI drafting |
-| `/match/` | ~2,400 | Live game. **Fat controller** — see §12.7 |
-| `/multiplayer/` | 734 | Lobby — host/join, recent sessions, rejoin flow |
-| `/replay/` | ~400 | MatchLog playback with scrubber and step controls |
-| `/inspector/` | ~900 | Branching position explorer with AI search |
-| `/library/` | 459 | Match history (IndexedDB), filter, bulk export |
-| `/loadouts/` | — | Custom loadout CRUD, share codes, import |
-| `/training/` | — | Training Observatory — start/stop NN training, live status panels |
+| `/` | 400 | Main menu — navigation cards, engine version, resume banner |
+| `/setup/` | 768 | Seat kinds, draft mode, loadout selection, per-AI-seat evaluator picker (`list_evaluators`: builtins + raters). Writes `match` store, hands off to `/draft/` |
+| `/draft/` | 1,442 | 12-ply alternating skill draft with drag-and-drop. MP coordination, AI drafting |
+| `/match/` | 3,404 | Live game. **Fat controller** — see §12.7 |
+| `/multiplayer/` | 784 | Lobby — host/join, recent sessions, rejoin flow |
+| `/replay/` | 897 | MatchLog playback with scrubber and step controls |
+| `/inspector/` | 1,014 | Branching position explorer with AI search |
+| `/library/` | 589 | Match history (IndexedDB), filter, bulk export |
+| `/loadouts/` | 842 | Custom loadout CRUD, share codes, import |
+| `/training/` | 584 | Training Observatory — start/stop NN training, live status panels |
+| `/position-builder/` | 524 | **NEW.** FEN-based position editor: place pieces/skills onto a board and boot an engine from a hand-built FEN. Backed by the pure `state/position-fen.ts` |
 
-`+layout.svelte` wraps all routes with the `MpErrorBanner`, help/settings buttons, and the SFX-unlock handler. `+layout.ts` disables SSR globally.
+`+layout.svelte` wraps all routes with the `MpErrorBanner`, help/settings buttons, the shared `BackButton` (driven by the `back-nav` store), and the SFX-unlock handler. `+layout.ts` disables SSR globally.
 
 ### 12.2 Engine Boundary (`src/lib/engine/`)
 
-All communication with the Rust backend goes through Tauri IPC `invoke()` calls. The engine is a singleton: `getEngine()` in `engine/index.ts` lazily constructs one `TauriClient` and caches it for the session lifetime. There is no WASM path — it was removed; the app ships as Tauri-only.
+All communication with the Rust backend goes through Tauri IPC `invoke()` calls. The engine is a singleton: `getEngine()` in `engine/index.ts` lazily constructs one `TauriClient` and caches it for the session lifetime (`resetEngine()` disposes it). There is no WASM path — it was fully removed; the app ships as Tauri-only (WASM cannot host the CUDA training backend), and only vestigial no-op comments mention it.
 
-- **`types.ts`** — `EngineClient` interface. Covers draft (`createEngineWithDraft`, `createEngineWithLoadouts`, `draftState`), live play (`tryApply`, `stepAi`), inspector AI (`requestAiMoveForced`, `requestAiMoveAtDepth`), reads (`positionView`, `legalActions`, `positionFen`), notation (`actionToNotation`), persistence (`snapshotJson`, `restoreFromSnapshot`, `matchLogJson`, `latestPlyJson`, `finaliseLog`), and lifecycle (`createEngine`, `version`, `dispose`).
-- **`tauri-client.ts`** — Desktop IPC implementation. Routes every method to a Rust `invoke()` command. `#replaceHandle(...)` drops the prior registry handle on every `createEngine*` / `restoreFromSnapshot` so route re-entry does not leak Rust-side `Match` records.
-- **`action.ts`** — u32 codec. `ActionKind`, BodyguardChoice (bit 31), DraftTurn (bit 30). Shared by all routes that need to inspect a raw action integer without a round-trip to the engine.
-- **`skills.ts`, `mailbox.ts`, `config.ts`** — Skill metadata, mailbox decoder (includes `formatSquare(sq) -> string` for converting a square index to `"a1"` notation), config JSON builder.
+- **`types.ts`** — the `EngineClient` interface, now a broad surface. It covers draft (`createEngineWithDraft`, `createEngineWithLoadouts`, `draftState`), live play (`tryApply(action, turnStartedMs?, backgroundEval?)`, `stepAi`), inspector/forced AI (`requestAiMoveForced`, `requestAiMoveAtDepth`), reads (`positionView`, `legalActions`, `positionFen`), the stateless contract surface (`actionToNotation`, `skillMetadata`, `gameConstants`), eval overlays (`evalReport(perPiece)` — one dynamic `EvalReport` drives both the eval bar/term panel and the per-square hover card), persistence/resume (`snapshotJson`, `restoreFromSnapshot`, `matchLogJson`, `latestPlyJson`, `finaliseLog`), rater/eval control (`setAiEvaluator`, `evaluateDrawOffer`), the background-eval and AIvAI-producer event hooks (`onBackgroundEvalReady`, `startAivaiProducer` / `aivaiProducerLog` / `stopAivaiProducer` / `onAivaiProgress`), and lifecycle (`createEngine`, `version`, `dispose`).
+- **`tauri-client.ts`** (~330 lines) — the desktop IPC implementation. Routes every method to a Rust `invoke()` command. It holds a private `#handle`; every `createEngine*` / `restoreFromSnapshot` routes through `#replaceHandle`, which drops the prior registry handle via `drop_engine` so route re-entry does not leak Rust-side `Match` records. `#requireHandle` guards handle-dependent calls.
+- **`action.ts`** — u32 codec (`decodeAction`, `actionKindName`, `ActionKind`, BodyguardChoice bit 31, DraftTurn bit 30). Shared by all routes that need to inspect a raw action integer without a round-trip to the engine.
+- **`skills.ts`, `mailbox.ts`, `config.ts`** — Skill metadata (a synchronous `SKILLS` mirror), mailbox decoder (`formatSquare(sq) -> "a1"`), config JSON builder.
+- **`ai-hooks.ts` / `ai-service.ts`** — the AI-access seam. `ai-hooks.ts` is a shared error/timeout shell (`runAiCall`) deduping try/catch shapes; `ai-service.ts` unifies one-shot best-move requests and background-AIvAI-producer control.
+- **`ply-eval.ts`** — extracts a per-ply engine assessment (`ai` / `background_eval`) from a match-log `PlyRecord`.
+- **`snapshot-validator.ts`** — a shared trust gate that validates external snapshot/MatchLog JSON before `restoreFromSnapshot`.
 
-`action-label.ts` no longer exists. Action strings are produced by the engine via `actionToNotation(raw)` (a stateless Tauri command that calls `core_engine::action_to_notation`) and stored on `PlyRecord.action.notation` in match logs. Every place that displays an action label reads one of these two sources.
+`action-label.ts` no longer exists. Action strings are produced by the engine via `actionToNotation(raw)` (a stateless Tauri command that calls `core_engine::action_to_notation`) and stored on `PlyRecord.action.notation` in match logs. Every place that displays an action label reads one of these two sources. The `engine/` directory also carries several contract/unit tests (`skills.contract.test.ts` asserts the `SKILLS` mirror against `skillMetadata()`/`gameConstants()`; plus `ai-hooks`, `ai-service`, `ply-eval`, `snapshot-validator`, and `tauri-client` tests).
 
-The hot path is: `create_engine` → `legal_actions` / `position_view` → `try_apply` (human) or `step_ai` (AI). `step_ai` streams per-depth updates via a Tauri event `"ai-depth-update"` for the live depth display.
+The hot path is: `create_engine` → `legal_actions` / `position_view` → `try_apply` (human) or `step_ai` (AI). `step_ai` streams per-depth updates via a Tauri event `"ai-depth-update"` for the live depth display; `request_ai_move_at_depth` is the inspector's fixed-depth forced-search variant.
 
 ### 12.3 Board Rendering (`src/lib/board/`)
 
 - **`Board.svelte`** — SVG grid renderer. Pure-ish: parent owns `position`, `pieceIds`, all interaction state. ~15-prop surface — all interactivity arrives as callbacks.
 - **`Piece.svelte`, `SkillWheel.svelte`, `SkillInfoCard.svelte`, `DirectionPicker.svelte`, `SkillGlyphDefs.svelte`** — leaf renderers.
-- **`EffectsLayer.svelte`** — Canvas overlay; drains `effectQueue`.
+- **`EffectsLayer.svelte`** — Canvas overlay; drains `effectQueue` and dispatches per-skill choreography from `viz/skill-effects.ts`.
+- **`LoadoutBoard.svelte`** — a mini 8x8 board showing one side's King + Champions on their Stack-M squares (Guards greyed); shared by the loadout editor and draft preview.
+- **`SkillPicker.svelte`** — the shared skill-catalogue chip grid (click and drag interaction modes) consumed by `/draft/` and `/loadouts/`.
+- **`bodyguard-cover.ts`** — pure geometry for the always-on Bodyguard-protection indicator, mirroring the engine's `bodyguard_guards_for` (unit-tested).
 
 ### 12.4 Visual Effects Pipeline (`src/lib/board/ply-renderer.svelte.ts` + EffectsLayer)
 
-`Effect` is a discriminated union (`dust | impact | damageNumber | shake | heal | armor`) defined in `src/lib/viz/effects.ts`.
+`Effect` is a discriminated union (`dust | impact | damageNumber | shake | heal | armor`) defined in `src/lib/viz/effects.ts`, which owns the lightweight FX descriptor queue (each entry ~700ms with an optional `ttl`). Per-skill animation choreography — the attack/hold/release segments each skill plays — lives in `src/lib/viz/skill-effects.ts` and is dispatched by `EffectsLayer`.
 
 **`ply-renderer.svelte.ts`** is a stateful driver shared by `/match/`, `/replay/`, and `/inspector/`. Both routes create one via `createPlyRenderer(eng, opts)` and call `applyAndRender(raw, applyFn)` per action. It owns `pieceIds` (stable IDs for CSS transitions), `shakingSquares`, `effectQueue`, deferred-skill-refresh state, and the current rendered `position`. The `positionSink` callback keeps `match.position` as the source of truth.
 
@@ -805,36 +831,38 @@ WebAudio synthesis only (no asset files). `sfx.play(event, opts?)`. Called from 
 |---|---|---|
 | `match` | `match-store.svelte.ts` | Mode, seats, position, legal actions, selection, telemetry IDs, pending snapshots, sandbox state |
 | `mpState` | `multiplayer.svelte.ts` | WS status, code, role, pong timing, redial state, session epoch |
-| `settings` | `settings.svelte.ts` | All UI preferences, persisted to localStorage |
+| `settings` | `settings.svelte.ts` | All UI preferences, persisted to localStorage — including the per-AI-seat evaluator choices (`p1Evaluator`/`p2Evaluator`) and the single global `uiEvaluator` that drives the eval bar / breakdown panel / replay / inspector |
 | `inspector` | `inspector-store.svelte.ts` | Branch tree, current node, legal actions, last AI hint |
-| `aiSearch` | `ai-search.svelte.ts` | Per-side think state, heuristic eval, eval breakdown |
+| `aiSearch` | `ai-search.svelte.ts` | Per-side think state, current `EvalReport` (+ prior-round report), background eval |
 
 `inspector-store.svelte.ts` defines `InspectorNode`, which carries `edgeNotation: string` — the canonical notation string for the action that produced this node. It is populated at `addChild()` time (resolved via `eng.actionToNotation()` or read from `ply.action.notation` when loading from a log) so `MoveListItem` can render it without any async work.
 
-Supporting stores: `move-targets.ts`, `skill-targets.ts` (derived legality from `PositionView` + `legalActions`), `draft.ts` (pre-made loadouts, draft geometry), `geometry.ts`, `i18n.ts`, `telemetry-session.ts` (incremental per-ply persistence via `latestPlyJson`).
+Supporting stores: `move-targets.ts`, `skill-targets.ts` (derived legality from `PositionView` + `legalActions`), `draft.ts` (pre-made loadouts, draft geometry), `geometry.ts`, `i18n.ts` + `i18n-locale.svelte.ts` (the reactive locale holder split out because runes only work in `.svelte.ts`), `telemetry-session.ts` (incremental per-ply persistence via `latestPlyJson`), `back-nav.svelte.ts` (global back-navigation state read by the layout back button, set per-route via `setBackNav`/`clearBackNav`), and `position-fen.ts` (pure FEN-board manipulation backing the Position Builder, testable without the Tauri engine). Several stores now carry co-located tests (`match-store.svelte.test.ts`, `settings.svelte.test.ts`, `position-fen.test.ts`).
 
 ### 12.7 The `/match/` Fat Controller
 
-~2,400 lines, by concern:
+~3,400 lines. It is still the app's fat controller, but a large share of its former presentational surface has been extracted into child components — `PlayerPanel` / `ProgressionPanel` / `ActionLogPanel` (`$lib/match/`), `EvalBreakdownPanel` / `SquareEvalCard` (`$lib/eval/`), and `ConnectivityPill` / `GraceBanner` / `MultiplayerStatusStrip` (`$lib/multiplayer/`). What remains is match *orchestration*. By concern:
 
 | Lines | Concern |
 |---|---|
-| 1–270 | Imports + state declarations (drag, approach chooser, armed skill, focus/charge prefs, toast, MP, …) |
-| 270–410 | Derived state (currentSeatIsAi, moveTargets, selectable, wheelOpen, armedSkillTargets, …) |
-| 410–600 | Lifecycle: engine boot via `renderer = createPlyRenderer(...)`, MP init, AI scheduler `$effect` |
-| 600–680 | MP engine wrapper wiring (`onApplied`, `onSnapshotApplied`, `onHostCommitted`) |
-| 680–800 | **Apply orchestration** (`applyRaw`, `afterApplied`, `runAiStep`) — delegates effect rendering to `PlyRenderer` |
-| 800–1100 | Input handlers (square click, drag, drop, wheel slice, direction picker, skill targeting) |
-| 1100–1200 | Sandbox lifecycle |
-| 1200–1340 | MP state machine (resume, grace, claim-win, telemetry finalisation) + unload guards |
-| 1340–1581 | Markup |
-| 1581+ | Styles |
+| 1–101 | `<script>` open + imports (now including the extracted `$lib/match/`, `$lib/eval/`, `$lib/multiplayer/` components and `createPlyRenderer`) |
+| ~101–410 | Reactive state declarations (mode, busy/ready flags, AIvAI producer/view-split state, preview/time-travel state, drag/cursor, skill-arming with focus/charge/retarget prefs, wheel derivations) |
+| ~410–1070 | Derived selectors (move targets, wheel legality/splits, ally-pick candidates) and drag handlers |
+| ~1073–1120 | Host-side peer-drop detection + resume handshake |
+| ~1125–1630 | Core apply/refresh loop (`refresh`, `applyRaw`, `afterApplied`, `runAiStep`, `advanceView`) + click/drop handlers + `endPhase` |
+| ~1630–1684 | Resign / draw (`confirmResign`, `offerDraw`, `respondToDrawOffer`) |
+| ~1684–1844 | Wheel-slice click/hover, direction picker, keyboard handler |
+| ~1844–2410 | Export / sandbox: FEN & log copy/download, sandbox enter/undo/redo/exit, preview time-travel (`selectPreviewPly`, `confirmPlayMyMoves`, `drainPlayMyMoves`, `restoreTrueLineFromSandbox`, `ensureLiveEngineOnTrueLine`), `beforeUnloadGuard` |
+| 2412–~2864 | Markup |
+| ~2865+ | Styles |
 
-Concerns juggled in one file: engine lifecycle, action application orchestration, MP wire coordination, telemetry, AI scheduling, drag UI, skill targeting + modifiers, modal choosers, sandbox isolation, export. Visual-effects rendering and SFX live in `PlyRenderer`.
+Concerns still juggled in one file: engine lifecycle, action-application orchestration, MP wire coordination, telemetry, AI scheduling (including the AIvAI producer/view split), drag UI, skill-arming state machine, modal choosers, sandbox/preview time-travel isolation, and export. Visual-effects rendering and SFX live in `PlyRenderer`; per-player HUD, progression, action log, and eval panels now live in their extracted components.
 
-### 12.8 Multiplayer (`src/lib/multiplayer*`)
+### 12.8 Multiplayer (`src/lib/multiplayer*` + `src/lib/multiplayer/`)
 
-**`websocket-transport.ts`** — WebSocket lifecycle, relay control frames, joiner-side auto-redial backoff (400ms → 1.5s → 3s → 6s → 12s → 30s).
+Multiplayer code lives in two places: the older top-level `multiplayer-*.ts` modules (protocol, engine, resume, handoff) and a newer `multiplayer/` subdirectory holding extracted UI components and pure helpers.
+
+**Top-level modules:**
 
 **`multiplayer.svelte.ts`** — reactive `$state mpState`. Subscribers attach `rawDataHandlers` for V2 game messages; a per-kind raw inbox buffers messages that arrive during route transitions.
 
@@ -846,6 +874,17 @@ Concerns juggled in one file: engine lifecycle, action application orchestration
 
 **`multiplayer-resume.ts`** — `snapshotJsonFromMatchLog` rebuilds a Snapshot from a persisted log for the host-rejoin handshake. `logIsMidDraftCheap` routes to `/draft/` vs `/match/` without booting the engine. Zobrists in the log are not touched here; the V2 protocol uses the live `PositionView.zobrist` instead.
 
+**`multiplayer-handoff.ts`** — cross-route handoff state for host handover.
+
+**`multiplayer/` subdirectory:**
+
+- **`websocket-transport.ts`** — the WebSocket relay transport implementing the transport interface: session routing plus the joiner-side auto-redial backoff (400ms → 1.5s → 3s → 6s → 12s → 30s).
+- **`transport-config.ts`** — relay WS/HTTP URL constants resolved from env.
+- **`heartbeat.ts`** — the heartbeat + now-tick timer pair (plain TS, testable), extracted from the wrapper.
+- **`pill-state.ts`** — pure derivation of the connectivity-pill signal + `disconnectedSince` anchor (removes a hidden side-effect from a getter).
+- **`route-lifecycle.ts`** — uniform MP teardown on route unmount (`tearDownMultiplayerOnLeave`).
+- **`ConnectivityPill.svelte`, `GraceBanner.svelte`, `MpErrorBanner.svelte`, `MultiplayerStatusStrip.svelte`** — MP status UI components extracted from `/match/` and the layout.
+
 The `match.localSeat` (game-identity, permanent) / `mpState.role` (network-identity, changes on host handoff) invariant is critical: the UI always derives "am I P1?" from `localSeat`, never from `role`.
 
 ### 12.9 Storage / Telemetry (`src/lib/storage/`)
@@ -855,8 +894,22 @@ The `match.localSeat` (game-identity, permanent) / `mpState.role` (network-ident
 - **`index.ts`** — Runtime backend detect.
 - **`types.ts`** — Shared types crossing the backend boundary.
 - **`library-handoff.ts`** — One-shot sessionStorage cell to pass a MatchLog from `/library/` → `/replay/` or `/inspector/`.
+- **`position-handoff.ts`** — In-memory FEN handoff from `/replay/` or `/inspector/` → `/position-builder/`.
+- **`loadout-codec.ts`** — share-code + JSON codec for custom loadouts (the `L1:<base64url>` share form).
+- **`loadout-dedupe.ts`** — dedupe helpers keyed on the 12-skill tuple (names are treated as labels, not identity).
 
-### 12.10 Replay / Inspector Data Flow
+### 12.10 Extracted Component Directories
+
+Presentational surface pulled out of the routes lives in dedicated component dirs, each a thin view over a store or an engine read:
+
+- **`src/lib/match/`** — `PlayerPanel.svelte` (per-player HUD reading `PositionView` + settings + `ai-search`), `ProgressionPanel.svelte` (round/progression lookahead table), `ActionLogPanel.svelte` (ply-by-ply action log). All extracted from the old `/match/` monolith.
+- **`src/lib/eval/`** — `EvalBreakdownPanel.svelte` (renders the `EvalReport`'s aggregate + side terms dynamically, with a round-over-round delta column, from the `ai-search` store) and `SquareEvalCard.svelte` (per-square hover card iterating `pieces[sq].terms`). Both extracted from `/match/`; both are fully term-driven (add an eval term in Rust and it appears with no frontend change).
+- **`src/lib/inspector/`** — `AiHintBanner.svelte` (AI hint + notation), `MoveListItem.svelte` (one branch-tree row), and `PoiLabelDialog.svelte` (a `<dialog>`-based POI label editor replacing `window.prompt`, built on the shared `Modal`).
+- **`src/lib/training/`** — the Training Observatory panels: `LiveMatchView.svelte` (with `EvalBar.svelte`), `TournamentStandings.svelte`, `LineageTree.svelte`, `NetworkInspector.svelte`, `GauntletMatrix.svelte`. `polling.ts` is a fixed-cadence Tauri-command polling store shared by all panels, and `types.ts` mirrors the trainer's serde wire shapes.
+- **`src/lib/ui/`** — shared primitives: `BackButton.svelte` (boxed back button with click SFX, used by every top-level route via the `back-nav` store) and `Modal.svelte` (the unified modal all dialogs build on).
+- **`src/lib/`** (top level) — `HelpModal.svelte` and `SettingsModal.svelte` (a content test, `HelpModal.content.test.ts`, guards the help copy).
+
+### 12.11 Replay / Inspector Data Flow
 
 ```
 TelemetryStore (IDB or Tauri FS)
@@ -878,7 +931,7 @@ Both routes read `ply.action.notation` from the log JSON so action labels are re
 
 Replay drives the apply loop through `PlyRenderer` so skill effects and slide animations work the same way as in `/match/`. Inspector also drives through `PlyRenderer` (Session 33): node selection uses `renderer.fastForwardTo(baseSnap, node.actions, n)` so piece identity is preserved across sibling navigation and effects animate on the landing ply.
 
-### 12.11 Key Seams
+### 12.12 Key Seams
 
 1. **`applyRaw` → `renderer.applyAndRender`** — caller passes an apply closure; the renderer snapshots pre-state, runs the closure (which moves the engine), renders effects/SFX, then flips position (sometimes deferred via `RELOC_DELAY_MS`).
 2. **`mpEngine` wrapper** — sits between input handlers and `eng.tryApply`. Host applies directly; joiner sends intent and re-applies on committed echo.
@@ -887,31 +940,40 @@ Replay drives the apply loop through `PlyRenderer` so skill effects and slide an
 5. **Sandbox** — saves `snapshotJson` on entry, restores on exit via `ensureLiveEngineOnTrueLine()`, all moves discarded.
 6. **Action notation** — engine owns the string; frontend never re-implements action formatting. `PlyRecord.action.notation` carries the string in logs; `actionToNotation(raw)` via Tauri IPC covers live raw integers.
 
-### 12.12 Testing
+### 12.13 Testing
 
-148 tests across `*.test.ts` files, all under Vitest:
+28 `*.test.ts` files (~343 `it`/`test` cases) under Vitest, spanning the engine boundary, stores, multiplayer, storage, and pure helpers:
 
-| Test file | Covers |
+| Test file(s) | Covers |
 |---|---|
 | `multiplayer-engine.test.ts` | Role-aware wrapper (host/joiner/solo paths, intent/committed handshake, zobrist audit) |
 | `multiplayer-protocol-v2.test.ts` | Wire-format encode/decode + validation |
 | `multiplayer-protocol.test.ts` | Legacy V1 heartbeat + utility helpers |
 | `multiplayer-resume.test.ts` | `snapshotJsonFromMatchLog`, `logIsMidDraftCheap` |
 | `multiplayer-handoff.test.ts` | Cross-route handoff state |
-| `multiplayer.svelte.test.ts` | PeerJS wrapper + `mpState` |
-| `idb-backend.test.ts` | IndexedDB telemetry CRUD |
-| `library-handoff.test.ts` | One-shot sessionStorage handoff |
+| `multiplayer.svelte.test.ts` | Transport wrapper + `mpState` |
+| `multiplayer-sandbox.integration.test.ts` | Sandbox ↔ MP-wrapper contract (ns-37) against a route-shaped fake engine |
+| `multiplayer/pill-state.test.ts`, `multiplayer/route-lifecycle.test.ts` | Pure connectivity-pill derivation + MP route teardown |
+| `engine/skills.contract.test.ts` | `SKILLS` mirror vs engine `skillMetadata()` / `gameConstants()` |
+| `engine/ai-hooks.test.ts`, `engine/ai-service.test.ts`, `engine/ply-eval.test.ts`, `engine/snapshot-validator.test.ts`, `engine/tauri-client.test.ts` | AI plumbing, per-ply eval extraction, snapshot trust gate, IPC client |
+| `board/bodyguard-cover.test.ts`, `board/ply-renderer.test.ts` | Bodyguard geometry, ply renderer |
+| `viz/skill-effects.test.ts` | Per-skill choreography |
+| `state/*.test.ts` | `match-store`, `settings`, `position-fen` |
+| `storage/*.test.ts` | `idb-backend`, `library-handoff`, `loadout-codec`, `loadout-dedupe` |
 | `telemetry-session.test.ts` | Lifecycle (start/record/finalise/networkLost/abandon) |
+| `training/polling.test.ts` | Fixed-cadence polling store |
+| `HelpModal.content.test.ts` | Help-copy guard |
 
-Coverage gaps: routes (no end-to-end), `ply-renderer.svelte.ts` (no unit), Board/EffectsLayer (visual). The route layer is verified by manual smoke + `svelte-check` + production build. No engine boundary contract test exists — `tauri-client.ts` and any future WASM client both implement `EngineClient`, but semantic parity between them is not mechanically enforced.
+Coverage gaps: routes (no end-to-end); Board/EffectsLayer (visual). The route layer is verified by manual smoke + `svelte-check` + production build. No engine boundary contract test enforces cross-client parity — but with WASM removed, `tauri-client.ts` is now the only `EngineClient` implementation, so the concern is largely moot.
 
-### 12.13 Observed Extraction Opportunities
+### 12.14 Observed Extraction Opportunities
 
 1. **Skill targeting service.** Arm/disarm + modifier state lives in `/match/`, but legal targets are in `skill-targets.ts`. Could own the full lifecycle.
 2. **Drag service.** ~30 lines of drag state (`dragSrc`, `dragTrail`, `dragHover`, `cursorXY`, `pendingApproach`) is a reusable shape.
-3. **Multiplayer facade.** ~200 lines of `mpEngine` wiring in `/match/`. Could expose a single match-shaped API.
-4. **Telemetry finalizer.** Three terminal paths (finalize/networkLost/forfeit) share enough structure to collapse into one resolver.
-5. **Board props grouping.** Could group ~15 props into `movePhase`, `skillPhase`, `chooser` sub-objects.
+3. **Telemetry finalizer.** Three terminal paths (finalize/networkLost/forfeit) share enough structure to collapse into one resolver.
+4. **Board props grouping.** Could group ~15 props into `movePhase`, `skillPhase`, `chooser` sub-objects.
+
+Since the last revision, several previously-listed opportunities have been realised: the MP status UI, connectivity-pill derivation, and route teardown are now extracted into `$lib/multiplayer/`; the per-player HUD, progression, action log, and eval panels are extracted into `$lib/match/` and `$lib/eval/`; and the AI-access plumbing is unified behind `$lib/engine/ai-service.ts` + `ai-hooks.ts`.
 
 What's missing / would need a new layer: no AI player abstraction beyond `currentSeatIsAi`; no game-phase FSM (phase/turn logic is imperative `if` chains); no effect/SFX abstraction beyond the queue; no engine `undo_ply` / `seek_to_ply` (replay scrubbing is O(N) round-trips per jump because the session layer does not expose its internal undo stack).
 
@@ -1067,11 +1129,13 @@ run_training(config, run_dir, stop_flag, Cpu)
          no  → discard candidate
 
 In-game use:
-  invoke("list_available_raters")  →  list of {id, stem, model_config}
+  invoke("list_evaluators")  →  builtin evaluators + trained raters (one unified list)
   invoke("set_ai_evaluator", { handle, source, id })
-    └─► load_metadata(stem) → dispatch on input_dim:
-          3352 → NnueEvaluator::load_from_stem  (NNUE path)
-          2825 → NnEvaluator::load_from_stem    (dense path)
+    └─► build_evaluator(source, id):
+          "builtin"/"heuristic" → core_engine builtin::make(id)
+          "run"/"blessed"       → load_metadata(stem) → dispatch on input_dim:
+                                    3352 → NnueEvaluator::load_from_stem  (NNUE path)
+                                    2825 → NnEvaluator::load_from_stem    (dense path)
     └─► Match::set_evaluator(Box<dyn Evaluator>)
   invoke("step_ai")  →  find_best_with_evaluator uses the installed evaluator
 ```

@@ -11,9 +11,9 @@ export type {
   FinalResultByte,
   DraftStateView,
   SideLoadout,
-  EvalBreakdown,
-  SquareBreakdown,
-  EvalBreakdownBySquare,
+  EvalReport,
+  TermEntry,
+  PieceTermBreakdown,
   SkillMetadataWire,
   GameConstantsWire,
 } from "./types";

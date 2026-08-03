@@ -26,7 +26,7 @@ use serde::{Serialize, Deserialize};
 use crate::game_logic::action::{Action, ActionKind};
 use crate::game_logic::skills::skill_from_id;
 use crate::state::action_notation::action_to_notation;
-use crate::search::evaluator::{evaluate_breakdown, EvalBreakdown, MATE_SCORE};
+use crate::search::evaluator::{evaluate, MATE_SCORE};
 use crate::session::{Config, SeatKind};
 use crate::state::Position;
 use crate::state::position::{GameResult, Phase, Player, modifier_bits};
@@ -45,29 +45,12 @@ pub struct SearchMeta {
     pub mate_in:    Option<i32>,
     /// "Centipawn"-style score when not a mate; None when `was_mate`.
     pub score_cp:   Option<i32>,
-    /// Heuristic breakdown of the position AFTER the searched move was applied
-    /// (Part A) — or, for background eval on human plies, of the current
-    /// post-human-move position (Part B). Gives full per-term visibility in
-    /// replay analysis beyond the single alpha-beta score. `None` for legacy
-    /// logs and any SearchMeta built without a breakdown.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub post_move_breakdown: Option<EvalBreakdown>,
 }
 
 impl SearchMeta {
     /// Build from an alpha-beta SearchResult. Threshold matches L3's
     /// `MATE_THRESHOLD = MATE_SCORE - MAX_PLY` (128).
     pub fn from_search(depth: u8, nodes: u64, score: i32) -> Self {
-        Self::from_search_with_breakdown(depth, nodes, score, None)
-    }
-
-    /// Like `from_search` but attaches the post-move heuristic breakdown.
-    pub fn from_search_with_breakdown(
-        depth: u8,
-        nodes: u64,
-        score: i32,
-        post_move_breakdown: Option<EvalBreakdown>,
-    ) -> Self {
         const MAX_PLY: i32 = 128;
         let threshold = MATE_SCORE - MAX_PLY;
         let was_mate = score.abs() > threshold;
@@ -76,7 +59,7 @@ impl SearchMeta {
         } else {
             (None, Some(score))
         };
-        SearchMeta { depth, nodes, raw_score: score, was_mate, mate_in, score_cp, post_move_breakdown }
+        SearchMeta { depth, nodes, raw_score: score, was_mate, mate_in, score_cp }
     }
 }
 
@@ -203,8 +186,6 @@ pub struct PlyRecord {
     pub prev_fen:              String,
     #[serde(default)]
     pub prev_static_eval:      i32,
-    #[serde(default)]
-    pub prev_breakdown:        EvalBreakdown,
     // post-action position fingerprint
     #[serde(default)]
     pub post_zobrist:          u64,
@@ -212,8 +193,6 @@ pub struct PlyRecord {
     pub post_fen:              String,
     #[serde(default)]
     pub post_static_eval:      i32,
-    #[serde(default)]
-    pub post_breakdown:        EvalBreakdown,
     #[serde(default)]
     pub post_game_result:      Option<GameResult>,
     #[serde(default = "default_phase")]
@@ -250,25 +229,24 @@ pub struct PlyRecord {
 
 fn default_phase() -> Phase { Phase::Move }
 
-/// Snapshot a `Position` into the "post" half of a PlyRecord. Public so
-/// `session::Match::try_apply_timed` can build records without leaking
-/// internal layout.
-pub fn snapshot_pre(pos: &Position) -> (u64, String, i32, EvalBreakdown) {
-    let bd = evaluate_breakdown(pos);
-    (pos.zobrist, pos.to_fen(), bd.total, bd)
+/// Snapshot the "pre" fingerprint of a `Position`: `(zobrist, fen, static_eval)`.
+/// Public so `session::Match::try_apply_timed` can build records without leaking
+/// internal layout. The per-term breakdown is intentionally NOT stored — it is a
+/// pure function of the FEN and is recomputed live when a consumer wants it.
+pub fn snapshot_pre(pos: &Position) -> (u64, String, i32) {
+    (pos.zobrist, pos.to_fen(), evaluate(pos))
 }
 
 #[allow(clippy::type_complexity)]
 pub fn snapshot_post(pos: &Position)
-    -> (u64, String, i32, EvalBreakdown, Option<GameResult>, Phase, u8, u16, bool, bool, u64, u16, u16, Vec<u8>, Vec<u8>)
+    -> (u64, String, i32, Option<GameResult>, Phase, u8, u16, bool, bool, u64, u16, u16, Vec<u8>, Vec<u8>)
 {
-    let bd = evaluate_breakdown(pos);
     let focus  = pos.pending_modifiers & modifier_bits::FOCUS  != 0;
     let charge = pos.pending_modifiers & modifier_bits::CHARGE != 0;
     let te = pos.tracked_enemies[..pos.tracked_enemies_len as usize].to_vec();
     let tc = pos.tracked_casters[..pos.tracked_casters_len as usize].to_vec();
     (
-        pos.zobrist, pos.to_fen(), bd.total, bd,
+        pos.zobrist, pos.to_fen(), evaluate(pos),
         pos.game_result,
         pos.current_phase, pos.actions_remaining, pos.round_number,
         focus, charge,
@@ -575,15 +553,15 @@ mod tests {
     }
 
     #[test]
-    fn eval_breakdown_total_equals_evaluate() {
-        use crate::search::evaluator::evaluate;
+    fn eval_report_total_equals_evaluate() {
+        use crate::search::evaluator::{evaluate, evaluate_report, BreakdownDetail};
         let mut m = Match::new(Config::local_hvh());
         for _ in 0..10 {
             let acts = m.legal_actions();
             if acts.is_empty() { break; }
             m.try_apply(acts[0]).unwrap();
-            let bd = evaluate_breakdown(m.position());
-            assert_eq!(bd.total, evaluate(m.position()));
+            let r = evaluate_report(m.position(), BreakdownDetail::Aggregate);
+            assert_eq!(r.total, evaluate(m.position()));
         }
     }
 
@@ -622,29 +600,6 @@ mod tests {
     }
 
     #[test]
-    fn step_ai_searchmeta_carries_post_move_breakdown() {
-        // Part A (Change 5): every AI ply's SearchMeta must include the
-        // heuristic breakdown of the position it moved into, and that
-        // breakdown must equal a fresh evaluate_breakdown of the post-move FEN.
-        let mut m = Match::new(cfg_aivai_short());
-        for _ in 0..4 {
-            if m.game_result().is_some() { break; }
-            m.step_ai().unwrap();
-        }
-        let log = m.match_log().unwrap();
-        assert!(!log.plies.is_empty());
-        for p in &log.plies {
-            let ai = p.ai.as_ref().expect("AI ply must carry SearchMeta");
-            let bd = ai.post_move_breakdown.expect("Part A: post_move_breakdown present");
-            // The searched-leaf breakdown was captured on the exact post-move
-            // position, which is what `post_fen` records.
-            let post = Position::from_fen(&p.post_fen).expect("post_fen parses");
-            assert_eq!(bd, evaluate_breakdown(&post),
-                       "post_move_breakdown must match evaluate_breakdown(post position)");
-        }
-    }
-
-    #[test]
     fn annotate_last_ply_fills_background_eval_for_human_ply() {
         // Part B (Change 5): a human ply carries no `ai`, but after
         // annotate_last_ply_with_background_eval it carries `background_eval`
@@ -663,7 +618,6 @@ mod tests {
         assert!(last.ai.is_none(), "human ply still has no `ai`");
         let bg = last.background_eval.expect("Part B: background_eval populated");
         assert!(bg.depth > 0, "background eval searched at least depth 1");
-        assert!(bg.post_move_breakdown.is_some(), "background eval carries breakdown");
     }
 
     #[test]
@@ -690,7 +644,6 @@ mod tests {
         let bg = m.match_log().unwrap().plies.last().unwrap()
             .background_eval.expect("time-bounded eval populated");
         assert!(bg.depth >= 2, "500ms budget should climb past depth 1, got {}", bg.depth);
-        assert!(bg.post_move_breakdown.is_some());
     }
 
     #[test]
@@ -721,8 +674,8 @@ mod tests {
             applied_at_unix_ms: 0,
             action: ActionDecoded::from_action(Action::default()),
             legal_count: 0,
-            prev_zobrist: 0, prev_fen: "x".into(), prev_static_eval: 0, prev_breakdown: EvalBreakdown::default(),
-            post_zobrist: 0, post_fen: "x".into(), post_static_eval: 500, post_breakdown: EvalBreakdown::default(),
+            prev_zobrist: 0, prev_fen: "x".into(), prev_static_eval: 0,
+            post_zobrist: 0, post_fen: "x".into(), post_static_eval: 500,
             post_game_result: None, post_phase: Phase::Move,
             post_actions_remaining: 2, post_round: 1,
             post_focus_pending: false, post_charge_pending: false,

@@ -180,32 +180,34 @@
   const hasAi = $derived(p1 === "ai" || p2 === "ai");
   const isAivAi = $derived(p1 === "ai" && p2 === "ai");
 
-  // --- Trained-rater picker (ns-50) --------------------------------------
-  // Each AI seat can use the built-in Heuristic (default) or a trained rater.
-  // The choice is stored in settings.{p1,p2}Evaluator ({ source, id }); the
-  // match route already installs it via set_ai_evaluator at game start. We
-  // just populate the dropdown here from the active run dir + blessed set.
-  interface RaterListing {
-    source: "run" | "blessed";
+  // --- Evaluator picker (ns-50 / ns-54) ----------------------------------
+  // Each AI seat can use any builtin evaluator (heuristic + experimental
+  // variants) or a trained NN rater. The choice is stored in
+  // settings.{p1,p2}Evaluator ({ source, id }); the match route installs it via
+  // set_ai_evaluator at game start. We populate the dropdown from the unified
+  // `list_evaluators` command (builtins first, then run + blessed raters).
+  interface EvaluatorListing {
+    source: "builtin" | "run" | "blessed";
     id: string;
-    acceptedAt: string;
-    parentId: string | null;
+    label: string;
     isChampion: boolean;
   }
-  let raters = $state<RaterListing[]>([]);
+  let evaluators = $state<EvaluatorListing[]>([]);
   onMount(async () => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      raters = await invoke<RaterListing[]>("list_available_raters", { runDir: null });
+      evaluators = await invoke<EvaluatorListing[]>("list_evaluators", { runDir: null });
     } catch {
-      raters = []; // no trainer / no raters yet - picker shows Heuristic only.
+      // No trainer / no builtins reachable — fall back to a lone heuristic entry
+      // so the picker is never empty.
+      evaluators = [{ source: "builtin", id: "heuristic", label: "Heuristic (default)", isChampion: false }];
     }
   });
-  const champion = $derived(raters.find((r) => r.isChampion) ?? null);
-
-  /** Encode a seat's evaluator choice as a single select value. */
+  /** Encode a seat's evaluator choice as a single select value `source:id`. */
   function evalKey(source: string, id: string | null): string {
-    return source === "heuristic" ? "heuristic" : `${source}:${id}`;
+    // Legacy stored `{source:"heuristic", id:null}` maps to the builtin heuristic.
+    if (source === "heuristic") return "builtin:heuristic";
+    return `${source}:${id}`;
   }
   function currentEvalKey(seat: "p1" | "p2"): string {
     const c = seat === "p1" ? settings.p1Evaluator : settings.p2Evaluator;
@@ -213,17 +215,11 @@
   }
   /** Apply a select value back to the per-seat evaluator setting. */
   function setEval(seat: "p1" | "p2", value: string): void {
-    let choice: { source: "heuristic" | "run" | "blessed"; id: string | null };
-    if (value === "heuristic") {
-      choice = { source: "heuristic", id: null };
-    } else if (value === "champion") {
-      choice = champion
-        ? { source: champion.source, id: champion.id }
-        : { source: "heuristic", id: null };
-    } else {
-      const [source, id] = value.split(":", 2);
-      choice = { source: source as "run" | "blessed", id: id ?? null };
-    }
+    const [source, id] = value.split(":", 2);
+    const choice = {
+      source: source as "builtin" | "run" | "blessed",
+      id: id ?? null,
+    };
     if (seat === "p1") settings.p1Evaluator = choice;
     else settings.p2Evaluator = choice;
   }
@@ -365,12 +361,8 @@
               value={currentEvalKey("p1")}
               onchange={(e) => { sfx.play("click"); setEval("p1", e.currentTarget.value); }}
             >
-              <option value="heuristic">{t("setup.evaluatorHeuristic")}</option>
-              {#if champion}
-                <option value="champion">{t("setup.evaluatorChampion")} ({champion.id})</option>
-              {/if}
-              {#each raters as r}
-                <option value={evalKey(r.source, r.id)}>{r.id} ({r.source})</option>
+              {#each evaluators as ev}
+                <option value={evalKey(ev.source, ev.id)}>{ev.label}</option>
               {/each}
             </select>
           </label>
@@ -392,12 +384,8 @@
               value={currentEvalKey("p2")}
               onchange={(e) => { sfx.play("click"); setEval("p2", e.currentTarget.value); }}
             >
-              <option value="heuristic">{t("setup.evaluatorHeuristic")}</option>
-              {#if champion}
-                <option value="champion">{t("setup.evaluatorChampion")} ({champion.id})</option>
-              {/if}
-              {#each raters as r}
-                <option value={evalKey(r.source, r.id)}>{r.id} ({r.source})</option>
+              {#each evaluators as ev}
+                <option value={evalKey(ev.source, ev.id)}>{ev.label}</option>
               {/each}
             </select>
           </label>
@@ -417,7 +405,7 @@
           </label>
         {/if}
       </div>
-      {#if raters.length > 0}
+      {#if evaluators.length > 1}
         <p class="raterNote">{t("setup.evaluatorNote")}</p>
       {/if}
     </section>

@@ -31,7 +31,7 @@ pub use telemetry::{
     to_json, to_json_pretty, from_json, config_hash, notation,
 };
 
-pub use search::evaluator::{evaluate, evaluate_breakdown, EvalBreakdown, MATE_SCORE};
+pub use search::evaluator::{evaluate, evaluate_report, EvalReport, BreakdownDetail, MATE_SCORE};
 
 pub use game_logic::skills::{
     all_skill_metadata, game_constants, SkillMetadata, GameConstants,

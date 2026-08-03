@@ -92,9 +92,8 @@
     updateDepth,
     endSearch,
     setFinalDepth,
-    setHeuristic,
-    setHeuristicBySquare,
-    setPrevRoundBreakdown,
+    setEvalReport,
+    setPrevRoundReport,
     setLastRoundSeen,
     setBackgroundEval,
     resetAiSearch,
@@ -1239,31 +1238,31 @@
     }
   });
 
-  // Poll the heuristic eval whenever the position advances (including the
-  // initial one after engine boot, which afterApplied() never sees) or the
-  // relevant settings toggle on. Reads through the same guards.
+  // Poll the eval report whenever the position advances (including the initial
+  // one after engine boot) or the relevant settings toggle on. One report drives
+  // both the eval bar and the per-square hover card.
   $effect(() => {
     void match.position;
     void settings.showHeuristicEval;
     void settings.showEvalPanel;
+    void settings.uiEvaluator;
     if (!(settings.showHeuristicEval || settings.showEvalPanel)) return;
     if (!eng || match.mode === "multiplayer" || !match.position) return;
     if (aiSearch.anyThinking) return;
     const e = eng;
-    const priorBreakdown = aiSearch.heuristicEvalBreakdown;
+    const priorReport = aiSearch.evalReport;
     const priorRound = aiSearch.lastRoundSeen;
-    void e.heuristicEval().then((v) => {
+    // Request per-piece detail so the hover card has square-level rows; the
+    // eval bar and term panel read the aggregate half of the same report.
+    void e.evalReport(true, settings.uiEvaluator).then((v) => {
       const curRound = match.position?.roundNumber ?? null;
-      // On round transition, freeze the last-seen breakdown as the "previous"
+      // On round transition, freeze the last-seen report as the "previous"
       // reference so the panel can display the round-over-round change.
-      if (curRound !== null && priorRound !== null && curRound !== priorRound && priorBreakdown !== null) {
-        setPrevRoundBreakdown(priorBreakdown);
+      if (curRound !== null && priorRound !== null && curRound !== priorRound && priorReport !== null) {
+        setPrevRoundReport(priorReport);
       }
       setLastRoundSeen(curRound);
-      setHeuristic(v);
-    }).catch(() => {});
-    void e.heuristicEvalBySquare().then((v) => {
-      setHeuristicBySquare(v);
+      setEvalReport(v);
     }).catch(() => {});
   });
 
@@ -1305,7 +1304,12 @@
         updateDepth(side, d, s);
       })), delayP]);
       const raw = result.appliedAction;
-      setFinalDepth(side, result.depth);
+      // A forced ply (one legal action, e.g. the mandatory phase-end EndPhase)
+      // does no search — nodes<=1, depth 0. Don't overwrite the last real
+      // search's depth/score badge with that; let the prior result linger.
+      if (result.nodes > 1n) {
+        setFinalDepth(side, result.depth);
+      }
       if (raw === 0) {
         // AI returned no move. Two cases:
         //   - match.position.gameResult !== 0 → terminal (mate/stalemate),
@@ -2785,8 +2789,8 @@
             </div>
           </div>
         {/if}
-        {#if settings.showHeuristicEval && aiSearch.heuristicEvalBreakdown !== null && match.mode !== "multiplayer"}
-          {@const evalScore = aiSearch.heuristicEvalBreakdown.total}
+        {#if settings.showHeuristicEval && aiSearch.evalReport !== null && match.mode !== "multiplayer"}
+          {@const evalScore = aiSearch.evalReport.total}
           <div class="eval-bar-row">
             <span class="eval-label">Eval</span>
             <span class="eval-score" class:positive={evalScore > 0} class:negative={evalScore < 0}>
@@ -2842,9 +2846,9 @@
   <div class="toast" role="status" aria-live="polite">{toast}</div>
 {/if}
 
-{#if settings.showEvalPanel && match.mode !== "multiplayer" && hoveredSq !== null && aiSearch.heuristicEvalBySquare !== null}
+{#if settings.showEvalPanel && match.mode !== "multiplayer" && hoveredSq !== null && aiSearch.evalReport !== null}
   <SquareEvalCard
-    data={aiSearch.heuristicEvalBySquare}
+    data={aiSearch.evalReport}
     sq={hoveredSq}
     clientX={hoverX}
     clientY={hoverY}

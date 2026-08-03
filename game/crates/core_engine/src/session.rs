@@ -54,7 +54,7 @@ use serde::{Serialize, Deserialize};
 use crate::game_logic::action::{Action, Undo};
 use crate::game_logic::{generator, make_unmake};
 use crate::search::alpha_beta::{find_best_with_evaluator, SearchResult};
-use crate::search::evaluator::{Evaluator, HeuristicEvaluator, evaluate_breakdown};
+use crate::search::evaluator::{Evaluator, HeuristicEvaluator};
 use crate::search::transposition::TranspositionTable;
 use crate::state::Position;
 use crate::state::action_notation::action_to_notation;
@@ -342,8 +342,8 @@ impl Match {
                 // pending_bodyguard context is gone for replayed history; BG
                 // redirects fall back to bg<N> notation, which is acceptable.
                 let notation = action_to_notation(action, None);
-                let (prev_zobrist, prev_fen, prev_eval, prev_breakdown) = snapshot_pre(&position);
-                Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval, prev_breakdown))
+                let (prev_zobrist, prev_fen, prev_eval) = snapshot_pre(&position);
+                Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval))
             } else {
                 None
             };
@@ -351,9 +351,9 @@ impl Match {
             let undo = make_unmake::make(&mut position, action);
             history.push((action, undo));
 
-            if let (Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval, prev_breakdown)),
+            if let (Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval)),
                     Some(l)) = (pre, log.as_mut()) {
-                let (post_zobrist, post_fen, post_eval, post_breakdown,
+                let (post_zobrist, post_fen, post_eval,
                      post_game_result, post_phase, post_actions_remaining, post_round,
                      post_focus_pending, post_charge_pending, post_moved_this_phase,
                      post_p1_money, post_p2_money,
@@ -366,8 +366,8 @@ impl Match {
                     applied_at_unix_ms: now_unix_ms,
                     action: ActionDecoded::from_action_with_notation(action, notation),
                     legal_count,
-                    prev_zobrist, prev_fen, prev_static_eval: prev_eval, prev_breakdown,
-                    post_zobrist, post_fen, post_static_eval: post_eval, post_breakdown,
+                    prev_zobrist, prev_fen, prev_static_eval: prev_eval,
+                    post_zobrist, post_fen, post_static_eval: post_eval,
                     post_game_result, post_phase, post_actions_remaining, post_round,
                     post_focus_pending, post_charge_pending, post_moved_this_phase,
                     post_p1_money, post_p2_money,
@@ -446,8 +446,8 @@ impl Match {
             let seat_kind = self.to_move_kind();
             let legal_count = legal.len() as u32;
             let notation = action_to_notation(action, self.position.pending_bodyguard.as_ref());
-            let (prev_zobrist, prev_fen, prev_eval, prev_breakdown) = snapshot_pre(&self.position);
-            Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval, prev_breakdown))
+            let (prev_zobrist, prev_fen, prev_eval) = snapshot_pre(&self.position);
+            Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval))
         } else {
             None
         };
@@ -455,9 +455,9 @@ impl Match {
         let undo = make_unmake::make(&mut self.position, action);
         self.history.push((action, undo));
 
-        if let (Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval, prev_breakdown)),
+        if let (Some((seat_player, seat_kind, legal_count, notation, prev_zobrist, prev_fen, prev_eval)),
                 Some(log)) = (pre, self.log.as_mut()) {
-            let (post_zobrist, post_fen, post_eval, post_breakdown,
+            let (post_zobrist, post_fen, post_eval,
                  post_game_result, post_phase, post_actions_remaining, post_round,
                  post_focus_pending, post_charge_pending, post_moved_this_phase,
                  post_p1_money, post_p2_money,
@@ -468,8 +468,8 @@ impl Match {
                 thought_ms, applied_at_unix_ms,
                 action: ActionDecoded::from_action_with_notation(action, notation),
                 legal_count,
-                prev_zobrist, prev_fen, prev_static_eval: prev_eval, prev_breakdown,
-                post_zobrist, post_fen, post_static_eval: post_eval, post_breakdown,
+                prev_zobrist, prev_fen, prev_static_eval: prev_eval,
+                post_zobrist, post_fen, post_static_eval: post_eval,
                 post_game_result, post_phase, post_actions_remaining, post_round,
                 post_focus_pending, post_charge_pending, post_moved_this_phase,
                 post_p1_money, post_p2_money,
@@ -486,6 +486,12 @@ impl Match {
     /// by the Tauri layer to swap in an `NnEvaluator` for an AI seat.
     pub fn set_evaluator(&mut self, e: Box<dyn Evaluator + Send>) {
         self.evaluator = e;
+    }
+
+    /// The installed evaluator. Used by the UI-eval path (`wrapper_api::eval_report`)
+    /// so the eval panel reflects whatever rater/preset is driving this Match.
+    pub fn evaluator(&self) -> &(dyn Evaluator + Send) {
+        &*self.evaluator
     }
 
     /// Run the search for the current side WITHOUT applying the result.
@@ -579,14 +585,7 @@ impl Match {
         let r = self.request_ai_move()?;
         let thought_ms = crate::time::now_ms().saturating_sub(t0).min(u32::MAX as u64) as u32;
         if let Some(a) = r.best {
-            // Part A (Change 5): capture the heuristic breakdown of the
-            // position the AI is about to move INTO, so replay analysis sees
-            // the full per-term decomposition of the chosen line's leaf, not
-            // just the alpha-beta score.
-            let post_breakdown = self.post_move_breakdown(a);
-            let meta = SearchMeta::from_search_with_breakdown(
-                r.depth, r.nodes, r.score, Some(post_breakdown),
-            );
+            let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
             // try_apply could in principle reject if the AI returned an
             // action our generator no longer considers legal - that'd be a
             // bug in alpha-beta, not in this call site. Propagate as a panic
@@ -597,17 +596,19 @@ impl Match {
         Ok(r)
     }
 
-    /// Heuristic breakdown of the position AFTER `action` is applied, WITHOUT
-    /// committing the move. `make → evaluate → unmake` restores the position
-    /// exactly. Used to enrich `SearchMeta` (Part A of Change 5) so replay
-    /// analysis has the chosen line's leaf decomposition, and by the Tauri
-    /// live-play `step_ai` path. `action` must be legal for the current
-    /// position (callers pass the search's own best move).
-    pub fn post_move_breakdown(&mut self, action: Action) -> crate::search::evaluator::EvalBreakdown {
+    /// Dynamic breakdown of the position AFTER `action` is applied, WITHOUT
+    /// committing the move (`make → report → unmake` restores exactly). Uses the
+    /// Match's installed evaluator so the report reflects whatever rater/preset
+    /// is driving this seat. `action` must be legal for the current position
+    /// (callers pass the search's own best move). Used by the Tauri live-play
+    /// path to show the chosen line's leaf decomposition.
+    pub fn post_move_report(
+        &mut self, action: Action, detail: crate::search::evaluator::BreakdownDetail,
+    ) -> crate::search::evaluator::EvalReport {
         let undo = make_unmake::make(&mut self.position, action);
-        let bd = evaluate_breakdown(&self.position);
+        let report = self.evaluator.evaluate_report(&self.position, detail);
         make_unmake::unmake(&mut self.position, &undo);
-        bd
+        report
     }
 
     /// Pop the last applied action and reverse it. Gated by `config.allow_undo`.
@@ -692,10 +693,7 @@ impl Match {
             &mut self.position, &mut self.tt, time_limit_ms, max_depth,
             &*self.evaluator, None,
         );
-        // Breakdown of the current (post-human-move) position — the engine's
-        // static read on the state the human just produced.
-        let breakdown = evaluate_breakdown(&self.position);
-        let meta = SearchMeta::from_search_with_breakdown(r.depth, r.nodes, r.score, Some(breakdown));
+        let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
 
         if let Some(log) = self.log.as_mut() {
             if let Some(last) = log.plies.last_mut() {

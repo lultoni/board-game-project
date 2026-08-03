@@ -5,14 +5,11 @@
 //   - `background_eval`   — set for human plies by the time-bounded background
 //                           eval (Change 5 Part B): the engine's own read of
 //                           the position the human created.
-// Both share the `SearchMeta` shape and now carry `post_move_breakdown`.
+// Both share the `SearchMeta` shape (depth / score / mate).
 //
 // Match-log JSON is serialised by the Rust telemetry layer, so its field names
-// are snake_case (`score_cp`, `was_mate`, `mate_in`, `post_move_breakdown`),
-// NOT the camelCase used by the hot-path `StepResult` DTO. This module reads
-// the snake_case log shape.
-
-import type { EvalBreakdown } from "./types";
+// are snake_case (`score_cp`, `was_mate`, `mate_in`), NOT the camelCase used by
+// the hot-path `StepResult` DTO. This module reads the snake_case log shape.
 
 /** Snake_case mirror of `core_engine::telemetry::SearchMeta` as it appears in
  *  serialised match-log JSON. All fields optional for defensive parsing of
@@ -24,7 +21,6 @@ export interface SearchMetaLog {
   was_mate?: boolean;
   mate_in?: number | null;
   score_cp?: number | null;
-  post_move_breakdown?: EvalBreakdown | null;
 }
 
 /** The subset of a match-log `PlyRecord` this module reads. */
@@ -44,7 +40,6 @@ export interface PlyEval {
   /** Plies-to-mate when the search found a forced mate; null otherwise. */
   mateIn: number | null;
   wasMate: boolean;
-  breakdown: EvalBreakdown | null;
 }
 
 /** Extract the engine's assessment for one ply. Prefers `ai` (AI plies) and
@@ -62,7 +57,6 @@ export function plyEvalOf(ply: PlyRecordEvalView | null | undefined): PlyEval | 
     scoreCp: meta.score_cp ?? null,
     mateIn: meta.mate_in ?? null,
     wasMate: meta.was_mate ?? false,
-    breakdown: meta.post_move_breakdown ?? null,
   };
 }
 

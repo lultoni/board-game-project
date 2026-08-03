@@ -31,8 +31,8 @@
 
   import {
     aiSearch,
-    setHeuristic,
-    setPrevRoundBreakdown,
+    setEvalReport,
+    setPrevRoundReport,
     setLastRoundSeen,
     resetAiSearch,
   } from "$lib/state/ai-search.svelte";
@@ -269,24 +269,25 @@
     void currentPly;
     void loaded;
     void showInsights;
+    void settings.uiEvaluator;
     if ((!settings.showEvalPanel && !showInsights) || !eng || !loaded) {
-      setHeuristic(null);
-      setPrevRoundBreakdown(null);
+      setEvalReport(null);
+      setPrevRoundReport(null);
       setLastRoundSeen(null);
       return;
     }
     const e = eng;
-    const priorBreakdown = aiSearch.heuristicEvalBreakdown;
+    const priorReport = aiSearch.evalReport;
     const priorRound = aiSearch.lastRoundSeen;
-    void e.heuristicEval().then((v) => {
+    void e.evalReport(true, settings.uiEvaluator).then((v) => {
       const curRound = renderer?.position?.roundNumber ?? null;
-      // When the round advances, freeze the last-seen breakdown as the "previous"
+      // When the round advances, freeze the last-seen report as the "previous"
       // reference so the panel can display the round-over-round change.
-      if (curRound !== null && priorRound !== null && curRound !== priorRound && priorBreakdown !== null) {
-        setPrevRoundBreakdown(priorBreakdown);
+      if (curRound !== null && priorRound !== null && curRound !== priorRound && priorReport !== null) {
+        setPrevRoundReport(priorReport);
       }
       setLastRoundSeen(curRound);
-      setHeuristic(v);
+      setEvalReport(v);
     }).catch(() => {});
   });
 

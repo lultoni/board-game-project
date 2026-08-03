@@ -17,7 +17,7 @@
 import { describe, it, expect } from "vitest";
 import { createMpEngine } from "./multiplayer-engine";
 import type { WireMessageV2, WirePhase } from "./multiplayer-protocol-v2";
-import type { EngineClient, EvalBreakdown, GameConstantsWire, PositionView, SkillMetadataWire, StepResult } from "./engine";
+import type { EngineClient, EvalReport, GameConstantsWire, PositionView, SkillMetadataWire, StepResult } from "./engine";
 
 // A fake engine that models the ONE shared handle. `applied` is the move
 // history; snapshot/restore round-trip it as JSON so a sandbox fork can be
@@ -68,15 +68,10 @@ class SharedFakeEngine implements EngineClient {
   async stepAi(): Promise<StepResult> { throw new Error("not used"); }
   async requestAiMoveForced(): Promise<StepResult> { throw new Error("not used"); }
   async requestAiMoveAtDepth(): Promise<StepResult> { throw new Error("not used"); }
-  async heuristicEval(): Promise<EvalBreakdown> {
-    return {
-      material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0,
-      skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0,
-      threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0,
-      offensive_range_p1: 0, offensive_range_p2: 0, total: 0,
-    };
+  async evalReport(): Promise<EvalReport> {
+    return { terms: [], side_terms: [], pieces: null, total: 0, terminal: false };
   }
-  async heuristicEvalBySquare(): Promise<never> { throw new Error("not used"); }
+  async listEvaluators(): Promise<never[]> { return []; }
   async positionFen(): Promise<string> { return ""; }
   // Snapshot carries a valid envelope AND the applied history so restore is exact.
   async snapshotJson(): Promise<string> {

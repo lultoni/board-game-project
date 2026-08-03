@@ -19,6 +19,41 @@
   function clampInt(v: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, Math.round(v)));
   }
+
+  // UI-eval evaluator picker: which evaluator drives the eval bar / breakdown
+  // panel / replay / inspector (independent of the AI seats). Populated from the
+  // unified `list_evaluators` command (builtins + trained raters); the list is
+  // loaded once the drawer is first opened.
+  interface EvaluatorListing {
+    source: "builtin" | "run" | "blessed";
+    id: string;
+    label: string;
+    isChampion: boolean;
+  }
+  let evaluators = $state<EvaluatorListing[]>([]);
+  let evaluatorsLoaded = $state(false);
+  async function loadEvaluators(): Promise<void> {
+    if (evaluatorsLoaded) return;
+    evaluatorsLoaded = true;
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      evaluators = await invoke<EvaluatorListing[]>("list_evaluators", { runDir: null });
+    } catch {
+      evaluators = [{ source: "builtin", id: "heuristic", label: "Heuristic (default)", isChampion: false }];
+    }
+  }
+  // Lazy-load when the drawer opens.
+  $effect(() => { if (open) void loadEvaluators(); });
+
+  function uiEvalKey(source: string, id: string | null): string {
+    if (source === "heuristic") return "builtin:heuristic";
+    return `${source}:${id}`;
+  }
+  const currentUiEvalKey = $derived(uiEvalKey(settings.uiEvaluator.source, settings.uiEvaluator.id));
+  function setUiEval(value: string): void {
+    const [source, id] = value.split(":", 2);
+    settings.uiEvaluator = { source: source as "builtin" | "run" | "blessed", id: id ?? null };
+  }
 </script>
 
 {#if open}
@@ -121,6 +156,17 @@
     <label class="row">
       <span>Show eval breakdown panel</span>
       <input type="checkbox" bind:checked={settings.showEvalPanel} />
+    </label>
+    <label class="row">
+      <span>Eval panel evaluator</span>
+      <select
+        value={currentUiEvalKey}
+        onchange={(e) => { sfx.play("click"); setUiEval((e.currentTarget as HTMLSelectElement).value); }}
+      >
+        {#each evaluators as ev}
+          <option value={uiEvalKey(ev.source, ev.id)}>{ev.label}</option>
+        {/each}
+      </select>
     </label>
     <label class="row">
       <span>AIvAI step delay (ms)</span>

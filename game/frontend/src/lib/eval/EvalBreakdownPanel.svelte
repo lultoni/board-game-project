@@ -1,86 +1,99 @@
 <script lang="ts">
-  import type { EvalBreakdown } from "$lib/engine";
+  import type { EvalReport, TermEntry } from "$lib/engine";
   import { aiSearch } from "$lib/state/ai-search.svelte";
 
-  // Reads the current heuristic breakdown and prior-round snapshot from the
-  // ai-search store. Previously these came in as props from /match/, which
-  // meant every unrelated re-render on the route (depth-tick during a search,
-  // hover-square updates) also fired this component's $derived chain. Reading
-  // straight from the store isolates re-renders to the fields we actually use.
-  const breakdown = $derived<EvalBreakdown | null>(aiSearch.heuristicEvalBreakdown);
-  const prevBreakdown = $derived<EvalBreakdown | null>(aiSearch.prevRoundBreakdown);
+  // Reads the current eval report and prior-round snapshot from the ai-search
+  // store. Reading straight from the store isolates re-renders to the fields we
+  // actually use (not every depth-tick / hover update on the route).
+  const report = $derived<EvalReport | null>(aiSearch.evalReport);
+  const prevReport = $derived<EvalReport | null>(aiSearch.prevRoundReport);
 
   const SATURATION = 1000;
 
+  // Display labels for known term machine-names. Unknown terms (e.g. future
+  // SEE terms, or an evaluator's bespoke term) fall back to a prettified name,
+  // so the panel is fully dynamic — add a term in Rust and it shows up here.
+  const TERM_LABELS: Record<string, string> = {
+    material: "Material",
+    hp: "HP",
+    armor: "Armor",
+    skills: "Skills",
+    mobility: "Reach",
+    exposure: "Exposure",
+    coverage: "Coverage",
+    guard_isolation: "Guard iso",
+    champion_threat: "Threat",
+    money: "Money",
+    tempo: "Tempo",
+    offensive_range: "Off reach",
+    wasted_modifier: "Wasted",
+    endgame_closing: "Endgame",
+    hanging_piece: "Hanging",
+    king_tempo: "King tempo",
+    nn: "Net",
+    const: "Const",
+  };
+
+  function labelFor(name: string): string {
+    return TERM_LABELS[name] ?? name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   interface Row {
     label: string;
+    /** Owner-signed P1 magnitude for display (positive side). */
     p1: number;
     p2: number;
-    /** Prior-round Δ (p1 - p2) for this row, if available. */
+    /** This term's P1-POV signed contribution to total. */
+    signed: number;
+    /** Prior-round Δ (this term's signed) for the vs-prev column, if available. */
     prevDelta: number | null;
     emphasis?: boolean;
   }
 
-  function rowVsPrev(cur: EvalBreakdown | null, prev: EvalBreakdown | null): Row[] {
-    if (cur === null) return [];
-    const dPrev = (a1: number, a2: number, b1: number, b2: number): number =>
-      (a1 - a2) - (b1 - b2);
-    // E9 shown as raw range (0..=4); its weighted contribution to total is
-    // (p1 - p2) * 500 on the Rust side. The Δ column here reflects that weight
-    // so the row's contribution is legible against the other rows.
-    const REACH_WEIGHT = 500;
-    const totalCurP1 = cur.material_p1 + cur.hp_p1 + cur.armor_p1 + cur.skills_p1 + cur.money_p1 + cur.mobility_p1 + cur.threat_p1 + cur.skill_act_p1 + cur.offensive_range_p1 * REACH_WEIGHT;
-    const totalCurP2 = cur.material_p2 + cur.hp_p2 + cur.armor_p2 + cur.skills_p2 + cur.money_p2 + cur.mobility_p2 + cur.threat_p2 + cur.skill_act_p2 + cur.offensive_range_p2 * REACH_WEIGHT;
-    const totalPrev = prev === null ? null :
-      (prev.material_p1 + prev.hp_p1 + prev.armor_p1 + prev.skills_p1 + prev.money_p1 + prev.mobility_p1 + prev.threat_p1 + prev.skill_act_p1 + prev.offensive_range_p1 * REACH_WEIGHT)
-      - (prev.material_p2 + prev.hp_p2 + prev.armor_p2 + prev.skills_p2 + prev.money_p2 + prev.mobility_p2 + prev.threat_p2 + prev.skill_act_p2 + prev.offensive_range_p2 * REACH_WEIGHT);
-    return [
-      { label: "Total",     p1: totalCurP1, p2: totalCurP2,
-                            prevDelta: totalPrev === null ? null : (totalCurP1 - totalCurP2) - totalPrev,
-                            emphasis: true },
-      { label: "Material",  p1: cur.material_p1,   p2: cur.material_p2,
-                            prevDelta: prev ? dPrev(cur.material_p1, cur.material_p2, prev.material_p1, prev.material_p2) : null },
-      { label: "HP",        p1: cur.hp_p1,         p2: cur.hp_p2,
-                            prevDelta: prev ? dPrev(cur.hp_p1, cur.hp_p2, prev.hp_p1, prev.hp_p2) : null },
-      { label: "Armor",     p1: cur.armor_p1,      p2: cur.armor_p2,
-                            prevDelta: prev ? dPrev(cur.armor_p1, cur.armor_p2, prev.armor_p1, prev.armor_p2) : null },
-      { label: "Skills",    p1: cur.skills_p1,     p2: cur.skills_p2,
-                            prevDelta: prev ? dPrev(cur.skills_p1, cur.skills_p2, prev.skills_p1, prev.skills_p2) : null },
-      // E9 renders as a differential-only row: whichever side has higher raw
-      // reach shows the weighted advantage, the other shows 0. The eval term
-      // itself is `(p1 - p2) * WEIGHT` so per-side magnitudes aren't
-      // meaningful in isolation - showing both sides at raw*WEIGHT was
-      // misleading (implied additive contribution). Reach flag has no
-      // per-side "score", only a differential.
-      { label: "Off reach", p1: Math.max(0, (cur.offensive_range_p1 - cur.offensive_range_p2)) * REACH_WEIGHT,
-                            p2: Math.max(0, (cur.offensive_range_p2 - cur.offensive_range_p1)) * REACH_WEIGHT,
-                            prevDelta: prev
-                              ? (Math.max(0, cur.offensive_range_p1 - cur.offensive_range_p2)
-                                 - Math.max(0, cur.offensive_range_p2 - cur.offensive_range_p1)) * REACH_WEIGHT
-                                - (Math.max(0, prev.offensive_range_p1 - prev.offensive_range_p2)
-                                   - Math.max(0, prev.offensive_range_p2 - prev.offensive_range_p1)) * REACH_WEIGHT
-                              : null },
-      { label: "Money",     p1: cur.money_p1,      p2: cur.money_p2,
-                            prevDelta: prev ? dPrev(cur.money_p1, cur.money_p2, prev.money_p1, prev.money_p2) : null },
-      { label: "Reach",     p1: cur.mobility_p1,   p2: cur.mobility_p2,
-                            prevDelta: prev ? dPrev(cur.mobility_p1, cur.mobility_p2, prev.mobility_p1, prev.mobility_p2) : null },
-      { label: "Threat",    p1: cur.threat_p1,     p2: cur.threat_p2,
-                            prevDelta: prev ? dPrev(cur.threat_p1, cur.threat_p2, prev.threat_p1, prev.threat_p2) : null },
-      { label: "Skill act", p1: cur.skill_act_p1,  p2: cur.skill_act_p2,
-                            prevDelta: prev ? dPrev(cur.skill_act_p1, cur.skill_act_p2, prev.skill_act_p1, prev.skill_act_p2) : null },
-    ];
+  /** All active terms of a report, aggregate then side-level, in wire order. */
+  function allTerms(r: EvalReport): TermEntry[] {
+    return [...r.terms, ...r.side_terms];
   }
 
-  const rows = $derived<Row[]>(rowVsPrev(breakdown, prevBreakdown));
+  function buildRows(cur: EvalReport | null, prev: EvalReport | null): Row[] {
+    if (cur === null) return [];
+    const prevByName = new Map<string, number>();
+    if (prev !== null) {
+      for (const t of allTerms(prev)) prevByName.set(t.name, t.signed);
+    }
+    const rows: Row[] = [
+      {
+        label: "Total",
+        p1: Math.max(0, cur.total),
+        p2: Math.max(0, -cur.total),
+        signed: cur.total,
+        prevDelta: prev === null ? null : cur.total - prev.total,
+        emphasis: true,
+      },
+    ];
+    for (const t of allTerms(cur)) {
+      const prevSigned = prevByName.get(t.name);
+      rows.push({
+        label: labelFor(t.name),
+        p1: t.p1,
+        p2: t.p2,
+        signed: t.signed,
+        prevDelta: prevSigned === undefined ? null : t.signed - prevSigned,
+      });
+    }
+    return rows;
+  }
 
-  const showVsPrev = $derived(prevBreakdown !== null);
+  const rows = $derived<Row[]>(buildRows(report, prevReport));
+
+  const showVsPrev = $derived(prevReport !== null);
 
   // Fill fraction on [-1, 1]. Positive = P1 fills downward (P1 sits at
   // bottom of board), negative = P2 fills upward.
   const fillFrac = $derived(
-    breakdown === null
+    report === null
       ? 0
-      : Math.max(-1, Math.min(1, breakdown.total / SATURATION))
+      : Math.max(-1, Math.min(1, report.total / SATURATION))
   );
 
   const fillPct = $derived(Math.abs(fillFrac) * 50);
@@ -91,11 +104,11 @@
   }
 </script>
 
-<aside class="eval-panel" aria-label="Heuristic eval breakdown">
+<aside class="eval-panel" aria-label="Eval breakdown">
   <div class="bar-column">
     <div class="bar-track">
       <div class="bar-center-rule"></div>
-      {#if breakdown !== null}
+      {#if report !== null}
         {#if fillFrac > 0}
           <div class="bar-fill bar-fill--p1" style="height: {fillPct}%"></div>
         {:else if fillFrac < 0}
@@ -110,7 +123,7 @@
   </div>
 
   <div class="rows-column">
-    {#if breakdown === null}
+    {#if report === null}
       <div class="empty">No position loaded</div>
     {:else}
       <div class="header" class:with-prev={showVsPrev}>
@@ -123,7 +136,6 @@
         {/if}
       </div>
       {#each rows as row, i (row.label)}
-        {@const delta = row.p1 - row.p2}
         <div
           class="row"
           class:row--emphasis={row.emphasis}
@@ -134,9 +146,9 @@
           <span class="col-p2 num">{fmtSigned(row.p2)}</span>
           <span
             class="col-delta num"
-            class:pos={delta > 0}
-            class:neg={delta < 0}
-          >{fmtSigned(delta)}</span>
+            class:pos={row.signed > 0}
+            class:neg={row.signed < 0}
+          >{fmtSigned(row.signed)}</span>
           {#if showVsPrev}
             <span
               class="col-vs num"

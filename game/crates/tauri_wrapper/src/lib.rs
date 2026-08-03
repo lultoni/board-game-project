@@ -346,19 +346,25 @@ fn evaluate_draw_offer(
 }
 
 #[tauri::command]
-fn heuristic_eval(
-    handle:   u64,
-    registry: State<'_, EngineRegistry>,
-) -> Result<core_engine::search::evaluator::EvalBreakdown, String> {
-    registry.with(handle, |e| api::heuristic_eval(&e.m))
-}
-
-#[tauri::command]
-fn heuristic_eval_by_square(
-    handle:   u64,
-    registry: State<'_, EngineRegistry>,
-) -> Result<core_engine::search::evaluator::EvalBreakdownBySquare, String> {
-    registry.with(handle, |e| api::heuristic_eval_by_square(&e.m))
+fn eval_report(
+    handle:    u64,
+    per_piece: bool,
+    source:    Option<String>,
+    id:        Option<String>,
+    run_dir:   Option<String>,
+    registry:  State<'_, EngineRegistry>,
+) -> Result<core_engine::search::evaluator::EvalReport, String> {
+    // When the caller names a UI-eval evaluator (settings.uiEvaluator), build a
+    // transient evaluator and score with it WITHOUT touching the Match's
+    // installed (AI-seat) evaluator. Absent / "builtin heuristic" falls through
+    // to the installed evaluator.
+    match source.as_deref() {
+        Some(src) if !(src == "builtin" && id.as_deref() == Some("heuristic")) => {
+            let evaluator = build_evaluator(src, id, run_dir)?;
+            registry.with(handle, |e| api::eval_report_with(&e.m, &*evaluator, per_piece))
+        }
+        _ => registry.with(handle, |e| api::eval_report(&e.m, per_piece)),
+    }
 }
 
 #[tauri::command]
@@ -488,7 +494,6 @@ async fn try_apply(
                     use core_engine::search::alpha_beta::find_best_with_evaluator;
                     use core_engine::search::transposition::TranspositionTable;
                     use core_engine::telemetry::SearchMeta;
-                    use core_engine::search::evaluator::evaluate_breakdown;
                     const BUDGET_MS: u64 = 1000;
                     const MAX_DEPTH: u8 = 20;
                     let mut tt = TranspositionTable::with_capacity_mb(4);
@@ -496,10 +501,7 @@ async fn try_apply(
                         &mut pos, &mut tt, BUDGET_MS, MAX_DEPTH,
                         &HeuristicEvaluator, None,
                     );
-                    let breakdown = evaluate_breakdown(&pos);
-                    let meta = SearchMeta::from_search_with_breakdown(
-                        r.depth, r.nodes, r.score, Some(breakdown),
-                    );
+                    let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
                     // Step 3: re-acquire lock only to write the result (microseconds).
                     let registry = app_for_task.state::<EngineRegistry>();
                     let _ = registry.with(handle, |e| e.m.write_background_eval(meta));
@@ -887,6 +889,49 @@ fn list_available_raters(run_dir: Option<String>) -> Result<Vec<RaterListing>, S
     Ok(out)
 }
 
+/// One selectable evaluator for the UI dropdowns. `source` is `"builtin"`
+/// (an in-crate evaluator from `core_engine`'s builtin registry) or `"run"` /
+/// `"blessed"` (a trained NN rater). `label` is display text; `id` is the value
+/// echoed back to `set_ai_evaluator` / `eval_report`. `is_champion` marks the
+/// current NN champion (builtins are never champions).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluatorListing {
+    pub source: String,
+    pub id: String,
+    pub label: String,
+    pub is_champion: bool,
+}
+
+/// Unified evaluator list feeding every UI dropdown (setup per-seat + the
+/// settings UI-eval pick): the builtin in-crate evaluators first (heuristic +
+/// any experimental variants), then the trained NN raters from the run +
+/// blessed dirs. Adding a builtin evaluator in `core_engine` makes it appear
+/// here automatically; training/blessing a rater adds it to the tail.
+#[tauri::command]
+fn list_evaluators(run_dir: Option<String>) -> Result<Vec<EvaluatorListing>, String> {
+    let mut out: Vec<EvaluatorListing> = Vec::new();
+    for b in core_engine::search::evaluator::builtin::BUILTINS {
+        out.push(EvaluatorListing {
+            source: "builtin".to_string(),
+            id: b.id.to_string(),
+            label: b.label.to_string(),
+            is_champion: false,
+        });
+    }
+    // Reuse the rater walk; map its listings into the unified shape.
+    for r in list_available_raters(run_dir)? {
+        let champ_tag = if r.is_champion { " ★" } else { "" };
+        out.push(EvaluatorListing {
+            label: format!("{} ({}){}", r.id, r.source, champ_tag),
+            source: r.source,
+            id: r.id,
+            is_champion: r.is_champion,
+        });
+    }
+    Ok(out)
+}
+
 /// Install a per-seat evaluator on an existing engine handle. `source` is one
 /// of `"heuristic"`, `"run"`, or `"blessed"`. For `"run"` / `"blessed"`, `id`
 /// names a rater under the appropriate index; the rater is loaded, wrapped in
@@ -906,7 +951,15 @@ fn build_evaluator(
     run_dir: Option<String>,
 ) -> Result<Box<dyn core_engine::search::evaluator::Evaluator + Send>, String> {
     match source {
-        "heuristic" => Ok(Box::new(core_engine::search::evaluator::HeuristicEvaluator)),
+        // Builtin in-crate evaluators (heuristic + any experimental variants).
+        // `id` names the entry in `core_engine`'s builtin registry; a missing id
+        // falls back to "heuristic" so legacy `{source:"heuristic", id:null}`
+        // choices keep working.
+        "builtin" | "heuristic" => {
+            let want = id.as_deref().unwrap_or("heuristic");
+            core_engine::search::evaluator::builtin::make(want)
+                .ok_or_else(|| format!("unknown builtin evaluator: {want}"))
+        }
         "run" | "blessed" => {
             let id = id.ok_or_else(|| "rater id required for non-heuristic source".to_string())?;
             let dir = if source == "run" {
@@ -1291,8 +1344,7 @@ pub fn run() {
             start_aivai_producer,
             aivai_producer_log,
             stop_aivai_producer,
-            heuristic_eval,
-            heuristic_eval_by_square,
+            eval_report,
             evaluate_draw_offer,
             request_ai_move_forced,
             request_ai_move_at_depth,
@@ -1311,6 +1363,7 @@ pub fn run() {
             read_gauntlet_matrix,
             inspect_rater,
             list_available_raters,
+            list_evaluators,
             set_ai_evaluator,
             list_backends,
             start_training_run,

@@ -46,6 +46,7 @@ pub mod terms;
 pub mod registry;
 pub mod breakdown;
 pub mod incremental;
+pub mod custom;
 
 use crate::game_logic::action::Undo;
 use crate::state::Position;
@@ -54,7 +55,7 @@ pub use params::EvalParams;
 pub use term::{EvalTerm, PieceContext};
 pub use context::EvalContext;
 pub use context::GameStage;
-pub use breakdown::{EvalBreakdown, EvalBreakdownBySquare, SquareBreakdown, DynBreakdown, TermEntry, evaluate_by_square};
+pub use breakdown::{BreakdownDetail, EvalReport, PieceTermBreakdown, TermEntry};
 pub use incremental::IncrementalEvaluator;
 
 pub const MATE_SCORE: i32 = 1_000_000;
@@ -67,31 +68,19 @@ pub const MATE_SCORE: i32 = 1_000_000;
 #[cfg(test)] pub(crate) const HP_PER_POINT:    i32 = EvalParams::DEFAULT.hp_per_point;
 #[cfg(test)] pub(crate) const ARMOR_PER_POINT: i32 = EvalParams::DEFAULT.armor_per_point;
 #[cfg(test)] pub(crate) const TEMPO_PER_ACTION: i32 = EvalParams::DEFAULT.tempo_per_action;
-#[cfg(test)] pub(crate) const SKILL_AVAIL_MAX: i32 = EvalParams::DEFAULT.skill_avail_max;
 
 /// Scalar P1-POV static eval. `+`=P1, `±MATE_SCORE` for terminals.
 ///
 /// Search-leaf fast path (Phase 1b, Session 48): a monomorphic accumulation of
-/// the term set into a single `i32`, with no `DynBreakdown` / breakdown Vecs /
-/// `to_legacy` projection. Byte-identical to `evaluate_breakdown(pos).total`
-/// (pinned by `golden_eval_unchanged`).
+/// the term set into a single `i32`, with no breakdown Vecs / allocation.
 pub fn evaluate(pos: &Position) -> i32 {
     registry::evaluate_scalar(pos, &EvalParams::DEFAULT)
 }
 
-/// Legacy fixed-field breakdown (projection of the dynamic registry output).
-pub fn evaluate_breakdown(pos: &Position) -> EvalBreakdown {
-    let params = EvalParams::DEFAULT;
-    let terms = registry::default_terms_static();
-    registry::evaluate_dyn(pos, terms, &params).to_legacy()
-}
-
-/// Dynamic breakdown (registry-native; only active terms). For tuning /
-/// future dynamic-panel consumers.
-pub fn evaluate_dyn(pos: &Position) -> DynBreakdown {
-    let params = EvalParams::DEFAULT;
-    let terms = registry::default_terms_static();
-    registry::evaluate_dyn(pos, terms, &params)
+/// Dynamic breakdown for the default heuristic. `detail` selects aggregate-only
+/// or full per-piece decomposition. Used by the UI eval panel + telemetry.
+pub fn evaluate_report(pos: &Position, detail: breakdown::BreakdownDetail) -> EvalReport {
+    registry::evaluate_report(pos, &EvalParams::DEFAULT, detail)
 }
 
 /// Opaque, evaluator-owned incremental-eval state for one search node.
@@ -156,7 +145,11 @@ impl AccHandle {
 /// restores the saved clone on `unmake`.
 pub trait Evaluator: Send {
     fn evaluate(&self, pos: &Position) -> i32;
-    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown;
+
+    /// Dynamic breakdown for the UI / diagnostics. `detail` selects aggregate vs
+    /// per-piece. The default heuristic decomposes into its terms; an NN
+    /// evaluator returns a single synthetic term (it has no term structure).
+    fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport;
 
     /// True iff this evaluator maintains an incremental accumulator. When
     /// false, the search skips ALL handle machinery (empty stack, no clones).
@@ -191,7 +184,118 @@ impl Evaluator for HeuristicEvaluator {
     #[inline]
     fn evaluate(&self, pos: &Position) -> i32 { evaluate(pos) }
     #[inline]
-    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown { evaluate_breakdown(pos) }
+    fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport {
+        evaluate_report(pos, detail)
+    }
+}
+
+/// A heuristic evaluator parameterised by a custom [`EvalParams`] weight set.
+/// The term math is identical to [`HeuristicEvaluator`]; only the weights differ.
+/// This is the "same terms, different balance" variant shape — a builtin
+/// evaluator entry can hand out one of these with tuned weights. For genuinely
+/// different *logic*, write a separate struct that impls [`Evaluator`] (its own
+/// term registry / hand-rolled math) and register that instead.
+#[derive(Clone, Debug)]
+pub struct ParamHeuristicEvaluator {
+    params: EvalParams,
+}
+
+impl ParamHeuristicEvaluator {
+    pub fn new(params: EvalParams) -> Self { Self { params } }
+}
+
+impl Evaluator for ParamHeuristicEvaluator {
+    #[inline]
+    fn evaluate(&self, pos: &Position) -> i32 {
+        registry::evaluate_scalar(pos, &self.params)
+    }
+    #[inline]
+    fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport {
+        registry::evaluate_report(pos, &self.params, detail)
+    }
+}
+
+/// Builtin evaluator registry (ns-54). The single place where `core_engine`'s
+/// own concrete evaluators are enumerated for UI selection. Each entry maps a
+/// stable `id` (persisted in settings, sent over IPC) and a human `label` to a
+/// constructor. To add a new evaluator: write your struct implementing
+/// [`Evaluator`] (a fresh file with its own term registry, a tuned
+/// [`ParamHeuristicEvaluator`], whatever), then add ONE entry here.
+///
+/// NN raters are NOT here — they live in `nn_trainer` (which depends on this
+/// crate) and are unioned in at the wrapper layer. This registry is only the
+/// pure, in-crate evaluators.
+pub mod builtin {
+    use super::{Evaluator, HeuristicEvaluator};
+
+    /// A selectable builtin evaluator: stable id, display label, constructor.
+    pub struct BuiltinEvaluator {
+        pub id:    &'static str,
+        pub label: &'static str,
+        pub make:  fn() -> Box<dyn Evaluator + Send>,
+    }
+
+    /// All builtin evaluators, in display order. The first entry is the default.
+    /// ADD NEW EVALUATORS HERE (one line each).
+    pub const BUILTINS: &[BuiltinEvaluator] = &[
+        BuiltinEvaluator {
+            id: "heuristic",
+            label: "Heuristic (default)",
+            make: || Box::new(HeuristicEvaluator),
+        },
+        // Editable scaffold for a hand-rolled evaluator — see `custom.rs`.
+        BuiltinEvaluator {
+            id: "custom-stub",
+            label: "Custom (stub)",
+            make: || Box::new(super::custom::CustomEvaluator),
+        },
+        // Example weight-variant / experimental slot — add real entries here:
+        // BuiltinEvaluator {
+        //     id: "experimental-v2",
+        //     label: "Experimental v2",
+        //     make: || Box::new(crate::search::evaluator::experimental_v2::Eval),
+        // },
+    ];
+
+    /// Look up a builtin by id and construct it. `None` if the id is unknown.
+    pub fn make(id: &str) -> Option<Box<dyn Evaluator + Send>> {
+        BUILTINS.iter().find(|b| b.id == id).map(|b| (b.make)())
+    }
+}
+
+
+#[cfg(test)]
+mod builtin_tests {
+    use super::*;
+
+    #[test]
+    fn builtin_registry_has_heuristic_default_first() {
+        // The first entry is the default and must be the heuristic.
+        assert_eq!(builtin::BUILTINS[0].id, "heuristic");
+        // Every entry has a non-empty id + label and constructs a working evaluator.
+        for b in builtin::BUILTINS {
+            assert!(!b.id.is_empty() && !b.label.is_empty());
+            let ev = (b.make)();
+            // Constructs and scores the start position without panicking.
+            let _ = ev.evaluate(&Position::setup_stack_m());
+        }
+    }
+
+    #[test]
+    fn builtin_make_resolves_and_rejects() {
+        assert!(builtin::make("heuristic").is_some());
+        assert!(builtin::make("does-not-exist").is_none());
+    }
+
+    #[test]
+    fn param_heuristic_matches_default_heuristic_with_default_params() {
+        // A ParamHeuristicEvaluator built with DEFAULT params must score
+        // identically to the plain HeuristicEvaluator.
+        let pos = Position::setup_stack_m();
+        let a = HeuristicEvaluator.evaluate(&pos);
+        let b = ParamHeuristicEvaluator::new(EvalParams::DEFAULT).evaluate(&pos);
+        assert_eq!(a, b);
+    }
 }
 
 
@@ -418,19 +522,17 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_by_square_matches_breakdown_stack_m() {
-        // Invariant: the per-square view must sum to the same total as the
-        // aggregate breakdown for the canonical Stack M opening position.
+    fn per_piece_report_sums_to_total_stack_m() {
+        // Invariant: the per-piece decomposition must reconstruct the scalar
+        // total, for the canonical Stack M opening position.
         let pos = Position::setup_stack_m();
-        let bd = evaluate_breakdown(&pos);
-        let bs = evaluate_by_square(&pos);
-        assert_eq!(bd.total, bs.total, "total mismatch");
+        assert_report_reconstructs_total(&pos);
     }
 
     #[test]
-    fn evaluate_by_square_matches_breakdown_asymmetric() {
-        // A P1 Champion adjacent to a P2 Guard, no other pieces - exercises
-        // exposure, coverage, mobility on both sides.
+    fn per_piece_report_sums_to_total_asymmetric() {
+        // A P1 Champion adjacent to a P2 Guard - exercises exposure, coverage,
+        // mobility on both sides.
         let mut pos = Position::empty();
         place(&mut pos, 28, Player::P1, 1,
             MailboxEntry::default().with_hp(2).with_armor(1)
@@ -441,87 +543,117 @@ mod tests {
         pos.actions_remaining = 2;
         pos.current_phase = Phase::Move;
         pos.to_move = Player::P1;
-        let bd = evaluate_breakdown(&pos);
-        let bs = evaluate_by_square(&pos);
-        assert_eq!(bd.total, bs.total, "total mismatch");
+        assert_report_reconstructs_total(&pos);
+    }
+
+    /// The core consistency invariant of the per-piece report: summing every
+    /// piece's owner-signed `piece_total` and every side term's `signed` yields
+    /// exactly `evaluate(pos)`. Because the rows come from the SAME term pass as
+    /// the scalar path, this is definitional - but we pin it against drift.
+    fn assert_report_reconstructs_total(pos: &Position) {
+        let r = evaluate_report(pos, BreakdownDetail::PerPiece);
+        assert_eq!(r.total, evaluate(pos), "report.total must equal evaluate()");
+        let pieces = r.pieces.as_ref().expect("PerPiece requested → Some");
+        let piece_sum: i32 = pieces.iter().map(|p| p.piece_total).sum();
+        let side_sum: i32 = r.side_terms.iter().map(|t| t.signed).sum();
+        assert_eq!(piece_sum + side_sum, r.total,
+            "Σ owner-signed piece_total + Σ side_terms.signed must equal total");
     }
 
     #[test]
-    fn evaluate_by_square_terminal_p1_wins() {
+    fn report_terminal_p1_wins() {
         let mut pos = Position::empty();
         pos.game_result = Some(GameResult::P1Wins);
-        let bs = evaluate_by_square(&pos);
-        assert_eq!(bs.total, MATE_SCORE);
-        assert!(bs.terminal);
-        // All per-square records must be zero - mirrors evaluate_breakdown's
-        // terminal short-circuit.
-        for s in bs.squares.iter() {
-            assert!(!s.occupied);
-            assert_eq!(s.piece_total, 0);
-        }
-    }
-
-    #[test]
-    fn evaluate_by_square_records_intermediates() {
-        // P1 Champion at e4 (sq 28) with P2 Champion at f4 (sq 29) attacking it.
-        // Assert intermediate values populated: attacker count, mobility raw.
-        let mut pos = Position::empty();
-        place(&mut pos, 28, Player::P1, 1,
-            MailboxEntry::default().with_hp(2)
-                .with_skill1(crate::game_logic::skills::Skill::Lance as u8));
-        place(&mut pos, 29, Player::P2, 1, MailboxEntry::default().with_hp(2));
-        pos.p1_money = 10;
-        pos.p2_money = 10;
-        let bs = evaluate_by_square(&pos);
-        // The P1 Champion at sq 28 sees P2 Champion at sq 29 as an attacker.
-        assert!(bs.squares[28].occupied);
-        assert!(bs.squares[28].is_p1);
-        assert!(bs.squares[28].n_attackers >= 1, "P2 Champion should threaten P1");
-        // Champion mobility_raw now counts REAL movement-space (ns-43 Term 3a):
-        // reachable empty neighbours. At e4 with only sq 29 occupied → 7 empties.
-        assert!(bs.squares[28].mobility_raw >= 1);
-        // Skill availability at p1_money=10: Lance cost 2, so availability=256 (max).
-        assert_eq!(bs.squares[28].skill1_avail_fp, SKILL_AVAIL_MAX);
+        let r = evaluate_report(&pos, BreakdownDetail::PerPiece);
+        assert_eq!(r.total, MATE_SCORE);
+        assert!(r.terminal);
+        assert!(r.terms.is_empty() && r.side_terms.is_empty());
+        assert!(r.pieces.is_none(), "terminal report carries no per-piece rows");
     }
 
     #[test]
     fn coverage_requires_dual_adjacency_to_defender_and_ring_square() {
-        // Regression: E6 coverage previously counted an empty ring square `s`
-        // as shielded if *any* own Guard sat adjacent to `s`, even when that
-        // Guard was NOT adjacent to the defender. Bodyguard only triggers when
-        // a friendly Guard is adjacent to BOTH the defender and the attacker's
-        // approach square, so a distant Guard cannot contribute to coverage.
-        //
-        // Coverage is now ALSO threat-gated: an empty ring square only counts
-        // when an enemy sits within r3 of the defender in that square's
-        // direction. Both cases below therefore place an enemy champion so the
-        // dual-adjacency assertion is exercised on a *threatened* ring.
+        // Regression: E6 coverage only counts an empty ring square as shielded
+        // when a friendly Guard is adjacent to BOTH the defender and the ring
+        // square, AND an enemy is within r3 in that direction (threat-gated).
+        // A distant Guard cannot contribute.
 
         // Case A: Guard at c3 (sq 18) is NOT adjacent to defender at e4 (sq 28)
-        // - chebyshev distance 2. Coverage MUST be 0. Enemy at e6 (sq 44) makes
-        // the north ring squares count, so a non-zero shielded would be a bug.
+        // - chebyshev distance 2. Coverage MUST be 0 even with an enemy at e6.
         let mut pos = Position::empty();
         place(&mut pos, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
         place(&mut pos, 18, Player::P1, 2, MailboxEntry::default().with_hp(2));
         place(&mut pos, 44, Player::P2, 2, MailboxEntry::default().with_hp(2));
-        let bs = evaluate_by_square(&pos);
-        assert_eq!(bs.squares[28].empty_ring_shielded, 0,
+        assert_eq!(term_pair(&pos, "coverage").0, 0,
             "guard at sq 18 is not adjacent to defender at sq 28; coverage must be 0");
 
-        // Case B: Guard at f4 (sq 29) IS adjacent to defender at e4 (sq 28).
-        // Enemy champion at e6 (sq 44) gates in the north-facing ring squares
-        // {d4, d5, e5, f5} (denom=4); of those, the guard at f4 is dual-adjacent
-        // to {d5, e5, f5}... wait - it shields the ring squares also adjacent to
-        // it: {d5, e5, f5} minus those not in the gate. Assert the gated counts.
+        // Case B: Guard at f4 (sq 29) IS adjacent to defender at e4 (sq 28), and
+        // enemy champion at e6 (sq 44) gates in the north-facing ring → coverage > 0.
         let mut pos2 = Position::empty();
         place(&mut pos2, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
         place(&mut pos2, 29, Player::P1, 2, MailboxEntry::default().with_hp(2));
         place(&mut pos2, 44, Player::P2, 2, MailboxEntry::default().with_hp(2));
-        let bs2 = evaluate_by_square(&pos2);
-        assert_eq!(bs2.squares[28].empty_ring_total, 4,
-            "enemy at e6 gates in 4 north-facing empty ring squares");
-        assert_eq!(bs2.squares[28].empty_ring_shielded, 2,
-            "guard at sq 29 is dual-adjacent to 2 of the 4 threatened ring squares");
+        assert!(term_pair(&pos2, "coverage").0 > 0,
+            "dual-adjacent guard on a threatened ring produces positive coverage");
+    }
+
+    // ============================================================
+    // SEE terms (ns-53): hanging_piece (per-piece, SEE-gated) and
+    // king_tempo (side-level, reuses is_king_threatened).
+    // ============================================================
+
+    #[test]
+    fn hanging_piece_zero_when_unattacked() {
+        // A lone P1 champion with no enemy in reach → not attacked → term absent.
+        let mut p = Position::empty();
+        place(&mut p, 28, Player::P1, 1, MailboxEntry::default().with_hp(2));
+        assert_eq!(term_pair(&p, "hanging_piece"), (0, 0),
+            "an unattacked piece is not hanging (and pays no SEE cost)");
+    }
+
+    #[test]
+    fn hanging_piece_penalises_a_losing_exchange() {
+        // P1 guard at d4 (27) attacked by an ADJACENT P2 champion at e4 (28).
+        // The guard is undefended, so an enemy capture nets material → the guard
+        // registers as hanging on P1's side, a P1-POV penalty. (Both pieces are
+        // mutually adjacent here, so the term may also see the champion as
+        // capturable; the assertion below only pins the guard-is-hanging signal.)
+        let mut p = Position::empty();
+        place(&mut p, 27, Player::P1, 2, MailboxEntry::default().with_hp(1));
+        place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        p.current_phase = Phase::Move;
+        p.actions_remaining = 2;
+        let (p1, _p2) = term_pair(&p, "hanging_piece");
+        assert!(p1 > 0, "P1's undefended attacked guard should register as hanging");
+        assert!(term_signed(&p, "hanging_piece") < 0,
+            "with only P1's guard truly losing the exchange, hanging is a net P1-POV penalty");
+    }
+
+    #[test]
+    fn king_tempo_penalises_threatened_king() {
+        // P1 king at e1 (4) with a P2 champion adjacent at d2 (11): in the Move
+        // phase the champion is one Move-Attack from capturing the king.
+        let mut p = Position::empty();
+        place(&mut p, 4, Player::P1, 0, MailboxEntry::default().with_hp(2));
+        place(&mut p, 11, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        place(&mut p, 60, Player::P2, 0, MailboxEntry::default().with_hp(2)); // well-formed P2 king
+        p.current_phase = Phase::Move;
+        p.actions_remaining = 2;
+        let (p1, p2) = term_pair(&p, "king_tempo");
+        assert_eq!(p1, EvalParams::DEFAULT.king_tempo_penalty, "P1 king is one tempo from capture");
+        assert_eq!(p2, 0, "P2 king is safe");
+        assert!(term_signed(&p, "king_tempo") < 0, "king_tempo is a P1-POV penalty here");
+    }
+
+    #[test]
+    fn king_tempo_zero_when_safe() {
+        // Kings far apart, no threat → term absent.
+        let mut p = Position::empty();
+        place(&mut p, 4,  Player::P1, 0, MailboxEntry::default().with_hp(2));
+        place(&mut p, 60, Player::P2, 0, MailboxEntry::default().with_hp(2));
+        p.current_phase = Phase::Move;
+        p.actions_remaining = 2;
+        assert_eq!(term_pair(&p, "king_tempo"), (0, 0), "no king is threatened");
     }
 
     // ============================================================
@@ -678,6 +810,28 @@ mod tests {
     // (more enemies than friendlies within radius) is penalised.
     // ============================================================
 
+    // ============================================================
+    // GuardIsolation term (E11, ns-43) - a guard locally outnumbered
+    // (more enemies than friendlies within radius) is penalised.
+    // ============================================================
+
+    /// Test helper: find an aggregate term's `(p1, p2)` in a report (searches
+    /// both per-piece-aggregate `terms` and `side_terms`); `(0,0)` if absent.
+    fn term_pair(pos: &Position, name: &str) -> (i32, i32) {
+        let r = evaluate_report(pos, BreakdownDetail::Aggregate);
+        r.terms.iter().chain(r.side_terms.iter())
+            .find(|t| t.name == name)
+            .map(|t| (t.p1, t.p2)).unwrap_or((0, 0))
+    }
+
+    /// Test helper: an aggregate term's signed contribution; `0` if absent.
+    fn term_signed(pos: &Position, name: &str) -> i32 {
+        let r = evaluate_report(pos, BreakdownDetail::Aggregate);
+        r.terms.iter().chain(r.side_terms.iter())
+            .find(|t| t.name == name)
+            .map(|t| t.signed).unwrap_or(0)
+    }
+
     #[test]
     fn guard_isolation_penalises_outnumbered_guard() {
         // P1 guard at d4 (sq 27) with TWO P2 champions within radius 2 and no
@@ -686,14 +840,12 @@ mod tests {
         place(&mut p, 27, Player::P1, 2, MailboxEntry::default().with_hp(2));
         place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2)); // adjacent enemy
         place(&mut p, 29, Player::P2, 1, MailboxEntry::default().with_hp(2)); // radius-2 enemy
-        let bd = evaluate_dyn(&p);
-        let iso = bd.terms.iter().find(|t| t.name == "guard_isolation")
-            .expect("guard_isolation term present");
-        assert_eq!(iso.p1, EvalParams::DEFAULT.guard_iso_per_step * 2,
+        let (p1, p2) = term_pair(&p, "guard_isolation");
+        assert_eq!(p1, EvalParams::DEFAULT.guard_iso_per_step * 2,
             "lone P1 guard outnumbered 2-0 → penalty magnitude 2xper_step");
-        assert_eq!(iso.p2, 0, "P2 champions are not outnumbered here");
-        // signed_total negates the penalty into the P1-POV total.
-        assert_eq!(iso.signed, -(EvalParams::DEFAULT.guard_iso_per_step * 2));
+        assert_eq!(p2, 0, "P2 champions are not outnumbered here");
+        // signed negates the penalty into the P1-POV total.
+        assert_eq!(term_signed(&p, "guard_isolation"), -(EvalParams::DEFAULT.guard_iso_per_step * 2));
     }
 
     #[test]
@@ -706,27 +858,21 @@ mod tests {
         place(&mut p, 26, Player::P1, 1, MailboxEntry::default().with_hp(2));
         place(&mut p, 25, Player::P1, 1, MailboxEntry::default().with_hp(2));
         place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2));
-        let bd = evaluate_dyn(&p);
-        let iso = bd.terms.iter().find(|t| t.name == "guard_isolation").unwrap();
-        // The guard at 27 sees enemies_near=1, friendlies_near=2 → 0.
-        // (The other P1 pieces are champions, not guards - they don't contribute.)
-        assert_eq!(iso.p1, 0, "supported guard not penalised");
+        // The guard at 27 sees enemies_near=1, friendlies_near=2 → 0. Term absent
+        // (both-side magnitude zero) ⇔ zero contribution.
+        assert_eq!(term_pair(&p, "guard_isolation").0, 0, "supported guard not penalised");
     }
 
     #[test]
     fn guard_isolation_ignores_champions_and_kings() {
         // A lone P1 CHAMPION surrounded by enemies must NOT be penalised by this
         // guard-only term (champion_threat/exposure handle champions). With no
-        // guards on the board the term is skipped entirely (is_active=false) -
-        // absent ⇔ zero contribution, which is exactly what we require.
+        // guards on the board the term is skipped entirely - absent ⇔ zero.
         let mut p = Position::empty();
         place(&mut p, 27, Player::P1, 1, MailboxEntry::default().with_hp(2));
         place(&mut p, 28, Player::P2, 1, MailboxEntry::default().with_hp(2));
         place(&mut p, 29, Player::P2, 1, MailboxEntry::default().with_hp(2));
-        let bd = evaluate_dyn(&p);
-        let iso_p1 = bd.terms.iter().find(|t| t.name == "guard_isolation")
-            .map(|t| t.p1).unwrap_or(0);
-        assert_eq!(iso_p1, 0, "champion is not a guard → no isolation penalty");
+        assert_eq!(term_pair(&p, "guard_isolation").0, 0, "champion is not a guard → no isolation penalty");
     }
 
     // ============================================================
@@ -735,9 +881,8 @@ mod tests {
     // ============================================================
 
     fn champ_threat_of(pos: &Position, is_p1: bool) -> i32 {
-        let bd = evaluate_dyn(pos);
-        let t = bd.terms.iter().find(|t| t.name == "champion_threat").unwrap();
-        if is_p1 { t.p1 } else { t.p2 }
+        let (p1, p2) = term_pair(pos, "champion_threat");
+        if is_p1 { p1 } else { p2 }
     }
 
     #[test]
@@ -798,11 +943,7 @@ mod tests {
     // ============================================================
 
     fn closing_of(pos: &Position) -> (i32, i32) {
-        let bd = evaluate_dyn(pos);
-        match bd.terms.iter().find(|t| t.name == "endgame_closing") {
-            Some(t) => (t.p1, t.p2),
-            None => (0, 0), // inactive (not End stage) → term absent
-        }
+        term_pair(pos, "endgame_closing")
     }
 
     #[test]
@@ -949,59 +1090,60 @@ mod tests {
         suite
     }
 
-    /// Golden-equality: `evaluate_breakdown` must return exactly these
-    /// per-field values on the fixed suite. Captured from the pre-ns-43 flat
-    /// evaluator; the term-registry refactor is behaviour-preserving iff this
-    /// still passes byte-for-byte. If a deliberate eval change lands later,
-    /// re-capture via the (restored) dump harness and update these literals in
-    /// the SAME commit - never silently.
-    ///
-    /// ns-43+ (threat-gated coverage): the `opening` golden's coverage dropped
-    /// 1800→0 per side - the starting ranks have no enemy within r3, so the
-    /// bodyguard "coverage" bonus is (correctly) no longer paid for guarding
-    /// empty directions. Symmetric, so the total (differential) is unchanged.
+    /// Golden totals: `evaluate()` must return exactly these P1-POV scalars on
+    /// the fixed suite. The per-term breakdown is no longer pinned field-by-field
+    /// (the fixed struct is gone); we pin the scalar total and the per-piece
+    /// report's reconstruction of it. If a deliberate eval change lands, re-capture
+    /// these totals in the SAME commit.
     #[test]
     fn golden_eval_unchanged() {
-        let expected: &[(&str, i32, EvalBreakdown)] = &[
-            ("empty", 0, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 0 }),
-            ("terminal_p1", 1000000, EvalBreakdown { material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 0, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 1000000 }),
-            ("opening", 30, EvalBreakdown { material_p1: 8600, material_p2: 8600, hp_p1: 3600, hp_p2: 3600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 264, mobility_p2: 264, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 0, total: 30 }),
-            ("champ_diff_skills_money", 2282, EvalBreakdown { material_p1: 1000, material_p2: 1000, hp_p1: 300, hp_p2: 150, armor_p1: 240, armor_p2: 0, skills_p1: 290, skills_p2: 33, money_p1: 75, money_p2: 46, mobility_p1: 28, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 100, exposure_p2: 100, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 3, offensive_range_p2: 0, total: 2282 }),
-            ("exposure_coverage", 1468, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 120, skills_p2: 120, money_p1: 50, money_p2: 50, mobility_p1: 112, mobility_p2: 28, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 199, coverage_p2: 0, tempo_p1: 0, tempo_p2: 15, offensive_range_p1: 1, offensive_range_p2: 1, total: 1468 }),
-            ("king_exposure_mobility", -3756, EvalBreakdown { material_p1: 0, material_p2: 1000, hp_p1: 300, hp_p2: 600, armor_p1: 0, armor_p2: 0, skills_p1: 0, skills_p2: 170, money_p1: 0, money_p2: 75, mobility_p1: 30, mobility_p2: 58, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 800, exposure_p2: 0, coverage_p1: 0, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 0, offensive_range_p2: 2, total: -3756 }),
-            ("guard_mob_offensive_range", 3078, EvalBreakdown { material_p1: 1600, material_p2: 1000, hp_p1: 600, hp_p2: 300, armor_p1: 0, armor_p2: 0, skills_p1: 220, skills_p2: 120, money_p1: 112, money_p2: 75, mobility_p1: 104, mobility_p2: 24, threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0, exposure_p1: 0, exposure_p2: 300, coverage_p1: 150, coverage_p2: 0, tempo_p1: 30, tempo_p2: 0, offensive_range_p1: 4, offensive_range_p2: 1, total: 3078 }),
+        // Scalar P1-POV totals for the labelled suite. The per-term breakdown is
+        // no longer pinned field-by-field (the fixed EvalBreakdown struct is
+        // gone); instead we pin the scalar total AND assert the per-piece report
+        // reconstructs it. If a deliberate eval change lands, re-capture these
+        // totals in the SAME commit.
+        // Scalar P1-POV totals (recaptured ns-53 when the SEE terms — hanging_piece
+        // + king_tempo — went live in the default set; the earlier values were the
+        // pre-SEE baseline).
+        let expected: &[(&str, i32)] = &[
+            ("empty", 0),
+            ("terminal_p1", 1_000_000),
+            ("opening", 30),
+            ("champ_diff_skills_money", 2900),
+            ("exposure_coverage", 1558),
+            ("king_exposure_mobility", -4356),
+            ("guard_mob_offensive_range", 3168),
         ];
 
         let suite = golden_suite();
         assert_eq!(suite.len(), expected.len(), "suite/expected length mismatch");
-        for ((label, pos), (elabel, etotal, ebd)) in suite.iter().zip(expected.iter()) {
+        for ((label, pos), (elabel, etotal)) in suite.iter().zip(expected.iter()) {
             assert_eq!(label, elabel, "suite ordering mismatch");
-            let got = evaluate_breakdown(pos);
-            assert_eq!(&got, ebd, "EvalBreakdown mismatch for '{label}'");
             assert_eq!(evaluate(pos), *etotal, "evaluate() total mismatch for '{label}'");
-            // Per-square view must agree on the total (existing invariant, re-checked here).
-            assert_eq!(evaluate_by_square(pos).total, *etotal,
-                "evaluate_by_square total mismatch for '{label}'");
+            let r = evaluate_report(pos, BreakdownDetail::Aggregate);
+            assert_eq!(r.total, *etotal, "report total mismatch for '{label}'");
+            // Per-piece report must reconstruct the total (skip terminals - no pieces).
+            if !r.terminal {
+                assert_report_reconstructs_total(pos);
+            }
         }
     }
 
     /// Determinism guard (HARD requirement): the same position must produce the
-    /// exact same score on every call - no rand/Date, no order-dependent float
-    /// accumulation, no HashMap-iteration in scoring. Evaluate each golden
-    /// position many times and assert byte-identical `evaluate` + full
-    /// `EvalBreakdown` every time. Cheap insurance against a future term
-    /// accidentally introducing nondeterminism.
+    /// exact same score + report on every call - no rand/Date, no order-dependent
+    /// float accumulation. Cheap insurance against a future term introducing
+    /// nondeterminism.
     #[test]
     fn eval_is_deterministic() {
         let suite = golden_suite();
         for (label, pos) in suite.iter() {
             let first_total = evaluate(pos);
-            let first_bd = evaluate_breakdown(pos);
+            let first_report = evaluate_report(pos, BreakdownDetail::PerPiece);
             for _ in 0..64 {
                 assert_eq!(evaluate(pos), first_total,
                     "evaluate() nondeterministic for '{label}'");
-                assert_eq!(evaluate_breakdown(pos), first_bd,
-                    "evaluate_breakdown() nondeterministic for '{label}'");
+                assert_eq!(evaluate_report(pos, BreakdownDetail::PerPiece), first_report,
+                    "evaluate_report() nondeterministic for '{label}'");
             }
         }
     }

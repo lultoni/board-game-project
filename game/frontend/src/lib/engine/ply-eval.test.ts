@@ -1,13 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { plyEvalOf, formatPlyEval } from "./ply-eval";
-import type { EvalBreakdown } from "./types";
-
-const bd = (): EvalBreakdown => ({
-  material_p1: 0, material_p2: 0, hp_p1: 0, hp_p2: 0, armor_p1: 0, armor_p2: 0,
-  skills_p1: 0, skills_p2: 0, money_p1: 0, money_p2: 0, mobility_p1: 0, mobility_p2: 0,
-  threat_p1: 0, threat_p2: 0, skill_act_p1: 0, skill_act_p2: 0,
-  offensive_range_p1: 0, offensive_range_p2: 0, total: 120,
-});
 
 describe("plyEvalOf", () => {
   it("returns null for a ply with no assessment", () => {
@@ -19,14 +11,13 @@ describe("plyEvalOf", () => {
 
   it("prefers `ai` (AI ply) over background_eval", () => {
     const e = plyEvalOf({
-      ai: { depth: 8, score_cp: 120, was_mate: false, post_move_breakdown: bd() },
+      ai: { depth: 8, score_cp: 120, was_mate: false },
       background_eval: { depth: 4, score_cp: 50, was_mate: false },
     });
     expect(e).not.toBeNull();
     expect(e!.source).toBe("ai");
     expect(e!.depth).toBe(8);
     expect(e!.scoreCp).toBe(120);
-    expect(e!.breakdown?.total).toBe(120);
   });
 
   it("falls back to background_eval for a human ply", () => {

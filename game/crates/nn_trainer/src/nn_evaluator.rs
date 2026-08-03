@@ -32,7 +32,7 @@ use crate::encoding::{encode_position, INPUT_DIM};
 use crate::model::Mlp;
 
 use burn::tensor::{Device, Tensor, TensorData};
-use core_engine::search::evaluator::{EvalBreakdown, Evaluator, MATE_SCORE};
+use core_engine::search::evaluator::{BreakdownDetail, EvalReport, Evaluator, MATE_SCORE};
 use core_engine::state::Position;
 use core_engine::state::position::GameResult;
 
@@ -191,17 +191,11 @@ impl Evaluator for NnEvaluator {
         nn_output_to_centipawns(self.forward_raw(pos), self.scale)
     }
 
-    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown {
-        // The NN doesn't decompose; fold everything into `material_p1` if
-        // positive or `material_p2` if negative so `total - (mat_p1 - mat_p2)
-        // - hp - …` stays zero. Callers that want true per-bucket data have
-        // to wire a `HeuristicEvaluator` instead.
-        let total = self.evaluate(pos);
-        let mut b = EvalBreakdown::default();
-        b.total = total;
-        if total >= 0 { b.material_p1 = total; }
-        else          { b.material_p2 = -total; }
-        b
+    fn evaluate_report(&self, pos: &Position, _detail: BreakdownDetail) -> EvalReport {
+        // The NN has no term structure; report the whole score as one synthetic
+        // "nn" term. Callers that want a true per-term breakdown must select a
+        // HeuristicEvaluator (or a preset) instead.
+        EvalReport::single("nn", self.evaluate(pos))
     }
 }
 
@@ -286,16 +280,13 @@ mod tests {
         let eval = fresh_evaluator();
         let pos = Position::setup_stack_m();
         let total = eval.evaluate(&pos);
-        let b = eval.evaluate_breakdown(&pos);
-        assert_eq!(b.total, total);
-        // Sign-correctness: total is folded into one of the material buckets.
-        if total >= 0 {
-            assert_eq!(b.material_p1 as i32, total);
-            assert_eq!(b.material_p2, 0);
-        } else {
-            assert_eq!(b.material_p2 as i32, -total);
-            assert_eq!(b.material_p1, 0);
-        }
+        let r = eval.evaluate_report(&pos, BreakdownDetail::Aggregate);
+        assert_eq!(r.total, total);
+        // The NN reports one synthetic term carrying the whole score.
+        assert_eq!(r.terms.len(), 1);
+        assert_eq!(r.terms[0].name, "nn");
+        assert_eq!(r.terms[0].signed, total);
+        assert!(r.pieces.is_none());
     }
 
     #[test]

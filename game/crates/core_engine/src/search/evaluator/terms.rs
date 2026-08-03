@@ -551,3 +551,64 @@ impl EvalTerm for EndgameClosing {
         endgame_closing_score(ctx.pos, ctx.params, ctx.stage, ctx.advantage, ctx.p1_bb, ctx.p2_bb)
     }
 }
+
+/// Hanging-piece SEE term (ns-53, per-piece penalty). The evaluator's other
+/// terms read the current moment statically; this one lets a genuinely bounded
+/// exchange calculation (SEE — alternating captures on ONE square, not a game
+/// tree) inform the static score, so a piece that is SEE-losing where it stands
+/// is recognised as effectively hanging.
+///
+/// GATING (the load-bearing part): SEE is invoked ONLY for a non-king piece
+/// that an enemy actually attacks *right now*, detected via the cheap physical
+/// attacker table (`ctx.atk`, already built). Quiet/unattacked pieces cost
+/// nothing here, and the full (skill-scatter) attacker table is built lazily
+/// only when the first attacked piece is found — so a position with no live
+/// threats never pays the SEE cost, matching where the search's own QS/SEE
+/// would engage.
+pub struct HangingPiece;
+impl EvalTerm for HangingPiece {
+    fn name(&self) -> &'static str { "hanging_piece" }
+    fn is_per_piece(&self) -> bool { true }
+    /// Penalty: positive magnitude, subtracts in the total.
+    fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
+    fn score_piece(&self, ctx: &EvalContext, pc: &PieceContext) -> i32 {
+        // King captures are the MATE branch / king_exposure / king_tempo, not this.
+        if pc.is_king { return 0; }
+        // Cheap gate: is this piece attacked by an enemy at all? Physical table
+        // is already built; skip the SEE rollout entirely if not.
+        let enemy = if pc.is_p1 { Player::P2 } else { Player::P1 };
+        if ctx.atk.any_attackers_of(enemy, pc.sq) == 0 { return 0; }
+
+        // Attacked → run the exchange from the enemy initiator's POV using the
+        // full attacker table (built lazily on first need). The enemy picks its
+        // least-valuable attacker; `see_capture` returns net material for the
+        // initiator (the enemy). A positive result means the enemy wins material
+        // by capturing here → our piece is (partly) hanging.
+        let table = ctx.atk_full();
+        let enemy_attackers = table.any_attackers_of(enemy, pc.sq);
+        if enemy_attackers == 0 { return 0; }
+        // Cheapest enemy attacker as the initiator (lowest square is a stable
+        // deterministic pick; see_capture internally orders by LVA anyway).
+        let src = enemy_attackers.trailing_zeros() as u8;
+        let gain = crate::search::see::see_capture(ctx.pos, table, src, pc.sq);
+        if gain <= 0 { return 0; }
+        (gain * ctx.params.hanging_penalty_pct) / 100
+    }
+}
+
+/// King-tempo SEE term (ns-53, side-level penalty). Flags the specific "king one
+/// loud action from capture" state that the attacker-count `king_exposure` curve
+/// under-weights. Reuses `is_king_threatened` — a cheap bitboard reachability
+/// scan, NOT an exchange rollout — so it is always affordable.
+pub struct KingTempo;
+impl EvalTerm for KingTempo {
+    fn name(&self) -> &'static str { "king_tempo" }
+    /// Penalty: positive magnitude, subtracts in the total.
+    fn signed_total(&self, p1: i32, p2: i32, _params: &super::params::EvalParams) -> i32 { -(p1 - p2) }
+    fn score_side(&self, ctx: &EvalContext) -> (i32, i32) {
+        let pen = ctx.params.king_tempo_penalty;
+        let p1 = if crate::search::quiescence::is_king_threatened(ctx.pos, Player::P1) { pen } else { 0 };
+        let p2 = if crate::search::quiescence::is_king_threatened(ctx.pos, Player::P2) { pen } else { 0 };
+        (p1, p2)
+    }
+}

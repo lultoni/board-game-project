@@ -6,8 +6,9 @@ import { listen } from "@tauri-apps/api/event";
 import type {
   DraftStateView,
   EngineClient,
-  EvalBreakdown,
-  EvalBreakdownBySquare,
+  EvalReport,
+  EvaluatorListing,
+  EvaluatorRef,
   FinalResultByte,
   GameConstantsWire,
   PositionView,
@@ -220,12 +221,18 @@ export class TauriClient implements EngineClient {
     return normaliseStepResult(dto);
   }
 
-  async heuristicEval(): Promise<EvalBreakdown> {
-    return await invoke<EvalBreakdown>("heuristic_eval", { handle: this.#requireHandle() });
+  async evalReport(perPiece: boolean, evaluator?: EvaluatorRef): Promise<EvalReport> {
+    return await invoke<EvalReport>("eval_report", {
+      handle: this.#requireHandle(),
+      perPiece,
+      source: evaluator?.source ?? null,
+      id: evaluator?.id ?? null,
+      runDir: null,
+    });
   }
 
-  async heuristicEvalBySquare(): Promise<EvalBreakdownBySquare> {
-    return await invoke<EvalBreakdownBySquare>("heuristic_eval_by_square", { handle: this.#requireHandle() });
+  async listEvaluators(runDir?: string | null): Promise<EvaluatorListing[]> {
+    return await invoke<EvaluatorListing[]>("list_evaluators", { runDir: runDir ?? null });
   }
 
   async requestAiMoveAtDepth(maxDepth: number): Promise<StepResult> {
@@ -270,8 +277,8 @@ export class TauriClient implements EngineClient {
 
   async startAivaiProducer(
     viewSnapshotJson: string,
-    p1: { source: "heuristic" | "run" | "blessed"; id?: string | null },
-    p2: { source: "heuristic" | "run" | "blessed"; id?: string | null },
+    p1: { source: "builtin" | "heuristic" | "run" | "blessed"; id?: string | null },
+    p2: { source: "builtin" | "heuristic" | "run" | "blessed"; id?: string | null },
   ): Promise<void> {
     await invoke<void>("start_aivai_producer", {
       viewSnapshotJson,
@@ -316,7 +323,7 @@ export class TauriClient implements EngineClient {
   }
 
   async setAiEvaluator(
-    source: "heuristic" | "run" | "blessed",
+    source: "builtin" | "heuristic" | "run" | "blessed",
     id?: string | null,
     runDir?: string | null,
   ): Promise<void> {

@@ -8,7 +8,7 @@
 // cannot overwrite P1's just-completed linger depth/score. The heuristic
 // eval fields are position-level (not per-search), so they stay shared.
 
-import type { EvalBreakdown, EvalBreakdownBySquare } from "../engine/types";
+import type { EvalReport } from "../engine/types";
 import type { PlyEval } from "../engine/ply-eval";
 
 export type Side = "p1" | "p2";
@@ -24,14 +24,17 @@ interface SideSearchState {
 interface AiSearchState {
   p1: SideSearchState;
   p2: SideSearchState;
-  heuristicEvalBreakdown: EvalBreakdown | null;
-  heuristicEvalBySquare: EvalBreakdownBySquare | null;
-  prevRoundBreakdown: EvalBreakdown | null;
+  /** Dynamic eval report of the current position (aggregate terms + side terms
+   *  + per-piece rows). One report drives the eval bar, the term panel, and the
+   *  per-square hover card. Null until the first refresh. */
+  evalReport: EvalReport | null;
+  /** The report as of the previous round, for the panel's delta column. */
+  prevRoundReport: EvalReport | null;
   lastRoundSeen: number | null;
   /** Engine's search-based assessment of the latest ply (B3). Refreshed from
    *  the `background-eval-ready` Tauri event after a human move: a shallow
-   *  time-bounded search score/depth, distinct from the depth-0
-   *  `heuristicEvalBreakdown` shown live. Null until the first event. */
+   *  time-bounded search score/depth, distinct from the depth-0 `evalReport`
+   *  shown live. Null until the first event. */
   backgroundEval: PlyEval | null;
 }
 
@@ -48,9 +51,8 @@ function emptySide(): SideSearchState {
 const state = $state<AiSearchState>({
   p1: emptySide(),
   p2: emptySide(),
-  heuristicEvalBreakdown: null,
-  heuristicEvalBySquare: null,
-  prevRoundBreakdown: null,
+  evalReport: null,
+  prevRoundReport: null,
   lastRoundSeen: null,
   backgroundEval: null,
 });
@@ -61,9 +63,8 @@ const lastDepthUpdateMs = { p1: 0, p2: 0 };
 export const aiSearch = {
   get p1() { return state.p1; },
   get p2() { return state.p2; },
-  get heuristicEvalBreakdown() { return state.heuristicEvalBreakdown; },
-  get heuristicEvalBySquare() { return state.heuristicEvalBySquare; },
-  get prevRoundBreakdown() { return state.prevRoundBreakdown; },
+  get evalReport() { return state.evalReport; },
+  get prevRoundReport() { return state.prevRoundReport; },
   get lastRoundSeen() { return state.lastRoundSeen; },
   get backgroundEval() { return state.backgroundEval; },
   /** True iff either side has an in-flight search. Kept for consumers
@@ -99,16 +100,12 @@ export function setFinalDepth(side: Side, depth: number): void {
   state[side].lastDepth = depth;
 }
 
-export function setHeuristic(breakdown: EvalBreakdown | null): void {
-  state.heuristicEvalBreakdown = breakdown;
+export function setEvalReport(report: EvalReport | null): void {
+  state.evalReport = report;
 }
 
-export function setHeuristicBySquare(bySquare: EvalBreakdownBySquare | null): void {
-  state.heuristicEvalBySquare = bySquare;
-}
-
-export function setPrevRoundBreakdown(breakdown: EvalBreakdown | null): void {
-  state.prevRoundBreakdown = breakdown;
+export function setPrevRoundReport(report: EvalReport | null): void {
+  state.prevRoundReport = report;
 }
 
 export function setLastRoundSeen(round: number | null): void {
@@ -123,9 +120,8 @@ export function setBackgroundEval(e: PlyEval | null): void {
 export function resetAiSearch(): void {
   state.p1 = emptySide();
   state.p2 = emptySide();
-  state.heuristicEvalBreakdown = null;
-  state.heuristicEvalBySquare = null;
-  state.prevRoundBreakdown = null;
+  state.evalReport = null;
+  state.prevRoundReport = null;
   state.lastRoundSeen = null;
   state.backgroundEval = null;
   lastDepthUpdateMs.p1 = 0;

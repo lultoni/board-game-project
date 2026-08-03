@@ -108,6 +108,21 @@ pub struct EvalParams {
     pub skill_avail_k:   i32,
     pub skill_avail_max: i32,
 
+    // Hanging-piece SEE term (ns-53). For a piece that is CURRENTLY attacked by
+    // an enemy (cheap physical-attacker gate), run the SEE exchange on its
+    // square; when the exchange is losing for the owner, penalise by
+    // `hanging_penalty_pct` % of the SEE-loss magnitude. Only attacked pieces
+    // pay the SEE cost — quiet pieces are skipped, so the hot path is unchanged
+    // for positions with no live threats (the same positions the search's own
+    // QS/SEE would skip).
+    pub hanging_penalty_pct: i32,
+
+    // King-tempo SEE term (ns-53). A flat penalty on a side whose king is one
+    // loud enemy action from being captured (reuses `is_king_threatened`, a
+    // cheap bitboard scan — no exchange rollout). Distinct from `king_exposure`
+    // (attacker-count curve): this is the specific "one tempo from death" flag.
+    pub king_tempo_penalty: i32,
+
     // Per-skill base value (E4), indexed by `Skill as u8` (0 = unequipped).
     pub skill_value: [i32; 16],
 }
@@ -173,6 +188,13 @@ impl EvalParams {
 
         skill_avail_k:   3,
         skill_avail_max: 256,
+
+        // SEE terms (ns-53). Hanging: penalise 60% of the exchange loss on an
+        // attacked, SEE-losing piece — enough to make the AI defend/retreat it
+        // without treating a soft-loss as certain material down. King-tempo: a
+        // firm flat penalty (a king one action from capture is a near-loss).
+        hanging_penalty_pct: 60,
+        king_tempo_penalty:  600,
 
         // costx40 + range_bonus{0→0,1→10,2→20,≥3→30} + cat_bonus{Strike→30,Move→20,Shield→15,Mystic→10}.
         skill_value: [

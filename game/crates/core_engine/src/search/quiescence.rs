@@ -105,7 +105,7 @@ pub(super) fn is_loud(a: Action, _pos: &Position) -> bool {
 /// - `pending_bodyguard` is set (mid-stack, parent frame will resolve).
 /// - `actions_remaining == 0` (opponent can only EndPhase, no loud actions).
 /// - Phase is Draft (no HP, no threats).
-pub(super) fn is_king_threatened(pos: &mut Position, side: Player) -> bool {
+pub(crate) fn is_king_threatened(pos: &Position, side: Player) -> bool {
     if pos.pending_bodyguard.is_some() { return false; }
     if pos.actions_remaining == 0 { return false; }
 

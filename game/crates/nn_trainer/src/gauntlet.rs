@@ -280,8 +280,9 @@ mod tests {
         fn evaluate(&self, _pos: &Position) -> i32 {
             self.0
         }
-        fn evaluate_breakdown(&self, _pos: &Position) -> core_engine::search::evaluator::EvalBreakdown {
-            core_engine::search::evaluator::EvalBreakdown::default()
+        fn evaluate_report(&self, _pos: &Position, _detail: core_engine::search::evaluator::BreakdownDetail)
+            -> core_engine::search::evaluator::EvalReport {
+            core_engine::search::evaluator::EvalReport::single("const", self.0)
         }
     }
 

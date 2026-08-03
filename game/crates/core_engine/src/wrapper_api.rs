@@ -199,10 +199,7 @@ pub fn step_ai_with_cb(
         .min(u32::MAX as u64) as u32;
 
     let applied = if let Some(a) = r.best {
-        // Part A (Change 5): attach the post-move heuristic breakdown so the
-        // Tauri live-play path records the same rich SearchMeta as `step_ai`.
-        let breakdown = m.post_move_breakdown(a);
-        let meta = SearchMeta::from_search_with_breakdown(r.depth, r.nodes, r.score, Some(breakdown));
+        let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
         // alpha-beta returning an illegal action would be a bug in search,
         // not a runtime error - propagate as None so the UI can surface it.
         match m.try_apply_timed(a, thought_ms, applied_at_unix_ms, Some(meta)) {
@@ -396,12 +393,25 @@ pub fn current_draft_state(m: &Match) -> DraftState {
     draft_state(m.position())
 }
 
-pub fn heuristic_eval(m: &Match) -> crate::search::evaluator::EvalBreakdown {
-    crate::search::evaluator::evaluate_breakdown(m.position())
+/// Dynamic eval breakdown of the current position, using the Match's installed
+/// evaluator. `per_piece` selects the per-piece decomposition (for the square
+/// hover card) vs aggregate-only (for the eval bar / term list).
+pub fn eval_report(m: &Match, per_piece: bool) -> crate::search::evaluator::EvalReport {
+    eval_report_with(m, m.evaluator(), per_piece)
 }
 
-pub fn heuristic_eval_by_square(m: &Match) -> crate::search::evaluator::EvalBreakdownBySquare {
-    crate::search::evaluator::evaluate_by_square(m.position())
+/// Like [`eval_report`] but scores with a caller-supplied evaluator instead of
+/// the Match's installed one — the UI-eval path uses this to render the panel
+/// under a user-chosen evaluator (`settings.uiEvaluator`) without disturbing the
+/// AI seats' evaluator on the Match.
+pub fn eval_report_with(
+    m: &Match,
+    evaluator: &(dyn crate::search::evaluator::Evaluator + Send),
+    per_piece: bool,
+) -> crate::search::evaluator::EvalReport {
+    use crate::search::evaluator::BreakdownDetail;
+    let detail = if per_piece { BreakdownDetail::PerPiece } else { BreakdownDetail::Aggregate };
+    evaluator.evaluate_report(m.position(), detail)
 }
 
 /// Whether the AI (whose seat is `ai_seat`: 0 = P1, 1 = P2) should accept
@@ -421,7 +431,7 @@ pub fn evaluate_draw_offer(m: &mut Match, ai_seat: u8) -> bool {
     // eval only if the search can't run (e.g. game already over / draft).
     let stm_score = match m.request_ai_move_forced() {
         Ok(r) => r.score,
-        Err(_) => crate::search::evaluator::evaluate_breakdown(m.position()).total,
+        Err(_) => crate::search::evaluator::evaluate(m.position()),
     };
     // Rotate score to P1-relative (positive = P1 advantage), then to AI-relative.
     let p1_relative = if m.position().to_move == crate::state::position::Player::P1 {
@@ -511,7 +521,7 @@ mod tests {
         // pinning exact magnitudes (which would be brittle to eval tuning).
         let mut m = fresh_match();
         let searched_stm = m.request_ai_move_forced().unwrap().score;
-        let static_p1 = crate::search::evaluator::evaluate_breakdown(m.position()).total;
+        let static_p1 = crate::search::evaluator::evaluate(m.position());
         assert_ne!(
             searched_stm, static_p1,
             "draw decision must use the searched eval, which differs from the static one",

@@ -8,10 +8,11 @@
 
 use crate::state::Position;
 use crate::state::position::Phase;
-use crate::search::see::{build_attackers_table_phys, AttackersTable};
+use crate::search::see::{build_attackers_table, build_attackers_table_phys, AttackersTable};
 use crate::game_logic::skills::{Skill, SkillCategory, skill_cost, skill_default_range, skill_category};
 use crate::game_logic::make_unmake::skill_phase_budget;
 use super::params::EvalParams;
+use std::cell::OnceCell;
 
 /// Coarse game stage (ns-43 stage infra). Derived from total material on the
 /// board with a round-number bias (rounds drive income + skill budget in this
@@ -41,8 +42,14 @@ pub struct EvalContext<'a> {
     pub p1_avail: [i32; 16],
     pub p2_avail: [i32; 16],
 
-    /// Attacker table shared by exposure.
+    /// Attacker table shared by exposure (physical scatter only).
     pub atk: AttackersTable,
+
+    /// Full attacker table (physical + skill scatter), built lazily the first
+    /// time a SEE term needs it — see [`EvalContext::atk_full`]. Most quiet leaf
+    /// positions never touch this, so the skill-ray tracing cost is only paid
+    /// when a piece is actually attacked / a king is threatened.
+    atk_full: OnceCell<AttackersTable>,
 
     pub phase:            Phase,
     /// Skill actions per round for the current round (0 during Draft).
@@ -91,13 +98,22 @@ impl<'a> EvalContext<'a> {
 
         EvalContext {
             pos, params, all_occ, p1_bb, p2_bb, p1_guards, p2_guards,
-            p1_avail, p2_avail, atk, phase,
+            p1_avail, p2_avail, atk, atk_full: OnceCell::new(), phase,
             actions_per_round: actions,
             p1_money_cap: p1_max_cost as u16 * actions as u16,
             p2_money_cap: p2_max_cost as u16 * actions as u16,
             advantage,
             stage,
         }
+    }
+
+    /// The full attacker table (physical + skill scatter), built on first use.
+    /// `see_capture` needs the skill scatter; the SEE terms call this only for
+    /// pieces that are already known to be attacked (via the cheap physical
+    /// `atk` table), so quiet positions never trigger the build.
+    #[inline]
+    pub fn atk_full(&self) -> &AttackersTable {
+        self.atk_full.get_or_init(|| build_attackers_table(self.pos, self.all_occ))
     }
 }
 

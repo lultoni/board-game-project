@@ -24,7 +24,7 @@
 use core_engine::game_logic::action::Action;
 use core_engine::search::alpha_beta::{find_best_with_evaluator, SearchResult};
 use core_engine::search::counters::{self, Snapshot as CounterSnapshot, ATTACKER_LIST_HIST_BUCKETS};
-use core_engine::search::evaluator::{evaluate_breakdown, Evaluator, HeuristicEvaluator};
+use core_engine::search::evaluator::{evaluate_report, BreakdownDetail, Evaluator, HeuristicEvaluator};
 use core_engine::search::transposition::{Stats as TtStats, TranspositionTable};
 use core_engine::state::Position;
 use core_engine::state::fen::from_fen;
@@ -741,14 +741,14 @@ fn run_eval_only(entries: &[CorpusEntry], iterations: u64, out_path: Option<&Pat
         // Warm-up: a small handful of calls to prime caches before timing.
         let mut checksum: i64 = 0;
         for _ in 0..64 {
-            let b = evaluate_breakdown(&pos);
-            checksum = checksum.wrapping_add(b.total as i64);
+            let r = evaluate_report(&pos, BreakdownDetail::Aggregate);
+            checksum = checksum.wrapping_add(r.total as i64);
         }
 
         let t0 = Instant::now();
         for _ in 0..iterations {
-            let b = evaluate_breakdown(&pos);
-            checksum = checksum.wrapping_add(b.total as i64);
+            let r = evaluate_report(&pos, BreakdownDetail::Aggregate);
+            checksum = checksum.wrapping_add(r.total as i64);
         }
         let elapsed_ns = t0.elapsed().as_nanos();
         let ns_per_eval = if iterations > 0 {

@@ -47,7 +47,7 @@ export function requestBestMoveAtDepth(
 // === (b) Continuous AIvAI producer ==========================================
 
 export interface AivaiEvaluatorChoice {
-  source: "heuristic" | "run" | "blessed";
+  source: "builtin" | "heuristic" | "run" | "blessed";
   id?: string | null;
 }
 

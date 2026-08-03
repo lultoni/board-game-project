@@ -63,9 +63,13 @@ export interface Settings {
    *  per-side, colour-coded). Intended for analysis / tuning. Independent
    *  of `showHeuristicEval` - both may be on. */
   showEvalPanel: boolean;
+  /** Which evaluator drives the UI-eval displays (eval bar, breakdown panel,
+   *  replay, inspector search) — independent of the AI seats' evaluators.
+   *  Defaults to the builtin heuristic. */
+  uiEvaluator: EvaluatorChoice;
 }
 
-export type EvaluatorSource = "heuristic" | "run" | "blessed";
+export type EvaluatorSource = "builtin" | "heuristic" | "run" | "blessed";
 
 export interface EvaluatorChoice {
   source: EvaluatorSource;
@@ -97,9 +101,10 @@ const DEFAULTS: Settings = {
   showThinkProgressBar: false,
   showHeuristicEval: false,
   showEvalPanel: false,
+  uiEvaluator: { source: "builtin", id: "heuristic" },
 };
 
-const EVAL_SOURCES: ReadonlyArray<EvaluatorSource> = ["heuristic", "run", "blessed"];
+const EVAL_SOURCES: ReadonlyArray<EvaluatorSource> = ["builtin", "heuristic", "run", "blessed"];
 
 const LOCALES: ReadonlyArray<Settings["locale"]> = ["en", "de"];
 
@@ -143,7 +148,8 @@ function pickEvaluator(v: unknown, fallback: EvaluatorChoice): EvaluatorChoice {
       ? (o.source as EvaluatorSource)
       : fallback.source;
   const id = typeof o.id === "string" && o.id.length > 0 ? o.id : null;
-  // Heuristic ignores id; non-heuristic without an id falls back.
+  // Legacy "heuristic" is id-less (maps to the builtin heuristic at the wire).
+  // "builtin" needs an id (the registry entry); "run"/"blessed" need a rater id.
   if (source === "heuristic") return { source: "heuristic", id: null };
   if (id === null) return { ...fallback };
   return { source, id };
@@ -180,6 +186,7 @@ function validate(raw: unknown): Settings {
     showThinkProgressBar: pickBool(r.showThinkProgressBar, DEFAULTS.showThinkProgressBar),
     showHeuristicEval: pickBool(r.showHeuristicEval, DEFAULTS.showHeuristicEval),
     showEvalPanel: pickBool(r.showEvalPanel, DEFAULTS.showEvalPanel),
+    uiEvaluator: pickEvaluator(r.uiEvaluator, DEFAULTS.uiEvaluator),
   };
 }
 
@@ -272,6 +279,7 @@ export function initSettingsPersistence() {
     void settings.showThinkProgressBar;
     void settings.showHeuristicEval;
     void settings.showEvalPanel;
+    void settings.uiEvaluator;
     // Mirror the persisted locale into the i18n layer so switching the
     // language dropdown re-renders all t() text live.
     setLocale(settings.locale);

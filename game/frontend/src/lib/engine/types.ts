@@ -107,81 +107,60 @@ export interface GameConstantsWire {
   skillCount: number;
 }
 
-/** Per-component decomposition of the static heuristic eval. Mirrors the
- *  Rust `search::evaluator::EvalBreakdown` struct 1:1 (snake_case field
- *  names as they come off the Tauri IPC wire). `total` = sum(*_p1) - sum(*_p2)
- *  in the non-terminal case. */
-export interface EvalBreakdown {
-  material_p1:  number;
-  material_p2:  number;
-  hp_p1:        number;
-  hp_p2:        number;
-  armor_p1:     number;
-  armor_p2:     number;
-  skills_p1:    number;
-  skills_p2:    number;
-  money_p1:     number;
-  money_p2:     number;
-  mobility_p1:  number;
-  mobility_p2:  number;
-  threat_p1:    number;
-  threat_p2:    number;
-  skill_act_p1: number;
-  skill_act_p2: number;
-  /** E9 - max castable offensive range flag (raw, e.g. 2..=4). Weighted
-   *  into `total` by OFFENSIVE_RANGE_WEIGHT (500) on the Rust side. */
-  offensive_range_p1: number;
-  offensive_range_p2: number;
-  total:        number;
+/** One evaluation term's contribution. Mirrors Rust `TermEntry`. `p1`/`p2`
+ *  are raw per-side magnitudes; `signed` is the P1-POV contribution to `total`
+ *  with sign/weight already applied (a penalty reads negative). In a per-piece
+ *  row, `signed` is owner-signed (P1 positive, P2 negative). */
+export interface TermEntry {
+  name: string;
+  p1: number;
+  p2: number;
+  signed: number;
 }
 
-/** Per-square eval breakdown - one entry per board square (0..63). Empty
- *  squares carry `occupied: false` with all terms zero. Piece kinds:
- *  0=empty, 1=guard, 2=champion, 3=king. Skill availabilities are
- *  fixed-point on `SKILL_AVAIL_MAX = 256` (percent = fp * 100 / 256). */
-export interface SquareBreakdown {
+/** One piece's per-term decomposition on one square. Mirrors Rust
+ *  `PieceTermBreakdown`. `piece_kind`: 1=guard, 2=champion, 3=king. */
+export interface PieceTermBreakdown {
   sq: number;
-  occupied: boolean;
   is_p1: boolean;
   piece_kind: number;
   hp: number;
   armor: number;
   skill1_id: number;
   skill2_id: number;
-
-  material: number;
-  hp_term: number;
-  armor_term: number;
-  skills_term: number;
-  mobility_term: number;
-  exposure_term: number;
-  coverage_term: number;
+  terms: TermEntry[];
   piece_total: number;
-
-  skill1_avail_fp: number;
-  skill2_avail_fp: number;
-  n_attackers: number;
-  n_adj_guards: number;
-  mobility_raw: number;
-  empty_ring_total: number;
-  empty_ring_shielded: number;
 }
 
-/** Full per-square breakdown plus side-level context (money, tempo,
- *  reconciled total). Sum of all squares' owner-signed totals + side
- *  money/tempo terms equals `total` for non-terminal positions. */
-export interface EvalBreakdownBySquare {
-  squares: SquareBreakdown[];
-  p1_money: number;
-  p2_money: number;
-  p1_money_cap: number;
-  p2_money_cap: number;
-  p1_money_term: number;
-  p2_money_term: number;
-  p1_tempo_term: number;
-  p2_tempo_term: number;
+/** The evaluator's dynamic breakdown. Mirrors Rust `EvalReport`. `terms` are the
+ *  aggregate per-piece terms (summed over the board); `side_terms` are the
+ *  side-level ones (money/tempo/…); `pieces` is present only when a per-piece
+ *  breakdown was requested (`per_piece: true`). Active terms only — a term with
+ *  zero magnitude on both sides is omitted. For non-terminal positions,
+ *  `Σ pieces[*].piece_total + Σ side_terms[*].signed === total`. */
+export interface EvalReport {
+  terms: TermEntry[];
+  side_terms: TermEntry[];
+  pieces: PieceTermBreakdown[] | null;
   total: number;
   terminal: boolean;
+}
+
+/** Which evaluator to select: `source` is `"builtin"` (an in-crate evaluator),
+ *  `"run"` / `"blessed"` (a trained NN rater), or legacy `"heuristic"`. `id`
+ *  names the entry (`"heuristic"` for the default builtin; a rater id otherwise). */
+export interface EvaluatorRef {
+  source: "builtin" | "heuristic" | "run" | "blessed";
+  id: string | null;
+}
+
+/** One selectable evaluator returned by `listEvaluators`. Mirrors Rust
+ *  `EvaluatorListing`. */
+export interface EvaluatorListing {
+  source: "builtin" | "run" | "blessed";
+  id: string;
+  label: string;
+  isChampion: boolean;
 }
 
 export interface EngineClient {
@@ -219,13 +198,16 @@ export interface EngineClient {
    *  snapshot rebuild) where think-time is meaningless. */
   tryApply(action: number, turnStartedMs?: number, backgroundEval?: boolean): Promise<StepResult>;
   stepAi(onDepth?: (depth: number, score: number) => void): Promise<StepResult>;
-  /** Compute the static heuristic evaluation of the current board position.
-   *  Returns the full per-component breakdown; `total` is P1-POV
-   *  (positive = P1 ahead). */
-  heuristicEval(): Promise<EvalBreakdown>;
-  /** Per-square variant: returns the full 64-square breakdown plus side-
-   *  level money/tempo terms. Used by the eval-diagnostic hover overlay. */
-  heuristicEvalBySquare(): Promise<EvalBreakdownBySquare>;
+  /** Dynamic eval breakdown of the current position. `total` is P1-POV
+   *  (positive = P1 ahead). With `perPiece: true` the report also carries the
+   *  per-square decomposition (`pieces`) for the hover card; otherwise `pieces`
+   *  is null. `evaluator` optionally overrides which evaluator scores the panel
+   *  (the UI-eval pick); omitted / builtin-heuristic uses the Match's installed
+   *  evaluator. */
+  evalReport(perPiece: boolean, evaluator?: EvaluatorRef): Promise<EvalReport>;
+  /** List every selectable evaluator: the builtin in-crate evaluators followed
+   *  by trained NN raters (run + blessed dirs). Feeds all evaluator dropdowns. */
+  listEvaluators(runDir?: string | null): Promise<EvaluatorListing[]>;
   /** Inspector variant: runs the search regardless of seat kind so HvH
    *  positions can also ask "what would the AI play here?". The seat-
    *  restricted variant was removed as dead surface - match uses `stepAi`. */
@@ -258,8 +240,8 @@ export interface EngineClient {
    *  view engine at display cadence. No-op on non-Tauri clients. */
   startAivaiProducer(
     viewSnapshotJson: string,
-    p1: { source: "heuristic" | "run" | "blessed"; id?: string | null },
-    p2: { source: "heuristic" | "run" | "blessed"; id?: string | null },
+    p1: { source: "builtin" | "heuristic" | "run" | "blessed"; id?: string | null },
+    p2: { source: "builtin" | "heuristic" | "run" | "blessed"; id?: string | null },
   ): Promise<void>;
   /** Non-joining read of the producer's currently-published MatchLog JSON
    *  (raw actions + ply count). `null` when no producer is running. */
@@ -287,7 +269,7 @@ export interface EngineClient {
    *  respective rater directory. WASM-side: no-op (NN inference isn't
    *  bundled into the web build). */
   setAiEvaluator(
-    source: "heuristic" | "run" | "blessed",
+    source: "builtin" | "heuristic" | "run" | "blessed",
     id?: string | null,
     runDir?: string | null,
   ): Promise<void>;

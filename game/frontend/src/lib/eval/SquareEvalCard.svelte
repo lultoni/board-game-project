@@ -1,19 +1,15 @@
 <script lang="ts">
-  // Diagnostic hover card for a single board square. Shows the piece's
-  // eval components (material, hp, armor, skills, mobility, exposure,
-  // coverage) plus the raw intermediates that feed them (attackers,
-  // adjacent guards, mobility raw count, empty-ring shielded/total,
-  // skill availabilities). A side-context footer surfaces per-side
-  // money (with cap) and tempo terms plus the game total so any square's
-  // popup carries the full "why is the AI reading this position this way"
-  // picture.
+  // Diagnostic hover card for a single board square. Shows the piece's per-term
+  // eval contributions (dynamic — whatever terms the active evaluator declares)
+  // plus its owner-signed piece total, with a side-terms footer. Driven by the
+  // term-based EvalReport: `pieces[]` carries one row per occupied square.
 
-  import type { EvalBreakdownBySquare, SquareBreakdown } from "$lib/engine";
+  import type { EvalReport, PieceTermBreakdown } from "$lib/engine";
   import { SKILLS } from "$lib/engine";
 
   interface Props {
-    /** The full by-square breakdown. Card slices out `data.squares[sq]`. */
-    data: EvalBreakdownBySquare | null;
+    /** The full eval report (must have been requested with per-piece detail). */
+    data: EvalReport | null;
     /** Square under the cursor (0..63). `null` hides the card. */
     sq: number | null;
     /** Viewport-space cursor position; card sits near the cursor with
@@ -24,10 +20,23 @@
 
   const { data, sq, clientX, clientY }: Props = $props();
 
-  const SKILL_AVAIL_MAX = 256;
+  // Display labels for known term machine-names; unknown → prettified.
+  const TERM_LABELS: Record<string, string> = {
+    material: "Material", hp: "HP", armor: "Armor", skills: "Skills",
+    mobility: "Reach", exposure: "Exposure", coverage: "Coverage",
+    guard_isolation: "Guard iso", champion_threat: "Threat",
+    money: "Money", tempo: "Tempo", offensive_range: "Off reach",
+    wasted_modifier: "Wasted", endgame_closing: "Endgame",
+    hanging_piece: "Hanging", king_tempo: "King tempo", nn: "Net",
+  };
+  function labelFor(name: string): string {
+    return TERM_LABELS[name] ?? name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
 
-  const entry = $derived<SquareBreakdown | null>(
-    data !== null && sq !== null ? data.squares[sq] : null,
+  const entry = $derived<PieceTermBreakdown | null>(
+    data !== null && data.pieces !== null && sq !== null
+      ? (data.pieces.find((p) => p.sq === sq) ?? null)
+      : null,
   );
 
   function fmtSigned(n: number): string {
@@ -56,32 +65,29 @@
 
   function skillName(id: number): string {
     if (id === 0) return "-";
-    const s = SKILKlookup(id);
+    const s = SKILLS[id];
     return s ? s.key : `#${id}`;
   }
 
-  // Alias for lookup (kept explicit so build tools don't tree-shake it).
-  function SKILKlookup(id: number) {
-    return SKILLS[id];
-  }
-
-  function availPct(fp: number): number {
-    return Math.round((fp * 100) / SKILL_AVAIL_MAX);
-  }
-
-  function mobilityLabel(kind: number): string {
-    switch (kind) {
-      case 1: return "reachable (BFS-2)";
-      case 2: return "reachable squares";
-      case 3: return "adjacent escape squares";
-      default: return "raw";
+  // Index of the largest-magnitude term row (for highlight).
+  const largestIdx = $derived.by<number>(() => {
+    if (entry === null || entry.terms.length === 0) return -1;
+    let best = 0;
+    let bestMag = Math.abs(entry.terms[0].signed);
+    for (let i = 1; i < entry.terms.length; i++) {
+      const m = Math.abs(entry.terms[i].signed);
+      if (m > bestMag) { bestMag = m; best = i; }
     }
-  }
+    return bestMag > 0 ? best : -1;
+  });
+
+  // Side-level terms for the footer.
+  const sideTerms = $derived(data?.side_terms ?? []);
 
   // Position the card near the cursor but clamp so it stays fully on-screen.
   const OFFSET = 16;
   const CARD_W = 280;
-  const CARD_H_EST = 460;
+  const CARD_H_EST = 400;
 
   const style = $derived.by(() => {
     if (typeof window === "undefined") return "";
@@ -95,46 +101,11 @@
     if (top  < 4) top  = 4;
     return `left: ${left}px; top: ${top}px;`;
   });
-
-  interface Row {
-    label: string;
-    value: number;
-    signed: boolean;
-    isMagnitude?: boolean; // exposure is subtracted from the piece total; render with a "-" prefix visually
-  }
-
-  const componentRows = $derived<Row[]>(
-    entry === null || !entry.occupied ? [] : [
-      { label: "Material", value: entry.material,      signed: true },
-      { label: "HP",       value: entry.hp_term,       signed: true },
-      { label: "Armor",    value: entry.armor_term,    signed: true },
-      { label: "Skills",   value: entry.skills_term,   signed: true },
-      { label: "Reach",    value: entry.mobility_term, signed: true },
-      { label: "Exposure", value: entry.exposure_term, signed: true, isMagnitude: true },
-      { label: "Coverage", value: entry.coverage_term, signed: true },
-    ]
-  );
-
-  const largestIdx = $derived.by<number>(() => {
-    const rows = componentRows;
-    if (rows.length === 0) return -1;
-    let best = 0;
-    let bestMag = Math.abs(rows[0].value);
-    for (let i = 1; i < rows.length; i++) {
-      const m = Math.abs(rows[i].value);
-      if (m > bestMag) { bestMag = m; best = i; }
-    }
-    return bestMag > 0 ? best : -1;
-  });
-
-  const unshielded = $derived(
-    entry === null ? 0 : Math.max(0, entry.n_attackers - entry.n_adj_guards),
-  );
 </script>
 
-{#if data !== null && entry !== null}
+{#if data !== null && sq !== null}
   <div class="sq-card" style={style} role="tooltip">
-    {#if entry.occupied}
+    {#if entry !== null}
       {@const pk = pieceKindName(entry.piece_kind)}
       {@const owner = ownerLabel(entry.is_p1)}
       <header class:p1={entry.is_p1} class:p2={!entry.is_p1}>
@@ -144,15 +115,12 @@
 
       {#if entry.piece_kind === 2 || entry.piece_kind === 3}
         <ul class="skills">
-          {#each [{ id: entry.skill1_id, fp: entry.skill1_avail_fp }, { id: entry.skill2_id, fp: entry.skill2_avail_fp }] as slot}
-            {@const pct = availPct(slot.fp)}
-            {@const dim = pct === 0}
-            {@const name = skillName(slot.id)}
-            {@const cost = SKILKlookup(slot.id)?.cost ?? 0}
+          {#each [entry.skill1_id, entry.skill2_id] as id}
+            {@const dim = id === 0}
+            {@const cost = SKILLS[id]?.cost ?? 0}
             <li class:dim>
-              <span class="skill-name">{name}</span>
+              <span class="skill-name">{skillName(id)}</span>
               <span class="skill-cost">{cost}g</span>
-              <span class="skill-avail">{pct}%</span>
             </li>
           {/each}
         </ul>
@@ -160,18 +128,14 @@
 
       <table class="components">
         <thead>
-          <tr><th>Component</th><th class="num">Value</th></tr>
+          <tr><th>Term</th><th class="num">Value</th></tr>
         </thead>
         <tbody>
-          {#each componentRows as row, i}
+          {#each entry.terms as row, i (row.name)}
             <tr class:largest={i === largestIdx}>
-              <td>{row.label}</td>
-              <td class="num" class:pos={row.value > 0} class:neg={row.value < 0}>
-                {#if row.isMagnitude && row.value > 0}
-                  -{row.value}
-                {:else}
-                  {fmtSigned(row.value)}
-                {/if}
+              <td>{labelFor(row.name)}</td>
+              <td class="num" class:pos={row.signed > 0} class:neg={row.signed < 0}>
+                {fmtSigned(row.signed)}
               </td>
             </tr>
           {/each}
@@ -181,46 +145,19 @@
           </tr>
         </tbody>
       </table>
-
-      <dl class="intermediates">
-        <dt>Reach raw</dt>
-        <dd>{entry.mobility_raw} <span class="mut">({mobilityLabel(entry.piece_kind)})</span></dd>
-
-        <dt>Exposure</dt>
-        <dd>
-          {entry.n_attackers} attacker{entry.n_attackers === 1 ? "" : "s"},
-          {entry.n_adj_guards} adj guard{entry.n_adj_guards === 1 ? "" : "s"}
-          → <b>{unshielded}</b> unshielded
-        </dd>
-
-        {#if entry.piece_kind === 3}
-          <dt>Coverage</dt>
-          <dd>
-            {#if entry.empty_ring_total === 0}
-              <span class="mut">fully surrounded</span>
-            {:else}
-              {entry.empty_ring_shielded}/{entry.empty_ring_total} shielded
-            {/if}
-          </dd>
-        {/if}
-      </dl>
     {:else}
       <header class="empty-header">
-        <h3>Empty @ {fileRankLabel(entry.sq)}</h3>
+        <h3>Empty @ {fileRankLabel(sq)}</h3>
       </header>
     {/if}
 
     <footer class="side-ctx">
-      <div class="side-row">
-        <span class="side-tag p1">P1</span>
-        <span>money {data.p1_money}/{data.p1_money_cap} → {fmtSigned(data.p1_money_term)}</span>
-        <span>tempo {fmtSigned(data.p1_tempo_term)}</span>
-      </div>
-      <div class="side-row">
-        <span class="side-tag p2">P2</span>
-        <span>money {data.p2_money}/{data.p2_money_cap} → {fmtSigned(data.p2_money_term)}</span>
-        <span>tempo {fmtSigned(data.p2_tempo_term)}</span>
-      </div>
+      {#each sideTerms as t (t.name)}
+        <div class="side-row">
+          <span>{labelFor(t.name)}</span>
+          <span class="num" class:pos={t.signed > 0} class:neg={t.signed < 0}>{fmtSigned(t.signed)}</span>
+        </div>
+      {/each}
       <div class="total-row-footer">
         Total <b class:pos={data.total > 0} class:neg={data.total < 0}>{fmtSigned(data.total)}</b>
         {#if data.terminal}<span class="mut">(terminal)</span>{/if}
@@ -289,7 +226,7 @@
   }
   .skills li {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 2.6em 3.2em;
+    grid-template-columns: minmax(0, 1fr) 2.6em;
     gap: 0.4em;
     padding: 0.05em 0.4em;
     border: 1px solid var(--paper-line, rgba(58,47,31,0.25));
@@ -302,7 +239,6 @@
   }
   .skill-name { text-transform: capitalize; font-weight: 600; }
   .skill-cost { text-align: right; color: var(--paper-ink-soft, #6a6055); }
-  .skill-avail { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 
   .components {
     width: 100%;
@@ -339,26 +275,6 @@
     padding-top: 0.2em;
   }
 
-  .intermediates {
-    display: grid;
-    grid-template-columns: 6em 1fr;
-    gap: 0.15em 0.4em;
-    margin: 0.3em 0 0;
-    padding-top: 0.25em;
-    border-top: 1px dashed var(--paper-line, rgba(58,47,31,0.25));
-    font-size: 0.76rem;
-  }
-  .intermediates dt {
-    color: var(--paper-ink-soft, #6a6055);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    font-size: 0.7rem;
-    align-self: baseline;
-  }
-  .intermediates dd {
-    margin: 0;
-    font-variant-numeric: tabular-nums;
-  }
   .mut { color: var(--paper-ink-soft, #6a6055); font-style: italic; }
 
   .side-ctx {
@@ -369,16 +285,13 @@
   }
   .side-row {
     display: flex;
+    justify-content: space-between;
     gap: 0.5em;
     align-items: baseline;
     font-variant-numeric: tabular-nums;
   }
-  .side-tag {
-    font-weight: 700;
-    min-width: 1.5em;
-  }
-  .side-tag.p1 { color: #3a5a7a; }
-  .side-tag.p2 { color: #a03a2a; }
+  .side-row .pos { color: #3a7a3a; }
+  .side-row .neg { color: #a03030; }
   .total-row-footer {
     margin-top: 0.25em;
     padding-top: 0.2em;

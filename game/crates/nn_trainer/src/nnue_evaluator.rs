@@ -13,7 +13,7 @@
 //!
 //! Additive - `NnEvaluator` (the dense burn evaluator) stays untouched.
 
-use core_engine::search::evaluator::{AccHandle, EvalBreakdown, Evaluator, MATE_SCORE};
+use core_engine::search::evaluator::{AccHandle, BreakdownDetail, EvalReport, Evaluator, MATE_SCORE};
 use core_engine::state::position::GameResult;
 use core_engine::state::Position;
 use core_engine::game_logic::action::Undo;
@@ -77,19 +77,9 @@ impl Evaluator for NnueEvaluator {
         self.net.forward_int(&acc)
     }
 
-    fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown {
-        // The NN doesn't decompose; fold into material_p1/p2 so the breakdown's
-        // internal consistency (total == mat_p1 - mat_p2 - …) holds. Mirrors
-        // `NnEvaluator::evaluate_breakdown`.
-        let total = self.evaluate(pos);
-        let mut b = EvalBreakdown::default();
-        b.total = total;
-        if total >= 0 {
-            b.material_p1 = total;
-        } else {
-            b.material_p2 = -total;
-        }
-        b
+    fn evaluate_report(&self, pos: &Position, _detail: BreakdownDetail) -> EvalReport {
+        // The NN has no term structure; one synthetic "nn" term carries the score.
+        EvalReport::single("nn", self.evaluate(pos))
     }
 
     // --- incremental accumulator seam (ns-50 Phase-1 wiring) ---------------
@@ -186,9 +176,9 @@ mod tests {
         let pos = Position::setup_stack_m();
         let s = dyn_eval.evaluate(&pos);
         assert!(s.abs() < MATE_SCORE);
-        // breakdown total agrees with evaluate.
-        let b = dyn_eval.evaluate_breakdown(&pos);
-        assert_eq!(b.total, s);
+        // report total agrees with evaluate.
+        let r = dyn_eval.evaluate_report(&pos, BreakdownDetail::Aggregate);
+        assert_eq!(r.total, s);
     }
 
     #[test]
@@ -277,7 +267,7 @@ mod tests {
 
     impl Evaluator for RefreshOnlyNnue {
         fn evaluate(&self, pos: &Position) -> i32 { self.0.evaluate(pos) }
-        fn evaluate_breakdown(&self, pos: &Position) -> EvalBreakdown { self.0.evaluate_breakdown(pos) }
+        fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport { self.0.evaluate_report(pos, detail) }
         // All *_acc methods stay default → uses_accumulator() == false.
     }
 
