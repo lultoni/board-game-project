@@ -54,6 +54,21 @@
     const [source, id] = value.split(":", 2);
     settings.uiEvaluator = { source: source as "builtin" | "run" | "blessed", id: id ?? null };
   }
+
+  // Per-AI-seat evaluator pick (same list as the UI-eval pick + the setup
+  // screen). Stored in settings.p{1,2}Evaluator; applied on the next engine
+  // boot via applyEvaluatorSettings (setup / match / draft / inspector all call
+  // it). Changing it mid-match takes effect when the engine is next created.
+  function seatEvalKey(seat: "p1" | "p2"): string {
+    const c = seat === "p1" ? settings.p1Evaluator : settings.p2Evaluator;
+    return uiEvalKey(c.source, c.id);
+  }
+  function setSeatEval(seat: "p1" | "p2", value: string): void {
+    const [source, id] = value.split(":", 2);
+    const choice = { source: source as "builtin" | "run" | "blessed", id: id ?? null };
+    if (seat === "p1") settings.p1Evaluator = choice;
+    else settings.p2Evaluator = choice;
+  }
 </script>
 
 {#if open}
@@ -241,6 +256,18 @@
         <option value={0}>∞</option>
       </select>
     </label>
+    <label class="row">
+      <span>Evaluator</span>
+      <select
+        value={seatEvalKey("p1")}
+        onchange={(e) => { sfx.play("click"); setSeatEval("p1", (e.currentTarget as HTMLSelectElement).value); }}
+      >
+        {#each evaluators as ev}
+          <option value={uiEvalKey(ev.source, ev.id)}>{ev.label}</option>
+        {/each}
+      </select>
+    </label>
+    <p class="hint">Applied when the match engine is next created.</p>
   </section>
 
   <section>
@@ -274,6 +301,18 @@
         <option value={0}>∞</option>
       </select>
     </label>
+    <label class="row">
+      <span>Evaluator</span>
+      <select
+        value={seatEvalKey("p2")}
+        onchange={(e) => { sfx.play("click"); setSeatEval("p2", (e.currentTarget as HTMLSelectElement).value); }}
+      >
+        {#each evaluators as ev}
+          <option value={uiEvalKey(ev.source, ev.id)}>{ev.label}</option>
+        {/each}
+      </select>
+    </label>
+    <p class="hint">Applied when the match engine is next created.</p>
   </section>
   </div>
 </aside>

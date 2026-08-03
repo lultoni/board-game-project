@@ -907,7 +907,7 @@ Presentational surface pulled out of the routes lives in dedicated component dir
 - **`src/lib/inspector/`** — `AiHintBanner.svelte` (AI hint + notation), `MoveListItem.svelte` (one branch-tree row), and `PoiLabelDialog.svelte` (a `<dialog>`-based POI label editor replacing `window.prompt`, built on the shared `Modal`).
 - **`src/lib/training/`** — the Training Observatory panels: `LiveMatchView.svelte` (with `EvalBar.svelte`), `TournamentStandings.svelte`, `LineageTree.svelte`, `NetworkInspector.svelte`, `GauntletMatrix.svelte`. `polling.ts` is a fixed-cadence Tauri-command polling store shared by all panels, and `types.ts` mirrors the trainer's serde wire shapes.
 - **`src/lib/ui/`** — shared primitives: `BackButton.svelte` (boxed back button with click SFX, used by every top-level route via the `back-nav` store) and `Modal.svelte` (the unified modal all dialogs build on).
-- **`src/lib/`** (top level) — `HelpModal.svelte` and `SettingsModal.svelte` (a content test, `HelpModal.content.test.ts`, guards the help copy).
+- **`src/lib/`** (top level) — `HelpModal.svelte` and `SettingsModal.svelte` (a content test, `HelpModal.content.test.ts`, guards the help copy). The settings drawer also hosts the evaluator dropdowns: a per-AI-seat picker beside each seat's think-time/depth (writes `settings.p{1,2}Evaluator`, applied on the next engine boot) plus the single global UI-eval pick (`settings.uiEvaluator`); both are populated from `list_evaluators`, the same source as the `/setup/` picker.
 
 ### 12.11 Replay / Inspector Data Flow
 
