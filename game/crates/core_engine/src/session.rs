@@ -47,6 +47,7 @@
 //! This keeps the transport orthogonal to `Match` - trivially mockable in
 //! tests, and L7's real PeerJS implementation drops in without changing L4.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Serialize, Deserialize};
@@ -211,12 +212,14 @@ pub struct Match {
     /// L5 telemetry. `Some` iff `config.auto_log`. Caller-driven clock:
     /// `Match` doesn't read system time itself.
     log: Option<MatchLog>,
-    /// Position evaluator used by `request_ai_move*`. Defaults to
-    /// `HeuristicEvaluator`; callers (e.g. the Tauri layer wiring an
-    /// `NnEvaluator`) install a replacement via `set_evaluator`. Not
-    /// serialised in `Snapshot` - restoring from snapshot reverts to the
-    /// default heuristic.
-    evaluator: Box<dyn Evaluator + Send>,
+    /// Per-seat evaluators used by `request_ai_move*`. Both default to
+    /// `HeuristicEvaluator`; callers install replacements via
+    /// `set_p1_evaluator`/`set_p2_evaluator`. Wrapped in `Arc` so the Tauri
+    /// layer can cheaply snapshot a reference for the off-lock background eval.
+    /// Not serialised in `Snapshot` - restoring from snapshot reverts both to
+    /// the default heuristic.
+    p1_evaluator: Arc<dyn Evaluator + Send + Sync>,
+    p2_evaluator: Arc<dyn Evaluator + Send + Sync>,
 }
 
 impl Match {
@@ -243,7 +246,8 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            evaluator: Box::new(HeuristicEvaluator),
+            p1_evaluator: Arc::new(HeuristicEvaluator),
+            p2_evaluator: Arc::new(HeuristicEvaluator),
         }
     }
 
@@ -266,7 +270,8 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            evaluator: Box::new(HeuristicEvaluator),
+            p1_evaluator: Arc::new(HeuristicEvaluator),
+            p2_evaluator: Arc::new(HeuristicEvaluator),
         }
     }
 
@@ -294,7 +299,8 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            evaluator: Box::new(HeuristicEvaluator),
+            p1_evaluator: Arc::new(HeuristicEvaluator),
+            p2_evaluator: Arc::new(HeuristicEvaluator),
         }
     }
 
@@ -384,7 +390,8 @@ impl Match {
             tt:        TranspositionTable::with_capacity_mb(16),
             start_fen: s.start_fen,
             log,
-            evaluator: Box::new(HeuristicEvaluator),
+            p1_evaluator: Arc::new(HeuristicEvaluator),
+            p2_evaluator: Arc::new(HeuristicEvaluator),
         })
     }
 
@@ -481,17 +488,32 @@ impl Match {
         Ok(())
     }
 
-    /// Install a new position evaluator. The replacement is consulted by
-    /// every subsequent `request_ai_move*` call until replaced again. Used
-    /// by the Tauri layer to swap in an `NnEvaluator` for an AI seat.
-    pub fn set_evaluator(&mut self, e: Box<dyn Evaluator + Send>) {
-        self.evaluator = e;
+    /// Install an evaluator for P1's seat (seat 0).
+    pub fn set_p1_evaluator(&mut self, e: Arc<dyn Evaluator + Send + Sync>) {
+        self.p1_evaluator = e;
     }
 
-    /// The installed evaluator. Used by the UI-eval path (`wrapper_api::eval_report`)
-    /// so the eval panel reflects whatever rater/preset is driving this Match.
-    pub fn evaluator(&self) -> &(dyn Evaluator + Send) {
-        &*self.evaluator
+    /// Install an evaluator for P2's seat (seat 1).
+    pub fn set_p2_evaluator(&mut self, e: Arc<dyn Evaluator + Send + Sync>) {
+        self.p2_evaluator = e;
+    }
+
+    /// The evaluator for the side currently to move. Used by the search and
+    /// by `wrapper_api::eval_report` so the eval bar reflects the active seat.
+    pub fn evaluator_for_to_move(&self) -> &(dyn Evaluator + Send + Sync) {
+        match self.position.to_move {
+            Player::P1 => &*self.p1_evaluator,
+            Player::P2 => &*self.p2_evaluator,
+        }
+    }
+
+    /// Clone the `Arc` for the side currently to move. Used by the Tauri layer
+    /// to snapshot a reference for off-lock background eval without copying weights.
+    pub fn arc_evaluator_for_to_move(&self) -> Arc<dyn Evaluator + Send + Sync> {
+        match self.position.to_move {
+            Player::P1 => Arc::clone(&self.p1_evaluator),
+            Player::P2 => Arc::clone(&self.p2_evaluator),
+        }
     }
 
     /// Run the search for the current side WITHOUT applying the result.
@@ -514,8 +536,9 @@ impl Match {
             Player::P1 => self.config.p1_ai,
             Player::P2 => self.config.p2_ai,
         };
+        let evaluator = self.arc_evaluator_for_to_move();
         Ok(find_best_with_evaluator(&mut self.position, &mut self.tt,
-                     budget.time_limit_ms, budget.max_depth, &*self.evaluator, on_depth))
+                     budget.time_limit_ms, budget.max_depth, &*evaluator, on_depth))
     }
 
     /// Wrap the preset-driven draft turn (if any) in a `SearchResult`. Score
@@ -561,8 +584,9 @@ impl Match {
         } else {
             budget
         };
+        let evaluator = self.arc_evaluator_for_to_move();
         Ok(find_best_with_evaluator(&mut self.position, &mut self.tt,
-                     budget.time_limit_ms, budget.max_depth, &*self.evaluator, None))
+                     budget.time_limit_ms, budget.max_depth, &*evaluator, None))
     }
 
     /// Inspector variant for "infinite iterative deepening": runs the
@@ -574,7 +598,8 @@ impl Match {
         if self.position.current_phase == Phase::Draft {
             return Ok(self.draft_preset_search_result());
         }
-        Ok(find_best_with_evaluator(&mut self.position, &mut self.tt, 0, max_depth.max(1), &*self.evaluator, None))
+        let evaluator = self.arc_evaluator_for_to_move();
+        Ok(find_best_with_evaluator(&mut self.position, &mut self.tt, 0, max_depth.max(1), &*evaluator, None))
     }
 
     /// Convenience for AIvAI loops: run search and auto-apply the chosen
@@ -605,8 +630,9 @@ impl Match {
     pub fn post_move_report(
         &mut self, action: Action, detail: crate::search::evaluator::BreakdownDetail,
     ) -> crate::search::evaluator::EvalReport {
+        let evaluator = self.arc_evaluator_for_to_move();
         let undo = make_unmake::make(&mut self.position, action);
-        let report = self.evaluator.evaluate_report(&self.position, detail);
+        let report = evaluator.evaluate_report(&self.position, detail);
         make_unmake::unmake(&mut self.position, &undo);
         report
     }
@@ -689,9 +715,10 @@ impl Match {
             (budget_ms, MAX_BG_EVAL_DEPTH)
         };
 
+        let evaluator = self.arc_evaluator_for_to_move();
         let r = find_best_with_evaluator(
             &mut self.position, &mut self.tt, time_limit_ms, max_depth,
-            &*self.evaluator, None,
+            &*evaluator, None,
         );
         let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
 
@@ -702,18 +729,18 @@ impl Match {
         }
     }
 
-    /// Clone the current position for a background eval that runs outside the
-    /// registry mutex. Returns `None` when there is nothing to annotate (no
-    /// log, no plies, game over, Draft phase) so the caller can skip the search
-    /// entirely. The evaluator is not cloned — the caller must supply one
-    /// (e.g. `HeuristicEvaluator`) for the off-lock search.
-    pub fn prepare_background_eval(&self) -> Option<Position> {
+    /// Clone the current position and the to-move seat's evaluator `Arc` for a
+    /// background eval that runs outside the registry mutex. Returns `None` when
+    /// there is nothing to annotate (no log, no plies, game over, Draft phase).
+    /// Both the position and the `Arc` are cheap to clone — no evaluator weights
+    /// are copied.
+    pub fn prepare_background_eval(&self) -> Option<(Position, Arc<dyn Evaluator + Send + Sync>)> {
         if self.log.as_ref().map(|l| l.plies.is_empty()).unwrap_or(true) {
             return None;
         }
         if self.position.game_result.is_some() { return None; }
         if self.position.current_phase == Phase::Draft { return None; }
-        Some(self.position.clone())
+        Some((self.position.clone(), self.arc_evaluator_for_to_move()))
     }
 
     /// Write a completed background-eval result back into the last ply's log

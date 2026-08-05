@@ -96,7 +96,7 @@ class FakeEngine implements EngineClient {
   async finaliseLog(): Promise<void> { /* noop */ }
   async evaluateDrawOffer(): Promise<boolean> { return true; }
   async dispose(): Promise<void> { /* noop */ }
-  async setAiEvaluator(): Promise<void> { /* noop */ }
+  async setAiEvaluator(_seat: 0 | 1, _source: string, _id?: string | null, _runDir?: string | null): Promise<void> { /* noop */ }
 
   // Deterministic Zobrist from applied history: 1 + 31*sum of raws.
   private computeZobrist(): bigint {

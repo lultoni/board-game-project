@@ -483,14 +483,14 @@ async fn try_apply(
     // Instead: clone the position under a brief lock, do the search lock-free,
     // then re-acquire the lock just to write the result back.
     if background_eval.unwrap_or(false) {
-        // Step 1: clone the position while holding the lock (microseconds).
-        let pos_snapshot = registry.with(handle, |e| e.m.prepare_background_eval());
-        if let Ok(Some(mut pos)) = pos_snapshot {
+        // Step 1: clone the position and the to-move seat's evaluator Arc
+        // while holding the lock (microseconds — Arc::clone is cheap).
+        let snapshot = registry.with(handle, |e| e.m.prepare_background_eval());
+        if let Ok(Some((mut pos, evaluator))) = snapshot {
             let app_for_task = app.clone();
             tokio::task::spawn_blocking(move || {
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     // Step 2: run the search with NO registry lock held.
-                    use core_engine::search::evaluator::HeuristicEvaluator;
                     use core_engine::search::alpha_beta::find_best_with_evaluator;
                     use core_engine::search::transposition::TranspositionTable;
                     use core_engine::telemetry::SearchMeta;
@@ -499,7 +499,7 @@ async fn try_apply(
                     let mut tt = TranspositionTable::with_capacity_mb(4);
                     let r = find_best_with_evaluator(
                         &mut pos, &mut tt, BUDGET_MS, MAX_DEPTH,
-                        &HeuristicEvaluator, None,
+                        &*evaluator, None,
                     );
                     let meta = SearchMeta::from_search(r.depth, r.nodes, r.score);
                     // Step 3: re-acquire lock only to write the result (microseconds).
@@ -949,7 +949,7 @@ fn build_evaluator(
     source: &str,
     id: Option<String>,
     run_dir: Option<String>,
-) -> Result<Box<dyn core_engine::search::evaluator::Evaluator + Send>, String> {
+) -> Result<std::sync::Arc<dyn core_engine::search::evaluator::Evaluator + Send + Sync>, String> {
     match source {
         // Builtin in-crate evaluators (heuristic + any experimental variants).
         // `id` names the entry in `core_engine`'s builtin registry; a missing id
@@ -958,6 +958,7 @@ fn build_evaluator(
         "builtin" | "heuristic" => {
             let want = id.as_deref().unwrap_or("heuristic");
             core_engine::search::evaluator::builtin::make(want)
+                .map(|b| std::sync::Arc::from(b) as std::sync::Arc<dyn core_engine::search::evaluator::Evaluator + Send + Sync>)
                 .ok_or_else(|| format!("unknown builtin evaluator: {want}"))
         }
         "run" | "blessed" => {
@@ -982,11 +983,11 @@ fn build_evaluator(
             if meta.model_config.input_dim == nn_trainer::NUM_FEATURES {
                 let nnue = nn_trainer::NnueEvaluator::load_from_stem(&stem)
                     .map_err(|e| format!("load NNUE rater {id}: {e}"))?;
-                Ok(Box::new(nnue))
+                Ok(std::sync::Arc::new(nnue))
             } else {
                 let nn = nn_trainer::NnEvaluator::load_from_stem(&stem)
                     .map_err(|e| format!("load rater {id}: {e}"))?;
-                Ok(Box::new(nn))
+                Ok(std::sync::Arc::new(nn))
             }
         }
         other => Err(format!("unknown evaluator source: {other}")),
@@ -996,13 +997,19 @@ fn build_evaluator(
 #[tauri::command]
 fn set_ai_evaluator(
     handle: u64,
+    seat: u8,
     source: String,
     id: Option<String>,
     run_dir: Option<String>,
     registry: State<'_, EngineRegistry>,
 ) -> Result<(), String> {
     let evaluator = build_evaluator(&source, id, run_dir)?;
-    registry.with(handle, |entry| entry.m.set_evaluator(evaluator))?;
+    registry.with(handle, |entry| {
+        match seat {
+            0 => entry.m.set_p1_evaluator(evaluator),
+            _ => entry.m.set_p2_evaluator(evaluator),
+        }
+    })?;
     Ok(())
 }
 
@@ -1210,15 +1217,14 @@ fn start_aivai_producer(
     let mut m = api::from_snapshot_json(&view_snapshot_json, unix_ms_now())
         .map_err(|e| format!("producer snapshot parse: {e:?}"))?;
 
-    // Re-install both seats' evaluators. Match holds a single evaluator, so the
-    // second install wins - mirroring the frontend's `applyEvaluatorSettings`
-    // (which calls setAiEvaluator twice, p1 then p2). We keep that behaviour
-    // identical rather than introducing per-seat evaluators here.
+    // Re-install both seats' evaluators. from_snapshot resets both slots to
+    // HeuristicEvaluator; without this the producer would silently play
+    // heuristic regardless of the picked raters.
     if let Ok(e1) = build_evaluator(&p1_source, p1_id, None) {
-        m.set_evaluator(e1);
+        m.set_p1_evaluator(e1);
     }
     if let Ok(e2) = build_evaluator(&p2_source, p2_id, None) {
-        m.set_evaluator(e2);
+        m.set_p2_evaluator(e2);
     }
 
     let shared = Arc::new(AivaiProducerShared::default());

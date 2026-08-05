@@ -91,7 +91,7 @@ class SharedFakeEngine implements EngineClient {
   async finaliseLog(): Promise<void> {}
   async evaluateDrawOffer(): Promise<boolean> { return true; }
   async dispose(): Promise<void> {}
-  async setAiEvaluator(): Promise<void> {}
+  async setAiEvaluator(_seat: 0 | 1, _source: string, _id?: string | null, _runDir?: string | null): Promise<void> {}
 
   private computeZobrist(): bigint {
     let h = 1n;

@@ -269,6 +269,7 @@ export interface EngineClient {
    *  respective rater directory. WASM-side: no-op (NN inference isn't
    *  bundled into the web build). */
   setAiEvaluator(
+    seat: 0 | 1,
     source: "builtin" | "heuristic" | "run" | "blessed",
     id?: string | null,
     runDir?: string | null,

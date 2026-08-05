@@ -336,6 +336,14 @@ pub fn between(a: u8, b: u8) -> Bitboard {
     Bitboard(between_table()[a as usize][b as usize])
 }
 
+/// All squares within Chebyshev distance `1..=r` of `sq` (the centre `sq` is
+/// EXCLUDED). `r` is clamped to `0..=4`; `r == 0` is the empty bitboard.
+/// Table-backed (same precomputed `WITHIN_RANGE` used by `skill_attacks`).
+pub fn within_range(sq: u8, r: u8) -> Bitboard {
+    debug_assert!(sq < 64);
+    Bitboard(within_range_table()[sq as usize][(r.min(4)) as usize])
+}
+
 /// True iff `a` and `b` lie on the same 8-direction ray and are distinct.
 pub fn on_ray(a: u8, b: u8) -> bool {
     if a == b { return false; }

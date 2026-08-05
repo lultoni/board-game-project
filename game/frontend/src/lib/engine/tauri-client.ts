@@ -323,12 +323,14 @@ export class TauriClient implements EngineClient {
   }
 
   async setAiEvaluator(
+    seat: 0 | 1,
     source: "builtin" | "heuristic" | "run" | "blessed",
     id?: string | null,
     runDir?: string | null,
   ): Promise<void> {
     await invoke<void>("set_ai_evaluator", {
       handle: this.#requireHandle(),
+      seat,
       source,
       id: id ?? null,
       runDir: runDir ?? null,

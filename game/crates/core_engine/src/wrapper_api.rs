@@ -397,7 +397,7 @@ pub fn current_draft_state(m: &Match) -> DraftState {
 /// evaluator. `per_piece` selects the per-piece decomposition (for the square
 /// hover card) vs aggregate-only (for the eval bar / term list).
 pub fn eval_report(m: &Match, per_piece: bool) -> crate::search::evaluator::EvalReport {
-    eval_report_with(m, m.evaluator(), per_piece)
+    eval_report_with(m, m.evaluator_for_to_move(), per_piece)
 }
 
 /// Like [`eval_report`] but scores with a caller-supplied evaluator instead of

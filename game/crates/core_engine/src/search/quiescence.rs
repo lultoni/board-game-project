@@ -81,7 +81,7 @@ pub(super) fn is_loud(a: Action, _pos: &Position) -> bool {
     match a.kind() {
         ActionKind::Move => a.has_approach(),
         ActionKind::Skill => match skill_from_id(a.skill_id()) {
-            Some(s) => skill_category(s) == SkillCategory::Strike || s == Skill::Blast,
+            Some(s) => skill_category(s) == SkillCategory::Strike || s == Skill::Blast || s == Skill::Shove,
             None    => false,
         },
         ActionKind::EndPhase | ActionKind::EndTurn => false,

@@ -217,7 +217,7 @@ pub mod builtin {
     pub struct BuiltinEvaluator {
         pub id:    &'static str,
         pub label: &'static str,
-        pub make:  fn() -> Box<dyn Evaluator + Send>,
+        pub make:  fn() -> Box<dyn Evaluator + Send + Sync>,
     }
 
     /// All builtin evaluators, in display order. The first entry is the default.
@@ -243,7 +243,7 @@ pub mod builtin {
     ];
 
     /// Look up a builtin by id and construct it. `None` if the id is unknown.
-    pub fn make(id: &str) -> Option<Box<dyn Evaluator + Send>> {
+    pub fn make(id: &str) -> Option<Box<dyn Evaluator + Send + Sync>> {
         BUILTINS.iter().find(|b| b.id == id).map(|b| (b.make)())
     }
 }

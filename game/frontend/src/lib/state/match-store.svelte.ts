@@ -235,10 +235,10 @@ export async function applyEvaluatorSettings(eng: EngineClient): Promise<void> {
   const p1 = settings.p1Evaluator;
   const p2 = settings.p2Evaluator;
   try {
-    await eng.setAiEvaluator(p1.source, p1.id ?? null, null);
+    await eng.setAiEvaluator(0, p1.source, p1.id ?? null, null);
   } catch { /* fall back to heuristic */ }
   try {
-    await eng.setAiEvaluator(p2.source, p2.id ?? null, null);
+    await eng.setAiEvaluator(1, p2.source, p2.id ?? null, null);
   } catch { /* fall back to heuristic */ }
 }
 
