@@ -345,6 +345,57 @@ fn is_movement_skill(a: Action) -> bool {
     )
 }
 
+/// Rule F (wasted Focus): a non-Mystic skill is about to consume a pending Focus,
+/// but its target is already within the skill's BASE (default) range — so the +1
+/// activation range the Focus grants was NOT needed. Casting Focus first was
+/// pointless; the search should not explore this line, which forces the AI to
+/// play the skill directly instead of pre-buffing needlessly. Evaluated on the
+/// PRE-make position (`pos.pending_modifiers` still holds the Focus, target state
+/// intact). Scoped to activation-range Focus — NOT `focus_effect_mode`, which
+/// buffs a Move skill's push distance (a different, legitimate use).
+#[inline]
+fn focus_wasted(pos: &Position, a: Action) -> bool {
+    use crate::game_logic::skills::{skill_from_id, skill_category, skill_default_range, SkillCategory};
+    use crate::state::position::modifier_bits;
+    if a.kind() != ActionKind::Skill { return false; }
+    if pos.pending_modifiers & modifier_bits::FOCUS == 0 { return false; }
+    if a.focus_effect_mode() { return false; } // effect-range use — leave alone
+    let skill = match skill_from_id(a.skill_id()) { Some(s) => s, None => return false };
+    // A Mystic cast (Focus/Charge) does NOT consume a pending Focus — skip.
+    if skill_category(skill) == SkillCategory::Mystic { return false; }
+    // The Focus is consumed here. Wasted iff the target was reachable without +1.
+    let base = skill_default_range(skill);
+    crate::state::magic::cheby_dist(a.src(), a.target()) <= base
+}
+
+/// Rule C (wasted Charge): a Strike is about to consume a pending Charge, but the
+/// target would already die (or the effect fully lands) WITHOUT the +1 damage —
+/// so the Charge was not needed. Designer's criterion: the target dies to base +
+/// combo damage alone. Evaluated PRE-make (Charge still pending, target intact).
+///
+/// Base Strike HP damage is 1 for Lance/Hook/Steal/Tempest; the total without
+/// Charge is `1 + combo_bonus` (matched to the resolver via `combo_bonus_preview`).
+/// Wasted iff the target's effective health (hp + armor) ≤ that base total.
+/// Break is EXCLUDED: its base HP damage is 0 (armor-removal only), so Charge is
+/// what grants any HP damage — never "wasted" by the kill test.
+#[inline]
+fn charge_wasted(pos: &Position, a: Action) -> bool {
+    use crate::game_logic::skills::{skill_from_id, skill_category, Skill, SkillCategory};
+    use crate::state::position::modifier_bits;
+    if a.kind() != ActionKind::Skill { return false; }
+    if pos.pending_modifiers & modifier_bits::CHARGE == 0 { return false; }
+    let skill = match skill_from_id(a.skill_id()) { Some(s) => s, None => return false };
+    if skill_category(skill) != SkillCategory::Strike { return false; } // Charge boosts Strikes
+    if skill == Skill::Break { return false; } // base HP dmg 0 → Charge always meaningful
+    let tgt = a.target();
+    let mb = pos.mailbox[tgt as usize];
+    let eff_health = mb.hp() as i32 + mb.armor() as i32;
+    let base_total = 1 + crate::game_logic::make_unmake::combo_bonus_preview(pos, a.src(), tgt) as i32;
+    // Charge wasted iff base + combo already kills/fully-absorbs (the +1 was extra).
+    eff_health <= base_total
+}
+
+
 fn search(pos: &mut Position, depth: i32, ply: i32,
           mut alpha: i32, mut beta: i32, can_null: bool,
           ctx: &mut SearchCtx) -> i32 {
@@ -544,6 +595,17 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
             && !node_in_check
             && !super::quiescence::is_loud(a, pos);
         let r = if reduce { lmr_reduction(depth, idx).min(depth - 1) } else { 0 };
+
+        // Rule F (wasted Focus): skip a non-first line where a pending Focus is
+        // consumed by a skill whose target is already in base range — the +1 was
+        // not needed, so pre-casting Focus was pointless. Rule C (wasted Charge):
+        // skip a non-first line where a pending Charge boosts a Strike that would
+        // already kill without it. Pruning the consumers of a needless buff makes
+        // the search decline to cast it. Both are pre-make checks (buff still
+        // pending, target intact). Never prune the first ordered move.
+        if !is_first && (focus_wasted(pos, a) || charge_wasted(pos, a)) {
+            continue;
+        }
 
         let undo = make_unmake::make(pos, a);
 
@@ -1210,6 +1272,78 @@ mod tests {
         assert_eq!(pos.zobrist, z, "zobrist drifted across reverse-move search");
         assert_eq!(pos.p1_pieces.0, p1);
         assert_eq!(pos.p2_pieces.0, p2);
+    }
+
+    /// Rule F: focus_wasted flags a pending-Focus skill whose target is already in
+    /// base range, and does NOT flag one that genuinely needs the +1.
+    #[test]
+    fn focus_wasted_detects_needless_range_buff() {
+        use crate::state::position::modifier_bits;
+        let mut pos = Position::empty();
+        // P1 champ on d4(27) with Lance (base range 1). Enemy adjacent on d5(35).
+        place(&mut pos, 27, Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+        place(&mut pos, 35, Player::P2, 1, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 0, Player::P1, 0, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 63, Player::P2, 0, MailboxEntry::default().with_hp(2));
+        pos.to_move = Player::P1;
+        pos.current_phase = Phase::Skill;
+        pos.actions_remaining = 2;
+        pos.pending_modifiers = modifier_bits::FOCUS; // Focus already cast
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        // Lance d4→d5 is distance 1 = base range → Focus was NOT needed → wasted.
+        let in_range = Action::encode(27, 35, ActionKind::Skill, Skill::Lance as u8, 0);
+        assert!(focus_wasted(&pos, in_range), "adjacent Lance didn't need Focus's +1");
+
+        // Move the enemy to distance 2 (f6=45): Lance base range 1 can't reach; the
+        // +1 IS needed → not wasted.
+        let mut far = pos.clone();
+        far.p2_pieces = crate::state::Bitboard::from_square(45) | crate::state::Bitboard::from_square(63);
+        far.champions = crate::state::Bitboard::from_square(27) | crate::state::Bitboard::from_square(45);
+        far.mailbox[35] = MailboxEntry::default();
+        far.mailbox[45] = MailboxEntry::default().with_hp(2);
+        far.zobrist = crate::state::zobrist::full_recompute(&far);
+        let needs_focus = Action::encode(27, 45, ActionKind::Skill, Skill::Lance as u8, 0);
+        assert!(!focus_wasted(&far, needs_focus), "range-2 Lance genuinely needs Focus's +1");
+
+        // Focus on a self-Shield: base range 0, dist 0 → always wasted.
+        let mut sh = pos.clone();
+        sh.mailbox[27] = MailboxEntry::default().with_hp(2).with_skill1(Skill::Shield as u8);
+        sh.zobrist = crate::state::zobrist::full_recompute(&sh);
+        let shield_self = Action::encode(27, 27, ActionKind::Skill, Skill::Shield as u8, 0);
+        assert!(focus_wasted(&sh, shield_self), "Focus before a self-Shield is always wasted");
+    }
+
+    /// Rule C: charge_wasted flags a Charge-boosted Strike that kills without the
+    /// +1, and does NOT flag one where the +1 is needed to kill.
+    #[test]
+    fn charge_wasted_detects_needless_damage_buff() {
+        use crate::state::position::modifier_bits;
+        let build = |target_hp: u8, target_armor: u8| {
+            let mut pos = Position::empty();
+            place(&mut pos, 27, Player::P1, 1,
+                MailboxEntry::default().with_hp(2).with_skill1(Skill::Lance as u8));
+            place(&mut pos, 35, Player::P2, 1,
+                MailboxEntry::default().with_hp(target_hp).with_armor(target_armor));
+            place(&mut pos, 0, Player::P1, 0, MailboxEntry::default().with_hp(2));
+            place(&mut pos, 63, Player::P2, 0, MailboxEntry::default().with_hp(2));
+            pos.to_move = Player::P1;
+            pos.current_phase = Phase::Skill;
+            pos.actions_remaining = 2;
+            pos.pending_modifiers = modifier_bits::CHARGE;
+            pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+            pos
+        };
+        let lance = Action::encode(27, 35, ActionKind::Skill, Skill::Lance as u8, 0);
+
+        // Target at 1 eff-HP: base Lance (1 dmg) already kills → Charge wasted.
+        assert!(charge_wasted(&build(1, 0), lance), "1-hp target dies to base → Charge wasted");
+        // Target at 2 eff-HP (2hp/0 armor), no combo: base 1 does NOT kill; the +1
+        // is needed → not wasted.
+        assert!(!charge_wasted(&build(2, 0), lance), "2-hp target needs the +1 → not wasted");
+        // Target 1hp + 1 armor = 2 eff-health: base 1 doesn't finish it → not wasted.
+        assert!(!charge_wasted(&build(1, 1), lance), "eff-health 2 needs the +1 → not wasted");
     }
 
     #[test]

@@ -976,8 +976,33 @@ fn deal_damage(pos: &mut Position, hit_sq: u8, dmg: u8, undo: &mut Undo) {
 /// to 7) and writes a new mailbox entry. Records the pre-tick mailbox in
 /// `undo` (dedup-safe - no-op if the caller already snapshot'd this square).
 /// Returns true iff a tick happened.
-fn combo_tick(pos: &mut Position, src_sq: u8, tgt_sq: u8, undo: &mut Undo) -> bool {
+/// Read-only preview of the combo BONUS damage a Strike by `src_sq` on `tgt_sq`
+/// would deal RIGHT NOW, without mutating any tracking. Mirrors `combo_tick` +
+/// the new-vs-returning ruling used by the resolvers: a NEW champion (this
+/// caster hasn't ticked this target this turn) deals `+combo`; a RETURNING
+/// champion deals `+(combo-1)`. Used by the search to decide whether a Charge's
+/// +1 was actually needed to kill (Rule C) — so it must match the resolver math
+/// exactly. Does NOT allocate tracked slots (a not-yet-tracked pair is "new").
+pub(crate) fn combo_bonus_preview(pos: &Position, src_sq: u8, tgt_sq: u8) -> u8 {
     use crate::state::position::MAX_TRACKED_ENEMIES;
+    let combo = pos.mailbox[tgt_sq as usize].combo();
+    // Find existing tracked slots WITHOUT inserting. Absent → this pair hasn't
+    // ticked yet this turn → it would be a NEW tick (bonus = combo).
+    let caster_slot = pos.tracked_casters[..pos.tracked_casters_len as usize]
+        .iter().position(|&s| s == src_sq);
+    let target_slot = pos.tracked_enemies[..pos.tracked_enemies_len as usize]
+        .iter().position(|&s| s == tgt_sq);
+    let already_ticked = match (caster_slot, target_slot) {
+        (Some(c), Some(t)) => {
+            let bit = 1u128 << (c as u128 * MAX_TRACKED_ENEMIES as u128 + t as u128);
+            pos.champion_credit & bit != 0
+        }
+        _ => false, // one side untracked → not yet ticked → new
+    };
+    if already_ticked { combo.saturating_sub(1) } else { combo }
+}
+
+fn combo_tick(pos: &mut Position, src_sq: u8, tgt_sq: u8, undo: &mut Undo) -> bool {    use crate::state::position::MAX_TRACKED_ENEMIES;
     let caster_slot = ensure_tracked_caster(pos, src_sq) as u128;
     let target_slot = ensure_tracked_enemy(pos, tgt_sq) as u128;
     let bit = 1u128 << (caster_slot * MAX_TRACKED_ENEMIES as u128 + target_slot);
