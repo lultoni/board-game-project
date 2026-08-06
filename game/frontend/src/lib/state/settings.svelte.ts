@@ -65,7 +65,7 @@ export interface Settings {
   showEvalPanel: boolean;
   /** Which evaluator drives the UI-eval displays (eval bar, breakdown panel,
    *  replay, inspector search) — independent of the AI seats' evaluators.
-   *  Defaults to the builtin heuristic. */
+   *  Defaults to the builtin custom evaluator. */
   uiEvaluator: EvaluatorChoice;
 }
 
@@ -91,8 +91,8 @@ const DEFAULTS: Settings = {
   p1MaxDepth: 6,
   p2MaxDepth: 6,
   aivaiStepDelayMs: 300,
-  p1Evaluator: { source: "heuristic", id: null },
-  p2Evaluator: { source: "heuristic", id: null },
+  p1Evaluator: { source: "builtin", id: "custom" },
+  p2Evaluator: { source: "builtin", id: "custom" },
   animationSpeed: "normal",
   replayStepDelayMs: 300,
   replayLoopOnEnd: false,
@@ -101,7 +101,7 @@ const DEFAULTS: Settings = {
   showThinkProgressBar: false,
   showHeuristicEval: false,
   showEvalPanel: false,
-  uiEvaluator: { source: "builtin", id: "heuristic" },
+  uiEvaluator: { source: "builtin", id: "custom" },
 };
 
 const EVAL_SOURCES: ReadonlyArray<EvaluatorSource> = ["builtin", "heuristic", "run", "blessed"];

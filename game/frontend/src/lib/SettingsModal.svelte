@@ -39,7 +39,10 @@
       const { invoke } = await import("@tauri-apps/api/core");
       evaluators = await invoke<EvaluatorListing[]>("list_evaluators", { runDir: null });
     } catch {
-      evaluators = [{ source: "builtin", id: "heuristic", label: "Heuristic (default)", isChampion: false }];
+      evaluators = [
+        { source: "builtin", id: "custom", label: "Custom (default)", isChampion: false },
+        { source: "builtin", id: "heuristic", label: "Heuristic", isChampion: false },
+      ];
     }
   }
   // Lazy-load when the drawer opens.

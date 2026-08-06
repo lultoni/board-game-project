@@ -944,7 +944,7 @@ fn list_evaluators(run_dir: Option<String>) -> Result<Vec<EvaluatorListing>, Str
 /// rater under the appropriate index. Shared by the `set_ai_evaluator` command
 /// and the background AIvAI producer (which must re-install evaluators after
 /// building its Match from a snapshot, since `from_snapshot` resets the
-/// evaluator to `HeuristicEvaluator`).
+/// evaluator to the default `CustomEvaluator`).
 fn build_evaluator(
     source: &str,
     id: Option<String>,
@@ -1199,8 +1199,8 @@ fn join_aivai_producer(state: &AivaiProducerState) -> Option<String> {
 /// Start the background AIvAI producer from the view engine's snapshot so the
 /// producer and view share an identical `start_fen` + config. Aborts any prior
 /// producer first. `p{1,2}_source`/`id` re-install the seat evaluators, because
-/// `from_snapshot` resets the evaluator to `HeuristicEvaluator` - without this
-/// the producer would silently play the heuristic instead of the picked rater.
+/// `from_snapshot` resets the evaluator to the default `CustomEvaluator` - without
+/// this the producer would silently play the default instead of the picked rater.
 #[tauri::command]
 fn start_aivai_producer(
     view_snapshot_json: String,
@@ -1218,8 +1218,8 @@ fn start_aivai_producer(
         .map_err(|e| format!("producer snapshot parse: {e:?}"))?;
 
     // Re-install both seats' evaluators. from_snapshot resets both slots to
-    // HeuristicEvaluator; without this the producer would silently play
-    // heuristic regardless of the picked raters.
+    // the default CustomEvaluator; without this the producer would silently play
+    // the default regardless of the picked raters.
     if let Ok(e1) = build_evaluator(&p1_source, p1_id, None) {
         m.set_p1_evaluator(e1);
     }

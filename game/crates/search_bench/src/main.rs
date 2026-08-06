@@ -17,14 +17,22 @@
 //!   cargo run -p search_bench --release -- --determinism
 //!       (runs the corpus 10x at depth 6 and asserts identical node counts)
 //!
+//!   cargo run -p search_bench --release -- --report --eval custom \
+//!       --fen "<fen>"
+//!       (prints the chosen evaluator's full per-piece + side-term breakdown for
+//!        one FEN — no search. Omit --fen to dump every corpus position instead.)
+//!
 //! Output format: structured JSON (one object per position + an aggregate
 //! block). Field names are intentionally stable; downstream diff tooling
 //! reads them by name.
 
 use core_engine::game_logic::action::Action;
+use core_engine::game_logic::skills::{skill_from_id, skill_key};
 use core_engine::search::alpha_beta::{find_best_with_evaluator, SearchResult};
 use core_engine::search::counters::{self, Snapshot as CounterSnapshot, ATTACKER_LIST_HIST_BUCKETS};
-use core_engine::search::evaluator::{evaluate_report, BreakdownDetail, Evaluator, HeuristicEvaluator};
+use core_engine::search::evaluator::{
+    builtin, evaluate_report, BreakdownDetail, Evaluator,
+};
 use core_engine::search::transposition::{Stats as TtStats, TranspositionTable};
 use core_engine::state::Position;
 use core_engine::state::fen::from_fen;
@@ -85,24 +93,40 @@ struct Args {
     eval_only: bool,
     eval_iterations: u64,
     eval_choice: EvalChoice,
+    /// `--report`: print the evaluator's per-piece + side-term breakdown (no search).
+    report: bool,
+    /// Single FEN for `--report` mode; if `None`, `--report` iterates the corpus.
+    fen: Option<String>,
+    /// `--no-qs`: disable quiescence search at the depth-0 boundary (sets
+    /// `alpha_beta::DISABLE_QS`). Used to measure whether QS is pulling its
+    /// weight — the search-cliff work needs a QS-on vs QS-off A/B.
+    no_qs: bool,
 }
 
-/// Which evaluator the search uses. `Nnue` is the ns-50 NNUE Phase-0 A/B lever:
-/// it swaps in a quantized `NnueEvaluator` (refresh-per-call) so the search
-/// sweep measures the NNUE eval cost as an NPS ratio vs the heuristic. For the
-/// fixed-depth speed gate the net's weights are irrelevant (only forward cost),
-/// so `nnue` builds a fresh in-process net.
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// Which evaluator the search / report uses. `Builtin(id)` resolves through the
+/// in-crate [`builtin::BUILTINS`] registry (so `custom`, `heuristic`, and any
+/// future builtin work by id). `Nnue` is the ns-50 NNUE Phase-0 A/B lever: it
+/// swaps in a quantized `NnueEvaluator` (refresh-per-call) so the search sweep
+/// measures the NNUE eval cost as an NPS ratio vs the heuristic. For the fixed-
+/// depth speed gate the net's weights are irrelevant (only forward cost), so
+/// `nnue` builds a fresh in-process net.
+#[derive(Clone, PartialEq, Eq)]
 enum EvalChoice {
-    Heuristic,
+    Builtin(String),
     Nnue,
 }
 
 /// Build the evaluator for a run. Boxed so both variants share one `&dyn
-/// Evaluator` path; constructed once per process, not per position.
-fn build_evaluator(choice: EvalChoice) -> Box<dyn Evaluator> {
+/// Evaluator` path; constructed once per process, not per position. Builtin ids
+/// resolve through the crate registry; an unknown id is a hard error listing the
+/// available ids.
+fn build_evaluator(choice: &EvalChoice) -> Box<dyn Evaluator> {
     match choice {
-        EvalChoice::Heuristic => Box::new(HeuristicEvaluator),
+        EvalChoice::Builtin(id) => builtin::make(id).unwrap_or_else(|| {
+            let ids: Vec<&str> = builtin::BUILTINS.iter().map(|b| b.id).collect();
+            eprintln!("unknown --eval builtin '{id}'; available: {}, nnue", ids.join(", "));
+            std::process::exit(2);
+        }),
         EvalChoice::Nnue => {
             use nn_trainer::{Mlp, MlpConfig, NnueEvaluator, QuantScales, NUM_FEATURES};
             let device = Default::default();
@@ -114,13 +138,16 @@ fn build_evaluator(choice: EvalChoice) -> Box<dyn Evaluator> {
 }
 
 fn print_usage_and_exit() -> ! {
-    eprintln!("usage: search_bench --corpus <path> (--depth N | --time-ms M) [--runs N] [--out <path>] [--eval heuristic|nnue]");
-    eprintln!("       search_bench --determinism [--corpus <path>] [--depth N] [--determinism-runs N] [--eval heuristic|nnue]");
+    eprintln!("usage: search_bench --corpus <path> (--depth N | --time-ms M) [--runs N] [--out <path>] [--eval <id>|nnue]");
+    eprintln!("       search_bench --determinism [--corpus <path>] [--depth N] [--determinism-runs N] [--eval <id>|nnue]");
     eprintln!("       search_bench --eval-only [--corpus <path>] [--eval-iterations N] [--out <path>]");
+    eprintln!("       search_bench --report [--eval <id>|nnue] (--fen \"<fen>\" | --corpus <path>)");
     eprintln!();
     eprintln!("Mode is inferred: --depth ⇒ depth mode; --time-ms ⇒ time mode.");
-    eprintln!("Passing both, or neither, is an error (use --determinism or --eval-only to opt out).");
-    eprintln!("--eval selects the search leaf evaluator (default heuristic). 'nnue' is the ns-50 NNUE A/B.");
+    eprintln!("Passing both, or neither, is an error (use --determinism / --eval-only / --report to opt out).");
+    eprintln!("--eval selects the leaf evaluator: any builtin id (custom, heuristic, …) or 'nnue' (ns-50 A/B). Default custom.");
+    eprintln!("--report prints the evaluator's per-piece + side-term breakdown for a FEN (or every corpus position) — no search.");
+    eprintln!("--no-qs disables quiescence search (QS-on vs QS-off A/B); combine with --depth / --time-ms as usual.");
     std::process::exit(2);
 }
 
@@ -134,7 +161,10 @@ fn parse_args() -> Args {
     let mut determinism_runs = 10usize;
     let mut eval_only = false;
     let mut eval_iterations: u64 = 100_000;
-    let mut eval_choice = EvalChoice::Heuristic;
+    let mut eval_choice = EvalChoice::Builtin("custom".to_string());
+    let mut report = false;
+    let mut fen: Option<String> = None;
+    let mut no_qs = false;
 
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -192,6 +222,21 @@ fn parse_args() -> Args {
                 eval_only = true;
                 i += 1;
             }
+            "--report" => {
+                report = true;
+                i += 1;
+            }
+            "--no-qs" => {
+                no_qs = true;
+                i += 1;
+            }
+            "--fen" => {
+                fen = Some(argv.get(i + 1).cloned().unwrap_or_else(|| {
+                    eprintln!("--fen needs a FEN string");
+                    std::process::exit(2);
+                }));
+                i += 2;
+            }
             "--eval-iterations" => {
                 eval_iterations = argv
                     .get(i + 1)
@@ -214,16 +259,14 @@ fn parse_args() -> Args {
             }
             "--eval" => {
                 let v = argv.get(i + 1).cloned().unwrap_or_else(|| {
-                    eprintln!("--eval needs a value (heuristic|nnue)");
+                    eprintln!("--eval needs a value (a builtin id, e.g. custom|heuristic, or nnue)");
                     std::process::exit(2);
                 });
                 eval_choice = match v.as_str() {
-                    "heuristic" => EvalChoice::Heuristic,
                     "nnue" => EvalChoice::Nnue,
-                    other => {
-                        eprintln!("--eval must be 'heuristic' or 'nnue', got '{other}'");
-                        std::process::exit(2);
-                    }
+                    // Any other value is a builtin id; validity is checked at
+                    // construction (build_evaluator) so the error can list ids.
+                    other => EvalChoice::Builtin(other.to_string()),
                 };
                 i += 2;
             }
@@ -236,8 +279,8 @@ fn parse_args() -> Args {
     }
 
     // Mode inference. Determinism runs at fixed depth (its own path); it may
-    // take --depth but doesn't need a mode. Eval-only skips search entirely.
-    let mode = if determinism || eval_only {
+    // take --depth but doesn't need a mode. Eval-only and report skip search.
+    let mode = if determinism || eval_only || report {
         Mode::Depth(depth.unwrap_or(DEFAULT_DEPTH))
     } else {
         match (depth, time_ms) {
@@ -264,6 +307,9 @@ fn parse_args() -> Args {
         eval_only,
         eval_iterations,
         eval_choice,
+        report,
+        fen,
+        no_qs,
     }
 }
 
@@ -625,7 +671,7 @@ fn write_json(
         }
     }
 
-    s.push_str(&format!("  \"aggregate\": {{\n"));
+    s.push_str("  \"aggregate\": {\n");
     s.push_str(&format!("    \"geometric_mean_nps\": {:.2},\n", geo_nps));
     s.push_str(&format!("    \"depth_min\": {},\n", depth_min));
     s.push_str(&format!("    \"depth_max\": {},\n", depth_max));
@@ -828,19 +874,150 @@ fn run_eval_only(entries: &[CorpusEntry], iterations: u64, out_path: Option<&Pat
     }
 }
 
+/// Square index → algebraic name (a1..h8). File = `sq % 8` (a..h left-to-right),
+/// rank = `sq / 8 + 1` (rank 1 = P1's back rank, matching the FEN convention).
+fn sq_name(sq: u8) -> String {
+    let file = (b'a' + (sq % 8)) as char;
+    let rank = sq / 8 + 1;
+    format!("{file}{rank}")
+}
+
+/// `PieceTermBreakdown.piece_kind` → label (1 = Guard, 2 = Champion, 3 = King).
+fn kind_name(piece_kind: u8) -> &'static str {
+    match piece_kind {
+        3 => "King",
+        2 => "Champ",
+        1 => "Guard",
+        _ => "?",
+    }
+}
+
+/// Two skill ids → a readable `key1,key2` (0 = empty slot). `-` if both empty.
+fn skills_str(id1: u8, id2: u8) -> String {
+    let mut parts = Vec::new();
+    for id in [id1, id2] {
+        if let Some(s) = skill_from_id(id) {
+            parts.push(skill_key(s));
+        }
+    }
+    if parts.is_empty() { "-".to_string() } else { parts.join(",") }
+}
+
+/// Print the chosen evaluator's full per-piece + side-term breakdown for one
+/// position — the designer's tuning view. Uses `BreakdownDetail::PerPiece` so the
+/// per-square owner-signed values and every side term are exposed, and closes with
+/// a CHECK line proving `Σ piece_total + Σ side.signed == total == evaluate()`.
+fn run_report(fen: &str, pos: &Position, eval_label: &str, evaluator: &dyn Evaluator) {
+    let report = evaluator.evaluate_report(pos, BreakdownDetail::PerPiece);
+    let total = evaluator.evaluate(pos);
+
+    println!("FEN: {fen}");
+    println!(
+        "evaluator: {eval_label}   total (P1-POV): {}   terminal: {}",
+        report.total, report.terminal,
+    );
+
+    if report.terminal {
+        println!("(terminal position — no term breakdown)");
+        return;
+    }
+
+    // --- PIECES: owner-signed value per occupied square. ---
+    println!();
+    println!("PIECES  (owner-signed value; + favours P1, - favours P2)");
+    println!("  {:<4} {:<6} {:<5} {:<7} {:<16} {:>7}",
+        "sq", "piece", "owner", "hp/arm", "skills", "value");
+    let mut piece_subtotal = 0i32;
+    if let Some(pieces) = report.pieces.as_ref() {
+        for pc in pieces {
+            piece_subtotal += pc.piece_total;
+            println!(
+                "  {:<4} {:<6} {:<5} {:<7} {:<16} {:>+7}",
+                sq_name(pc.sq),
+                kind_name(pc.piece_kind),
+                if pc.is_p1 { "P1" } else { "P2" },
+                format!("{}/{}", pc.hp, pc.armor),
+                skills_str(pc.skill1_id, pc.skill2_id),
+                pc.piece_total,
+            );
+        }
+    }
+    println!("  -- piece subtotal: {:+}", piece_subtotal);
+
+    // --- SIDE TERMS: per-side magnitudes + signed contribution. ---
+    println!();
+    println!("SIDE TERMS");
+    println!("  {:<18} {:>6} {:>6} {:>8}", "name", "p1", "p2", "signed");
+    let mut side_subtotal = 0i32;
+    for t in &report.side_terms {
+        side_subtotal += t.signed;
+        println!("  {:<18} {:>6} {:>6} {:>+8}", t.name, t.p1, t.p2, t.signed);
+    }
+    println!("  -- side subtotal: {:+}", side_subtotal);
+
+    // --- CHECK: the reconstruction invariant, made visible. ---
+    println!();
+    println!(
+        "CHECK: piece_subtotal + side_subtotal = {:+}  (evaluate() = {:+})",
+        piece_subtotal + side_subtotal,
+        total,
+    );
+}
+
 fn main() {
     let args = parse_args();
+
+    // --no-qs: disable quiescence globally before any search runs. This is the
+    // QS-on vs QS-off A/B lever (search-cliff investigation). Set once here.
+    if args.no_qs {
+        core_engine::search::alpha_beta::DISABLE_QS
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        eprintln!("QS disabled (--no-qs): quiescence search off at depth-0 boundary");
+    }
+
+    let evaluator = build_evaluator(&args.eval_choice);
+    let eval_label = match &args.eval_choice {
+        EvalChoice::Builtin(id) => id.clone(),
+        EvalChoice::Nnue => "nnue".to_string(),
+    };
+    if args.eval_choice == EvalChoice::Nnue {
+        eprintln!("evaluator: NNUE (quantized, refresh-per-call) - ns-50 A/B");
+    }
+
+    // --report: static per-piece + side-term breakdown, no search. A single
+    // --fen skips the corpus entirely; otherwise every corpus position is dumped.
+    if args.report {
+        if let Some(fen) = &args.fen {
+            let pos = from_fen(fen).unwrap_or_else(|e| {
+                eprintln!("FEN parse failed: {:?}", e);
+                std::process::exit(2);
+            });
+            run_report(fen, &pos, &eval_label, evaluator.as_ref());
+        } else {
+            let entries = load_corpus(&args.corpus_path);
+            if entries.is_empty() {
+                eprintln!("corpus is empty: {}", args.corpus_path.display());
+                std::process::exit(2);
+            }
+            for entry in &entries {
+                let pos = from_fen(&entry.fen).unwrap_or_else(|e| {
+                    eprintln!("FEN parse failed for {}: {:?}", entry.id, e);
+                    std::process::exit(2);
+                });
+                println!("=== {} ({}) ===", entry.id, entry.category);
+                run_report(&entry.fen, &pos, &eval_label, evaluator.as_ref());
+                println!();
+            }
+        }
+        return;
+    }
+
     let entries = load_corpus(&args.corpus_path);
     if entries.is_empty() {
         eprintln!("corpus is empty: {}", args.corpus_path.display());
         std::process::exit(2);
     }
     eprintln!("loaded {} positions from {}", entries.len(), args.corpus_path.display());
-
-    let evaluator = build_evaluator(args.eval_choice);
-    if args.eval_choice == EvalChoice::Nnue {
-        eprintln!("evaluator: NNUE (quantized, refresh-per-call) - ns-50 A/B");
-    }
 
     if args.determinism {
         let depth = match args.mode {

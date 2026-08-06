@@ -122,7 +122,7 @@ fn lmp_threshold(depth: i32) -> Option<usize> {
     }
 }
 
-use super::evaluator::{AccHandle, Evaluator, HeuristicEvaluator, MATE_SCORE};
+use super::evaluator::{AccHandle, Evaluator, MATE_SCORE};
 use super::transposition::{BoundFlag, Entry, TranspositionTable};
 use super::counters;
 use crate::game_logic::action::{Action, ActionKind};
@@ -304,6 +304,11 @@ pub(super) struct SearchCtx<'a> {
     /// are between a `make` and its matching `unmake`, `acc_stack.last()`
     /// reflects the CURRENT (post-make) `pos`; save/restore keeps it balanced.
     pub(super) acc_stack: Vec<AccHandle>,
+    /// Whether quiescence runs at the depth-0 boundary for this search. Computed
+    /// once as `evaluator.wants_qs() && !DISABLE_QS` — per-evaluator opt-out
+    /// (the custom eval returns `wants_qs() == false`) folded with the global
+    /// grading kill-switch. Read in the hot path instead of the atomic.
+    pub(super) qs_enabled: bool,
 }
 
 fn search(pos: &mut Position, depth: i32, ply: i32,
@@ -330,7 +335,7 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
     }
 
     if depth <= 0 {
-        if DISABLE_QS.load(AtomicOrdering::Relaxed) {
+        if !ctx.qs_enabled {
             let s = if inc {
                 ctx.evaluator.eval_acc(ctx.acc_stack.last().unwrap(), pos)
             } else {
@@ -585,12 +590,13 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
 /// complete at least one ply unless the position is already terminal).
 pub fn find_best(pos: &mut Position, tt: &mut TranspositionTable,
                  time_limit_ms: u64, max_depth: u8) -> SearchResult {
-    find_best_with_evaluator(pos, tt, time_limit_ms, max_depth, &HeuristicEvaluator, None)
+    find_best_with_evaluator(pos, tt, time_limit_ms, max_depth,
+                             &super::evaluator::custom::CustomEvaluator, None)
 }
 
 /// `find_best` with an explicit evaluator. Intended for the NN-rater training
 /// loop and for A/B experiments comparing rater versions. Production callers
-/// use `find_best` and get the hand-coded heuristic.
+/// use `find_best` and get the default `CustomEvaluator` (the shipped eval).
 ///
 /// `on_depth` is called after each completed iterative-deepening iteration
 /// with `(depth, score)`. Pass `None` for the default (no-op) behaviour.
@@ -656,6 +662,11 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
     // this single `find_best` call. Allocated once on the heap.
     let mut ord = OrderingTables::new();
 
+    // QS runs iff the evaluator wants it AND the global grading kill-switch is
+    // off. Computed once (invariant across ID iterations) and threaded via ctx.
+    let qs_enabled = evaluator.wants_qs()
+        && !DISABLE_QS.load(AtomicOrdering::Relaxed);
+
     for d in 1..=max_depth.max(1) {
         // Root accumulator: one full refresh per ID iteration when the
         // evaluator maintains one (negligible vs the iteration's node count);
@@ -665,7 +676,7 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
         } else {
             Vec::new()
         };
-        let mut ctx = SearchCtx { tt, ord: &mut ord, evaluator, deadline, nodes: 0, aborted: false, acc_stack };
+        let mut ctx = SearchCtx { tt, ord: &mut ord, evaluator, deadline, nodes: 0, aborted: false, acc_stack, qs_enabled };
         let score = search(pos, d as i32, 0, -INF, INF, true, &mut ctx);
         total_nodes += ctx.nodes;
 
@@ -698,7 +709,7 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::evaluator::evaluate;
+    use super::super::evaluator::HeuristicEvaluator;
     use crate::game_logic::action::ActionKind;
     use crate::game_logic::skills::Skill;
     use crate::state::{Bitboard, MailboxEntry, Position};
@@ -906,23 +917,26 @@ mod tests {
     }
 
     /// Brute-force minimax for cross-checking alpha-beta. Uses the same
-    /// terminal-distance encoding the production search does so the
-    /// comparison is apples-to-apples.
-    fn minimax(pos: &mut Position, depth: i32, ply: i32) -> i32 {
+    /// terminal-distance encoding the production search does so the comparison is
+    /// apples-to-apples. Evaluator-agnostic: the caller passes the SAME evaluator
+    /// it hands to `find_best_with_evaluator`, so this test proves "pruning does
+    /// not change the result for that evaluator" — the actual invariant. No
+    /// quiescence here, so the caller must compare against a QS-off search.
+    fn minimax(pos: &mut Position, depth: i32, ply: i32, eval: &dyn Evaluator) -> i32 {
         if let Some(r) = pos.game_result {
             return match r {
                 GameResult::P1Wins =>  MATE_SCORE - ply,
                 GameResult::P2Wins => -MATE_SCORE + ply,
             };
         }
-        if depth <= 0 { return adjust_for_ply(evaluate(pos), ply); }
+        if depth <= 0 { return adjust_for_ply(eval.evaluate(pos), ply); }
         let moves = generator::generate(pos);
-        if moves.is_empty() { return adjust_for_ply(evaluate(pos), ply); }
+        if moves.is_empty() { return adjust_for_ply(eval.evaluate(pos), ply); }
         let maximising = pos.to_move == Player::P1;
         let mut best = if maximising { -INF } else { INF };
         for a in moves {
             let undo = make_unmake::make(pos, a);
-            let s = minimax(pos, depth - 1, ply + 1);
+            let s = minimax(pos, depth - 1, ply + 1, eval);
             make_unmake::unmake(pos, &undo);
             if maximising { if s > best { best = s; } }
             else          { if s < best { best = s; } }
@@ -942,11 +956,21 @@ mod tests {
         pos.actions_remaining = 2;
         pos.zobrist = crate::state::zobrist::full_recompute(&pos);
 
+        // Pruning-correctness cross-check: alpha-beta must equal plain minimax
+        // for the SAME evaluator. Use the heuristic as the reference eval (stable,
+        // deterministic) and force QS off so both sides are pure depth-2 minimax
+        // (minimax has no quiescence). Evaluator-agnostic: the invariant is
+        // "pruning doesn't change the score", independent of which eval is picked.
+        let eval = HeuristicEvaluator;
+        let prev_qs = DISABLE_QS.swap(true, AtomicOrdering::Relaxed);
+
         let mut pos_clone = pos.clone();
-        let manual = minimax(&mut pos_clone, 2, 0);
+        let manual = minimax(&mut pos_clone, 2, 0, &eval);
 
         let mut tt = fresh_tt();
-        let r = find_best(&mut pos, &mut tt, 0, 2);
+        let r = find_best_with_evaluator(&mut pos, &mut tt, 0, 2, &eval, None);
+
+        DISABLE_QS.store(prev_qs, AtomicOrdering::Relaxed);
         assert_eq!(r.score, manual,
             "alpha-beta score {} disagreed with minimax {}", r.score, manual);
     }

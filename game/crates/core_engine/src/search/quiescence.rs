@@ -63,12 +63,16 @@ const MAX_PLY: i32 = 128;
 /// - Move-Attack (`has_approach() == true`).
 /// - Strike-category skills (Lance/Hook/Break/Steal/Tempest).
 /// - Blast (Move-category but deals combo-tick damage in `apply_blast`).
+/// - Shove (Move-category, but `apply_shove` fires a combo-tick + combo-bonus
+///   when the target is an enemy; classified loud unconditionally rather than
+///   inspecting the target — the ally-push case is positional but the search-
+///   cliff work keeps this conservative on purpose, see below).
 /// - BodyguardChoice (mid-resolution of an already-loud Move-Attack).
 ///
 /// Not loud:
 /// - Plain Moves (no approach).
 /// - Shield/Heal/Plate/Focus/Charge skills (no HP swing to opponent).
-/// - Dash/Retreat/Shove/Swap (positional Move-category, no damage).
+/// - Dash/Retreat/Swap (positional Move-category, no damage).
 /// - EndPhase / EndTurn.
 /// - DraftTurn (no QS in draft phase - there's no HP).
 ///
@@ -363,7 +367,10 @@ mod tests {
     #[test]
     fn is_loud_strike_skills_true() {
         let pos = Position::empty();
-        for s in [Skill::Lance, Skill::Hook, Skill::Break, Skill::Steal, Skill::Tempest, Skill::Blast] {
+        // Strike category + Blast + Shove: all fire combo-tick/HP damage in
+        // their resolvers, so all are loud. (Shove is loud unconditionally even
+        // though its ally-push case is positional - see `is_loud` doc.)
+        for s in [Skill::Lance, Skill::Hook, Skill::Break, Skill::Steal, Skill::Tempest, Skill::Blast, Skill::Shove] {
             let a = Action::encode(10, 20, ActionKind::Skill, s as u8, 0);
             assert!(is_loud(a, &pos), "skill {:?} should be loud", s);
         }
@@ -373,7 +380,7 @@ mod tests {
     fn is_loud_support_skills_false() {
         let pos = Position::empty();
         for s in [Skill::Shield, Skill::Heal, Skill::Plate, Skill::Focus, Skill::Charge,
-                  Skill::Dash, Skill::Retreat, Skill::Shove, Skill::Swap] {
+                  Skill::Dash, Skill::Retreat, Skill::Swap] {
             let a = Action::encode(10, 20, ActionKind::Skill, s as u8, 0);
             assert!(!is_loud(a, &pos), "skill {:?} should NOT be loud", s);
         }

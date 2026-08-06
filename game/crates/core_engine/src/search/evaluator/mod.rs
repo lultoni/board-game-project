@@ -166,6 +166,25 @@ pub trait Evaluator: Send {
     /// evaluator returns a single synthetic term (it has no term structure).
     fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport;
 
+    /// Whether the search should run quiescence (QS) at the depth-0 boundary for
+    /// THIS evaluator. Default `true` (QS on) — the historical behaviour, correct
+    /// for the horizon-blind `HeuristicEvaluator`, which needs QS to avoid
+    /// mid-exchange misreads.
+    ///
+    /// An evaluator that already scores volatile / mid-exchange positions well
+    /// (e.g. one that weighs a hanging piece by its exposure) can return `false`
+    /// to skip QS entirely. On this game's King-danger endgames QS is an
+    /// undisciplined full-width search (no forced response to a King-threat, so
+    /// the reply set never shrinks) that starves the main search of depth — so
+    /// an eval that doesn't NEED QS is strictly better off without it. The
+    /// per-evaluator choice replaces the old global `DISABLE_QS` compromise: the
+    /// heuristic keeps QS, a self-sufficient eval opts out, no one setting has to
+    /// be wrong for the other. `alpha_beta::DISABLE_QS` still force-disables QS
+    /// globally on top of this (the AI-vs-AI grading harness) — QS runs iff
+    /// `wants_qs() && !DISABLE_QS`.
+    #[inline]
+    fn wants_qs(&self) -> bool { true }
+
     /// True iff this evaluator maintains an incremental accumulator. When
     /// false, the search skips ALL handle machinery (empty stack, no clones).
     #[inline]
@@ -223,16 +242,17 @@ pub mod builtin {
     /// All builtin evaluators, in display order. The first entry is the default.
     /// ADD NEW EVALUATORS HERE (one line each).
     pub const BUILTINS: &[BuiltinEvaluator] = &[
+        // The designer's hand-rolled per-piece evaluator — the DEFAULT (first
+        // entry). See `custom.rs`.
+        BuiltinEvaluator {
+            id: "custom",
+            label: "Custom",
+            make: || Box::new(super::custom::CustomEvaluator),
+        },
         BuiltinEvaluator {
             id: "heuristic",
-            label: "Heuristic (default)",
+            label: "Heuristic",
             make: || Box::new(HeuristicEvaluator),
-        },
-        // Editable scaffold for a hand-rolled evaluator — see `custom.rs`.
-        BuiltinEvaluator {
-            id: "custom-stub",
-            label: "Custom (stub)",
-            make: || Box::new(super::custom::CustomEvaluator),
         },
         // Example weight-variant / experimental slot — add real entries here:
         // BuiltinEvaluator {
@@ -255,8 +275,9 @@ mod builtin_tests {
 
     #[test]
     fn builtin_registry_has_heuristic_default_first() {
-        // The first entry is the default and must be the heuristic.
-        assert_eq!(builtin::BUILTINS[0].id, "heuristic");
+        // The first entry is the default and must be the custom evaluator (ns:
+        // custom became the shipped default; heuristic remains selectable).
+        assert_eq!(builtin::BUILTINS[0].id, "custom");
         // Every entry has a non-empty id + label and constructs a working evaluator.
         for b in builtin::BUILTINS {
             assert!(!b.id.is_empty() && !b.label.is_empty());
@@ -268,8 +289,17 @@ mod builtin_tests {
 
     #[test]
     fn builtin_make_resolves_and_rejects() {
+        assert!(builtin::make("custom").is_some());
         assert!(builtin::make("heuristic").is_some());
         assert!(builtin::make("does-not-exist").is_none());
+    }
+
+    #[test]
+    fn heuristic_wants_qs_custom_does_not() {
+        // Per-evaluator QS setting: the horizon-blind heuristic keeps QS; the
+        // custom eval opts out (it scores mid-exchange positions well enough).
+        assert!(HeuristicEvaluator.wants_qs(), "heuristic needs QS for horizon cover");
+        assert!(!super::custom::CustomEvaluator.wants_qs(), "custom opts out of QS");
     }
 
     #[test]

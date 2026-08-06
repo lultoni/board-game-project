@@ -1,7 +1,8 @@
-//! Custom-evaluator scaffold (ns-55) — the file you edit to build your own eval.
+//! Custom evaluator (ns-55) — the designer's hand-rolled per-piece eval, and the
+//! shipped default. This is the file you edit to build the evaluation.
 //!
-//! This is a complete, registered [`Evaluator`]. Pick it from the setup /
-//! settings dropdowns (id `"custom-stub"`) and it runs immediately.
+//! This is a complete, registered [`Evaluator`], selected by default. It is also
+//! pickable from the setup / settings dropdowns (id `"custom"`).
 //!
 //! ## The model: one contextual score PER PIECE, plus a few side terms
 //!
@@ -972,6 +973,15 @@ impl Evaluator for CustomEvaluator {
             None => self.score(pos, false).total,
         }
     }
+
+    /// Opt OUT of quiescence search. QS exists to cover a horizon-blind eval on
+    /// mid-exchange positions; this per-piece eval weighs a piece by its exposure
+    /// (hp/armor vs threat) so it reads those positions directly. On this game's
+    /// King-danger endgames QS is an undisciplined full-width search that starves
+    /// the main tree of depth — measured +1.5–2 plies deeper with QS off, same or
+    /// better moves. See `game/plans/custom-eval-search-cliff.md`.
+    #[inline]
+    fn wants_qs(&self) -> bool { false }
 
     fn evaluate_report(&self, pos: &Position, detail: BreakdownDetail) -> EvalReport {
         if let Some(s) = terminal_score(pos) {

@@ -55,7 +55,8 @@ use serde::{Serialize, Deserialize};
 use crate::game_logic::action::{Action, Undo};
 use crate::game_logic::{generator, make_unmake};
 use crate::search::alpha_beta::{find_best_with_evaluator, SearchResult};
-use crate::search::evaluator::{Evaluator, HeuristicEvaluator};
+use crate::search::evaluator::Evaluator;
+use crate::search::evaluator::custom::CustomEvaluator;
 use crate::search::transposition::TranspositionTable;
 use crate::state::Position;
 use crate::state::action_notation::action_to_notation;
@@ -213,11 +214,11 @@ pub struct Match {
     /// `Match` doesn't read system time itself.
     log: Option<MatchLog>,
     /// Per-seat evaluators used by `request_ai_move*`. Both default to
-    /// `HeuristicEvaluator`; callers install replacements via
-    /// `set_p1_evaluator`/`set_p2_evaluator`. Wrapped in `Arc` so the Tauri
+    /// `CustomEvaluator` (the shipped default eval); callers install replacements
+    /// via `set_p1_evaluator`/`set_p2_evaluator`. Wrapped in `Arc` so the Tauri
     /// layer can cheaply snapshot a reference for the off-lock background eval.
     /// Not serialised in `Snapshot` - restoring from snapshot reverts both to
-    /// the default heuristic.
+    /// the default evaluator.
     p1_evaluator: Arc<dyn Evaluator + Send + Sync>,
     p2_evaluator: Arc<dyn Evaluator + Send + Sync>,
 }
@@ -246,8 +247,8 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            p1_evaluator: Arc::new(HeuristicEvaluator),
-            p2_evaluator: Arc::new(HeuristicEvaluator),
+            p1_evaluator: Arc::new(CustomEvaluator),
+            p2_evaluator: Arc::new(CustomEvaluator),
         }
     }
 
@@ -270,8 +271,8 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            p1_evaluator: Arc::new(HeuristicEvaluator),
-            p2_evaluator: Arc::new(HeuristicEvaluator),
+            p1_evaluator: Arc::new(CustomEvaluator),
+            p2_evaluator: Arc::new(CustomEvaluator),
         }
     }
 
@@ -299,8 +300,8 @@ impl Match {
             tt:       TranspositionTable::with_capacity_mb(16),
             start_fen,
             log,
-            p1_evaluator: Arc::new(HeuristicEvaluator),
-            p2_evaluator: Arc::new(HeuristicEvaluator),
+            p1_evaluator: Arc::new(CustomEvaluator),
+            p2_evaluator: Arc::new(CustomEvaluator),
         }
     }
 
@@ -390,8 +391,8 @@ impl Match {
             tt:        TranspositionTable::with_capacity_mb(16),
             start_fen: s.start_fen,
             log,
-            p1_evaluator: Arc::new(HeuristicEvaluator),
-            p2_evaluator: Arc::new(HeuristicEvaluator),
+            p1_evaluator: Arc::new(CustomEvaluator),
+            p2_evaluator: Arc::new(CustomEvaluator),
         })
     }
 
