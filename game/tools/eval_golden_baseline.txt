@@ -1,0 +1,631 @@
+### POSITION 1
+FEN: 3c[2/0/0/14/15]k[2/0/0/3/6]c[2/0/0/8/11]c[2/0/0/9/4]1/1c[2/0/0/5/7]ggg1g1/2c[2/0/0/2/9]5/g6g/3C[2/0/0/9/4]GG2/2C[2/0/0/5/7]G4/1G2GC[2/0/0/8/11]G1/3K[2/1/0/3/6]C[2/0/0/14/15]3 P2 M 0 1 4 0 4 0x48000000000
+evaluator: custom   total (P1-POV): 23   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  d1   King   P1    2/1     break,shield        +165
+  e1   Champ  P1    2/0     focus,charge        +100
+  b2   Guard  P1    2/0     -                   +100
+  e2   Guard  P1    2/0     -                   +100
+  f2   Champ  P1    2/0     plate,shove         +135
+  g2   Guard  P1    2/0     -                   +100
+  c3   Champ  P1    2/0     tempest,heal         +74
+  d3   Guard  P1    2/0     -                   +100
+  d4   Champ  P1    2/0     dash,steal          +196
+  e4   Guard  P1    2/0     -                   +100
+  f4   Guard  P1    2/0     -                   +100
+  a5   Guard  P2    2/0     -                    -50
+  h5   Guard  P2    2/0     -                    -50
+  c6   Champ  P2    2/0     hook,dash           -117
+  b7   Champ  P2    2/0     tempest,heal        -157
+  c7   Guard  P2    2/0     -                   -100
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  d8   Champ  P2    2/0     focus,charge        -100
+  e8   King   P2    2/0     break,shield        -143
+  f8   Champ  P2    2/0     plate,shove         -121
+  g8   Champ  P2    2/0     dash,steal          -150
+  -- piece subtotal: -18
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        100    100       +0
+  offense_capable         0    -29      +29
+  territory              94     82      +12
+  -- side subtotal: +41
+
+CHECK: piece_subtotal + side_subtotal = +23  (evaluate() = +23)
+
+### POSITION 2
+FEN: 2gc[2/0/0/14/15]k[2/0/0/3/6]c[2/0/0/8/11]2/2g2gg1/2c[2/0/0/5/7]5/gc[2/0/0/2/9]5g/3C[2/0/0/9/4]1GG1/3G1C[2/0/0/8/11]2/1G2G1G1/3K[2/1/0/3/6]C[2/0/0/14/15]3 P1 M 1 3 0 0 6 0x200000
+evaluator: custom   total (P1-POV): -180   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  d1   King   P1    2/1     break,shield        +184
+  e1   Champ  P1    2/0     focus,charge        +100
+  b2   Guard  P1    2/0     -                    +50
+  e2   Guard  P1    2/0     -                   +100
+  g2   Guard  P1    2/0     -                   +100
+  d3   Guard  P1    2/0     -                   +100
+  f3   Champ  P1    2/0     plate,shove         +143
+  d4   Champ  P1    2/0     dash,steal          +219
+  f4   Guard  P1    2/0     -                   +100
+  g4   Guard  P1    2/0     -                   +100
+  a5   Guard  P2    2/0     -                   -100
+  b5   Champ  P2    2/0     hook,dash           -220
+  h5   Guard  P2    2/0     -                    -50
+  c6   Champ  P2    2/0     tempest,heal        -228
+  c7   Guard  P2    2/0     -                   -100
+  f7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  c8   Guard  P2    2/0     -                   -100
+  d8   Champ  P2    2/0     focus,charge        -100
+  e8   King   P2    2/0     break,shield        -173
+  f8   Champ  P2    2/0     plate,shove         -148
+  -- piece subtotal: -223
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity         90     90       +0
+  offense_capable         0    -31      +31
+  territory              98     86      +12
+  -- side subtotal: +43
+
+CHECK: piece_subtotal + side_subtotal = -180  (evaluate() = -180)
+
+### POSITION 3
+FEN: c[2/0/0/5/7]1gc[2/0/0/14/15]k[2/0/0/3/6]3/2g1c[2/0/0/8/11]g2/2g3g1/7g/4C[2/0/0/8/11]GG1/8/1G1c[2/0/0/2/9]GC[2/0/0/14/15]G1/1G[1/0/0/0/0]1K[2/1/0/3/6]4 P1 M 2 3 0 0 9 0x0
+evaluator: custom   total (P1-POV): 39   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  b1   Guard  P1    1/0     -                   +100
+  d1   King   P1    2/1     break,shield        +250
+  b2   Guard  P1    2/0     -                   +100
+  d2   Champ  P2    2/0     hook,dash             +0
+  e2   Guard  P1    2/0     -                   +100
+  f2   Champ  P1    2/0     focus,charge         +83
+  g2   Guard  P1    2/0     -                   +100
+  e4   Champ  P1    2/0     plate,shove         +188
+  f4   Guard  P1    2/0     -                   +100
+  g4   Guard  P1    2/0     -                   +100
+  h5   Guard  P2    2/0     -                   -100
+  c6   Guard  P2    2/0     -                   -100
+  g6   Guard  P2    2/0     -                   -100
+  c7   Guard  P2    2/0     -                   -100
+  e7   Champ  P2    2/0     plate,shove         -135
+  f7   Guard  P2    2/0     -                   -100
+  a8   Champ  P2    2/0     tempest,heal        -124
+  c8   Guard  P2    2/0     -                   -100
+  d8   Champ  P2    2/0     focus,charge        -100
+  e8   King   P2    2/0     break,shield        -165
+  -- piece subtotal: -3
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        110    110       +0
+  offense_capable         0    -32      +32
+  territory              96     86      +10
+  -- side subtotal: +42
+
+CHECK: piece_subtotal + side_subtotal = +39  (evaluate() = +39)
+
+### POSITION 4
+FEN: 2gc[2/0/0/14/15]k[2/0/0/3/6]3/c[2/0/0/5/7]gg[2/1/0/0/0]2g2/3c[2/0/0/8/11]4/8/4gg2/2C[2/0/0/8/11]K[2/2/0/3/6]1G2/4GC[2/0/0/14/15]G1/GG[1/0/0/0/0]6 P2 S 3 5 6 0 12 0x0
+evaluator: custom   total (P1-POV): -154   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  a1   Guard  P1    2/0     -                   +100
+  b1   Guard  P1    1/0     -                   +100
+  e2   Guard  P1    2/0     -                   +100
+  f2   Champ  P1    2/0     focus,charge        +100
+  g2   Guard  P1    2/0     -                   +100
+  c3   Champ  P1    2/0     plate,shove         +188
+  d3   King   P1    2/2     break,shield        +250
+  f3   Guard  P1    2/0     -                   +100
+  e4   Guard  P2    2/0     -                   -100
+  f4   Guard  P2    2/0     -                   -100
+  d6   Champ  P2    2/0     plate,shove         -103
+  a7   Champ  P2    2/0     tempest,heal        -184
+  b7   Guard  P2    2/0     -                   -100
+  c7   Guard  P2    2/1     -                   -100
+  f7   Guard  P2    2/0     -                   -100
+  c8   Guard  P2    2/0     -                   -100
+  d8   Champ  P2    2/0     focus,charge        -100
+  e8   King   P2    2/0     break,shield        -175
+  -- piece subtotal: -124
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        170    140      +30
+  offense_capable         0    -20      +20
+  territory              68    148      -80
+  -- side subtotal: -30
+
+CHECK: piece_subtotal + side_subtotal = -154  (evaluate() = -154)
+
+### POSITION 5
+FEN: 2gc[2/0/0/14/15]1k[2/1/0/3/6]2/1g3g2/1c[2/0/0/5/7]6/3c[1/0/0/8/11]g[2/1/0/0/0]3/4Gg2/4G3/2C[2/0/0/8/11]K[2/2/0/3/6]1C[2/0/0/14/15]G1/GG[1/0/0/0/0]6 P2 M 0 6 4 0 14 0x2000001000000000
+evaluator: custom   total (P1-POV): -48   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  a1   Guard  P1    2/0     -                   +100
+  b1   Guard  P1    1/0     -                   +100
+  c2   Champ  P1    2/0     plate,shove         +165
+  d2   King   P1    2/2     break,shield        +220
+  f2   Champ  P1    2/0     focus,charge        +100
+  g2   Guard  P1    2/0     -                   +100
+  e3   Guard  P1    2/0     -                   +100
+  e4   Guard  P1    2/0     -                   +100
+  f4   Guard  P2    2/0     -                   -100
+  d5   Champ  P2    1/0     plate,shove          -72
+  e5   Guard  P2    2/1     -                   -100
+  b6   Champ  P2    2/0     tempest,heal        -219
+  b7   Guard  P2    2/0     -                   -100
+  f7   Guard  P2    2/0     -                   -100
+  c8   Guard  P2    2/0     -                   -100
+  d8   Champ  P2    2/0     focus,charge        -100
+  f8   King   P2    2/1     break,shield        -184
+  -- piece subtotal: -90
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        210    140      +70
+  offense_capable         0    -18      +18
+  territory              84    130      -46
+  -- side subtotal: +42
+
+CHECK: piece_subtotal + side_subtotal = -48  (evaluate() = -48)
+
+### POSITION 6
+FEN: 2gc[2/0/0/14/15]1k[2/1/0/3/6]2/1g3g[2/1/0/0/0]2/4g[1/0/0/0/0]3/1c[2/0/0/5/7]2g[2/1/0/0/0]3/4G3/3C[2/0/0/8/11]1G2/2K[2/2/0/3/6]2C[2/0/0/14/15]G1/GG[1/0/0/0/0]6 P1 M 2 9 2 0 16 0x0
+evaluator: custom   total (P1-POV): 117   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  a1   Guard  P1    2/0     -                   +100
+  b1   Guard  P1    1/0     -                   +100
+  c2   King   P1    2/2     break,shield        +240
+  f2   Champ  P1    2/0     focus,charge        +100
+  g2   Guard  P1    2/0     -                   +100
+  d3   Champ  P1    2/0     plate,shove         +128
+  f3   Guard  P1    2/0     -                   +100
+  e4   Guard  P1    2/0     -                   +100
+  b5   Champ  P2    2/0     tempest,heal         -88
+  e5   Guard  P2    2/1     -                   -100
+  e6   Guard  P2    1/0     -                   -100
+  b7   Guard  P2    2/0     -                   -100
+  f7   Guard  P2    2/1     -                   -100
+  c8   Guard  P2    2/0     -                   -100
+  d8   Champ  P2    2/0     focus,charge        -100
+  f8   King   P2    2/1     break,shield        -175
+  -- piece subtotal: +105
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        190    170      +20
+  territory             102    110       -8
+  -- side subtotal: +12
+
+CHECK: piece_subtotal + side_subtotal = +117  (evaluate() = +117)
+
+### POSITION 7
+FEN: 2gc[2/0/0/14/15]k[2/1/0/3/6]3/1g6/4G[1/0/0/0/0]g[2/1/0/0/0]2/4g[2/1/0/0/0]G2/2K[2/2/0/3/6]5/3C[2/0/0/8/11]4/5C[2/0/0/14/15]G1/GG[1/0/0/0/0]6 P2 S 3 2 7 4 16 0x0
+evaluator: custom   total (P1-POV): 330   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  a1   Guard  P1    2/0     -                    +84
+  b1   Guard  P1    1/0     -                   +100
+  f2   Champ  P1    2/0     focus,charge        +100
+  g2   Guard  P1    2/0     -                    +67
+  d3   Champ  P1    2/0     plate,shove         +203
+  c4   King   P1    2/2     break,shield        +270
+  e5   Guard  P2    2/1     -                    -67
+  f5   Guard  P1    2/0     -                   +100
+  e6   Guard  P1    1/0     -                   +100
+  f6   Guard  P2    2/1     -                   -100
+  b7   Guard  P2    2/0     -                   -100
+  c8   Guard  P2    2/0     -                   -100
+  d8   Champ  P2    2/0     focus,charge        -100
+  e8   King   P2    2/1     break,shield        -200
+  -- piece subtotal: +357
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        170    170       +0
+  offense_capable       -33      0      -33
+  territory             142    136       +6
+  -- side subtotal: -27
+
+CHECK: piece_subtotal + side_subtotal = +330  (evaluate() = +330)
+
+### POSITION 8
+FEN: 2gc[2/0/0/14/15]4/1g6/3k[2/1/0/3/6]1g[2/1/0/0/0]2/3G[1/0/1/0/0]1G2/2K[2/2/0/3/6]g[2/1/0/0/0]C[2/0/0/8/11]3/8/5C[2/0/0/14/15]G1/GG[1/0/0/0/0]6 P2 S 2 4 8 0 17 0x0 35 43 1
+evaluator: custom   total (P1-POV): 591   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  a1   Guard  P1    2/0     -                    +67
+  b1   Guard  P1    1/0     -                    +67
+  f2   Champ  P1    2/0     focus,charge        +100
+  g2   Guard  P1    2/0     -                   +100
+  c4   King   P1    2/2     break,shield        +300
+  d4   Guard  P2    2/1     -                    -50
+  e4   Champ  P1    2/0     plate,shove         +225
+  d5   Guard  P1    1/0     -                   +100
+  f5   Guard  P1    2/0     -                   +100
+  d6   King   P2    2/1     break,shield         -66
+  f6   Guard  P2    2/1     -                    -50
+  b7   Guard  P2    2/0     -                   -100
+  c8   Guard  P2    2/0     -                   -100
+  d8   Champ  P2    2/0     focus,charge         -83
+  -- piece subtotal: +610
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        190    180      +10
+  offense_capable       -23      0      -23
+  territory             142    148       -6
+  -- side subtotal: -19
+
+CHECK: piece_subtotal + side_subtotal = +591  (evaluate() = +591)
+
+### POSITION 9
+FEN: 1c[2/0/0/1/9]1c[2/0/0/1/9]k[2/0/0/6/9]c[2/0/0/1/10]c[2/0/0/1/6]1/1c[2/0/0/6/10]1gggg1/g1g5/8/8/2G2G2/1C[2/0/0/1/6]GGGGC[2/0/0/1/9]1/2C[2/0/0/1/10]K[2/0/0/6/9]C[2/0/0/1/9]C[2/0/0/6/10]2 P2 S 2 8 8 0 2 0x0
+evaluator: custom   total (P1-POV): 32   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  c1   Champ  P1    2/0     lance,blast         +143
+  d1   King   P1    2/0     shield,dash         +100
+  e1   Champ  P1    2/0     lance,dash          +143
+  f1   Champ  P1    2/0     shield,blast        +121
+  b2   Champ  P1    2/0     lance,shield        +143
+  c2   Guard  P1    2/0     -                   +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Guard  P1    2/0     -                   +100
+  f2   Guard  P1    2/0     -                   +100
+  g2   Champ  P1    2/0     lance,dash          +143
+  c3   Guard  P1    2/0     -                   +100
+  f3   Guard  P1    2/0     -                   +100
+  a6   Guard  P2    2/0     -                   -100
+  c6   Guard  P2    2/0     -                   -100
+  b7   Champ  P2    2/0     shield,blast        -121
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  f7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  b8   Champ  P2    2/0     lance,dash          -143
+  d8   Champ  P2    2/0     lance,dash          -143
+  e8   King   P2    2/0     shield,dash         -100
+  f8   Champ  P2    2/0     lance,blast         -143
+  g8   Champ  P2    2/0     lance,shield        -143
+  -- piece subtotal: +0
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        140    120      +20
+  territory              86     74      +12
+  -- side subtotal: +32
+
+CHECK: piece_subtotal + side_subtotal = +32  (evaluate() = +32)
+
+### POSITION 10
+FEN: 4k[2/0/0/6/9]c[2/0/0/1/10]c[2/0/0/1/6]1/1c[2/0/0/6/10]1gggg1/gc[2/0/0/1/9]gc[2/0/0/1/9]4/8/8/2G2G2/1C[2/0/0/1/6]GGGGC[2/0/0/1/9]1/2C[2/0/0/1/10]K[2/0/0/6/9]C[2/0/0/1/9]C[2/0/0/6/10]2 P2 S 0 8 2 0 2 0x0
+evaluator: custom   total (P1-POV): 78   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  c1   Champ  P1    2/0     lance,blast         +143
+  d1   King   P1    2/0     shield,dash         +100
+  e1   Champ  P1    2/0     lance,dash          +143
+  f1   Champ  P1    2/0     shield,blast        +121
+  b2   Champ  P1    2/0     lance,shield        +143
+  c2   Guard  P1    2/0     -                   +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Guard  P1    2/0     -                   +100
+  f2   Guard  P1    2/0     -                   +100
+  g2   Champ  P1    2/0     lance,dash          +143
+  c3   Guard  P1    2/0     -                   +100
+  f3   Guard  P1    2/0     -                   +100
+  a6   Guard  P2    2/0     -                   -100
+  b6   Champ  P2    2/0     lance,dash          -150
+  c6   Guard  P2    2/0     -                   -100
+  d6   Champ  P2    2/0     lance,dash          -150
+  b7   Champ  P2    2/0     shield,blast        -121
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  f7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  e8   King   P2    2/0     shield,dash         -100
+  f8   Champ  P2    2/0     lance,blast         -143
+  g8   Champ  P2    2/0     lance,shield        -143
+  -- piece subtotal: -14
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        140     60      +80
+  territory              86     74      +12
+  -- side subtotal: +92
+
+CHECK: piece_subtotal + side_subtotal = +78  (evaluate() = +78)
+
+### POSITION 11
+FEN: 4k[2/0/0/6/9]c[2/0/0/1/10]1c[2/0/0/1/6]/1c[2/0/0/6/10]1gggg1/g1g5/c[2/0/0/1/9]1c[2/0/0/1/9]5/8/7G/GC[2/0/0/1/6]GGGGC[2/0/0/1/9]1/2C[2/0/0/1/10]K[2/0/0/6/9]C[2/0/0/1/9]C[2/0/0/6/10]2 P2 S 1 10 1 0 3 0x0
+evaluator: custom   total (P1-POV): 88   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  c1   Champ  P1    2/0     lance,blast         +143
+  d1   King   P1    2/0     shield,dash         +100
+  e1   Champ  P1    2/0     lance,dash          +143
+  f1   Champ  P1    2/0     shield,blast        +121
+  a2   Guard  P1    2/0     -                   +100
+  b2   Champ  P1    2/0     lance,shield        +143
+  c2   Guard  P1    2/0     -                   +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Guard  P1    2/0     -                   +100
+  f2   Guard  P1    2/0     -                   +100
+  g2   Champ  P1    2/0     lance,dash          +143
+  h3   Guard  P1    2/0     -                   +100
+  a5   Champ  P2    2/0     lance,dash          -150
+  c5   Champ  P2    2/0     lance,dash          -150
+  a6   Guard  P2    2/0     -                   -100
+  c6   Guard  P2    2/0     -                   -100
+  b7   Champ  P2    2/0     shield,blast        -121
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  f7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  e8   King   P2    2/0     shield,dash         -100
+  f8   Champ  P2    2/0     lance,blast         -143
+  h8   Champ  P2    2/0     lance,shield        -143
+  -- piece subtotal: -14
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        170     60     +110
+  territory              74     82       -8
+  -- side subtotal: +102
+
+CHECK: piece_subtotal + side_subtotal = +88  (evaluate() = +88)
+
+### POSITION 12
+FEN: 4k[2/0/0/6/9]c[2/0/0/1/10]1c[2/0/0/1/6]/3gg1g1/g1gc[2/0/0/6/10]1c[2/0/0/1/9]g1/c[2/0/0/1/9]7/5G2/5C[2/0/0/1/9]1G/C[2/1/0/1/6]1GGC[2/0/0/6/10]GC[2/0/0/1/9]1/G1C[2/0/0/1/10]K[2/1/0/6/9]4 P2 S 1 5 3 0 5 0x0
+evaluator: custom   total (P1-POV): 14   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  a1   Guard  P1    2/0     -                   +100
+  c1   Champ  P1    2/0     lance,blast         +150
+  d1   King   P1    2/1     shield,dash         +100
+  a2   Champ  P1    2/1     lance,shield        +150
+  c2   Guard  P1    2/0     -                   +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Champ  P1    2/0     shield,blast        +128
+  f2   Guard  P1    2/0     -                   +100
+  g2   Champ  P1    2/0     lance,dash          +143
+  f3   Champ  P1    2/0     lance,dash          +150
+  h3   Guard  P1    2/0     -                   +100
+  f4   Guard  P1    2/0     -                   +100
+  a5   Champ  P2    2/0     lance,dash          -150
+  a6   Guard  P2    2/0     -                   -100
+  c6   Guard  P2    2/0     -                   -100
+  d6   Champ  P2    2/0     shield,blast        -152
+  f6   Champ  P2    2/0     lance,dash          -164
+  g6   Guard  P2    2/0     -                   -100
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  e8   King   P2    2/0     shield,dash         -100
+  f8   Champ  P2    2/0     lance,blast         -150
+  h8   Champ  P2    2/0     lance,shield        -143
+  -- piece subtotal: -38
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        140     90      +50
+  territory              82     80       +2
+  -- side subtotal: +52
+
+CHECK: piece_subtotal + side_subtotal = +14  (evaluate() = +14)
+
+### POSITION 13
+FEN: 4k[2/1/0/6/9]c[2/0/0/1/10]1c[2/0/0/1/6]/3gg1g1/g1gc[2/0/0/6/10]1c[2/0/0/1/9]g1/c[2/0/0/1/9]7/5G2/5C[2/0/0/1/9]1G/C[2/1/0/1/6]1GGC[2/0/0/6/10]GC[2/0/0/1/9]1/G1C[2/0/0/1/10]K[2/1/0/6/9]4 P2 S 0 5 1 0 5 0x0
+evaluator: custom   total (P1-POV): 34   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  a1   Guard  P1    2/0     -                   +100
+  c1   Champ  P1    2/0     lance,blast         +150
+  d1   King   P1    2/1     shield,dash         +100
+  a2   Champ  P1    2/1     lance,shield        +150
+  c2   Guard  P1    2/0     -                   +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Champ  P1    2/0     shield,blast        +128
+  f2   Guard  P1    2/0     -                   +100
+  g2   Champ  P1    2/0     lance,dash          +143
+  f3   Champ  P1    2/0     lance,dash          +150
+  h3   Guard  P1    2/0     -                   +100
+  f4   Guard  P1    2/0     -                   +100
+  a5   Champ  P2    2/0     lance,dash          -150
+  a6   Guard  P2    2/0     -                   -100
+  c6   Guard  P2    2/0     -                   -100
+  d6   Champ  P2    2/0     shield,blast        -152
+  f6   Champ  P2    2/0     lance,dash          -164
+  g6   Guard  P2    2/0     -                   -100
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  e8   King   P2    2/1     shield,dash         -100
+  f8   Champ  P2    2/0     lance,blast         -150
+  h8   Champ  P2    2/0     lance,shield        -143
+  -- piece subtotal: -38
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        140     70      +70
+  territory              82     80       +2
+  -- side subtotal: +72
+
+CHECK: piece_subtotal + side_subtotal = +34  (evaluate() = +34)
+
+### POSITION 14
+FEN: g3k[2/1/0/6/9]1gc[2/0/0/1/6]/2ggg1g1/2c[2/0/0/1/9]c[2/1/0/6/10]c[2/0/0/1/10]c[2/0/0/1/9]2/8/8/C[2/1/0/1/6]4C[2/0/0/1/9]GC[2/0/0/1/9]/1C[2/0/0/1/10]GGC[2/0/0/6/10]G1G/2G2K[2/1/0/6/9]2 P1 M 1 8 5 0 9 0x10000
+evaluator: custom   total (P1-POV): -4   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  c1   Guard  P1    2/0     -                   +100
+  f1   King   P1    2/1     shield,dash         +100
+  b2   Champ  P1    2/0     lance,blast         +150
+  c2   Guard  P1    2/0     -                   +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Champ  P1    2/0     shield,blast        +128
+  f2   Guard  P1    2/0     -                   +100
+  h2   Guard  P1    2/0     -                   +100
+  a3   Champ  P1    2/1     lance,shield        +150
+  f3   Champ  P1    2/0     lance,dash          +157
+  g3   Guard  P1    2/0     -                   +100
+  h3   Champ  P1    2/0     lance,dash          +150
+  c6   Champ  P2    2/0     lance,dash          -157
+  d6   Champ  P2    2/1     shield,blast        -140
+  e6   Champ  P2    2/0     lance,blast         -164
+  f6   Champ  P2    2/0     lance,dash          -157
+  c7   Guard  P2    2/0     -                   -100
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  a8   Guard  P2    2/0     -                   -100
+  e8   King   P2    2/1     shield,dash         -100
+  g8   Guard  P2    2/0     -                   -100
+  h8   Champ  P2    2/0     lance,shield        -143
+  -- piece subtotal: -26
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        160    160       +0
+  territory              84     62      +22
+  -- side subtotal: +22
+
+CHECK: piece_subtotal + side_subtotal = -4  (evaluate() = -4)
+
+### POSITION 15
+FEN: g3k[2/1/0/6/9]1gc[2/0/0/1/6]/2ggg1g1/2c[2/0/0/1/9]c[2/1/0/6/10]c[2/0/0/1/10]c[2/0/0/1/9]2/8/8/C[2/1/0/1/6]4C[2/0/0/1/9]1C[2/0/0/1/9]/1C[2/0/0/1/10]GGC[2/0/0/6/10]G1G/2G2K[2/1/0/6/9]1G P1 M 0 8 5 0 9 0x10080
+evaluator: custom   total (P1-POV): -22   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  c1   Guard  P1    2/0     -                   +100
+  f1   King   P1    2/1     shield,dash         +100
+  h1   Guard  P1    2/0     -                   +100
+  b2   Champ  P1    2/0     lance,blast         +150
+  c2   Guard  P1    2/0     -                   +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Champ  P1    2/0     shield,blast        +128
+  f2   Guard  P1    2/0     -                   +100
+  h2   Guard  P1    2/0     -                   +100
+  a3   Champ  P1    2/1     lance,shield        +150
+  f3   Champ  P1    2/0     lance,dash          +157
+  h3   Champ  P1    2/0     lance,dash          +150
+  c6   Champ  P2    2/0     lance,dash          -157
+  d6   Champ  P2    2/1     shield,blast        -140
+  e6   Champ  P2    2/0     lance,blast         -164
+  f6   Champ  P2    2/0     lance,dash          -157
+  c7   Guard  P2    2/0     -                   -100
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  a8   Guard  P2    2/0     -                   -100
+  e8   King   P2    2/1     shield,dash         -100
+  g8   Guard  P2    2/0     -                   -100
+  h8   Champ  P2    2/0     lance,shield        -143
+  -- piece subtotal: -26
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        160    160       +0
+  territory              68     64       +4
+  -- side subtotal: +4
+
+CHECK: piece_subtotal + side_subtotal = -22  (evaluate() = -22)
+
+### POSITION 16
+FEN: g1k[2/1/0/6/9]3g1/g2gg1gc[2/0/0/1/6]/3c[2/2/0/6/10]4/4c[2/0/0/1/9]c[2/0/0/1/10]2/1C[2/1/0/1/6]C[2/0/0/1/10]5/2GC[2/0/0/1/9]C[2/0/0/1/9]3/3GGGGG/5K[2/1/0/6/9]2 P2 M 2 3 5 0 12 0x0
+evaluator: custom   total (P1-POV): -129   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  f1   King   P1    2/1     shield,dash         +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Guard  P1    2/0     -                   +100
+  f2   Guard  P1    2/0     -                   +100
+  g2   Guard  P1    2/0     -                   +100
+  h2   Guard  P1    2/0     -                   +100
+  c3   Guard  P1    2/0     -                   +100
+  d3   Champ  P1    2/0     lance,dash           +65
+  e3   Champ  P1    2/0     lance,dash           +62
+  b4   Champ  P1    2/1     lance,shield        +179
+  c4   Champ  P1    2/0     lance,blast         +207
+  e5   Champ  P2    2/0     lance,dash          -156
+  f5   Champ  P2    2/0     lance,blast         -190
+  d6   Champ  P2    2/2     shield,blast        -167
+  a7   Guard  P2    2/0     -                   -100
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  g7   Guard  P2    2/0     -                   -100
+  h7   Champ  P2    2/0     lance,shield        -157
+  a8   Guard  P2    2/0     -                   -100
+  c8   King   P2    2/1     shield,dash         -100
+  g8   Guard  P2    2/0     -                   -100
+  -- piece subtotal: -157
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        150    130      +20
+  territory              80     72       +8
+  -- side subtotal: +28
+
+CHECK: piece_subtotal + side_subtotal = -129  (evaluate() = -129)
+
+### POSITION 17
+FEN: g1k[2/1/0/6/9]3g1/g2gg2c[2/0/0/1/6]/3C[2/1/0/1/6]1c[2/0/0/6/10]2/3C[2/0/0/1/10]2g1/8/2G1c[1/0/0/1/10]1G1/3GC[1/0/0/1/9]G1G/5K[2/1/0/6/9]2 P2 S 1 2 1 0 15 0x0 27 20,45 65537
+evaluator: custom   total (P1-POV): 69   terminal: false
+
+PIECES  (owner-signed value; + favours P1, - favours P2)
+  sq   piece  owner hp/arm  skills             value
+  f1   King   P1    2/1     shield,dash         +100
+  d2   Guard  P1    2/0     -                   +100
+  e2   Champ  P1    1/0     lance,dash           +44
+  f2   Guard  P1    2/0     -                   +100
+  h2   Guard  P1    2/0     -                   +100
+  c3   Guard  P1    2/0     -                   +100
+  e3   Champ  P2    1/0     lance,blast          -38
+  g3   Guard  P1    2/0     -                   +100
+  d5   Champ  P1    2/0     lance,blast         +236
+  g5   Guard  P2    2/0     -                   -100
+  d6   Champ  P1    2/1     lance,shield        +142
+  f6   Champ  P2    2/0     shield,blast        -108
+  a7   Guard  P2    2/0     -                   -100
+  d7   Guard  P2    2/0     -                   -100
+  e7   Guard  P2    2/0     -                   -100
+  h7   Champ  P2    2/0     lance,shield        -175
+  a8   Guard  P2    2/0     -                   -100
+  c8   King   P2    2/1     shield,dash         -100
+  g8   Guard  P2    2/0     -                   -100
+  -- piece subtotal: +1
+
+SIDE TERMS
+  name                   p1     p2   signed
+  skill_capacity        170    110      +60
+  territory              96     88       +8
+  -- side subtotal: +68
+
+CHECK: piece_subtotal + side_subtotal = +69  (evaluate() = +69)
+

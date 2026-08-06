@@ -109,6 +109,10 @@ fn score_king(ctx: &CustomCtx, p: Piece) -> i32 {
 /// The whole model is `BASE × f1 × f2 × …` (principle 1).
 const BASE: f32 = 100.0;
 
+/// Lookahead window (rounds) for the survivability race: this turn + next. Shared
+/// by the cached per-side budgets and `survivability_severity` so they agree.
+const IMMINENT: u16 = 2;
+
 fn score_guard(ctx: &CustomCtx, p: Piece) -> i32 {
     // Guards carry no skills, so only the over-extension factor applies.
     (BASE * factor_overextension(ctx, p)).round() as i32
@@ -269,7 +273,8 @@ fn combo_overlap_points(ctx: &CustomCtx, p: Piece) -> i32 {
     // SideInfo::build). OR dedupes squares shared with two partners.
     let my_clipped = my_reach & r4;
     let mut overlap = 0u64;
-    for &(other_sq, other_reach) in &ctx.side(p.is_p1).reach {
+    let side = ctx.side(p.is_p1);
+    for &(other_sq, other_reach) in &side.reach[..side.reach_len] {
         if other_sq != p.sq {
             overlap |= my_clipped & other_reach;
         }
@@ -675,7 +680,7 @@ fn term_offense_capable(ctx: &CustomCtx, is_p1: bool) -> i32 {
     let mut total = 0i32;
     let mut realise_sum = 0.0f32;
     let mut safe_sum = 0.0f32;
-    for &(sq, reach) in &s.reach {
+    for &(sq, reach) in &s.reach[..s.reach_len] {
         total += 1;
         let best = if reach & ek != 0 {
             1.0
@@ -798,6 +803,17 @@ struct CustomCtx<'a> {
     /// Per-side precomputed state, indexed `[0] = P1, [1] = P2`. Built once in
     /// `new` so the per-piece walk and the side-terms never re-scan the board.
     sides: [SideInfo; 2],
+    /// Per-side Move-Attack threat masks: `move_attack_threat[i]` has a bit set for
+    /// every square the side `i` (0=P1, 1=P2) can Move-Attack next turn — Guard@R2
+    /// ∪ Champion/King@R1. Precomputed once (pure bitwise, no per-target loop) so
+    /// `enemy_can_move_attack(defender)` is a single mask test.
+    move_attack_threat: [u64; 2],
+    /// Per-side, per-square nearest-Strike-carrier distance: `strike_dist[i][sq]` is
+    /// the Chebyshev distance of the closest side-`i` Strike-carrier that can hit
+    /// `sq` (true range +1, clear path), or `u8::MAX` if none. Painted once by
+    /// walking each striker's `skill_attacks` reach — so `enemy_strike_reaches` and
+    /// `nearest_enemy_striker_dist` become array lookups.
+    strike_dist: [[u8; 64]; 2],
 }
 
 /// Per-side state precomputed once per eval (mirrors the heuristic's `EvalContext`
@@ -805,10 +821,13 @@ struct CustomCtx<'a> {
 /// the skill-inventory counts the side-terms need.
 #[derive(Default)]
 struct SideInfo {
-    /// Per-champion combo-reach bitboards, one entry per champion that carries a
-    /// combo-ticking skill (ascending square order). Computed once so
-    /// `combo_overlap_bonus` never recomputes `skill_attacks` O(champs²) times.
-    reach: Vec<(u8, u64)>,
+    /// Per-champion combo-reach bitboards, one entry per champion/king that carries
+    /// a combo-ticking skill. Fixed inline buffer (max 5 champions + 1 king = 6) so
+    /// `CustomCtx::new` does ZERO heap allocation on the hot eval path — the old
+    /// `Vec` cost two allocs per eval, called millions of times in search. Valid
+    /// entries are `reach[..reach_len]`.
+    reach: [(u8, u64); 6],
+    reach_len: usize,
     /// Count of champions carrying a Strike skill.
     strike_champs: i32,
     /// Count of champions/king carrying an enemy-moving Move skill (Blast/Shove)
@@ -823,6 +842,14 @@ struct SideInfo {
     has_shield: bool,
     /// This side owns a Heal or Plate skill (adjacent-ally defensive cast).
     has_heal_or_plate: bool,
+    /// Per-side affordable-cast budgets over the IMMINENT window, cached once in
+    /// `CustomCtx::new` (identical for every piece on the side, so never recomputed
+    /// per piece). `0` until filled.
+    ///   - `strike_budget`: casts of this side's cheapest Strike (incoming when this
+    ///     side is the attacker; retaliation when it's the defender).
+    ///   - `defense_budget`: casts of this side's max-cost skill (its defensive spend).
+    strike_budget: i32,
+    defense_budget: i32,
 }
 
 impl SideInfo {
@@ -834,7 +861,8 @@ impl SideInfo {
         // Offense counting and combo reach cover champions AND the king — the king
         // is a champion under the hood (carries Strikes, ticks combos: C1c).
         let attackers = side_bb & (pos.champions.0 | pos.kings.0);
-        let mut reach = Vec::with_capacity(attackers.count_ones() as usize);
+        let mut reach = [(0u8, 0u64); 6];
+        let mut reach_len = 0usize;
         let mut strike_champs = 0i32;
         let mut move_champs = 0i32;
         let mut min_strike_cost = 0i32;
@@ -849,8 +877,9 @@ impl SideInfo {
 
             // Combo reach (only nonzero if it carries a combo-ticking skill).
             let r = CustomCtx::combo_reach_of(pos, all_occ, sq);
-            if r != 0 {
-                reach.push((sq, r));
+            if r != 0 && reach_len < reach.len() {
+                reach[reach_len] = (sq, r);
+                reach_len += 1;
             }
 
             // Skill inventory: a piece ticks at most once, Strike over Move.
@@ -900,12 +929,16 @@ impl SideInfo {
 
         SideInfo {
             reach,
+            reach_len,
             strike_champs,
             move_champs,
             max_skill_cost: max_owned_skill_cost(pos, side_bb) as i32,
             min_strike_cost,
             has_shield,
             has_heal_or_plate,
+            // Filled by CustomCtx::new once the ctx exists (affordable_casts needs it).
+            strike_budget: 0,
+            defense_budget: 0,
         }
     }
 }
@@ -913,7 +946,7 @@ impl SideInfo {
 impl<'a> CustomCtx<'a> {
     fn new(pos: &'a Position) -> Self {
         let all_occ = pos.p1_pieces.0 | pos.p2_pieces.0;
-        CustomCtx {
+        let mut ctx = CustomCtx {
             pos,
             all_occ,
             territory: Territory::compute(pos),
@@ -921,7 +954,73 @@ impl<'a> CustomCtx<'a> {
                 SideInfo::build(pos, pos.p1_pieces.0, all_occ),
                 SideInfo::build(pos, pos.p2_pieces.0, all_occ),
             ],
+            move_attack_threat: [
+                Self::build_move_attack_threat(pos, pos.p1_pieces.0),
+                Self::build_move_attack_threat(pos, pos.p2_pieces.0),
+            ],
+            strike_dist: [
+                Self::build_strike_dist(pos, all_occ, pos.p1_pieces.0),
+                Self::build_strike_dist(pos, all_occ, pos.p2_pieces.0),
+            ],
+        };
+        // Cache the per-side affordable-cast budgets (identical for every piece on
+        // the side) so `survivability_severity` never recomputes them per piece.
+        for is_p1 in [true, false] {
+            let i = if is_p1 { 0 } else { 1 };
+            let strike = ctx.affordable_casts(is_p1, ctx.sides[i].min_strike_cost, IMMINENT);
+            let defense = ctx.affordable_casts(is_p1, ctx.sides[i].max_skill_cost.max(1), IMMINENT);
+            ctx.sides[i].strike_budget = strike;
+            ctx.sides[i].defense_budget = defense;
         }
+        ctx
+    }
+
+    /// Every square `attacker_bb`'s side can Move-Attack next turn: Guard@R2 ∪
+    /// Champion/King@R1. Pure bitwise expansion of each attacker's disc — no
+    /// per-target loop. `king_expand` twice = the R2 disc; once = R1.
+    fn build_move_attack_threat(pos: &Position, attacker_bb: u64) -> u64 {
+        let guards = attacker_bb & pos.guards.0;
+        let champs_kings = attacker_bb & (pos.champions.0 | pos.kings.0);
+        // Guard R2 footprint (two king-expansions) ∪ Champ/King R1 (one expansion).
+        let guard_r2 = king_expand(king_expand(guards));
+        let ck_r1 = king_expand(champs_kings);
+        guard_r2 | ck_r1
+    }
+
+    /// Per-square nearest-Strike-carrier distance for `attacker_bb`'s side. For each
+    /// Strike-carrier, walk the squares it can hit (`skill_attacks` at range+1, which
+    /// already models blocking) and record the min Chebyshev distance per square.
+    fn build_strike_dist(pos: &Position, all_occ: u64, attacker_bb: u64) -> [u8; 64] {
+        let mut dist = [u8::MAX; 64];
+        let mut cand = attacker_bb & (pos.champions.0 | pos.kings.0);
+        while cand != 0 {
+            let s = cand.trailing_zeros() as u8;
+            cand &= cand - 1;
+            let mb = pos.mailbox[s as usize];
+            let mut reach = 0u8;
+            for id in [mb.skill1(), mb.skill2()] {
+                if let Some(sk) = skill_from_id(id) {
+                    if skill_category(sk) == SkillCategory::Strike {
+                        reach = reach.max(skill_default_range(sk));
+                    }
+                }
+            }
+            if reach == 0 {
+                continue;
+            }
+            // range + 1: the Striker may step one tile in before casting. skill_attacks
+            // gives the queen-ray reach at that range with blocking already applied.
+            let mut hits = skill_attacks(s, all_occ, reach + 1).0;
+            while hits != 0 {
+                let t = hits.trailing_zeros() as usize;
+                hits &= hits - 1;
+                let d = cheby_dist(s, t as u8);
+                if d < dist[t] {
+                    dist[t] = d;
+                }
+            }
+        }
+        dist
     }
 
     /// Precomputed state for the side `is_p1` selects.
@@ -935,7 +1034,8 @@ impl<'a> CustomCtx<'a> {
     /// the reach computed once in [`SideInfo::build`] instead of recomputing it.
     #[inline]
     fn combo_reach(&self, is_p1: bool, sq: u8) -> u64 {
-        self.side(is_p1).reach.iter()
+        let side = self.side(is_p1);
+        side.reach[..side.reach_len].iter()
             .find(|&&(s, _)| s == sq)
             .map_or(0, |&(_, r)| r)
     }
@@ -1051,21 +1151,13 @@ impl<'a> CustomCtx<'a> {
         if is_p1 { self.pos.p2_pieces.0 } else { self.pos.p1_pieces.0 }
     }
 
-    /// Can the side opposing `is_p1` Move-Attack `sq` next turn? A Move-Attack
-    /// requires the attacker to actually reach the target with its move speed, so
-    /// R2 alone is NOT enough: only a **Guard** (speed 2) threatens from R2; a
-    /// **Champion/King** (speed 1) only threatens from R1. (Free pathing means the
-    /// disc, not a ray, is the right shape; blocking is not modelled here — this is
-    /// the conservative "someone could step onto it" gate the danger/exposure
-    /// terms share so they agree on what "reachable" means.)
+    /// Can the side opposing `is_p1` Move-Attack `sq` next turn? Single mask test
+    /// against the precomputed per-side Move-Attack threat map (Guard@R2 ∪
+    /// Champion/King@R1). See [`build_move_attack_threat`].
     #[inline]
     fn enemy_can_move_attack(&self, is_p1: bool, sq: u8) -> bool {
-        let enemy = self.enemy_bb(is_p1);
-        let r1 = within_range(sq, 1).0;
-        let r2 = within_range(sq, 2).0;
-        let guard_r2 = enemy & self.pos.guards.0 & r2;
-        let champ_king_r1 = enemy & (self.pos.champions.0 | self.pos.kings.0) & r1;
-        guard_r2 != 0 || champ_king_r1 != 0
+        let enemy_idx = if is_p1 { 1 } else { 0 };
+        self.move_attack_threat[enemy_idx] & (1u64 << sq) != 0
     }
 
     /// Is the piece at `sq` (owner `is_p1`) fully protected from Move-Attack by the
@@ -1120,22 +1212,22 @@ impl<'a> CustomCtx<'a> {
     ///     punish the trade, less.
     /// The net `incoming − (eff_health + defense)` is squashed into `[0,1]`.
     fn survivability_severity(&self, p: Piece) -> f32 {
-        const IMMINENT: u16 = 2; // this turn + next — NOT the old 5-round over-count
-
         let sq = p.sq;
-        let within4 = within_range(sq, 4).0;
+        let enemy_idx = if p.is_p1 { 1 } else { 0 };
 
-        // --- reach: the two attack vectors ---------------------------------
+        // --- reach: the two attack vectors (precomputed maps) --------------
         let move_attack =
             self.enemy_can_move_attack(p.is_p1, sq) && !self.bodyguard_fully_covers(p.is_p1, sq);
 
-        let atk = self.side(!p.is_p1);
-        let strike_reaches = atk.min_strike_cost > 0
-            && self.enemy_strike_reaches(p.is_p1, sq, within4);
+        // Nearest enemy Strike-carrier distance to this square, or u8::MAX if none.
+        let strike_dist = self.strike_dist[enemy_idx][sq as usize];
+        let strike_reaches = strike_dist != u8::MAX;
 
         if !move_attack && !strike_reaches {
             return 0.0; // unreachable → safe
         }
+
+        let atk = self.side(!p.is_p1);
 
         // --- incoming (imminent) -------------------------------------------
         let mut incoming = 0.0f32;
@@ -1143,13 +1235,12 @@ impl<'a> CustomCtx<'a> {
             incoming += 1.0; // the one Move-Attack per turn
         }
         if strike_reaches {
-            // Affordable strikes over the imminent window, distance-scaled: a
-            // Striker at range 1 lands full, farther ones ramp down (still a threat
-            // but slower to bring to bear). Closest enemy Striker sets the factor.
-            let casts = self.affordable_casts(!p.is_p1, atk.min_strike_cost, IMMINENT) as f32;
-            let dist = self.nearest_enemy_striker_dist(p.is_p1, sq, within4);
+            // Affordable strikes over the imminent window (cached per side),
+            // distance-scaled: a Striker at range 1 lands full, farther ones ramp
+            // down. Closest enemy Striker (from the map) sets the factor.
+            let casts = atk.strike_budget as f32;
             // dist 1 → 1.0, 2 → 0.83, 3 → 0.67, 4 → 0.5 (linear 1 − (d−1)/6).
-            let dscale = (1.0 - (dist.saturating_sub(1) as f32) / 6.0).max(0.0);
+            let dscale = (1.0 - (strike_dist.saturating_sub(1) as f32) / 6.0).max(0.0);
             incoming += casts * dscale;
         }
 
@@ -1161,8 +1252,7 @@ impl<'a> CustomCtx<'a> {
             && (me.has_shield
                 || (me.has_heal_or_plate && self.friendly_adjacent_to(p.is_p1, sq)))
         {
-            let unit = me.max_skill_cost.max(1);
-            defense = self.affordable_casts(p.is_p1, unit, IMMINENT) as f32;
+            defense = me.defense_budget as f32; // cached per side
         }
 
         // --- effective health ----------------------------------------------
@@ -1171,10 +1261,9 @@ impl<'a> CustomCtx<'a> {
 
         // --- retaliation reducer -------------------------------------------
         // If WE can Strike the enemy back next turn (own a Strike we can afford),
-        // the trade is punishable → dampen the severity. Cheap proxy: do we have a
-        // Strike skill and afford one cast in the imminent window?
-        let can_retaliate =
-            me.min_strike_cost > 0 && self.affordable_casts(p.is_p1, me.min_strike_cost, IMMINENT) > 0;
+        // the trade is punishable → dampen the severity. Uses the cached strike
+        // budget (min-strike casts over the imminent window).
+        let can_retaliate = me.min_strike_cost > 0 && me.strike_budget > 0;
         let retaliation_damp = if can_retaliate { 0.6 } else { 1.0 };
 
         // --- squash net into [0,1] -----------------------------------------
@@ -1195,72 +1284,6 @@ impl<'a> CustomCtx<'a> {
         // lethal 1 (exactly dead) → 0.5, 2 → 0.67, 3 → 0.75… saturating toward 1.0.
         let sev = (lethal / (lethal + 1.0)).min(1.0);
         if certain_death { sev.max(0.85) } else { sev }
-    }
-
-    /// Chebyshev distance to the nearest enemy Strike-carrier that can trace a clear
-    /// path to `sq` within its Strike range. Returns a large value if none. Used to
-    /// distance-scale the Strike incoming in [`survivability_severity`].
-    fn nearest_enemy_striker_dist(&self, is_p1: bool, sq: u8, within4: u64) -> u8 {
-        let enemy = self.enemy_bb(is_p1);
-        let mut cand = enemy & (self.pos.champions.0 | self.pos.kings.0) & within4;
-        let mut best = u8::MAX;
-        while cand != 0 {
-            let s = cand.trailing_zeros() as u8;
-            cand &= cand - 1;
-            let mb = self.pos.mailbox[s as usize];
-            let mut reach = 0u8;
-            for id in [mb.skill1(), mb.skill2()] {
-                if let Some(sk) = skill_from_id(id) {
-                    if skill_category(sk) == SkillCategory::Strike {
-                        reach = reach.max(skill_default_range(sk));
-                    }
-                }
-            }
-            if reach == 0 {
-                continue;
-            }
-            // range + 1 (consistent with enemy_strike_reaches): the Striker may step
-            // one tile in before casting.
-            let d = cheby_dist(s, sq);
-            if d <= reach + 1 && on_ray(s, sq) && (between(s, sq).0 & self.all_occ) == 0 {
-                best = best.min(d);
-            }
-        }
-        best
-    }
-
-    /// Does the side OPPOSING `is_p1` have a Strike-carrier that reaches `sq`
-    /// (range +1, clear path)? Piece-level generalisation of
-    /// [`enemy_strike_reaches_king`] — uses `range + 1` per the designer's exposure
-    /// spec (a Striker one tile outside its listed range can still step in and cast).
-    fn enemy_strike_reaches(&self, is_p1: bool, sq: u8, within4: u64) -> bool {
-        let enemy = self.enemy_bb(is_p1);
-        let mut cand = enemy & (self.pos.champions.0 | self.pos.kings.0) & within4;
-        while cand != 0 {
-            let s = cand.trailing_zeros() as u8;
-            cand &= cand - 1;
-            let mb = self.pos.mailbox[s as usize];
-            let mut reach = 0u8;
-            for id in [mb.skill1(), mb.skill2()] {
-                if let Some(sk) = skill_from_id(id) {
-                    if skill_category(sk) == SkillCategory::Strike {
-                        reach = reach.max(skill_default_range(sk));
-                    }
-                }
-            }
-            if reach == 0 {
-                continue;
-            }
-            // range + 1: the Striker may step one tile toward the target then cast.
-            let effective = reach + 1;
-            if cheby_dist(s, sq) <= effective
-                && on_ray(s, sq)
-                && (between(s, sq).0 & self.all_occ) == 0
-            {
-                return true;
-            }
-        }
-        false
     }
 
     /// Skill-target reach of the piece at `sq` for combo purposes: the squares it
