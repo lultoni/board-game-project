@@ -48,14 +48,27 @@
   // Lazy-load when the drawer opens.
   $effect(() => { if (open) void loadEvaluators(); });
 
+  const VALID_EVAL_SOURCES = ["builtin", "heuristic", "run", "blessed"] as const;
+
   function uiEvalKey(source: string, id: string | null): string {
     if (source === "heuristic") return "builtin:heuristic";
-    return `${source}:${id}`;
+    return `${source}:${id ?? ""}`;
   }
+
+  function parseEvalKey(value: string): { source: string; id: string | null } | null {
+    if (!value) return null;
+    const colon = value.indexOf(":");
+    const source = colon === -1 ? value : value.slice(0, colon);
+    if (!(VALID_EVAL_SOURCES as readonly string[]).includes(source)) return null;
+    const id = colon === -1 ? null : (value.slice(colon + 1) || null);
+    return { source, id };
+  }
+
   const currentUiEvalKey = $derived(uiEvalKey(settings.uiEvaluator.source, settings.uiEvaluator.id));
   function setUiEval(value: string): void {
-    const [source, id] = value.split(":", 2);
-    settings.uiEvaluator = { source: source as "builtin" | "run" | "blessed", id: id ?? null };
+    const parsed = parseEvalKey(value);
+    if (!parsed) return;
+    settings.uiEvaluator = { source: parsed.source as "builtin" | "run" | "blessed", id: parsed.id };
   }
 
   // Per-AI-seat evaluator pick (same list as the UI-eval pick + the setup
@@ -67,8 +80,9 @@
     return uiEvalKey(c.source, c.id);
   }
   function setSeatEval(seat: "p1" | "p2", value: string): void {
-    const [source, id] = value.split(":", 2);
-    const choice = { source: source as "builtin" | "run" | "blessed", id: id ?? null };
+    const parsed = parseEvalKey(value);
+    if (!parsed) return;
+    const choice = { source: parsed.source as "builtin" | "run" | "blessed", id: parsed.id };
     if (seat === "p1") settings.p1Evaluator = choice;
     else settings.p2Evaluator = choice;
   }
@@ -181,6 +195,9 @@
         value={currentUiEvalKey}
         onchange={(e) => { sfx.play("click"); setUiEval((e.currentTarget as HTMLSelectElement).value); }}
       >
+        {#if evaluators.length === 0}
+          <option value={currentUiEvalKey} disabled>Loading…</option>
+        {/if}
         {#each evaluators as ev}
           <option value={uiEvalKey(ev.source, ev.id)}>{ev.label}</option>
         {/each}
@@ -265,6 +282,9 @@
         value={seatEvalKey("p1")}
         onchange={(e) => { sfx.play("click"); setSeatEval("p1", (e.currentTarget as HTMLSelectElement).value); }}
       >
+        {#if evaluators.length === 0}
+          <option value={seatEvalKey("p1")} disabled>Loading…</option>
+        {/if}
         {#each evaluators as ev}
           <option value={uiEvalKey(ev.source, ev.id)}>{ev.label}</option>
         {/each}
@@ -310,6 +330,9 @@
         value={seatEvalKey("p2")}
         onchange={(e) => { sfx.play("click"); setSeatEval("p2", (e.currentTarget as HTMLSelectElement).value); }}
       >
+        {#if evaluators.length === 0}
+          <option value={seatEvalKey("p2")} disabled>Loading…</option>
+        {/if}
         {#each evaluators as ev}
           <option value={uiEvalKey(ev.source, ev.id)}>{ev.label}</option>
         {/each}

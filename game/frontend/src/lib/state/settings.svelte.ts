@@ -147,7 +147,9 @@ function pickEvaluator(v: unknown, fallback: EvaluatorChoice): EvaluatorChoice {
     typeof o.source === "string" && (EVAL_SOURCES as readonly string[]).includes(o.source)
       ? (o.source as EvaluatorSource)
       : fallback.source;
-  const id = typeof o.id === "string" && o.id.length > 0 ? o.id : null;
+  const rawId = typeof o.id === "string" && o.id.length > 0 ? o.id : null;
+  // Reject the literal string "null" written by a previous template-stringify bug.
+  const id = rawId === "null" ? null : rawId;
   // Legacy "heuristic" is id-less (maps to the builtin heuristic at the wire).
   // "builtin" needs an id (the registry entry); "run"/"blessed" need a rater id.
   if (source === "heuristic") return { source: "heuristic", id: null };
