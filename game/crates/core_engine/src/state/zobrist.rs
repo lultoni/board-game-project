@@ -350,6 +350,39 @@ pub fn full_recompute(pos: &Position) -> u64 {
     h
 }
 
+/// Board-only hash: the incremental `pos.zobrist` with every NON-board component
+/// XOR'd back out — leaving only piece placement + mailbox contents (hp / armor /
+/// combo / skills). Excludes side-to-move, phase, actions-remaining,
+/// pending-modifiers, round, both money totals, game-result, pending-bodyguard,
+/// and `moved_this_phase`. Two positions with the same board but different money /
+/// actions / whose-turn hash identically here.
+///
+/// Used by the search to detect a wasted "reverse move" — a movement skill whose
+/// net effect returns the board to a state already seen earlier in the same turn
+/// (money aside). O(1): derived from the maintained hash, no board scan.
+pub fn board_only_hash(pos: &Position) -> u64 {
+    let mut h = pos.zobrist;
+    // XOR is its own inverse, so re-applying each non-board key removes it.
+    if matches!(pos.to_move, Player::P2) {
+        h ^= side_key();
+    }
+    h ^= phase_key_for(pos.current_phase);
+    h ^= actions_key(pos.actions_remaining);
+    h ^= pending_mod_state(pos.pending_modifiers);
+    h ^= round_key(pos.round_number);
+    h ^= money_key_p1(pos.p1_money);
+    h ^= money_key_p2(pos.p2_money);
+    h ^= game_result_key(pos.game_result);
+    h ^= pending_bg_key(pos.pending_bodyguard);
+    let mut bits = pos.moved_this_phase.0;
+    while bits != 0 {
+        let sq = bits.trailing_zeros() as u8;
+        bits &= bits - 1;
+        h ^= moved_key(sq);
+    }
+    h
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,6 +430,45 @@ mod tests {
         // actions_remaining = 0, round = 1, money = 0. Only the round-1 key
         // contributes (actions[0] is 0 by construction).
         assert_eq!(h, round_key(1));
+    }
+
+    #[test]
+    fn board_only_hash_ignores_money_actions_side() {
+        // Two positions with an identical BOARD but different money, actions,
+        // side-to-move, and phase must hash identically under board_only_hash.
+        let mut a = Position::empty();
+        a.p1_pieces = crate::state::Bitboard::from_square(10);
+        a.champions = crate::state::Bitboard::from_square(10);
+        a.mailbox[10] = MailboxEntry::default().with_hp(2).with_armor(1);
+        a.round_number = 4;
+        a.zobrist = full_recompute(&a);
+
+        let mut b = a.clone();
+        b.p1_money = 17;
+        b.p2_money = 9;
+        b.actions_remaining = 2;
+        b.to_move = Player::P2;
+        b.current_phase = Phase::Skill;
+        b.pending_modifiers = 0b11;
+        b.zobrist = full_recompute(&b);
+
+        assert_ne!(a.zobrist, b.zobrist, "full hashes differ (money/actions/side)");
+        assert_eq!(board_only_hash(&a), board_only_hash(&b),
+            "board-only hash must ignore money/actions/side/phase/pending");
+    }
+
+    #[test]
+    fn board_only_hash_reflects_a_board_change() {
+        let mut a = Position::empty();
+        a.p1_pieces = crate::state::Bitboard::from_square(10);
+        a.champions = crate::state::Bitboard::from_square(10);
+        a.mailbox[10] = MailboxEntry::default().with_hp(2);
+        a.zobrist = full_recompute(&a);
+        let mut b = a.clone();
+        b.mailbox[10] = MailboxEntry::default().with_hp(1); // lost 1 hp
+        b.zobrist = full_recompute(&b);
+        assert_ne!(board_only_hash(&a), board_only_hash(&b),
+            "an hp change is a board change and must alter the board-only hash");
     }
 
     // --- Commit 1: pending-bodyguard keys append cleanly --------------------

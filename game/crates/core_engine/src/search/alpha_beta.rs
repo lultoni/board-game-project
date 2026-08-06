@@ -309,6 +309,40 @@ pub(super) struct SearchCtx<'a> {
     /// (the custom eval returns `wants_qs() == false`) folded with the global
     /// grading kill-switch. Read in the hot path instead of the atomic.
     pub(super) qs_enabled: bool,
+    /// Board-only zobrist of each position reached SO FAR in the current turn
+    /// (the side-to-move's uninterrupted action sequence). Used to skip a wasted
+    /// movement skill (Dash/Shove/Swap/Retreat) that returns the board to a state
+    /// already seen this turn — a net-null reversal that only exists to burn a ply
+    /// (horizon manipulation). Reset whenever an action flips the turn. A turn is
+    /// short (≤ a handful of actions), so a small fixed window suffices.
+    pub(super) turn_board_hashes: [u64; MAX_TURN_PLIES],
+    pub(super) turn_hash_len: usize,
+}
+
+/// Max board states recorded per turn for reverse-move detection. A turn is
+/// 2 move + phase-end + 2..N skill actions; 12 is comfortably past any real turn.
+const MAX_TURN_PLIES: usize = 12;
+
+/// `pos.to_move` encoded as `Undo::prev_to_move` is (0 = P1, 1 = P2).
+#[inline]
+fn to_move_u8(pos: &Position) -> u8 {
+    match pos.to_move { Player::P1 => 0, Player::P2 => 1 }
+}
+
+/// True iff `a` is a movement SKILL (Dash/Shove/Swap/Retreat) — the Skill-phase
+/// casts that relocate a piece and can therefore reverse a prior movement within
+/// the same turn. (Blast is a push but is primarily a damage skill and is loud;
+/// it is not treated as a reversible movement skill here.)
+#[inline]
+fn is_movement_skill(a: Action) -> bool {
+    if a.kind() != ActionKind::Skill { return false; }
+    matches!(
+        crate::game_logic::skills::skill_from_id(a.skill_id()),
+        Some(crate::game_logic::skills::Skill::Dash)
+            | Some(crate::game_logic::skills::Skill::Shove)
+            | Some(crate::game_logic::skills::Skill::Swap)
+            | Some(crate::game_logic::skills::Skill::Retreat)
+    )
 }
 
 fn search(pos: &mut Position, depth: i32, ply: i32,
@@ -389,6 +423,13 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
     {
         let null = Action::encode(0, 0, ActionKind::EndPhase, 0, 0);
         let undo = make_unmake::make(pos, null);
+        // The null move flips the turn (EndPhase in Skill phase), so the child is
+        // a fresh opponent turn: reset the reverse-move window to the child state
+        // and restore it after unmake.
+        let saved_hash_len = ctx.turn_hash_len;
+        let saved_slot0 = ctx.turn_board_hashes[0];
+        ctx.turn_board_hashes[0] = crate::state::zobrist::board_only_hash(pos);
+        ctx.turn_hash_len = 1;
         // Save/restore the accumulator across the null move (STM flips; the
         // global re-encode in `apply` picks that up).
         let saved = if inc { Some(ctx.evaluator.clone_acc(ctx.acc_stack.last().unwrap())) } else { None };
@@ -411,6 +452,8 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         // Restore BEFORE the abort check - the parent must never read a stale
         // (post-null) accumulator.
         if inc { *ctx.acc_stack.last_mut().unwrap() = saved.unwrap(); }
+        ctx.turn_hash_len = saved_hash_len;
+        ctx.turn_board_hashes[0] = saved_slot0;
         if ctx.aborted { return 0; }
         if maximising_before_null {
             // P1's turn: if the opponent-pass score already fails high, cut.
@@ -520,6 +563,38 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
             continue;
         }
 
+        // Reverse-movement detection (search-only, per-turn). A movement skill
+        // (Dash/Shove/Swap/Retreat) that returns the board to a state already seen
+        // earlier THIS turn is a net-null reversal — it only spends money and burns
+        // a ply to shift the opponent's reply past the horizon. Compare the child's
+        // board-only hash (piece placement + mailbox, ignoring money/actions/side)
+        // against the turn's history; if seen, skip. The history is reset on a turn
+        // flip and restored on unmake so it stays balanced across the recursion.
+        let turn_flip = undo.prev_to_move != to_move_u8(pos);
+        let saved_hash_len = ctx.turn_hash_len;
+        let saved_slot0 = ctx.turn_board_hashes[0];
+        let child_hash = crate::state::zobrist::board_only_hash(pos);
+        if turn_flip {
+            // New turn begins at the child: reset the window to just its state.
+            ctx.turn_board_hashes[0] = child_hash;
+            ctx.turn_hash_len = 1;
+        } else if !is_first && is_movement_skill(a) {
+            // Same turn: a movement skill reproducing an earlier board = reversal.
+            if ctx.turn_board_hashes[..ctx.turn_hash_len].contains(&child_hash) {
+                make_unmake::unmake(pos, &undo);
+                continue;
+            }
+            if ctx.turn_hash_len < MAX_TURN_PLIES {
+                ctx.turn_board_hashes[ctx.turn_hash_len] = child_hash;
+                ctx.turn_hash_len += 1;
+            }
+        } else if ctx.turn_hash_len < MAX_TURN_PLIES {
+            // Non-reversible action within the turn: record its state so a later
+            // movement skill can detect a return to it.
+            ctx.turn_board_hashes[ctx.turn_hash_len] = child_hash;
+            ctx.turn_hash_len += 1;
+        }
+
         // Save the pre-make accumulator, then advance once - all PVS/LMR
         // re-searches below run with `pos` fixed post-make, so a single
         // push_acc covers them; restore on unmake.
@@ -555,6 +630,9 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         make_unmake::unmake(pos, &undo);
         // Restore BEFORE the abort check (parent must not read a stale acc).
         if inc { *ctx.acc_stack.last_mut().unwrap() = saved.unwrap(); }
+        // Restore the per-turn reverse-move history to this node's state.
+        ctx.turn_hash_len = saved_hash_len;
+        ctx.turn_board_hashes[0] = saved_slot0;
         if ctx.aborted { return 0; }
 
         if maximising {
@@ -693,7 +771,17 @@ pub fn find_best_with_evaluator(pos: &mut Position, tt: &mut TranspositionTable,
         } else {
             Vec::new()
         };
-        let mut ctx = SearchCtx { tt, ord: &mut ord, evaluator, deadline, nodes: 0, aborted: false, acc_stack, qs_enabled };
+        let mut ctx = SearchCtx {
+            tt, ord: &mut ord, evaluator, deadline, nodes: 0, aborted: false,
+            acc_stack, qs_enabled,
+            // Seed the current turn's history with the root board state.
+            turn_board_hashes: {
+                let mut a = [0u64; MAX_TURN_PLIES];
+                a[0] = crate::state::zobrist::board_only_hash(pos);
+                a
+            },
+            turn_hash_len: 1,
+        };
         let score = search(pos, d as i32, 0, -INF, INF, true, &mut ctx);
         total_nodes += ctx.nodes;
 
@@ -1091,6 +1179,37 @@ mod tests {
             crate::game_logic::make_unmake::unmake(&mut pos, &undo);
             assert!(!null, "the chosen Break must do something (null Break is pruned)");
         }
+    }
+
+    /// Reverse-move path: a Skill-phase position with a Dash-capable champion (so
+    /// the search actually exercises the movement-skill reverse-move detection and
+    /// its per-turn history save/restore) must search cleanly and leave the
+    /// position perfectly restored (make/unmake + turn-history balance).
+    #[test]
+    fn reverse_move_search_is_balanced() {
+        let mut pos = Position::empty();
+        place(&mut pos, 0, Player::P1, 0, MailboxEntry::default().with_hp(2));
+        // P1 champion with Dash (movement skill), open board to dash around in.
+        place(&mut pos, 27, Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Dash as u8));
+        place(&mut pos, 63, Player::P2, 0, MailboxEntry::default().with_hp(2));
+        pos.to_move = Player::P1;
+        pos.current_phase = Phase::Skill;
+        pos.actions_remaining = 2;
+        pos.p1_money = 12;
+        pos.p2_money = 12;
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        let z = pos.zobrist;
+        let p1 = pos.p1_pieces.0;
+        let p2 = pos.p2_pieces.0;
+        let mut tt = fresh_tt();
+        let r = find_best(&mut pos, &mut tt, 0, 4);
+        assert!(r.best.is_some(), "search must pick a move");
+        // Position perfectly restored after a search that walks dash reversals.
+        assert_eq!(pos.zobrist, z, "zobrist drifted across reverse-move search");
+        assert_eq!(pos.p1_pieces.0, p1);
+        assert_eq!(pos.p2_pieces.0, p2);
     }
 
     #[test]
