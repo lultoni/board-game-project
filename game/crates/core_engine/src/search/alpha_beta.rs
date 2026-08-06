@@ -503,6 +503,23 @@ fn search(pos: &mut Position, depth: i32, ply: i32,
         let r = if reduce { lmr_reduction(depth, idx).min(depth - 1) } else { 0 };
 
         let undo = make_unmake::make(pos, a);
+
+        // Skip provable-null skill casts: a Skill whose forward make changed
+        // NOTHING on the board (no piece moved/died, no hp/armor/combo change —
+        // only money spent) is strictly dominated by ending the phase, and
+        // searching it would only let the side burn a ply to push the opponent's
+        // reply past the horizon. Unmake and continue BEFORE any accumulator push
+        // so the make/unmake and acc stacks stay balanced. Never skip the first
+        // ordered move (defensive — a node is never all-null since EndPhase is
+        // always generated). Not needed in quiesce: it only searches loud actions.
+        if !is_first
+            && a.kind() == ActionKind::Skill
+            && undo.is_board_null(pos)
+        {
+            make_unmake::unmake(pos, &undo);
+            continue;
+        }
+
         // Save the pre-make accumulator, then advance once - all PVS/LMR
         // re-searches below run with `pos` fixed post-make, so a single
         // push_acc covers them; restore on unmake.
@@ -1037,6 +1054,43 @@ mod tests {
         let r = find_best(&mut pos, &mut tt, 0, 2);
         assert!(r.best.is_some());
         assert_eq!(r.depth, 2);
+    }
+
+    /// A board-null skill (a Break on a 0-armor target whose combo is already
+    /// ticked → no armor, no damage, no new tick) must NEVER be returned as the
+    /// best move: the search prunes it, so it cannot be used to burn a ply and
+    /// manipulate the horizon. The champion should prefer a real action.
+    #[test]
+    fn null_skill_is_never_the_chosen_move() {
+        let mut pos = Position::empty();
+        // P1 king (safe corner) + a Break champion adjacent to a 0-armor enemy
+        // whose combo counter is already 1 (so a Break by this champion is a
+        // returning no-op: no tick, no armor, no damage).
+        place(&mut pos, 0, Player::P1, 0, MailboxEntry::default().with_hp(2));
+        place(&mut pos, 27, Player::P1, 1,
+            MailboxEntry::default().with_hp(2).with_skill1(Skill::Break as u8));
+        // enemy champ on e5(35): 0 armor, combo already 1.
+        place(&mut pos, 35, Player::P2, 1,
+            MailboxEntry::default().with_hp(2).with_combo(1));
+        place(&mut pos, 63, Player::P2, 0, MailboxEntry::default().with_hp(2));
+        pos.to_move = Player::P1;
+        pos.current_phase = Phase::Skill;
+        pos.actions_remaining = 2;
+        pos.p1_money = 6;
+        pos.p2_money = 6;
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        let mut tt = fresh_tt();
+        let r = find_best(&mut pos, &mut tt, 0, 3);
+        let best = r.best.expect("search must pick a move");
+        // If the best move is a Break, applying it must NOT be board-null — the
+        // pruned null re-cast can never be selected.
+        if best.kind() == ActionKind::Skill && best.skill_id() == Skill::Break as u8 {
+            let undo = crate::game_logic::make_unmake::make(&mut pos, best);
+            let null = undo.is_board_null(&pos);
+            crate::game_logic::make_unmake::unmake(&mut pos, &undo);
+            assert!(!null, "the chosen Break must do something (null Break is pruned)");
+        }
     }
 
     #[test]

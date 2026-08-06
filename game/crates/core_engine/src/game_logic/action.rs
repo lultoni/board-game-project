@@ -464,6 +464,43 @@ pub struct Undo {
     pub zobrist_xor: u64,
 }
 
+impl Undo {
+    /// True iff this action changed NOTHING on the board — no piece moved,
+    /// appeared, or died, and no mailbox entry (hp / armor / combo) actually
+    /// changed anywhere. Money, actions-remaining, side-to-move and
+    /// pending-modifier changes are deliberately IGNORED (they live in separate
+    /// scalar fields), because a skill that only spends money for zero board
+    /// effect is exactly the wasted action the search should not bother
+    /// searching (it is strictly dominated by ending the phase). Used by the
+    /// search to skip provable-null skill casts (Break on a 0-armor target,
+    /// Shield/Plate at armor cap, an absorbed no-op) that would otherwise burn a
+    /// ply and shrink the opponent's look-ahead (horizon manipulation).
+    ///
+    /// `pos` is the position AFTER `make` (the state this Undo would revert).
+    /// A resolver may `record_affected` a square even when its entry is
+    /// unchanged (e.g. a zero-damage combo-tick), so `affected_count > 0` alone
+    /// does not prove a change — each recorded prev-entry is compared against the
+    /// live mailbox and only a genuine difference counts.
+    #[inline]
+    pub fn is_board_null(&self, pos: &crate::state::Position) -> bool {
+        if self.p1_pieces_xor != 0
+            || self.p2_pieces_xor != 0
+            || self.kings_xor != 0
+            || self.champions_xor != 0
+            || self.guards_xor != 0
+        {
+            return false;
+        }
+        for i in 0..self.affected_count as usize {
+            let sq = self.affected_squares[i] as usize;
+            if self.affected_prev_entries[i] != pos.mailbox[sq].0 {
+                return false; // a mailbox entry genuinely changed
+            }
+        }
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

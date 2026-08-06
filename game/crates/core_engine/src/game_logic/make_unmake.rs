@@ -2506,10 +2506,76 @@ mod tests {
         assert!(pos.is_occupied(36));
     }
 
+    // --- is_board_null (wasted-action detection for the search) ------------
+
+    #[test]
+    fn is_board_null_false_for_single_break_on_zero_armor() {
+        // A FIRST Break on a 0-armor target is NOT board-null: it ticks the
+        // target's combo counter (0→1), a real mailbox change, even though no
+        // armor/HP moved. The null case is the *redundant* re-cast (see
+        // is_board_null_true_for_redundant_break).
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Break as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Break));
+        assert!(!undo.is_board_null(&pos), "first Break ticks combo → not board-null");
+    }
+
+    #[test]
+    fn is_board_null_true_for_redundant_break() {
+        // The "triple-Break spam" case: the SAME champion Breaks a 0-armor target
+        // twice. The 1st tick sets combo=1; the 2nd Break by the same (returning)
+        // champion adds no new tick, removes no armor (already 0), deals no HP
+        // damage (bonus = counter-1 = 0) — nothing on the board changes. Only
+        // money is spent → board-null, and the search should skip it.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Break as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
+        pos.p1_money = 20;
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        // 1st Break: ticks combo (a real change) — not null.
+        let u1 = make(&mut pos, skill_action(28, 36, Skill::Break));
+        assert!(!u1.is_board_null(&pos), "first Break ticks combo → not null");
+        // 2nd Break by the same champion on the same 0-armor target: no new tick,
+        // no armor, no damage, caster can't step → board-null.
+        let u2 = make(&mut pos, skill_action(28, 36, Skill::Break));
+        assert!(u2.is_board_null(&pos), "redundant same-champion Break → board-null");
+        assert!(u2.p1_money_delta != 0, "it still spent money (correctly ignored)");
+    }
+
+    #[test]
+    fn is_board_null_false_for_break_on_armor() {
+        // Break that removes an armor point changes a mailbox entry → not null.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Break as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 2);
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Break));
+        assert!(!undo.is_board_null(&pos), "Break that removes armor is not board-null");
+    }
+
+    #[test]
+    fn is_board_null_false_for_damaging_and_move_skills() {
+        // Lance (deals HP damage) and a plain Move both change the board.
+        let mut pos = skill_phase_pos(2);
+        place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
+        equip(&mut pos, 28, Skill::Lance as u8);
+        place(&mut pos, 36, Player::P2, PieceKind::Champion, 1, 0); // hp1 → dies
+        pos.zobrist = crate::state::zobrist::full_recompute(&pos);
+        let undo = make(&mut pos, skill_action(28, 36, Skill::Lance));
+        assert!(!undo.is_board_null(&pos), "Lance dealing damage is not board-null");
+    }
+
     #[test]
     fn break_with_charge_deals_1_hp_damage() {
-        let mut pos = skill_phase_pos(2);
-        pos.pending_modifiers |= modifier_bits::CHARGE;
+        let mut pos = skill_phase_pos(2);        pos.pending_modifiers |= modifier_bits::CHARGE;
         place(&mut pos, 28, Player::P1, PieceKind::Champion, 2, 0);
         equip(&mut pos, 28, Skill::Break as u8);
         place(&mut pos, 36, Player::P2, PieceKind::Champion, 2, 0);
