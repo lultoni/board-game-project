@@ -744,7 +744,10 @@ fn term_skill_capacity(ctx: &CustomCtx, is_p1: bool) -> i32 {
     /// How many rounds ahead to look. Beyond this, plans are too speculative.
     const LOOKAHEAD: u16 = 3;
     /// Score weight per unit of payable capacity (tune the term's magnitude here).
-    const PER_UNIT: i32 = 10;
+    /// Raised 10 → 20 (2026-08): retained spending power must out-value spraying a
+    /// cheap Dash/Shove — spending 3 money now costs up to −60 here, beating the
+    /// small combo/utilisation nudge a pointless cast would otherwise win on.
+    const PER_UNIT: i32 = 20;
 
     // Effective treasury already folds in this side's current-round income (real
     // for the mover, pending-credited for the other), so the lookahead below adds
@@ -838,10 +841,6 @@ struct SideInfo {
     /// Cheapest Strike-skill cost owned on this side (0 if the side has none) —
     /// the per-strike price used when estimating incoming king damage.
     min_strike_cost: i32,
-    /// This side owns a Shield skill (self-cast +Armor on the caster).
-    has_shield: bool,
-    /// This side owns a Heal or Plate skill (adjacent-ally defensive cast).
-    has_heal_or_plate: bool,
     /// Per-side affordable-cast budgets over the IMMINENT window, cached once in
     /// `CustomCtx::new` (identical for every piece on the side, so never recomputed
     /// per piece). `0` until filled.
@@ -866,8 +865,6 @@ impl SideInfo {
         let mut strike_champs = 0i32;
         let mut move_champs = 0i32;
         let mut min_strike_cost = 0i32;
-        let mut has_shield = false;
-        let mut has_heal_or_plate = false;
 
         // Champions + King: reach cache + per-piece strike/move tick classification.
         let mut bits = attackers;
@@ -912,11 +909,6 @@ impl SideInfo {
             let mb = pos.mailbox[sq];
             for id in [mb.skill1(), mb.skill2()] {
                 if let Some(s) = skill_from_id(id) {
-                    match s {
-                        Skill::Shield => has_shield = true,
-                        Skill::Heal | Skill::Plate => has_heal_or_plate = true,
-                        _ => {}
-                    }
                     if skill_category(s) == SkillCategory::Strike {
                         let c = skill_cost(s) as i32;
                         if min_strike_cost == 0 || c < min_strike_cost {
@@ -934,8 +926,6 @@ impl SideInfo {
             move_champs,
             max_skill_cost: max_owned_skill_cost(pos, side_bb) as i32,
             min_strike_cost,
-            has_shield,
-            has_heal_or_plate,
             // Filled by CustomCtx::new once the ctx exists (affordable_casts needs it).
             strike_budget: 0,
             defense_budget: 0,
@@ -1129,12 +1119,28 @@ impl<'a> CustomCtx<'a> {
         casts
     }
 
-    /// Is a friendly piece (of the side `is_p1`) on a square adjacent (R1) to
-    /// `sq`? Used to check a Heal/Plate caster could reach the king.
-    #[inline]
-    fn friendly_adjacent_to(&self, is_p1: bool, sq: u8) -> bool {
-        let ring1 = within_range(sq, 1).0;
-        self.own_bb(is_p1) & ring1 != 0
+    /// Is there a DIFFERENT friendly piece carrying Heal or Plate on a square
+    /// adjacent (R1) to `sq`? Heal/Plate are adjacent-ally casts (never self), so a
+    /// piece is only defensible this way by a neighbouring teammate that actually
+    /// OWNS the skill — not merely by "some teammate somewhere owns Heal/Plate" and
+    /// "some teammate is adjacent" (which could be two unrelated pieces).
+    fn heal_or_plate_caster_adjacent(&self, is_p1: bool, sq: u8) -> bool {
+        let ring1 = within_range(sq, 1).0 & !(1u64 << sq); // exclude self
+        // Champions + King carry skills; guards don't.
+        let mut cand = self.own_bb(is_p1) & (self.pos.champions.0 | self.pos.kings.0) & ring1;
+        while cand != 0 {
+            let s = cand.trailing_zeros() as usize;
+            cand &= cand - 1;
+            let m = self.pos.mailbox[s];
+            for id in [m.skill1(), m.skill2()] {
+                if let Some(sk) = skill_from_id(id) {
+                    if matches!(sk, Skill::Heal | Skill::Plate) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     // --- factor helpers for `score_piece` ------------------------------------
@@ -1168,30 +1174,37 @@ impl<'a> CustomCtx<'a> {
     /// only if EVERY such approach square has a friendly Guard adjacent to both it
     /// and the piece. Any uncovered approach → not fully protected (attacker routes
     /// through it). Guards themselves can't be bodyguarded (only Champions/King).
+    /// Is the piece at `sq` (owner `is_p1`) fully protected from Move-Attack by the
+    /// Bodyguard Rule? Fully covered iff a friendly Guard is adjacent to both the
+    /// target and EVERY delivery tile (adjacent enemy squares = R1 attackers, plus
+    /// adjacent empty tiles = R2 guard stop tiles). Conservative: a false "covered"
+    /// would hide real danger, so err toward "not covered". Only Champions/King can
+    /// be bodyguarded; guards cannot.
     fn bodyguard_fully_covers(&self, is_p1: bool, sq: u8) -> bool {
-        // The set of would-be approach tiles: empty squares adjacent to the target
-        // (an attacker ends the Move-Attack on the tile before the target). If there
-        // are none (fully walled in by pieces), there's no open approach to cover.
-        let adj = within_range(sq, 1).0 & !within_range(sq, 0).0;
+        // Delivery tiles that must ALL be covered: adjacent ENEMY pieces (an R1
+        // attacker delivers from its own square) plus adjacent EMPTY tiles (a speed-2
+        // guard can stop there coming in from R2). Friendly-occupied neighbours are
+        // not delivery tiles. Including adjacent enemies is the fix for the bug that
+        // let an attacker already sitting adjacent (excluded as "occupied") slip past
+        // the cover check and take an "undefended" champion.
+        let adj = within_range(sq, 1).0 & !(1u64 << sq);
         let empty = !self.all_occ;
-        let approaches = adj & empty;
-        if approaches == 0 {
-            return true; // no open approach square → nothing to intercept through
+        let delivery = adj & (self.enemy_bb(is_p1) | empty);
+        if delivery == 0 {
+            return true; // no adjacency to deliver a Move-Attack from
         }
         let guards = self.own_bb(is_p1) & self.pos.guards.0;
         if guards == 0 {
             return false;
         }
-        // Every approach must have a friendly Guard adjacent to both it and `sq`.
-        // A Guard adjacent to `sq` is adjacent to an approach iff cheby_dist ≤ 1.
-        let mut ap = approaches;
+        // Every delivery tile needs a friendly Guard adjacent to both it and `sq`.
+        let mut ap = delivery;
         while ap != 0 {
             let a = ap.trailing_zeros() as u8;
             ap &= ap - 1;
-            // Guards adjacent to the piece AND to this approach square.
             let covering = guards & within_range(sq, 1).0 & within_range(a, 1).0;
             if covering == 0 {
-                return false; // this approach is uncovered
+                return false; // this delivery tile is uncovered
             }
         }
         true
@@ -1229,28 +1242,22 @@ impl<'a> CustomCtx<'a> {
 
         let atk = self.side(!p.is_p1);
 
-        // --- incoming (imminent) -------------------------------------------
-        let mut incoming = 0.0f32;
-        if move_attack {
-            incoming += 1.0; // the one Move-Attack per turn
-        }
-        if strike_reaches {
-            // Affordable strikes over the imminent window (cached per side),
-            // distance-scaled: a Striker at range 1 lands full, farther ones ramp
-            // down. Closest enemy Striker (from the map) sets the factor.
-            let casts = atk.strike_budget as f32;
-            // dist 1 → 1.0, 2 → 0.83, 3 → 0.67, 4 → 0.5 (linear 1 − (d−1)/6).
-            let dscale = (1.0 - (strike_dist.saturating_sub(1) as f32) / 6.0).max(0.0);
-            incoming += casts * dscale;
-        }
-
         // --- defense (owner's turn only) -----------------------------------
+        // Computed first so the killable ceiling below can use eff_health.
         let me = self.side(p.is_p1);
         let on_move = (self.pos.to_move == crate::state::position::Player::P1) == p.is_p1;
         let mut defense = 0.0f32;
+        // Shield is SELF-cast (protects only its own caster), so it counts only if
+        // THIS piece carries Shield. Heal/Plate are adjacent-ally casts, so they
+        // count only if a DIFFERENT friendly piece that owns Heal/Plate sits
+        // adjacent. (Fixes the bugs where a piece read safe because a teammate owned
+        // Shield, or because an unrelated teammate happened to be adjacent.)
+        let self_shield = {
+            let m = self.pos.mailbox[sq as usize];
+            m.skill1() == Skill::Shield as u8 || m.skill2() == Skill::Shield as u8
+        };
         if on_move
-            && (me.has_shield
-                || (me.has_heal_or_plate && self.friendly_adjacent_to(p.is_p1, sq)))
+            && (self_shield || self.heal_or_plate_caster_adjacent(p.is_p1, sq))
         {
             defense = me.defense_budget as f32; // cached per side
         }
@@ -1258,6 +1265,29 @@ impl<'a> CustomCtx<'a> {
         // --- effective health ----------------------------------------------
         let mb = self.pos.mailbox[sq as usize];
         let eff_health = mb.hp() as f32 + mb.armor() as f32 + defense;
+
+        // --- incoming (imminent) -------------------------------------------
+        let mut incoming = 0.0f32;
+        if move_attack {
+            incoming += 1.0; // the one Move-Attack per turn
+        }
+        if strike_reaches {
+            // Strikes the enemy can land ON THIS PIECE next turn. Capped by ONE
+            // turn's Skill-Phase actions (they get one turn before we respond — a
+            // multi-round money budget does NOT all land on one piece), then
+            // distance-scaled. Closest enemy Striker (from the map) sets the factor.
+            let actions = actions_per_round(self.pos.current_phase, self.pos.round_number) as f32;
+            let casts = (atk.strike_budget as f32).min(actions);
+            // dist 1 → 1.0, 2 → 0.83, 3 → 0.67, 4 → 0.5 (linear 1 − (d−1)/6).
+            let dscale = (1.0 - (strike_dist.saturating_sub(1) as f32) / 6.0).max(0.0);
+            incoming += casts * dscale;
+        }
+        // Killable ceiling: damage past what kills the piece is wasted overkill, so
+        // it must NOT keep inflating severity. Cap incoming at eff_health + 1 (enough
+        // to kill, +1 so "clearly lethal" still reads above "exactly lethal"). This
+        // is the key fix for over-reading armored / home pieces as near-dead when the
+        // attacker merely has a big affordable-cast budget.
+        incoming = incoming.min(eff_health + 1.0);
 
         // --- retaliation reducer -------------------------------------------
         // If WE can Strike the enemy back next turn (own a Strike we can afford),
@@ -1949,6 +1979,51 @@ mod tests {
         let ctx = CustomCtx::new(&covered);
         let c = Piece { sq: 27, is_p1: true, kind: Kind::Champion, mb: hurt };
         assert!(factor_exposure(&ctx, c) > ex, "removing the threat lifts exposure");
+    }
+
+    /// Defense credit: Shield counts only if THIS piece carries it (self-cast);
+    /// Heal/Plate count only if a DIFFERENT adjacent ally owns the skill. A piece
+    /// defended by a teammate's Shield, or by an adjacent teammate that lacks
+    /// Heal/Plate, gets NO defense — so it stays exposed.
+    #[test]
+    fn defense_requires_correct_caster() {
+        let mk = |sk1: u8, sk2: u8| crate::state::EMPTY_MAILBOX_ENTRY.with_hp(1).with_skill1(sk1).with_skill2(sk2);
+        // Setup: P1 1hp champ on d4(27), threatened by an adjacent P2 guard on d3(19).
+        // It's P1's turn (so defense could apply). Vary the adjacent P1 ally's skills.
+        let build = |victim_sk: (u8,u8), ally_sk: (u8,u8)| {
+            let mut pos = Position::empty();
+            pos.round_number = 5;
+            pos.to_move = crate::state::position::Player::P1;
+            pos.current_phase = crate::state::position::Phase::Skill;
+            pos.p1_money = 10;
+            // victim d4(27), ally e4(28), P2 guard d3(19), kings tucked away
+            pos.p1_pieces.0 = (1 << 27) | (1 << 28) | (1 << 0);
+            pos.p2_pieces.0 = (1 << 19) | (1 << 63);
+            pos.champions.0 = (1 << 27) | (1 << 28);
+            pos.guards.0 = 1 << 19;
+            pos.kings.0 = (1 << 0) | (1 << 63);
+            pos.mailbox[27] = mk(victim_sk.0, victim_sk.1);
+            pos.mailbox[28] = mk(ally_sk.0, ally_sk.1);
+            pos.mailbox[0] = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2);
+            pos.mailbox[63] = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2);
+            let ctx = CustomCtx::new(&pos);
+            let v = Piece { sq: 27, is_p1: true, kind: Kind::Champion, mb: pos.mailbox[27] };
+            ctx.survivability_severity(v)
+        };
+        // Lance=1, Heal=7, Plate=8, Shield=6, Dash=9.
+        // Victim lance-only, ally lance-only → no defense → exposed (sev > 0).
+        let bare = build((1, 0), (1, 0));
+        assert!(bare > 0.0, "no defensive caster → exposed, got {bare}");
+        // Victim carries its OWN Shield → self-defense → less exposed than bare.
+        let self_shield = build((1, 6), (1, 0));
+        assert!(self_shield < bare, "own Shield lowers exposure ({self_shield} vs {bare})");
+        // Ally carries Heal (adjacent) → victim defended → less exposed than bare.
+        let ally_heal = build((1, 0), (1, 7));
+        assert!(ally_heal < bare, "adjacent Heal ally lowers exposure ({ally_heal} vs {bare})");
+        // A teammate owning Shield does NOT help the victim (Shield is self-only):
+        // put Shield on the ALLY, not the victim → victim stays as exposed as bare.
+        let ally_shield = build((1, 0), (1, 6));
+        assert!((ally_shield - bare).abs() < 1e-6, "teammate Shield must not defend ({ally_shield} vs {bare})");
     }
 
     /// Exposure via the STRIKE vector alone (no Move-Attack): a piece reachable only

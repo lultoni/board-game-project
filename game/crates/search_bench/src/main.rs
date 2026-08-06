@@ -940,6 +940,14 @@ fn run_report(fen: &str, pos: &Position, eval_label: &str, evaluator: &dyn Evalu
                 skills_str(pc.skill1_id, pc.skill2_id),
                 pc.piece_total,
             );
+            // Per-factor breakdown for this piece (base × factor deltas + malus),
+            // so tuning can see WHICH factor produced the value, not just the sum.
+            if !pc.terms.is_empty() {
+                let detail: Vec<String> = pc.terms.iter()
+                    .map(|t| format!("{} {:+}", t.label, t.signed))
+                    .collect();
+                println!("        └ {}", detail.join(" · "));
+            }
         }
     }
     println!("  -- piece subtotal: {:+}", piece_subtotal);
