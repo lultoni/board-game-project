@@ -17,10 +17,12 @@
 /// `p1`/`p2` are the raw per-side magnitudes (always positive); `signed` is the
 /// term's contribution to `total` with its sign/weight already applied (so a
 /// penalty term reports a negative `signed`, and a weighted term reports the
-/// weighted value).
+/// weighted value). `label` is a short human-readable display string for the UI
+/// — defined by the evaluator so the frontend needs no static mapping.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TermEntry {
     pub name:   String,
+    pub label:  String,
     pub p1:     i32,
     pub p2:     i32,
     pub signed: i32,
@@ -71,10 +73,11 @@ impl EvalReport {
     /// A single-term report for evaluators with no term structure (NNUE/dense
     /// raters). The whole score is one synthetic `name` term. `pieces` is `None`
     /// (an NN has no per-piece decomposition).
-    pub fn single(name: &str, total: i32) -> Self {
+    pub fn single(name: &str, label: &str, total: i32) -> Self {
         EvalReport {
             terms: vec![TermEntry {
                 name: name.to_string(),
+                label: label.to_string(),
                 p1: total.max(0),
                 p2: (-total).max(0),
                 signed: total,

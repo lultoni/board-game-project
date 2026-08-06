@@ -79,7 +79,7 @@ impl Evaluator for NnueEvaluator {
 
     fn evaluate_report(&self, pos: &Position, _detail: BreakdownDetail) -> EvalReport {
         // The NN has no term structure; one synthetic "nn" term carries the score.
-        EvalReport::single("nn", self.evaluate(pos))
+        EvalReport::single("nn", "Net", self.evaluate(pos))
     }
 
     // --- incremental accumulator seam (ns-50 Phase-1 wiring) ---------------

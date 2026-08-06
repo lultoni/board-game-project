@@ -56,7 +56,7 @@
 use crate::state::{MailboxEntry, Position};
 use crate::state::position::GameResult;
 use crate::state::magic::{cheby_dist, king_expand, skill_attacks, between, on_ray, within_range};
-use crate::game_logic::skills::{skill_from_id, skill_category, skill_default_range, skill_cost, Skill, SkillCategory};
+use crate::game_logic::skills::{skill_from_id, skill_category, skill_default_range, skill_cost, skill_target_owner, Skill, SkillCategory, TargetOwner};
 use super::{BreakdownDetail, EvalReport, Evaluator, MATE_SCORE, PieceTermBreakdown, TermEntry};
 use crate::search::evaluator::heuristic::context::{actions_per_round, max_owned_skill_cost};
 
@@ -81,8 +81,7 @@ struct Piece {
     sq:    u8,
     is_p1: bool,
     kind:  Kind,
-    /// Unused until a factor reads hp/armor/skills — drop this `allow` then.
-    #[allow(dead_code)]
+    /// Mailbox entry (hp / armor / skill ids) — read by the offense/exposure factors.
     mb:    MailboxEntry,
 }
 
@@ -99,82 +98,193 @@ fn score_piece(ctx: &CustomCtx, p: Piece) -> i32 {
 }
 
 fn score_king(ctx: &CustomCtx, p: Piece) -> i32 {
-    // The king has no material value (its capture is the MATE branch). Its only
-    // score is the danger penalty — negative magnitude lowers the owner's total.
-    -king_danger_malus(ctx, p)
+    // The king IS a champion under the hood (2 equip slots, skills, ticks combos,
+    // controls territory), so it runs the full champion factor chain — then the
+    // king-specific danger malus is subtracted on top (kept safe, still valuable).
+    let mult: f32 = CHAMP_FACTORS.iter().map(|(_, _, f)| f(ctx, p)).product();
+    (BASE * mult).round() as i32 - king_danger_malus(ctx, p)
 }
+
+/// Base value every non-king piece starts from before its factors bend it.
+/// The whole model is `BASE × f1 × f2 × …` (principle 1).
+const BASE: f32 = 100.0;
 
 fn score_guard(ctx: &CustomCtx, p: Piece) -> i32 {
-    const BASE: f32 = 100.0;
-    let rate = overextension_rate(ctx, p); // 0.0 (safe) ..= 1.0 (fully exposed)
-    (BASE * (1.0 - rate)).round() as i32
+    // Guards carry no skills, so only the over-extension factor applies.
+    (BASE * factor_overextension(ctx, p)).round() as i32
 }
+
+// ----- the champion factor chain --------------------------------------------
+//
+// A champion's value is `BASE × Π factor`. Each factor is a small `factor_*` fn
+// returning an `f32` ≥ 0; they compose by multiplication, so every factor scales
+// (and is scaled by) every other — an unsupported champ gets a proportionally
+// smaller combo reward. Add a factor: write one fn, add one line here; a factor
+// of 1.0 is a no-op. The `&str` names feed the (deferred) per-factor panel.
+
+const CHAMP_FACTORS: &[(&str, &str, fn(&CustomCtx, Piece) -> f32)] = &[
+    ("overextension", "Overext", factor_overextension), // clustering: 1.0 (together) → 0.0 (alone)
+    ("combo",         "Combo",   factor_combo),          // combo set-up: 1.0 (none) → 1.5 (maxed)
+    ("offense",       "Offense", factor_offense),        // attacker worth: 1.0 (none) → 2.0 (lone)
+    ("exposure",      "Exposure", factor_exposure),      // vulnerability: 1.0 (safe) → 0.1 (dead)
+];
 
 fn score_champion(ctx: &CustomCtx, p: Piece) -> i32 {
-    const BASE: f32 = 100.0;
-    let rate = overextension_rate(ctx, p); // 0.0 (safe) ..= 1.0 (fully exposed)
-    let base = (BASE * (1.0 - rate)).round() as i32;
-    base + combo_overlap_bonus(ctx, p)
+    let mult: f32 = CHAMP_FACTORS.iter().map(|(_, _, f)| f(ctx, p)).product();
+    (BASE * mult).round() as i32
 }
 
-// ----- scoring helpers ------------------------------------------------------
+// ----- scoring helpers (the factors) ----------------------------------------
 
-/// Combo-setup bonus: reward a champion for sharing skill targets with a
-/// *different* friendly combo-ticking champion — the geometric precondition for
-/// a multi-champion combo. A square both can hit is worth more the closer it is
-/// to an enemy (a real target), and only counts if this champion has a clear
-/// path to it.
-///
-///   - Reach of a champion = `skill_attacks(sq, occ, max_range)` where `max_range`
-///     is the larger of its two skills' true ranges (queen-rays, blocked by any
-///     piece). Only combo-ticking skills (Strike or Move) matter for reach.
-///   - Overlap = squares in BOTH this champion's reach and another friendly
-///     combo-champion's reach, restricted to R4 of this champion (further out has
-///     no combinatoric relevance).
-///   - Per overlap square `f` with a clear path from `sq`: enemy-occupied → +50,
-///     enemy at cheby 1 → +25, at cheby 2 → +10, else 0.
-fn combo_overlap_bonus(ctx: &CustomCtx, p: Piece) -> i32 {
-    // This champion's own reach; empty if it carries no combo-ticking skill.
+/// Over-extension factor: `1.0` when the piece has friends in every ring, falling
+/// toward `0.0` as it is pushed out alone (gated on enemy pressure). This is
+/// clustering ("keep pieces together"), NOT whether the piece can be hit/killed —
+/// vulnerability is a separate factor (see the plan's C4).
+#[inline]
+fn factor_overextension(ctx: &CustomCtx, p: Piece) -> f32 {
+    1.0 - overextension_rate(ctx, p)
+}
+
+/// Combo factor: `1.0` (no combo potential) up to `1.5` (maxed), from a champion
+/// sharing skill targets with a *different* combo-ticking champion near a real
+/// target. The raw points (see [`combo_overlap_points`]) normalise against a
+/// saturation cap; because this multiplies the base, an unsupported champ's combo
+/// reward shrinks with its support factor rather than being tacked on regardless.
+#[inline]
+fn factor_combo(ctx: &CustomCtx, p: Piece) -> f32 {
+    const SATURATION: f32 = 50.0; // points at which combo is "maxed"
+    const MAX_GAIN: f32 = 0.5;    // +50% at strength 1.0
+    let strength = (combo_overlap_points(ctx, p) as f32 / SATURATION).min(1.0);
+    1.0 + MAX_GAIN * strength
+}
+
+/// Offense factor: an attacking piece is worth more, and — the point — worth
+/// MORE per piece when it is the side's LAST attacker. Driven by the side's
+/// Strike-carrier count via a hand-authored curve (designer-set):
+/// 1 → ×2.0, 2 → ×1.75, 3 → ×1.57, 4 → ×1.43, 5 → ×1.31, 6 → ×1.22. The curve is
+/// tuned so the COST to lose one attacker (Δ total offense mass) is strictly
+/// larger the fewer you have (200/150/120/100/85/75) — no bounce-back. A Strike
+/// carrier gets the full curve value; a Move-only carrier (Blast/Shove, gated on
+/// a Strike existing to prime the combo) gets HALF the bonus-above-1.0 and does
+/// NOT change the count; a piece with neither is `1.0` (no-op).
+#[inline]
+fn factor_offense(ctx: &CustomCtx, p: Piece) -> f32 {
+    let s = ctx.side(p.is_p1);
+    // Curve keyed on the side's Strike-carrier count (King included: C1c).
+    let full = match s.strike_champs {
+        0 => return 1.0, // no Strike on the side → no realisable offense to prime
+        1 => 2.0,
+        2 => 1.75,
+        3 => 1.57,
+        4 => 1.43,
+        5 => 1.31,
+        _ => 1.22,
+    };
+    match piece_offense_role(p) {
+        OffenseRole::Strike => full,
+        // Move-only: half the bonus-above-1.0 at the side's Strike-count tier.
+        OffenseRole::Move => 1.0 + 0.5 * (full - 1.0),
+        OffenseRole::None => 1.0,
+    }
+}
+
+/// Exposure factor: scales the WHOLE accumulated chain DOWN when a piece is
+/// genuinely in danger of being lost — the "…but you're about to lose it" damp on
+/// everything the other factors built up. `1.0` when safe (no-op); drops toward a
+/// deep cut as the shared survivability severity rises. Amplified by low effective
+/// health: a 1-hp, unsupported piece that is dead-to-rights bottoms out near ×0.1
+/// (designer anchor). Consumes [`CustomCtx::survivability_severity`] — the same race
+/// the king danger malus uses — so exposure and king-danger agree on "about to die".
+#[inline]
+fn factor_exposure(ctx: &CustomCtx, p: Piece) -> f32 {
+    let sev = ctx.survivability_severity(p); // 0 (safe) .. 1 (dead-to-rights)
+    if sev <= 0.0 {
+        return 1.0;
+    }
+    // Low effective health deepens the cut: a full-health piece can't fall as far
+    // as a 1-hp one. floor(sev=1) ranges from ~0.5 (2hp+2armor) down to 0.1 (1hp,
+    // no armor). Interpolate the drop by how much of the multiplier severity spends.
+    let mb = p.mb;
+    let eff = (mb.hp() as f32 + mb.armor() as f32).max(1.0); // 1..4
+    // Deepest allowed cut for this piece's health: 1hp → 0.10, 4 (2hp+2arm) → 0.50.
+    let floor = 0.10 + 0.40 * ((eff - 1.0) / 3.0);
+    // severity 0 → 1.0, severity 1 → floor.
+    1.0 - sev * (1.0 - floor)
+}
+
+/// This piece's offensive role from its own two skill slots: Strike takes
+/// precedence over an enemy-moving Move (Blast/Shove). Self-move (Dash/Retreat)
+/// and ally-Swap are NOT offense — they use `skill_ticks_combo` to be excluded,
+/// consistent with combo reach and the side's attacker counts.
+enum OffenseRole { Strike, Move, None }
+
+#[inline]
+fn piece_offense_role(p: Piece) -> OffenseRole {
+    let mut has_move = false;
+    for id in [p.mb.skill1(), p.mb.skill2()] {
+        if let Some(sk) = skill_from_id(id) {
+            if skill_category(sk) == SkillCategory::Strike {
+                return OffenseRole::Strike;
+            } else if skill_ticks_combo(sk) {
+                has_move = true; // enemy-moving Move only
+            }
+        }
+    }
+    if has_move { OffenseRole::Move } else { OffenseRole::None }
+}
+
+/// Can this skill tick an enemy's combo counter? Per RULES.md, only a Strike (it
+/// hits an enemy) or a Move skill that moves the *enemy target* (Blast, Shove)
+/// ticks. Self-movement (Dash, Retreat) and ally-relocation (Swap) do NOT — so
+/// carrying Dash grants no combo potential. This is the filter for combo reach.
+#[inline]
+fn skill_ticks_combo(s: Skill) -> bool {
+    match skill_category(s) {
+        SkillCategory::Strike => true,
+        // A Move skill ticks only if it can act on an enemy piece.
+        SkillCategory::Move => matches!(
+            skill_target_owner(s),
+            TargetOwner::Enemy | TargetOwner::Either
+        ),
+        SkillCategory::Shield | SkillCategory::Mystic => false,
+    }
+}
+
+/// Raw combo-set-up points feeding [`factor_combo`] (NOT added to the score
+/// directly). Points a champion for sharing skill targets with a *different*
+/// combo-ticking champion near an enemy — the precondition for a multi-champion
+/// combo. Reach = `skill_attacks` at the champ's longest combo-skill range
+/// (queen-rays, blocked by any piece). Overlap = shared reach clipped to R4, with
+/// a clear path. Per shared square: enemy-occupied +25, enemy at cheby 1 +10,
+/// cheby 2 +5, else 0.
+fn combo_overlap_points(ctx: &CustomCtx, p: Piece) -> i32 {
     let my_reach = ctx.combo_reach(p.is_p1, p.sq);
     if my_reach == 0 {
-        return 0;
+        return 0; // no combo-ticking skill
     }
-
-    // R4 disc around this champion (Chebyshev ≤ 4), from the precomputed table.
-    // Excludes the centre, which is harmless here — the reach never contains sq.
     let r4 = within_range(p.sq, 4).0;
-
     let enemy = ctx.enemy_bb(p.is_p1);
 
-    // Union of overlap squares this champion shares with any OTHER friendly
-    // combo-champion, clipped to R4. Reaches are read from the per-side cache
-    // (computed once in SideInfo::build), not recomputed here. OR-ing dedupes: a
-    // square shared with two partners is still scored once (same target square).
+    // Squares shared with any OTHER friendly combo-champion (reaches cached in
+    // SideInfo::build). OR dedupes squares shared with two partners.
     let my_clipped = my_reach & r4;
     let mut overlap = 0u64;
     for &(other_sq, other_reach) in &ctx.side(p.is_p1).reach {
-        if other_sq == p.sq {
-            continue; // must be a DIFFERENT champion
+        if other_sq != p.sq {
+            overlap |= my_clipped & other_reach;
         }
-        overlap |= my_clipped & other_reach;
     }
 
-    // Score each overlap square by proximity to the nearest enemy, but only if
-    // this champion has an unobstructed path to it.
-    let mut bonus = 0i32;
+    let mut points = 0i32;
     let mut sqs = overlap;
     while sqs != 0 {
         let f = sqs.trailing_zeros() as u8;
         sqs &= sqs - 1;
-
-        // Path-clear: on a shared ray with nothing strictly between (checked first
-        // to skip the proximity work for unreachable squares).
+        // Skip squares this champion can't actually reach (blocked ray).
         if !(on_ray(p.sq, f) && (between(p.sq, f).0 & ctx.all_occ) == 0) {
             continue;
         }
-
-        // Proximity tiers (occupied first, then exact rings 1 and 2).
-        bonus += if enemy & (1u64 << f) != 0 {
+        points += if enemy & (1u64 << f) != 0 {
             25
         } else if ctx.has_piece_in_ring(enemy, f, 1) {
             10
@@ -184,118 +294,148 @@ fn combo_overlap_bonus(ctx: &CustomCtx, p: Piece) -> i32 {
             0
         };
     }
-    bonus
+    points
 }
 
-/// How over-extended `p` is: `0.0` (well supported / no threat) up to `1.0`
-/// (isolated in every ring while threatened). It measures **missing support**:
-///
-///   - For each Chebyshev ring n = 1, 2, 3 around the piece, if NO friendly
-///     piece sits in that ring, add that ring's weight (0.50 / 0.33 / 0.17).
-///     A single friend in a ring is enough to "cover" it — count doesn't matter.
-///   - The whole thing is gated on enemy pressure: full weight if an enemy is
-///     within R3, half weight if the nearest enemy is at R4, and `0.0` if no
-///     enemy is within R4 (an isolated piece nobody can punish isn't a problem).
+/// Over-extension (missing support): `0.0` (a friend in every ring, or no threat)
+/// up to `1.0` (alone in every ring while threatened). Each empty friendly ring
+/// n = 1/2/3 adds weight 0.50/0.33/0.17; gated by enemy pressure (within R3 →
+/// full, only R4 → half, none within R4 → 0). This is clustering, not
+/// killability — see [`factor_overextension`].
 fn overextension_rate(ctx: &CustomCtx, p: Piece) -> f32 {
-    // Ring weights for a ring with NO friendly support, indexed by ring-1.
     const RING_WEIGHT: [f32; 3] = [0.50, 0.33, 0.17];
 
-    // Enemy-pressure gate via table masks (we only need the ≤3 / ==4 / >4 bucket,
-    // not the exact distance): enemy within R3 → full, only at R4 → half, else 0.
     let enemy = ctx.enemy_bb(p.is_p1);
-    let within3 = within_range(p.sq, 3).0;
-    let within4 = within_range(p.sq, 4).0;
-    let gate = if enemy & within3 != 0 {
+    let gate = if enemy & within_range(p.sq, 3).0 != 0 {
         1.0
-    } else if enemy & within4 != 0 {
+    } else if enemy & within_range(p.sq, 4).0 != 0 {
         0.5
     } else {
-        return 0.0; // no enemy within R4 → not over-extended
+        return 0.0; // no enemy within R4 → nothing to punish being alone
     };
 
     let own = ctx.own_bb(p.is_p1);
     let mut rate = 0.0;
     for (i, &weight) in RING_WEIGHT.iter().enumerate() {
-        let ring = (i + 1) as u8;
-        if !ctx.has_piece_in_ring(own, p.sq, ring) {
-            rate += weight; // ring is unsupported → adds to over-extension
+        if !ctx.has_piece_in_ring(own, p.sq, (i + 1) as u8) {
+            rate += weight;
         }
     }
-
     rate * gate
 }
 
-/// King-danger penalty (positive magnitude; `score_king` negates it). Fires only
-/// when the king is in REAL danger, then estimates a damage race: can the enemy
-/// deal more than the king's effective health before we can shore it up?
+/// King-danger penalty (positive magnitude; `score_king` negates it). Consumes the
+/// shared [`CustomCtx::survivability_severity`] — the SAME race `factor_exposure`
+/// uses — so danger and exposure agree on "about to die". Maps severity `[0,1]` to
+/// an escalating but **CAPPED** malus: gentle for a merely-pressured king, steep as
+/// it approaches dead-to-rights, but bounded well below `MATE_SCORE` so a real
+/// forced mate always strictly dominates a "probably dead" read.
 ///
-/// **Gate** — return 0 unless an enemy can actually reach the king:
-///   - any enemy within R2 (Move-Attack via free pathing), OR
-///   - a Strike-carrying enemy within R4 that has a clear skill path to the king.
-///
-/// **Incoming** (raw max damage the enemy could deal next turn):
-///   - +1 for the single Move-Attack per turn, iff an enemy sits within R2.
-///   - affordable Strike casts over a 5-round window (actions ∩ money), only if a
-///     Strike-carrying enemy is in skill range (R4 + path) — no cross-map strikes.
-///
-/// **Defense** (what we can add over the same window): affordable Shield/Heal/
-/// Plate casts — Shield is self so always usable on the king; Heal/Plate need an
-/// adjacent friendly caster, so they only count if we own one and a friendly
-/// piece sits adjacent to the king.
-///
-/// **Balance:** `incoming − (king hp + armor + defense)`; penalty scales with the
-/// positive remainder (0 if the defense holds).
+/// This replaces the old `netto × 400` over a 5-round window, which was linear and
+/// UNBOUNDED — a merely-pressured king could read −1200 (`netto ≈ 3 × 400`) because
+/// the 5-round `affordable_casts` over-counted one-turn lethality. Severity now
+/// carries the magnitude, imminently-scoped and squashed into `[0,1]` first.
 fn king_danger_malus(ctx: &CustomCtx, p: Piece) -> i32 {
-    /// Score per unit of unanswered incoming damage.
-    const PER_DAMAGE: i32 = 400;
-    /// Lookahead window (rounds) — matches the skill-capacity horizon.
-    const LOOKAHEAD: u16 = 5;
+    /// Max malus for a dead-to-rights king. Big enough to dominate any piece value
+    /// (so the AI spends everything to avoid / force it), but far below MATE_SCORE
+    /// (1_000_000) so an actual forced capture always wins.
+    const CAP: f32 = 6000.0;
 
-    let king_sq = p.sq;
-    let enemy_bb = ctx.enemy_bb(p.is_p1);
-
-    // --- gate: is an enemy within Move-Attack (R2) or Strike (R4 + path) range? -
-    let within2 = within_range(king_sq, 2).0;
-    let within4 = within_range(king_sq, 4).0;
-    let enemy_in_r2 = enemy_bb & within2 != 0;
-
-    // A strike is only threatening if a Strike-carrying enemy can trace a clear
-    // path to the king. `enemy_strike_reaches_king` checks R4 + path + strike skill.
-    let atk = ctx.side(!p.is_p1); // the attacking side's precomputed info
-    let strike_in_range =
-        atk.min_strike_cost > 0 && ctx.enemy_strike_reaches_king(p.is_p1, king_sq, within4);
-
-    if !enemy_in_r2 && !strike_in_range {
+    let sev = ctx.survivability_severity(p);
+    if sev <= 0.0 {
         return 0; // king not in real danger
     }
+    // Escalating curve: sev² ramps the malus up near dead-to-rights (sev 0.5 → 25%
+    // of cap, sev 0.9 → 81%, sev 1.0 → cap) so mild pressure stays modest.
+    (CAP * sev * sev).round() as i32
+}
 
-    // --- incoming max damage ------------------------------------------------
-    let mut incoming = 0i32;
-    if enemy_in_r2 {
-        incoming += 1; // the one Move-Attack per turn
-    }
-    if strike_in_range {
-        incoming += ctx.affordable_casts(!p.is_p1, atk.min_strike_cost, LOOKAHEAD);
-    }
+// ============================================================================
+// BREAKDOWN SCORING — mirrors score_piece but also emits named TermEntry rows.
+// Used only on the `with_rows = true` path (hover card / breakdown panel).
+// Fast evaluate() path stays untouched.
+// ============================================================================
 
-    // --- our defensive response over the same window ------------------------
-    let me = ctx.side(p.is_p1);
-    // Cheapest defensive skill we could spam. Shield (self) always applies to the
-    // king; Heal/Plate only if we have an adjacent friendly caster+target.
-    let mut defense = 0i32;
-    if me.has_shield || (me.has_heal_or_plate && ctx.friendly_adjacent_to(p.is_p1, king_sq)) {
-        // Both defensive families cost 2–3; use the side's max_skill_cost as the
-        // conservative per-cast price (we don't track a separate min-defense cost,
-        // and over-pricing defense keeps the penalty from being optimistic).
-        let unit = me.max_skill_cost.max(1);
-        defense = ctx.affordable_casts(p.is_p1, unit, LOOKAHEAD);
+/// Compute the same value as [`score_piece`] and also return named factor rows:
+/// one `"base"` row, one delta row per CHAMP_FACTORS entry, and a `"king_danger"`
+/// row for kings. All entries are owner-signed (`signed > 0` means benefit for
+/// this piece's owner; `p1`/`p2` carry the absolute magnitude for the owner's
+/// side only).
+fn score_piece_with_terms(ctx: &CustomCtx, p: Piece) -> (i32, Vec<TermEntry>) {
+    match p.kind {
+        Kind::Guard => score_guard_with_terms(ctx, p),
+        Kind::Champion => score_champion_with_terms(ctx, p),
+        Kind::King => score_king_with_terms(ctx, p),
     }
+}
 
-    // --- balance against the king's effective health ------------------------
-    let mb = ctx.pos.mailbox[king_sq as usize];
-    let king_life = mb.hp() as i32 + mb.armor() as i32 + defense;
-    let netto = incoming - king_life;
-    if netto > 0 { netto * PER_DAMAGE } else { 0 }
+fn score_guard_with_terms(ctx: &CustomCtx, p: Piece) -> (i32, Vec<TermEntry>) {
+    let ov = factor_overextension(ctx, p);
+    let score = (BASE * ov).round() as i32;
+
+    let mut terms = Vec::with_capacity(2);
+    terms.push(make_term("base", "Base", p.is_p1, BASE as i32));
+    let ov_delta = score - BASE as i32; // ≤ 0
+    if ov_delta != 0 {
+        terms.push(make_term("overextension", "Overext", p.is_p1, ov_delta));
+    }
+    (score, terms)
+}
+
+fn score_champion_with_terms(ctx: &CustomCtx, p: Piece) -> (i32, Vec<TermEntry>) {
+    let mut terms = Vec::with_capacity(CHAMP_FACTORS.len() + 1);
+    terms.push(make_term("base", "Base", p.is_p1, BASE as i32));
+
+    let mut running = BASE;
+    for &(name, label, f) in CHAMP_FACTORS {
+        let factor_val = f(ctx, p);
+        let before_cp = running.round() as i32;
+        running *= factor_val;
+        let after_cp = running.round() as i32;
+        let delta = after_cp - before_cp;
+        if delta != 0 {
+            terms.push(make_term(name, label, p.is_p1, delta));
+        }
+    }
+    (running.round() as i32, terms)
+}
+
+fn score_king_with_terms(ctx: &CustomCtx, p: Piece) -> (i32, Vec<TermEntry>) {
+    let mut terms = Vec::with_capacity(CHAMP_FACTORS.len() + 2);
+    terms.push(make_term("base", "Base", p.is_p1, BASE as i32));
+
+    let mut running = BASE;
+    for &(name, label, f) in CHAMP_FACTORS {
+        let factor_val = f(ctx, p);
+        let before_cp = running.round() as i32;
+        running *= factor_val;
+        let after_cp = running.round() as i32;
+        let delta = after_cp - before_cp;
+        if delta != 0 {
+            terms.push(make_term(name, label, p.is_p1, delta));
+        }
+    }
+    let chain_score = running.round() as i32;
+    let malus = king_danger_malus(ctx, p);
+    if malus != 0 {
+        terms.push(make_term("king_danger", "King danger", p.is_p1, -malus));
+    }
+    (chain_score - malus, terms)
+}
+
+/// Build one owner-signed `TermEntry` for a per-piece factor row.
+/// `delta` is signed from the owner's perspective (positive = benefit, negative = cost).
+/// `p1`/`p2` carry the absolute magnitude on the owning side only.
+#[inline]
+fn make_term(name: &'static str, label: &'static str, is_p1: bool, delta: i32) -> TermEntry {
+    let abs = delta.unsigned_abs() as i32;
+    TermEntry {
+        name: name.to_string(),
+        label: label.to_string(),
+        p1: if is_p1 { abs } else { 0 },
+        p2: if is_p1 { 0 } else { abs },
+        signed: if is_p1 { delta } else { -delta },
+    }
 }
 
 // TODO piece activity term
@@ -340,6 +480,11 @@ impl Territory {
     /// which only changes the term's overall weight (tune it at the call site).
     const SCALE: i32 = 2;
 
+    /// Base worth of a plain controlled square, in whole squares (2026-08: raised
+    /// 1 → 2 so board control competes with material). The near-king multiplier
+    /// still stacks on top of this.
+    const BASE_SQUARES: i32 = 2;
+
     /// Run the full pipeline and return the per-side control totals.
     fn compute(pos: &Position) -> Self {
         let occ = pos.p1_pieces.0 | pos.p2_pieces.0;
@@ -356,6 +501,31 @@ impl Territory {
         let mut p2_ctrl = 0u64;
         let mut ties = 0u64;    // equal-distance squares (belong to both, halved)
         let mut claimed = occ;  // squares already decided (start: all pieces)
+
+        // ── Phase 0: guard pre-flood (speed 2 vs 1). ────────────────────────
+        // Guards move 2 tiles/turn, Champions/King 1, so a guard reaches its full
+        // R2 footprint in one turn. Give guards a TWO-ring expand up front (each ring
+        // blocked by pieces/walls — the second grows only from empties the first
+        // reached, so no jumping), resolve P1-vs-P2 ties on that whole footprint, and
+        // fold it into the claimed set. Only THEN does the champion-speed main loop
+        // run — so a champion cannot steal a square a guard already reached in one
+        // turn, and both guards' R2 rings tie fairly against each other.
+        {
+            let p1_guards = pos.guards.0 & pos.p1_pieces.0;
+            let p2_guards = pos.guards.0 & pos.p2_pieces.0;
+            // Ring 1 then ring 2, each into still-empty squares (blocked pathing).
+            let p1_r1 = king_expand(p1_guards) & empty;
+            let p2_r1 = king_expand(p2_guards) & empty;
+            let p1_front = (p1_r1 | (king_expand(p1_r1) & empty)) & !claimed;
+            let p2_front = (p2_r1 | (king_expand(p2_r1) & empty)) & !claimed;
+            let both = p1_front & p2_front;
+            p1_ctrl    |= p1_front;
+            p2_ctrl    |= p2_front;
+            ties       |= both;
+            p1_reached |= p1_front;
+            p2_reached |= p2_front;
+            claimed    |= p1_front | p2_front;
+        }
 
         // The flood saturates in ≤8 King-steps across an 8×8 grid, but loop until
         // nothing new is claimed to be safe against odd wall shapes.
@@ -403,8 +573,8 @@ impl Territory {
         Territory { p1, p2 }
     }
 
-    /// Sum one side's control value (fixed-point ×SCALE): base 1 per square,
-    /// halved on contested squares FIRST, then raised toward the enemy king
+    /// Sum one side's control value (fixed-point ×SCALE): base BASE_SQUARES per
+    /// square, halved on contested squares FIRST, then raised toward the enemy king
     /// (R1 → ×3, R2 → ×2). `enemy_king_sq >= 64` skips the bonus (king gone).
     fn sum_side(ctrl: u64, contested: u64, enemy_king_sq: u32) -> i32 {
         let has_enemy_king = enemy_king_sq < 64;
@@ -415,8 +585,9 @@ impl Territory {
             bits &= bits - 1;
             let mask = 1u64 << sq;
 
-            // Base 1, held in fixed point (×SCALE). Contested → half.
-            let mut value = if contested & mask != 0 { Self::SCALE / 2 } else { Self::SCALE };
+            // Base worth BASE_SQUARES, held in fixed point (×SCALE). Contested → half.
+            let full = Self::BASE_SQUARES * Self::SCALE;
+            let mut value = if contested & mask != 0 { full / 2 } else { full };
 
             // King bonus on top, AFTER the halving (a contested R1 square is
             // 3 × ½ = 1.5 → SCALE*3/2). Multiply the already-halved value.
@@ -447,40 +618,96 @@ impl Territory {
 /// A side-level term: score ONE side as a positive magnitude. Written once from
 /// one side's perspective; the driver calls it for P1 and P2 and diffs them.
 struct SideTerm {
-    name: &'static str,
-    sign: i32,
-    f:    fn(ctx: &CustomCtx, is_p1: bool) -> i32,
+    name:  &'static str,
+    label: &'static str,
+    sign:  i32,
+    f:     fn(ctx: &CustomCtx, is_p1: bool) -> i32,
 }
 
 /// Side-level terms, in report order. ADD A LINE to register a term.
 const SIDE_TERMS: &[SideTerm] = &[
-    SideTerm { name: "skill_capacity",   sign: 1, f: term_skill_capacity },
-    SideTerm { name: "offense_capable",  sign: 1, f: term_offense_capable },
-    SideTerm { name: "territory",        sign: 1, f: term_territory },
+    SideTerm { name: "skill_capacity",  label: "Skill cap", sign: 1, f: term_skill_capacity },
+    SideTerm { name: "offense_capable", label: "Offense",   sign: 1, f: term_offense_capable },
+    SideTerm { name: "territory",       label: "Territory", sign: 1, f: term_territory },
 ];
 
-/// Offensive capability: a raw, symmetric count of how much *realisable* offense
-/// this side's champions carry. It captures "don't fritter away all your
-/// attackers — you still need the means to actually win".
+/// Offensive UTILISATION (C2b): penalise a side ONLY when it is ahead on offense
+/// yet not converting that advantage — and only to the extent its attackers are
+/// actually safe enough to convert. Never rewards; returns a non-positive
+/// magnitude (0 or a penalty) which the driver diffs by owner, so a hoarding side
+/// drops relative to its opponent. The three multiplicative gates make it
+/// continuous (no single-ply switch):
 ///
-///   - A champion with a **Strike** skill (Lance/Hook/Break/Steal/Tempest) is
-///     offense on its own — it deals damage and ticks the combo counter.
-///   - A champion with a **Move** skill (Dash/Blast/Shove/Swap/Retreat) deals no
-///     damage by itself; it only contributes once the combo counter is already
-///     built, i.e. only if the side has at least one Strike attacker to start it.
+///   1. **Advantage gate.** `adv = my_potential − enemy_potential` (realisable
+///      attacker counts). `adv ≤ 0` → 0: at a disadvantage you're free to do
+///      anything (preserve / play cool), never penalised.
+///   2. **Realisation.** How much of my offense is bearing on the enemy, weighted
+///      by target quality (King 1.0 > Champion 0.7 > Guard 0.3 — pressuring what
+///      matters is real conversion; harassing guards is only partial). The GAP is
+///      `1 − realising_frac`.
+///   3. **Takeability gate (`factor_exposure`, C4).** A takeable attacker can't
+///      safely convert, so pressure fades with the mean exposure factor of my
+///      attackers (safe ≈ 1.0 → full pressure; takeable → 0.1 → pressure fades).
+///      Shares the exact "about to die" read the exposure factor uses.
 ///
-/// Each champion ticks the counter at most once (Strike takes precedence), so we
-/// count Strike carriers and Move carriers separately, then only credit the Move
-/// carriers when a Strike carrier exists to prime the combo.
+///   penalty = −WEIGHT × adv × (1 − realising_frac) × mean_exposure
 fn term_offense_capable(ctx: &CustomCtx, is_p1: bool) -> i32 {
-    /// Score per capable champion.
-    const PER_CHAMP: i32 = 10;
+    const WEIGHT: f32 = 33.0; // ~−100 for 3 fully-unrealised, safe attackers (designer)
 
-    // Counts are precomputed once per side in SideInfo::build.
     let s = ctx.side(is_p1);
-    // Move carriers only count if a Strike carrier exists to prime the combo.
-    let realisable = s.strike_champs + if s.strike_champs > 0 { s.move_champs } else { 0 };
-    realisable * PER_CHAMP
+    // Realisable attacker potential (Move carriers count only if a Strike primes).
+    let potential = |si: &SideInfo| {
+        si.strike_champs + if si.strike_champs > 0 { si.move_champs } else { 0 }
+    };
+    let adv = potential(s) - potential(ctx.side(!is_p1));
+    if adv <= 0 {
+        return 0; // not ahead → no pressure (designer: free when behind/even)
+    }
+
+    // My attackers are the entries in the combo-reach cache (each carries a
+    // combo-ticking skill). Weight each by the best enemy target its reach covers,
+    // and track how many are safe (placeholder takeability gate).
+    let enemy = ctx.enemy_bb(is_p1);
+    let ek = enemy & ctx.pos.kings.0;
+    let ec = enemy & ctx.pos.champions.0;
+    let eg = enemy & ctx.pos.guards.0;
+
+    let mut total = 0i32;
+    let mut realise_sum = 0.0f32;
+    let mut safe_sum = 0.0f32;
+    for &(sq, reach) in &s.reach {
+        total += 1;
+        let best = if reach & ek != 0 {
+            1.0
+        } else if reach & ec != 0 {
+            0.7
+        } else if reach & eg != 0 {
+            0.3
+        } else {
+            0.0
+        };
+        realise_sum += best;
+        // Takeability gate = this attacker's own exposure factor (C4). A safe
+        // attacker (exposure ≈ 1.0) can convert → full pressure; a takeable one
+        // (exposure → 0.1) can't safely lunge → pressure fades. Continuous, and
+        // shares the exact "is this piece about to die" read the exposure factor
+        // uses, so the gate and the piece's own value agree.
+        let attacker = Piece {
+            sq,
+            is_p1,
+            kind: ctx.kind_at(sq),
+            mb: ctx.pos.mailbox[sq as usize],
+        };
+        safe_sum += factor_exposure(ctx, attacker);
+    }
+    if total == 0 {
+        return 0; // adv>0 with no reachable attackers (edge) → nothing to push
+    }
+
+    let realising_frac = realise_sum / total as f32;
+    let safe_frac = safe_sum / total as f32; // mean exposure factor of my attackers
+    let penalty = WEIGHT * adv as f32 * (1.0 - realising_frac) * safe_frac;
+    -(penalty.round() as i32)
 }
 
 
@@ -584,7 +811,8 @@ struct SideInfo {
     reach: Vec<(u8, u64)>,
     /// Count of champions carrying a Strike skill.
     strike_champs: i32,
-    /// Count of champions carrying a Move (but no Strike) skill.
+    /// Count of champions/king carrying an enemy-moving Move skill (Blast/Shove)
+    /// but no Strike. Self-move (Dash/Retreat) and ally-Swap don't count.
     move_champs: i32,
     /// Most expensive owned skill cost on this side (0 if none).
     max_skill_cost: i32,
@@ -603,16 +831,18 @@ impl SideInfo {
     /// Skill inventory (min strike cost, defensive flags) also covers the King's
     /// two slots, since the King carries skills too.
     fn build(pos: &Position, side_bb: u64, all_occ: u64) -> Self {
-        let champs = side_bb & pos.champions.0;
-        let mut reach = Vec::with_capacity(champs.count_ones() as usize);
+        // Offense counting and combo reach cover champions AND the king — the king
+        // is a champion under the hood (carries Strikes, ticks combos: C1c).
+        let attackers = side_bb & (pos.champions.0 | pos.kings.0);
+        let mut reach = Vec::with_capacity(attackers.count_ones() as usize);
         let mut strike_champs = 0i32;
         let mut move_champs = 0i32;
         let mut min_strike_cost = 0i32;
         let mut has_shield = false;
         let mut has_heal_or_plate = false;
 
-        // Champions: reach cache + per-champion strike/move tick classification.
-        let mut bits = champs;
+        // Champions + King: reach cache + per-piece strike/move tick classification.
+        let mut bits = attackers;
         while bits != 0 {
             let sq = bits.trailing_zeros() as u8;
             bits &= bits - 1;
@@ -623,16 +853,20 @@ impl SideInfo {
                 reach.push((sq, r));
             }
 
-            // Skill inventory: a champion ticks at most once, Strike over Move.
+            // Skill inventory: a piece ticks at most once, Strike over Move.
+            // Strike, or an enemy-moving Move skill (Blast/Shove) — the same
+            // combo-ticking test used for reach. Self-move (Dash/Retreat) and
+            // ally-Swap are NOT realisable offense and don't count.
             let mb = pos.mailbox[sq as usize];
             let mut has_strike = false;
             let mut has_move = false;
             for id in [mb.skill1(), mb.skill2()] {
                 if let Some(s) = skill_from_id(id) {
-                    match skill_category(s) {
-                        SkillCategory::Strike => has_strike = true,
-                        SkillCategory::Move   => has_move = true,
-                        _ => {}
+                    if skill_category(s) == SkillCategory::Strike {
+                        has_strike = true;
+                    } else if skill_ticks_combo(s) {
+                        // enemy-moving Move (Blast/Shove) — ticks a combo on an enemy
+                        has_move = true;
                     }
                 }
             }
@@ -795,41 +1029,6 @@ impl<'a> CustomCtx<'a> {
         casts
     }
 
-    /// Does the side OPPOSING `is_p1` have a Strike-carrying piece within R4 of
-    /// `king_sq` that can trace a clear skill path to it? `within4` is the
-    /// precomputed R4 mask of `king_sq`. Skills are queen-rays blocked by any
-    /// piece, so "reaches" = on a shared ray with nothing strictly between.
-    fn enemy_strike_reaches_king(&self, is_p1: bool, king_sq: u8, within4: u64) -> bool {
-        // Enemy pieces that carry skills (champions + king) and sit within R4.
-        let enemy = self.enemy_bb(is_p1);
-        let mut cand = enemy & (self.pos.champions.0 | self.pos.kings.0) & within4;
-        while cand != 0 {
-            let sq = cand.trailing_zeros() as u8;
-            cand &= cand - 1;
-            // Must actually carry a Strike skill whose true range reaches king_sq…
-            let mb = self.pos.mailbox[sq as usize];
-            let mut reach = 0u8;
-            for id in [mb.skill1(), mb.skill2()] {
-                if let Some(s) = skill_from_id(id) {
-                    if skill_category(s) == SkillCategory::Strike {
-                        reach = reach.max(skill_default_range(s));
-                    }
-                }
-            }
-            if reach == 0 {
-                continue;
-            }
-            // …and have a clear queen-ray path within that range to the king.
-            if cheby_dist(sq, king_sq) <= reach
-                && on_ray(sq, king_sq)
-                && (between(sq, king_sq).0 & self.all_occ) == 0
-            {
-                return true;
-            }
-        }
-        false
-    }
-
     /// Is a friendly piece (of the side `is_p1`) on a square adjacent (R1) to
     /// `sq`? Used to check a Heal/Plate caster could reach the king.
     #[inline]
@@ -852,6 +1051,218 @@ impl<'a> CustomCtx<'a> {
         if is_p1 { self.pos.p2_pieces.0 } else { self.pos.p1_pieces.0 }
     }
 
+    /// Can the side opposing `is_p1` Move-Attack `sq` next turn? A Move-Attack
+    /// requires the attacker to actually reach the target with its move speed, so
+    /// R2 alone is NOT enough: only a **Guard** (speed 2) threatens from R2; a
+    /// **Champion/King** (speed 1) only threatens from R1. (Free pathing means the
+    /// disc, not a ray, is the right shape; blocking is not modelled here — this is
+    /// the conservative "someone could step onto it" gate the danger/exposure
+    /// terms share so they agree on what "reachable" means.)
+    #[inline]
+    fn enemy_can_move_attack(&self, is_p1: bool, sq: u8) -> bool {
+        let enemy = self.enemy_bb(is_p1);
+        let r1 = within_range(sq, 1).0;
+        let r2 = within_range(sq, 2).0;
+        let guard_r2 = enemy & self.pos.guards.0 & r2;
+        let champ_king_r1 = enemy & (self.pos.champions.0 | self.pos.kings.0) & r1;
+        guard_r2 != 0 || champ_king_r1 != 0
+    }
+
+    /// Is the piece at `sq` (owner `is_p1`) fully protected from Move-Attack by the
+    /// Bodyguard Rule? The Rule lets a friendly Guard intercept iff it sits adjacent
+    /// to BOTH the pre-target tile (the square the attacker stops on, along its
+    /// approach) AND the defended piece. With free pathing the attacker may approach
+    /// from any empty square adjacent to the target, so the piece is fully covered
+    /// only if EVERY such approach square has a friendly Guard adjacent to both it
+    /// and the piece. Any uncovered approach → not fully protected (attacker routes
+    /// through it). Guards themselves can't be bodyguarded (only Champions/King).
+    fn bodyguard_fully_covers(&self, is_p1: bool, sq: u8) -> bool {
+        // The set of would-be approach tiles: empty squares adjacent to the target
+        // (an attacker ends the Move-Attack on the tile before the target). If there
+        // are none (fully walled in by pieces), there's no open approach to cover.
+        let adj = within_range(sq, 1).0 & !within_range(sq, 0).0;
+        let empty = !self.all_occ;
+        let approaches = adj & empty;
+        if approaches == 0 {
+            return true; // no open approach square → nothing to intercept through
+        }
+        let guards = self.own_bb(is_p1) & self.pos.guards.0;
+        if guards == 0 {
+            return false;
+        }
+        // Every approach must have a friendly Guard adjacent to both it and `sq`.
+        // A Guard adjacent to `sq` is adjacent to an approach iff cheby_dist ≤ 1.
+        let mut ap = approaches;
+        while ap != 0 {
+            let a = ap.trailing_zeros() as u8;
+            ap &= ap - 1;
+            // Guards adjacent to the piece AND to this approach square.
+            let covering = guards & within_range(sq, 1).0 & within_range(a, 1).0;
+            if covering == 0 {
+                return false; // this approach is uncovered
+            }
+        }
+        true
+    }
+
+    /// Shared survivability severity for ANY piece: `0.0` (safe) → `1.0`
+    /// (dead-to-rights). Both `king_danger_malus` (C3) and `factor_exposure` (C4)
+    /// consume this so they agree on "about to die". Combines:
+    ///   - **reach** via two vectors: Move-Attack (Guard@R2/Champ-King@R1) minus
+    ///     bodyguard cover, and Strike (range+1, clear path, distance-scaled — a
+    ///     point-blank Striker threatens more than a far one; skills ignore bodyguard);
+    ///   - **incoming** damage the enemy can afford & land IMMINENTLY (this turn +
+    ///     next, not a long spend);
+    ///   - **defense**: the owner's Shield/Plate/Heal, but only on the OWNER's own
+    ///     turn (on the enemy's turn the defender can't heal);
+    ///   - **retaliation**: if the enemy can't be Struck back next turn (no Strike
+    ///     skill in range / can't afford it), the piece is MORE exposed; if we can
+    ///     punish the trade, less.
+    /// The net `incoming − (eff_health + defense)` is squashed into `[0,1]`.
+    fn survivability_severity(&self, p: Piece) -> f32 {
+        const IMMINENT: u16 = 2; // this turn + next — NOT the old 5-round over-count
+
+        let sq = p.sq;
+        let within4 = within_range(sq, 4).0;
+
+        // --- reach: the two attack vectors ---------------------------------
+        let move_attack =
+            self.enemy_can_move_attack(p.is_p1, sq) && !self.bodyguard_fully_covers(p.is_p1, sq);
+
+        let atk = self.side(!p.is_p1);
+        let strike_reaches = atk.min_strike_cost > 0
+            && self.enemy_strike_reaches(p.is_p1, sq, within4);
+
+        if !move_attack && !strike_reaches {
+            return 0.0; // unreachable → safe
+        }
+
+        // --- incoming (imminent) -------------------------------------------
+        let mut incoming = 0.0f32;
+        if move_attack {
+            incoming += 1.0; // the one Move-Attack per turn
+        }
+        if strike_reaches {
+            // Affordable strikes over the imminent window, distance-scaled: a
+            // Striker at range 1 lands full, farther ones ramp down (still a threat
+            // but slower to bring to bear). Closest enemy Striker sets the factor.
+            let casts = self.affordable_casts(!p.is_p1, atk.min_strike_cost, IMMINENT) as f32;
+            let dist = self.nearest_enemy_striker_dist(p.is_p1, sq, within4);
+            // dist 1 → 1.0, 2 → 0.83, 3 → 0.67, 4 → 0.5 (linear 1 − (d−1)/6).
+            let dscale = (1.0 - (dist.saturating_sub(1) as f32) / 6.0).max(0.0);
+            incoming += casts * dscale;
+        }
+
+        // --- defense (owner's turn only) -----------------------------------
+        let me = self.side(p.is_p1);
+        let on_move = (self.pos.to_move == crate::state::position::Player::P1) == p.is_p1;
+        let mut defense = 0.0f32;
+        if on_move
+            && (me.has_shield
+                || (me.has_heal_or_plate && self.friendly_adjacent_to(p.is_p1, sq)))
+        {
+            let unit = me.max_skill_cost.max(1);
+            defense = self.affordable_casts(p.is_p1, unit, IMMINENT) as f32;
+        }
+
+        // --- effective health ----------------------------------------------
+        let mb = self.pos.mailbox[sq as usize];
+        let eff_health = mb.hp() as f32 + mb.armor() as f32 + defense;
+
+        // --- retaliation reducer -------------------------------------------
+        // If WE can Strike the enemy back next turn (own a Strike we can afford),
+        // the trade is punishable → dampen the severity. Cheap proxy: do we have a
+        // Strike skill and afford one cast in the imminent window?
+        let can_retaliate =
+            me.min_strike_cost > 0 && self.affordable_casts(p.is_p1, me.min_strike_cost, IMMINENT) > 0;
+        let retaliation_damp = if can_retaliate { 0.6 } else { 1.0 };
+
+        // --- squash net into [0,1] -----------------------------------------
+        // A piece DIES when incoming reaches eff_health (≥, not >). Frame lethality
+        // as `incoming − eff_health + 1`: one short of lethal → 0 (survives), exactly
+        // lethal → 1, overkill → >1. Retaliation dampens (punishable trade).
+        let raw_lethal = incoming - eff_health + 1.0;
+        let lethal = raw_lethal * retaliation_damp;
+        if lethal <= 0.0 {
+            return 0.0;
+        }
+        // Certain death: incoming meets-or-exceeds effective health AND the owner
+        // cannot act to save it this turn (no defense was available — enemy's turn,
+        // or no shield/heal). That piece is essentially gone, so floor the severity
+        // high (0.85) rather than the gentle "exactly lethal = 0.5". Overkill still
+        // pushes it higher toward 1.0.
+        let certain_death = raw_lethal >= 1.0 && defense <= 0.0;
+        // lethal 1 (exactly dead) → 0.5, 2 → 0.67, 3 → 0.75… saturating toward 1.0.
+        let sev = (lethal / (lethal + 1.0)).min(1.0);
+        if certain_death { sev.max(0.85) } else { sev }
+    }
+
+    /// Chebyshev distance to the nearest enemy Strike-carrier that can trace a clear
+    /// path to `sq` within its Strike range. Returns a large value if none. Used to
+    /// distance-scale the Strike incoming in [`survivability_severity`].
+    fn nearest_enemy_striker_dist(&self, is_p1: bool, sq: u8, within4: u64) -> u8 {
+        let enemy = self.enemy_bb(is_p1);
+        let mut cand = enemy & (self.pos.champions.0 | self.pos.kings.0) & within4;
+        let mut best = u8::MAX;
+        while cand != 0 {
+            let s = cand.trailing_zeros() as u8;
+            cand &= cand - 1;
+            let mb = self.pos.mailbox[s as usize];
+            let mut reach = 0u8;
+            for id in [mb.skill1(), mb.skill2()] {
+                if let Some(sk) = skill_from_id(id) {
+                    if skill_category(sk) == SkillCategory::Strike {
+                        reach = reach.max(skill_default_range(sk));
+                    }
+                }
+            }
+            if reach == 0 {
+                continue;
+            }
+            // range + 1 (consistent with enemy_strike_reaches): the Striker may step
+            // one tile in before casting.
+            let d = cheby_dist(s, sq);
+            if d <= reach + 1 && on_ray(s, sq) && (between(s, sq).0 & self.all_occ) == 0 {
+                best = best.min(d);
+            }
+        }
+        best
+    }
+
+    /// Does the side OPPOSING `is_p1` have a Strike-carrier that reaches `sq`
+    /// (range +1, clear path)? Piece-level generalisation of
+    /// [`enemy_strike_reaches_king`] — uses `range + 1` per the designer's exposure
+    /// spec (a Striker one tile outside its listed range can still step in and cast).
+    fn enemy_strike_reaches(&self, is_p1: bool, sq: u8, within4: u64) -> bool {
+        let enemy = self.enemy_bb(is_p1);
+        let mut cand = enemy & (self.pos.champions.0 | self.pos.kings.0) & within4;
+        while cand != 0 {
+            let s = cand.trailing_zeros() as u8;
+            cand &= cand - 1;
+            let mb = self.pos.mailbox[s as usize];
+            let mut reach = 0u8;
+            for id in [mb.skill1(), mb.skill2()] {
+                if let Some(sk) = skill_from_id(id) {
+                    if skill_category(sk) == SkillCategory::Strike {
+                        reach = reach.max(skill_default_range(sk));
+                    }
+                }
+            }
+            if reach == 0 {
+                continue;
+            }
+            // range + 1: the Striker may step one tile toward the target then cast.
+            let effective = reach + 1;
+            if cheby_dist(s, sq) <= effective
+                && on_ray(s, sq)
+                && (between(s, sq).0 & self.all_occ) == 0
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Skill-target reach of the piece at `sq` for combo purposes: the squares it
     /// could hit with its longest-range **combo-ticking** skill (Strike or Move).
     /// Returns `0` if it carries no such skill. Queen-rays via `skill_attacks`,
@@ -865,8 +1276,7 @@ impl<'a> CustomCtx<'a> {
         let mut max_range = 0u8;
         for id in [mb.skill1(), mb.skill2()] {
             if let Some(s) = skill_from_id(id) {
-                // Only Strike / Move skills tick the combo counter (per RULES.md).
-                if matches!(skill_category(s), SkillCategory::Strike | SkillCategory::Move) {
+                if skill_ticks_combo(s) {
                     max_range = max_range.max(skill_default_range(s));
                 }
             }
@@ -934,7 +1344,11 @@ impl CustomEvaluator {
             let mb = pos.mailbox[sq as usize];
             let piece = Piece { sq, is_p1, kind, mb };
 
-            let mag = score_piece(&ctx, piece);
+            let (mag, factor_terms) = if rows.is_some() {
+                score_piece_with_terms(&ctx, piece)
+            } else {
+                (score_piece(&ctx, piece), Vec::new())
+            };
             let owner_signed = if is_p1 { mag } else { -mag };
             piece_total += owner_signed;
 
@@ -944,8 +1358,7 @@ impl CustomEvaluator {
                     sq, is_p1, piece_kind,
                     hp: mb.hp(), armor: mb.armor(),
                     skill1_id: mb.skill1(), skill2_id: mb.skill2(),
-                    // Per-piece total only for now — no factor decomposition yet.
-                    terms: Vec::new(),
+                    terms: factor_terms,
                     piece_total: owner_signed,
                 });
             }
@@ -991,13 +1404,11 @@ impl Evaluator for CustomEvaluator {
         let want_rows = matches!(detail, BreakdownDetail::PerPiece);
         let scored = self.score(pos, want_rows);
 
-        // The per-piece scoring is one aggregate "pieces" term (owner-signed sum);
-        // its per-piece decomposition lives in `pieces`. Side terms are listed
-        // individually. A term with zero magnitude on both sides is omitted.
         let mut terms = Vec::new();
         if scored.piece_total != 0 {
             terms.push(TermEntry {
                 name: "pieces".to_string(),
+                label: "Pieces".to_string(),
                 p1: scored.piece_total.max(0),
                 p2: (-scored.piece_total).max(0),
                 signed: scored.piece_total,
@@ -1008,6 +1419,7 @@ impl Evaluator for CustomEvaluator {
             .filter(|(_, s)| s.p1 != 0 || s.p2 != 0)
             .map(|(t, s)| TermEntry {
                 name: t.name.to_string(),
+                label: t.label.to_string(),
                 p1: s.p1, p2: s.p2,
                 signed: t.sign * (s.p1 - s.p2),
             })
@@ -1060,6 +1472,22 @@ mod tests {
     }
 
     #[test]
+    fn factor_terms_sum_to_piece_total() {
+        // Each piece's factor terms (signed) must sum to its piece_total.
+        let pos = Position::setup_stack_m();
+        let r = CustomEvaluator.evaluate_report(&pos, BreakdownDetail::PerPiece);
+        let rows = r.pieces.expect("PerPiece requested");
+        for row in &rows {
+            let term_sum: i32 = row.terms.iter().map(|t| t.signed).sum();
+            assert_eq!(
+                term_sum, row.piece_total,
+                "sq={} kind={} terms don't add up to piece_total",
+                row.sq, row.piece_kind
+            );
+        }
+    }
+
+    #[test]
     fn custom_terminal() {
         let mut pos = Position::empty();
         pos.game_result = Some(GameResult::P1Wins);
@@ -1103,6 +1531,98 @@ mod tests {
         let t = Territory::compute(&pos);
         assert_eq!(t.p1, t.p2, "symmetric face-off is even");
         assert!(t.p1 > 0, "each side still controls something");
+    }
+
+    /// Guard speed (2) out-races champion speed (1): a square two rings from a
+    /// guard but one ring from an enemy champion is claimed by the GUARD's side
+    /// (both reach it in one turn → it's the guard-owner's, not the champion's),
+    /// because the guard pre-flood claims its R2 footprint before champions move.
+    #[test]
+    fn territory_guard_speed_beats_champion() {
+        // P1 guard a1(0); P2 champion a4(24). a3(16) is Chebyshev 2 from the guard
+        // (one guard turn) and 1 from the champ (one champ turn) — a real tie in
+        // TURNS. Old tile-distance flood gave it to the champ (wave 1 < wave 2);
+        // the speed-aware pre-flood makes the guard claim it first.
+        let mut pos = Position::empty();
+        pos.p1_pieces.0 = 1 << 0;   // a1 guard
+        pos.p2_pieces.0 = 1 << 24;  // a4 champ
+        pos.guards.0    = 1 << 0;
+        pos.champions.0 = 1 << 24;
+
+        let t = Territory::compute(&pos);
+        // With the guard reaching further, P1 should control at least as much as
+        // P2 here (the guard's extra ring tips squares P1's way).
+        assert!(t.p1 >= t.p2, "guard speed should not lose ground it reaches first");
+
+        // Concretely: a3(16) must be reachable-first by the guard. Rebuild with the
+        // champion removed and confirm the guard alone already owns a3 — then adding
+        // the champ must not steal it (it can only tie, and a tie is shared).
+        let mut solo = pos.clone();
+        solo.p2_pieces.0 = 0;
+        solo.champions.0 = 0;
+        let guard_only = Territory::compute(&solo);
+        assert!(guard_only.p1 > t.p2, "lone guard out-controls the lone champ's reach");
+    }
+
+    /// factor_offense curve + the last-attacker cliff: the per-piece multiplier is
+    /// keyed on the side's Strike-carrier count (1→2.0, 2→1.75, 3→1.57, 4→1.43,
+    /// 5→1.31, 6→1.22), tuned so the COST to lose an attacker is strictly larger
+    /// the fewer you have. Move-only carriers get half the bonus and don't change
+    /// the count; non-attackers stay 1.0.
+    #[test]
+    fn offense_factor_rewards_last_attacker_most() {
+        let lance = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(1); // Strike
+        let blast = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(10); // Move-only
+        let plain = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2); // no skills
+
+        // Helper: build a P1 side with `n` Strike champs on a1.., score the first.
+        let curve = |n: usize| -> f32 {
+            let mut pos = Position::empty();
+            let mut bb = 0u64;
+            for i in 0..n { bb |= 1 << (i as u8); }
+            pos.p1_pieces.0 = bb;
+            pos.champions.0 = bb;
+            for i in 0..n { pos.mailbox[i] = lance; }
+            let ctx = CustomCtx::new(&pos);
+            factor_offense(&ctx, Piece { sq: 0, is_p1: true, kind: Kind::Champion, mb: lance })
+        };
+        let expected = [2.00f32, 1.75, 1.57, 1.43, 1.31, 1.22];
+        for (i, &want) in expected.iter().enumerate() {
+            let n = i + 1;
+            assert!((curve(n) - want).abs() < 1e-6, "{n} attackers → ×{want}");
+        }
+
+        // The core property: cost to lose one attacker (Δ total offense mass) is
+        // STRICTLY larger the fewer you have — never bounces back up.
+        let total = |n: usize| n as f32 * 100.0 * curve(n);
+        let mut prev_keep = f32::INFINITY;
+        for n in 1..=6 {
+            let keep = total(n) - if n == 1 { 0.0 } else { total(n - 1) };
+            assert!(keep < prev_keep, "keep-value must strictly fall as n grows (n={n})");
+            prev_keep = keep;
+        }
+
+        // Move-only carrier alongside 1 Strike: count stays 1 (×2.0 tier), the Move
+        // champ gets half the bonus → 1.0 + 0.5×(2.0−1.0) = 1.5; the plain champ 1.0.
+        let mut pos = Position::empty();
+        pos.p1_pieces.0 = (1 << 0) | (1 << 1) | (1 << 2);
+        pos.champions.0 = (1 << 0) | (1 << 1) | (1 << 2);
+        pos.mailbox[0] = lance;
+        pos.mailbox[1] = blast;
+        pos.mailbox[2] = plain;
+        let ctx = CustomCtx::new(&pos);
+        let mk = |sq: u8, mb| Piece { sq, is_p1: true, kind: Kind::Champion, mb };
+        assert!((factor_offense(&ctx, mk(0, lance)) - 2.0).abs() < 1e-6, "strike ×2.0");
+        assert!((factor_offense(&ctx, mk(1, blast)) - 1.5).abs() < 1e-6, "move half-bonus");
+        assert!((factor_offense(&ctx, mk(2, plain)) - 1.0).abs() < 1e-6, "no offense → 1.0");
+
+        // No Strike anywhere: even a Move carrier is 1.0 (nothing to prime).
+        let mut np = Position::empty();
+        np.p1_pieces.0 = 1 << 0;
+        np.champions.0 = 1 << 0;
+        np.mailbox[0] = blast;
+        let ctx = CustomCtx::new(&np);
+        assert!((factor_offense(&ctx, mk(0, blast)) - 1.0).abs() < 1e-6, "no strike → move is 1.0");
     }
 
     /// The income-timing fix: on a mirrored board with equal money and skills,
@@ -1149,41 +1669,63 @@ mod tests {
         assert_eq!(ctx.effective_money(true), ctx.money(true), "mover already banked");
     }
 
-    /// Offense capability: a Move-only champion contributes NOTHING on its own
-    /// (it can't prime a combo), but starts counting once a Strike carrier exists
-    /// to build the counter. Strike carriers always count.
+    /// Offensive utilisation (C2b): penalise ONLY a side that is ahead on offense
+    /// and not converting it, scaled by how safe/convertible its attackers are.
+    /// Never rewards; disadvantaged/even sides are always 0.
     #[test]
-    fn offense_capable_gates_move_on_strike() {
-        // Two champions for P1: one on c2, one on e2. P2 empty (isolate P1's count).
-        let strike = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(1); // Lance = Strike
-        let mv     = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(9); // Dash  = Move
+    fn offense_utilisation_penalises_unconverted_advantage() {
+        let strike = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(2); // Hook (range 2)
 
-        // Case A: both champions carry only a Move skill → no Strike to prime →
-        // realisable offense is 0.
-        let mut pos = Position::empty();
-        pos.p1_pieces.0 = (1 << 10) | (1 << 12);
-        pos.champions.0 = (1 << 10) | (1 << 12);
-        pos.mailbox[10] = mv;
-        pos.mailbox[12] = mv;
-        let ctx = CustomCtx::new(&pos);
-        assert_eq!(term_offense_capable(&ctx, true), 0, "move-only can't realise offense");
+        // Case A: no offensive advantage (P2 has an equal Strike carrier) → 0.
+        let mut even = Position::empty();
+        even.p1_pieces.0 = 1 << 10; // c2
+        even.p2_pieces.0 = 1 << 50; // c7
+        even.champions.0 = (1 << 10) | (1 << 50);
+        even.mailbox[10] = strike;
+        even.mailbox[50] = strike;
+        let ctx = CustomCtx::new(&even);
+        assert_eq!(term_offense_capable(&ctx, true), 0, "no advantage → no pressure");
+        assert_eq!(term_offense_capable(&ctx, false), 0, "even → both 0");
 
-        // Case B: swap one to a Strike carrier → now BOTH count (strike primes the
-        // move carrier) → 2 × PER_CHAMP.
-        pos.mailbox[10] = strike;
-        let ctx = CustomCtx::new(&pos);
-        assert_eq!(term_offense_capable(&ctx, true), 20, "strike primes the move carrier");
+        // Case B: P1 ahead on offense (1 Strike vs 0), attacker far from any enemy
+        // (no reach onto enemy pieces) and SAFE (no enemy can Move-Attack it) →
+        // hoarding an unconverted, convertible advantage → penalty.
+        let mut ahead = Position::empty();
+        ahead.p1_pieces.0 = 1 << 0;  // a1 — tucked in the corner, far from enemy
+        ahead.p2_pieces.0 = 1 << 63; // h8 lone champ, no Strike
+        ahead.champions.0 = (1 << 0) | (1 << 63);
+        ahead.mailbox[0] = strike;
+        let ctx = CustomCtx::new(&ahead);
+        let pen = term_offense_capable(&ctx, true);
+        assert!(pen < 0, "ahead + not converting + safe → penalty, got {pen}");
+        // The disadvantaged side is never penalised.
+        assert_eq!(term_offense_capable(&ctx, false), 0, "behind side is free");
+
+        // Case C: same advantage, but the attacker's reach now covers the enemy KING
+        // (full realisation) → the gap closes → penalty shrinks toward 0. Enemy king
+        // on a3(16) is 2 tiles from the a1 Hook carrier (in range-2 reach) but at R2,
+        // so it can't Move-Attack the attacker — safe_frac stays 1, isolating the
+        // realisation effect.
+        let mut converting = ahead.clone();
+        converting.p2_pieces.0 = 1 << 16;
+        converting.champions.0 = 1 << 0;
+        converting.kings.0 = 1 << 16;
+        converting.mailbox[16] = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2);
+        let ctx = CustomCtx::new(&converting);
+        let pen_conv = term_offense_capable(&ctx, true);
+        assert!(pen_conv > pen, "converting on the king → smaller penalty ({pen_conv} vs {pen})");
     }
 
     /// Combo overlap: two champions that both threaten enemy-near squares earn
-    /// the proximity bonus, summed over every shared square; a lone champion with
-    /// no partner earns nothing.
+    /// the proximity points, summed over every shared square; a lone champion with
+    /// no partner earns nothing. This pins the RAW points fed into `factor_combo`
+    /// (the multiplier itself is tested separately).
     #[test]
     fn combo_overlap_rewards_shared_target_near_enemy() {
         // P1 champs on c3(18) and e3(20), both carrying Lance (Strike, range 1).
         // Their range-1 reaches overlap on the column between them: d2(11), d3(19),
-        // d4(27). With an enemy on d5(35): d4 is cheby-1 (+25), d3 cheby-2 (+10),
-        // d2 cheby-3 (+0). All paths are adjacent (nothing between). Total = 35.
+        // d4(27). With an enemy on d5(35): d4 is cheby-1 (+10), d3 cheby-2 (+5),
+        // d2 cheby-3 (+0). All paths are adjacent (nothing between). Total = 15.
         let lance = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(1);
         let mut pos = Position::empty();
         pos.p1_pieces.0 = (1 << 18) | (1 << 20);
@@ -1194,15 +1736,104 @@ mod tests {
 
         let ctx = CustomCtx::new(&pos);
         let c3 = Piece { sq: 18, is_p1: true, kind: Kind::Champion, mb: lance };
-        assert_eq!(combo_overlap_bonus(&ctx, c3), 35, "d4(+25) + d3(+10), d2 too far");
+        assert_eq!(combo_overlap_points(&ctx, c3), 15, "d4(+10) + d3(+5), d2 too far");
 
-        // Remove the partner on e3 → no other champion shares any square → no bonus.
+        // Remove the partner on e3 → no other champion shares any square → no points.
         let mut solo = pos.clone();
         solo.p1_pieces.0 = 1 << 18;
         solo.champions.0 = (1 << 18) | (1 << 35);
         solo.mailbox[20] = crate::state::EMPTY_MAILBOX_ENTRY;
         let ctx = CustomCtx::new(&solo);
-        assert_eq!(combo_overlap_bonus(&ctx, c3), 0, "no partner → no combo setup");
+        assert_eq!(combo_overlap_points(&ctx, c3), 0, "no partner → no combo setup");
+    }
+
+    /// The combo filter: only skills that tick an ENEMY combo counter grant reach.
+    /// Self-movement (Dash/Retreat) and ally-relocation (Swap) must NOT — carrying
+    /// Dash gives zero combo potential even with a partner and a real target.
+    #[test]
+    fn combo_reach_excludes_self_move_skills() {
+        // Same geometry as the shared-target test (c3=18, e3=20, enemy d5=35), but
+        // both champs carry DASH (id 9, self-move) instead of Lance. Dash can't tick
+        // an enemy counter, so neither champ has combo reach → 0 points.
+        let dash = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(9);
+        let mut pos = Position::empty();
+        pos.p1_pieces.0 = (1 << 18) | (1 << 20);
+        pos.champions.0 = (1 << 18) | (1 << 20) | (1 << 35);
+        pos.p2_pieces.0 = 1 << 35;
+        pos.mailbox[18] = dash;
+        pos.mailbox[20] = dash;
+        let ctx = CustomCtx::new(&pos);
+        let c3 = Piece { sq: 18, is_p1: true, kind: Kind::Champion, mb: dash };
+        assert_eq!(combo_overlap_points(&ctx, c3), 0, "Dash is self-move → no combo");
+
+        // Swap into Blast (id 10, moves an enemy → DOES tick): reach returns, so the
+        // shared-target points reappear. Confirms the filter admits enemy-movers.
+        let blast = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(10);
+        pos.mailbox[18] = blast;
+        pos.mailbox[20] = blast;
+        let ctx = CustomCtx::new(&pos);
+        let c3 = Piece { sq: 18, is_p1: true, kind: Kind::Champion, mb: blast };
+        assert!(combo_overlap_points(&ctx, c3) > 0, "Blast moves an enemy → combo");
+    }
+
+    /// The combo multiplier: raw points normalise into a factor in `[1.0, 1.5]`,
+    /// and — the whole point of C1 — it COMPOSES with exposure, so a combo on an
+    /// exposed champ yields a smaller absolute reward than on a safe one.
+    #[test]
+    fn combo_factor_composes_with_exposure() {
+        // No combo potential → factor is exactly 1.0 (no-op).
+        let lance = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(1);
+        let mut solo = Position::empty();
+        solo.p1_pieces.0 = 1 << 18;
+        solo.champions.0 = 1 << 18;
+        solo.mailbox[18] = lance;
+        let ctx = CustomCtx::new(&solo);
+        let c = Piece { sq: 18, is_p1: true, kind: Kind::Champion, mb: lance };
+        assert!((factor_combo(&ctx, c) - 1.0).abs() < 1e-6, "no combo → factor 1.0");
+
+        // 15 points (the shared-target case above) → 1.0 + 0.5 × (15/50) = 1.15.
+        let mut pos = Position::empty();
+        pos.p1_pieces.0 = (1 << 18) | (1 << 20);
+        pos.champions.0 = (1 << 18) | (1 << 20) | (1 << 35);
+        pos.p2_pieces.0 = 1 << 35;
+        pos.mailbox[18] = lance;
+        pos.mailbox[20] = lance;
+        let ctx = CustomCtx::new(&pos);
+        let c3 = Piece { sq: 18, is_p1: true, kind: Kind::Champion, mb: lance };
+        assert!((factor_combo(&ctx, c3) - 1.15).abs() < 1e-6, "15 pts → ×1.15");
+    }
+
+    /// Move-Attack reachability: a Guard threatens from R2 (speed 2), but a
+    /// Champion/King only from R1 (speed 1). A lone enemy Champion at R2 must NOT
+    /// count as a Move-Attack threat; a Guard at the same square must.
+    #[test]
+    fn move_attack_reach_guard_r2_champ_r1() {
+        // Target square d4(27). d6(43) is exactly Chebyshev 2 away (R2, not R1).
+        let body = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2);
+        let mut pos = Position::empty();
+        pos.p1_pieces.0 = 1 << 27; // our piece on the target square
+        pos.p2_pieces.0 = 1 << 43; // one enemy at R2
+
+        // Enemy at R2 is a CHAMPION → cannot Move-Attack from R2 (speed 1).
+        pos.champions.0 = 1 << 43;
+        pos.mailbox[43] = body;
+        let ctx = CustomCtx::new(&pos);
+        assert!(!ctx.enemy_can_move_attack(true, 27), "champ at R2 can't reach");
+
+        // Same square, now a GUARD → can Move-Attack from R2 (speed 2).
+        pos.champions.0 = 0;
+        pos.guards.0 = 1 << 43;
+        let ctx = CustomCtx::new(&pos);
+        assert!(ctx.enemy_can_move_attack(true, 27), "guard at R2 can reach");
+
+        // A champion at R1 (d5 = 35) CAN Move-Attack.
+        let mut pos = Position::empty();
+        pos.p1_pieces.0 = 1 << 27;
+        pos.p2_pieces.0 = 1 << 35; // d5, Chebyshev 1
+        pos.champions.0 = 1 << 35;
+        pos.mailbox[35] = body;
+        let ctx = CustomCtx::new(&pos);
+        assert!(ctx.enemy_can_move_attack(true, 27), "champ at R1 can reach");
     }
 
     /// King danger: no malus when no enemy can reach the king; a real threat that
@@ -1239,7 +1870,117 @@ mod tests {
         let malus = king_danger_malus(&ctx, kp);
         assert!(malus > 0, "king outnumbered with no defense → penalty, got {malus}");
 
-        // And score_king mirrors it as a negative owner magnitude.
-        assert_eq!(score_king(&ctx, kp), -malus);
+        // score_king now runs the full champion chain and subtracts the malus on
+        // top (the king is a champion under the hood), so it is the chain value
+        // minus the danger magnitude — not the bare negation.
+        let chain: f32 = CHAMP_FACTORS.iter().map(|(_, _, f)| f(&ctx, kp)).product();
+        let chain_val = (BASE * chain).round() as i32;
+        assert_eq!(score_king(&ctx, kp), chain_val - malus);
+    }
+
+    /// factor_exposure: 1.0 when safe (unreachable), drops as a piece becomes
+    /// reachable + fragile, bottoms out near 0.1 for a 1-hp dead-to-rights piece,
+    /// and bodyguard cover removes the Move-Attack vector.
+    #[test]
+    fn exposure_scales_with_vulnerability() {
+        // Safe: a lone P1 champion far from any enemy → exposure 1.0 (no-op).
+        let champ = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(1); // Lance
+        let mut safe = Position::empty();
+        safe.p1_pieces.0 = 1 << 0; // a1
+        safe.champions.0 = 1 << 0;
+        safe.to_move = crate::state::position::Player::P2;
+        let ctx = CustomCtx::new(&safe);
+        let c = Piece { sq: 0, is_p1: true, kind: Kind::Champion, mb: champ };
+        assert!((factor_exposure(&ctx, c) - 1.0).abs() < 1e-6, "unreachable → 1.0");
+
+        // Dead-to-rights: a 1-hp P1 champ surrounded by enemy Strike champs, enemy
+        // to move (we can't heal), no retaliation → overkill incoming → deep cut
+        // toward 0.1 (designer's "1-hp, no support, surrounded → ×0.1" anchor).
+        let hurt = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(1); // 1hp, no armor, no skill
+        let ech  = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(1); // enemy Lance
+        let mut dead = Position::empty();
+        dead.round_number = 6;
+        dead.to_move = crate::state::position::Player::P2; // enemy's turn → no heal
+        dead.current_phase = crate::state::position::Phase::Skill;
+        dead.p2_money = 20; // affords several strikes → overkill
+        // P1 champ on d4(27); enemy Lance champs on c3(18),d3(19),e3(20) — all R1.
+        dead.p1_pieces.0 = 1 << 27;
+        dead.p2_pieces.0 = (1 << 18) | (1 << 19) | (1 << 20);
+        dead.champions.0 = (1 << 27) | (1 << 18) | (1 << 19) | (1 << 20);
+        dead.mailbox[27] = hurt;
+        for s in [18, 19, 20] { dead.mailbox[s] = ech; }
+        let ctx = CustomCtx::new(&dead);
+        let c = Piece { sq: 27, is_p1: true, kind: Kind::Champion, mb: hurt };
+        let ex = factor_exposure(&ctx, c);
+        assert!(ex < 0.35, "1-hp surrounded by strikers, no heal → deep cut, got {ex}");
+
+        // Bodyguard cover removes the Move-Attack vector: same 1-hp champ, but now
+        // surrounded by friendly guards that intercept, and NO enemy Strike reach →
+        // exposure climbs back toward safe.
+        let mut covered = dead.clone();
+        // Replace the enemy champs with far-away ones (out of reach), add friendly
+        // guards adjacent so any approach is bodyguarded. Simplest: no enemy in reach.
+        covered.p2_pieces.0 = 1 << 63; // lone far enemy
+        covered.champions.0 = (1 << 27) | (1 << 63);
+        covered.mailbox[63] = ech;
+        let ctx = CustomCtx::new(&covered);
+        let c = Piece { sq: 27, is_p1: true, kind: Kind::Champion, mb: hurt };
+        assert!(factor_exposure(&ctx, c) > ex, "removing the threat lifts exposure");
+    }
+
+    /// Exposure via the STRIKE vector alone (no Move-Attack): a piece reachable only
+    /// by an enemy Strike is still exposed, and bodyguard does NOT save it (skills hit
+    /// direct). Certain death (lethal incoming + no possible defense) floors severity
+    /// high, so the piece reads a deep cut.
+    #[test]
+    fn exposure_fires_on_strike_only() {
+        let victim = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2); // 2hp/0armor, no skill
+        let hook = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(2); // Hook range 2
+        // P2 victim d5(35); P1 Hook striker d7(51) — cheby 2, clear ray, NOT adjacent
+        // (no Move-Attack). Range 2 + 1 = 3 reaches. P1 to move → victim can't heal.
+        let mut pos = Position::empty();
+        pos.round_number = 5;
+        pos.to_move = crate::state::position::Player::P1;
+        pos.current_phase = crate::state::position::Phase::Skill;
+        pos.p1_money = 10;
+        pos.p1_pieces.0 = 1 << 51;
+        pos.p2_pieces.0 = 1 << 35;
+        pos.champions.0 = (1 << 51) | (1 << 35);
+        pos.mailbox[51] = hook;
+        pos.mailbox[35] = victim;
+        let ctx = CustomCtx::new(&pos);
+        let v = Piece { sq: 35, is_p1: false, kind: Kind::Champion, mb: victim };
+        // No adjacency → the ONLY vector is the Strike.
+        assert!(!ctx.enemy_can_move_attack(false, 35), "not Move-Attackable (dist 2)");
+        assert!(ctx.survivability_severity(v) > 0.0, "strike vector alone → exposed");
+        assert!(factor_exposure(&ctx, v) < 1.0, "strike threat lowers exposure factor");
+    }
+
+    /// King exposure: a king that is exactly killable next turn with NO possible
+    /// defense reads certain-death (severity ≥ 0.85) → a large but CAPPED malus,
+    /// nowhere near MATE_SCORE. Fixes the old unbounded −1200.
+    #[test]
+    fn king_exposure_certain_death_is_capped() {
+        let ech = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2).with_skill1(1); // Lance
+        let kmb = crate::state::EMPTY_MAILBOX_ENTRY.with_hp(2); // 2hp/0armor king
+        // P2 king d5(35) ringed by P1 Lance champs at R1 (c4,d4,e4), P1 to move, rich.
+        let mut pos = Position::empty();
+        pos.round_number = 5;
+        pos.to_move = crate::state::position::Player::P1;
+        pos.current_phase = crate::state::position::Phase::Skill;
+        pos.p1_money = 20;
+        let ring = (1 << 26) | (1 << 27) | (1 << 28);
+        pos.p1_pieces.0 = ring;
+        pos.p2_pieces.0 = 1 << 35;
+        pos.champions.0 = ring;
+        pos.kings.0 = 1 << 35;
+        for s in [26, 27, 28] { pos.mailbox[s] = ech; }
+        pos.mailbox[35] = kmb;
+        let ctx = CustomCtx::new(&pos);
+        let k = Piece { sq: 35, is_p1: false, kind: Kind::King, mb: kmb };
+        assert!(ctx.survivability_severity(k) >= 0.85, "certain-death king → high severity");
+        let malus = king_danger_malus(&ctx, k);
+        assert!(malus > 3000, "near-dead king → large malus, got {malus}");
+        assert!(malus < MATE_SCORE, "but strictly below mate ({malus} vs {MATE_SCORE})");
     }
 }

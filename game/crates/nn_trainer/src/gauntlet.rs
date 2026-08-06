@@ -282,7 +282,7 @@ mod tests {
         }
         fn evaluate_report(&self, _pos: &Position, _detail: core_engine::search::evaluator::BreakdownDetail)
             -> core_engine::search::evaluator::EvalReport {
-            core_engine::search::evaluator::EvalReport::single("const", self.0)
+            core_engine::search::evaluator::EvalReport::single("const", "Const", self.0)
         }
     }
 

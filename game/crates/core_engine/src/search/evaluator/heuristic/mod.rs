@@ -131,6 +131,7 @@ pub fn evaluate_report(pos: &Position, params: &EvalParams, detail: BreakdownDet
                 piece_total += owner_signed;
                 terms_here.push(TermEntry {
                     name: def.name.to_string(),
+                    label: def.label.to_string(),
                     p1: if is_p1 { mag } else { 0 },
                     p2: if is_p1 { 0 } else { mag },
                     signed: owner_signed,
@@ -160,19 +161,20 @@ pub fn evaluate_report(pos: &Position, params: &EvalParams, detail: BreakdownDet
         if p1 == 0 && p2 == 0 { continue; }
         agg.push(TermEntry {
             name: def.name.to_string(),
+            label: def.label.to_string(),
             p1, p2,
             signed: def.sign * (p1 - p2),
         });
     }
 
     let mut side = Vec::with_capacity(6);
-    push_side(&mut side, "money", sums.money, sums.money.0 - sums.money.1);
-    push_side(&mut side, "tempo", sums.tempo, sums.tempo.0 - sums.tempo.1);
-    push_side(&mut side, "offensive_range", sums.off,
+    push_side(&mut side, "money",            "Money",      sums.money, sums.money.0 - sums.money.1);
+    push_side(&mut side, "tempo",            "Tempo",      sums.tempo, sums.tempo.0 - sums.tempo.1);
+    push_side(&mut side, "offensive_range",  "Off reach",  sums.off,
               (sums.off.0 - sums.off.1) * params.offensive_range_weight);
-    push_side(&mut side, "wasted_modifier", sums.wasted, -(sums.wasted.0 - sums.wasted.1));
-    push_side(&mut side, "endgame_closing", sums.close, sums.close.0 - sums.close.1);
-    push_side(&mut side, "king_tempo", sums.king_tempo, -(sums.king_tempo.0 - sums.king_tempo.1));
+    push_side(&mut side, "wasted_modifier",  "Wasted",     sums.wasted, -(sums.wasted.0 - sums.wasted.1));
+    push_side(&mut side, "endgame_closing",  "Endgame",    sums.close, sums.close.0 - sums.close.1);
+    push_side(&mut side, "king_tempo",       "King tempo", sums.king_tempo, -(sums.king_tempo.0 - sums.king_tempo.1));
 
     if pos.actions_remaining == 0 {
         counters::bump_actions_zero_hit();
@@ -183,9 +185,9 @@ pub fn evaluate_report(pos: &Position, params: &EvalParams, detail: BreakdownDet
 
 /// Push a side-level term entry, skipping it when both magnitudes are zero.
 #[inline]
-fn push_side(out: &mut Vec<TermEntry>, name: &'static str, mags: (i32, i32), signed: i32) {
+fn push_side(out: &mut Vec<TermEntry>, name: &'static str, label: &'static str, mags: (i32, i32), signed: i32) {
     if mags.0 == 0 && mags.1 == 0 { return; }
-    out.push(TermEntry { name: name.to_string(), p1: mags.0, p2: mags.1, signed });
+    out.push(TermEntry { name: name.to_string(), label: label.to_string(), p1: mags.0, p2: mags.1, signed });
 }
 
 /// Scalar search-leaf eval — the hot path. Returns just the `i32` total, with
@@ -218,9 +220,9 @@ pub fn evaluate_scalar(pos: &Position, params: &EvalParams) -> i32 {
     total
 }
 
-/// A per-piece term's metadata: its stable machine name (the breakdown wire key
-/// the frontend maps to a label) and the sign applied to `(p1 - p2)` when folding
-/// into the P1-POV total (`+1` for a bonus, `-1` for a penalty).
+/// A per-piece term's metadata: its stable machine name (the breakdown wire key)
+/// its human-readable display label, and the sign applied to `(p1 - p2)` when
+/// folding into the P1-POV total (`+1` for a bonus, `-1` for a penalty).
 ///
 /// This is the SINGLE source of truth for the per-piece term set: [`N_PIECE_TERMS`],
 /// the `pt::*` index aliases, the fold, and the report all derive from it, so a
@@ -229,23 +231,24 @@ pub fn evaluate_scalar(pos: &Position, params: &EvalParams) -> i32 {
 /// monomorphic — that function's order MUST match this table's order, which the
 /// `pt::*` aliases below make self-checking.
 pub(crate) struct PieceTermDef {
-    pub name: &'static str,
-    pub sign: i32,
+    pub name:  &'static str,
+    pub label: &'static str,
+    pub sign:  i32,
 }
 
 /// The per-piece term set, in fold/report order. ADD A TERM HERE (and give it a
 /// scorer line in `score_piece_all`, at the matching index). Penalties get `sign: -1`.
 pub(crate) const PIECE_TERMS: &[PieceTermDef] = &[
-    PieceTermDef { name: "material",        sign:  1 },
-    PieceTermDef { name: "hp",              sign:  1 },
-    PieceTermDef { name: "armor",           sign:  1 },
-    PieceTermDef { name: "skills",          sign:  1 },
-    PieceTermDef { name: "mobility",        sign:  1 },
-    PieceTermDef { name: "exposure",        sign: -1 }, // penalty
-    PieceTermDef { name: "coverage",        sign:  1 },
-    PieceTermDef { name: "guard_isolation", sign: -1 }, // penalty
-    PieceTermDef { name: "champion_threat", sign:  1 },
-    PieceTermDef { name: "hanging_piece",   sign: -1 }, // penalty
+    PieceTermDef { name: "material",        label: "Material",   sign:  1 },
+    PieceTermDef { name: "hp",              label: "HP",         sign:  1 },
+    PieceTermDef { name: "armor",           label: "Armor",      sign:  1 },
+    PieceTermDef { name: "skills",          label: "Skills",     sign:  1 },
+    PieceTermDef { name: "mobility",        label: "Reach",      sign:  1 },
+    PieceTermDef { name: "exposure",        label: "Exposure",   sign: -1 }, // penalty
+    PieceTermDef { name: "coverage",        label: "Coverage",   sign:  1 },
+    PieceTermDef { name: "guard_isolation", label: "Guard iso",  sign: -1 }, // penalty
+    PieceTermDef { name: "champion_threat", label: "Threat",     sign:  1 },
+    PieceTermDef { name: "hanging_piece",   label: "Hanging",    sign: -1 }, // penalty
 ];
 
 /// Number of per-piece terms — derived from [`PIECE_TERMS`], never hand-counted.

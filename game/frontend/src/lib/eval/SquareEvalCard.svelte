@@ -20,19 +20,6 @@
 
   const { data, sq, clientX, clientY }: Props = $props();
 
-  // Display labels for known term machine-names; unknown → prettified.
-  const TERM_LABELS: Record<string, string> = {
-    material: "Material", hp: "HP", armor: "Armor", skills: "Skills",
-    mobility: "Reach", exposure: "Exposure", coverage: "Coverage",
-    guard_isolation: "Guard iso", champion_threat: "Threat",
-    money: "Money", tempo: "Tempo", offensive_range: "Off reach",
-    wasted_modifier: "Wasted", endgame_closing: "Endgame",
-    hanging_piece: "Hanging", king_tempo: "King tempo", nn: "Net",
-  };
-  function labelFor(name: string): string {
-    return TERM_LABELS[name] ?? name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-
   const entry = $derived<PieceTermBreakdown | null>(
     data !== null && data.pieces !== null && sq !== null
       ? (data.pieces.find((p) => p.sq === sq) ?? null)
@@ -133,7 +120,7 @@
         <tbody>
           {#each entry.terms as row, i (row.name)}
             <tr class:largest={i === largestIdx}>
-              <td>{labelFor(row.name)}</td>
+              <td>{row.label}</td>
               <td class="num" class:pos={row.signed > 0} class:neg={row.signed < 0}>
                 {fmtSigned(row.signed)}
               </td>
@@ -154,7 +141,7 @@
     <footer class="side-ctx">
       {#each sideTerms as t (t.name)}
         <div class="side-row">
-          <span>{labelFor(t.name)}</span>
+          <span>{t.label}</span>
           <span class="num" class:pos={t.signed > 0} class:neg={t.signed < 0}>{fmtSigned(t.signed)}</span>
         </div>
       {/each}

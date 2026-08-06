@@ -195,7 +195,7 @@ impl Evaluator for NnEvaluator {
         // The NN has no term structure; report the whole score as one synthetic
         // "nn" term. Callers that want a true per-term breakdown must select a
         // HeuristicEvaluator (or a preset) instead.
-        EvalReport::single("nn", self.evaluate(pos))
+        EvalReport::single("nn", "Net", self.evaluate(pos))
     }
 }
 

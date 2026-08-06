@@ -110,9 +110,11 @@ export interface GameConstantsWire {
 /** One evaluation term's contribution. Mirrors Rust `TermEntry`. `p1`/`p2`
  *  are raw per-side magnitudes; `signed` is the P1-POV contribution to `total`
  *  with sign/weight already applied (a penalty reads negative). In a per-piece
- *  row, `signed` is owner-signed (P1 positive, P2 negative). */
+ *  row, `signed` is owner-signed (P1 positive, P2 negative). `label` is a
+ *  human-readable display string provided by the evaluator. */
 export interface TermEntry {
   name: string;
+  label: string;
   p1: number;
   p2: number;
   signed: number;

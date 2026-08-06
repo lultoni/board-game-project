@@ -10,34 +10,6 @@
 
   const SATURATION = 1000;
 
-  // Display labels for known term machine-names. Unknown terms (e.g. future
-  // SEE terms, or an evaluator's bespoke term) fall back to a prettified name,
-  // so the panel is fully dynamic — add a term in Rust and it shows up here.
-  const TERM_LABELS: Record<string, string> = {
-    material: "Material",
-    hp: "HP",
-    armor: "Armor",
-    skills: "Skills",
-    mobility: "Reach",
-    exposure: "Exposure",
-    coverage: "Coverage",
-    guard_isolation: "Guard iso",
-    champion_threat: "Threat",
-    money: "Money",
-    tempo: "Tempo",
-    offensive_range: "Off reach",
-    wasted_modifier: "Wasted",
-    endgame_closing: "Endgame",
-    hanging_piece: "Hanging",
-    king_tempo: "King tempo",
-    nn: "Net",
-    const: "Const",
-  };
-
-  function labelFor(name: string): string {
-    return TERM_LABELS[name] ?? name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-
   interface Row {
     label: string;
     /** Owner-signed P1 magnitude for display (positive side). */
@@ -74,7 +46,7 @@
     for (const t of allTerms(cur)) {
       const prevSigned = prevByName.get(t.name);
       rows.push({
-        label: labelFor(t.name),
+        label: t.label,
         p1: t.p1,
         p2: t.p2,
         signed: t.signed,
